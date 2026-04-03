@@ -1242,17 +1242,25 @@ export function useTypeahead({
   const handleAutocompletePrevious = useCallback(() => {
     setSuggestionsState(prev => ({
       ...prev,
-      selectedSuggestion: prev.selectedSuggestion <= 0 ? suggestions.length - 1 : prev.selectedSuggestion - 1
+      selectedSuggestion: prev.suggestions.length === 0
+        ? -1
+        : prev.selectedSuggestion <= 0
+          ? prev.suggestions.length - 1
+          : Math.min(prev.selectedSuggestion - 1, prev.suggestions.length - 1)
     }));
-  }, [suggestions.length, setSuggestionsState]);
+  }, [setSuggestionsState]);
 
   // Handler for autocomplete:next - selects next suggestion
   const handleAutocompleteNext = useCallback(() => {
     setSuggestionsState(prev => ({
       ...prev,
-      selectedSuggestion: prev.selectedSuggestion >= suggestions.length - 1 ? 0 : prev.selectedSuggestion + 1
+      selectedSuggestion: prev.suggestions.length === 0
+        ? -1
+        : prev.selectedSuggestion >= prev.suggestions.length - 1
+          ? 0
+          : Math.max(0, prev.selectedSuggestion + 1)
     }));
-  }, [suggestions.length, setSuggestionsState]);
+  }, [setSuggestionsState]);
 
   // Autocomplete context keybindings - only active when suggestions are visible
   const autocompleteHandlers = useMemo(() => ({

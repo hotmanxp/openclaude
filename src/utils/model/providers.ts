@@ -9,6 +9,7 @@ export type APIProvider =
   | 'openai'
   | 'gemini'
   | 'github'
+  | 'codex'
 
 export function getAPIProvider(): APIProvider {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
@@ -16,7 +17,9 @@ export function getAPIProvider(): APIProvider {
     : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
       ? 'github'
       : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-        ? 'openai'
+        ? isCodexModel()
+          ? 'codex'
+          : 'openai'
         : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
           ? 'bedrock'
           : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
@@ -28,6 +31,19 @@ export function getAPIProvider(): APIProvider {
 
 export function usesAnthropicAccountFlow(): boolean {
   return getAPIProvider() === 'firstParty'
+}
+function isCodexModel(): boolean {
+  const model = (process.env.OPENAI_MODEL || '').toLowerCase()
+  return (
+    model === 'codexplan' ||
+    model === 'codexspark' ||
+    model === 'gpt-5.4' ||
+    model === 'gpt-5.3-codex' ||
+    model === 'gpt-5.3-codex-spark' ||
+    model === 'gpt-5.2-codex' ||
+    model === 'gpt-5.1-codex-max' ||
+    model === 'gpt-5.1-codex-mini'
+  )
 }
 
 export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS {

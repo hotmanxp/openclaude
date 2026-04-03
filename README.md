@@ -104,6 +104,11 @@ Best if you want local inference on Apple Silicon with Atomic Chat. See [Advance
 
 ---
 
+
+## VS Code Extension
+
+Want a native VS Code experience? Use the in-repo extension at `vscode-extension/openclaude-vscode` for one-command terminal launch and the `OpenClaude Terminal Black` theme.
+
 ## What Works
 
 - **All tools**: Bash, FileRead, FileWrite, FileEdit, Glob, Grep, WebFetch, WebSearch, Agent, MCP, LSP, NotebookEdit, Tasks
@@ -120,6 +125,27 @@ Best if you want local inference on Apple Silicon with Atomic Chat. See [Advance
 - **No prompt caching**: Anthropic-specific cache headers are skipped
 - **No beta features**: Anthropic-specific beta headers are ignored
 - **Token limits**: Defaults to 32K max output — some models may cap lower, which is handled gracefully
+
+---
+
+## Web Search and Fetch
+
+By default, `WebSearch` is disabled for all non-Anthropic providers. The native search backend requires either the Anthropic API or the Codex responses endpoint, so users on GPT-4o, DeepSeek, Gemini, Ollama, and other OpenAI-compatible providers get no web search at all.
+
+`WebFetch` works but uses basic HTTP plus HTML-to-markdown conversion. That fails on JavaScript-rendered pages (React, Next.js, Vue SPAs) and sites that block plain HTTP requests.
+
+Set a [Firecrawl](https://firecrawl.dev) API key to fix both:
+
+```bash
+export FIRECRAWL_API_KEY=your-key-here
+```
+
+With this set:
+
+- `WebSearch` is enabled for all providers and routes through Firecrawl's search API
+- `WebFetch` uses Firecrawl's scrape endpoint instead of raw HTTP, handling JS-rendered pages correctly
+
+Free tier at [firecrawl.dev](https://firecrawl.dev) includes 500 credits. The key is optional — if not set, both tools fall back to their original behavior.
 
 ---
 

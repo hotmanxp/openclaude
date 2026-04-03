@@ -12,6 +12,7 @@ import { formatNumber } from './format.js';
 import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
 import { getClaudeAiUserDefaultModelDescription, modelDisplayString } from './model/model.js';
 import { getAPIProvider } from './model/providers.js';
+import { resolveProviderRequest } from '../services/api/providerConfig.js';
 import { getMTLSConfig } from './mtls.js';
 import { checkInstall } from './nativeInstaller/index.js';
 import { getProxyUrl } from './proxy.js';
@@ -247,6 +248,7 @@ export function buildAPIProviderProperties(): Property[] {
       vertex: 'Google Vertex AI',
       foundry: 'Microsoft Foundry',
       openai: 'OpenAI-compatible',
+      codex: 'Codex',
       gemini: 'Google Gemini',
     }[apiProvider];
     properties.push({
@@ -325,34 +327,73 @@ export function buildAPIProviderProperties(): Property[] {
     }
   } else if (apiProvider === 'openai') {
     const openaiBaseUrl = process.env.OPENAI_BASE_URL;
-      if (openaiBaseUrl) {
-        properties.push({
-          label: 'OpenAI base URL',
-          value: redactSecretValueForDisplay(openaiBaseUrl, process.env) ?? openaiBaseUrl
-        });
+    if (openaiBaseUrl) {
+      properties.push({
+        label: 'OpenAI base URL',
+        value: redactSecretValueForDisplay(openaiBaseUrl, process.env) ?? openaiBaseUrl
+      });
+    }
+    const openaiModel = process.env.OPENAI_MODEL;
+    if (openaiModel) {
+      // Build display model string with resolved model + reasoning effort
+      let modelDisplay = openaiModel;
+      const resolved = resolveProviderRequest({ model: openaiModel });
+      const resolvedModel = resolved.resolvedModel;
+      const reasoningEffort = resolved.reasoning?.effort;
+      if (resolvedModel && resolvedModel !== openaiModel.toLowerCase()) {
+        // Show resolved model name
+        modelDisplay = resolvedModel;
       }
-      const openaiModel = process.env.OPENAI_MODEL;
-      if (openaiModel) {
-        properties.push({
-          label: 'Model',
-          value: redactSecretValueForDisplay(openaiModel, process.env) ?? openaiModel
-        });
+      if (reasoningEffort) {
+        modelDisplay = `${modelDisplay} (${reasoningEffort})`;
       }
-    } else if (apiProvider === 'gemini') {
-      const geminiBaseUrl = process.env.GEMINI_BASE_URL;
-      if (geminiBaseUrl) {
-        properties.push({
-          label: 'Gemini base URL',
-          value: redactSecretValueForDisplay(geminiBaseUrl, process.env) ?? geminiBaseUrl
-        });
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
+      });
+    }
+  } else if (apiProvider === 'codex') {
+    const codexBaseUrl = process.env.OPENAI_BASE_URL;
+    if (codexBaseUrl) {
+      properties.push({
+        label: 'Codex base URL',
+        value: redactSecretValueForDisplay(codexBaseUrl, process.env) ?? codexBaseUrl
+      });
+    }
+    const openaiModel = process.env.OPENAI_MODEL;
+    if (openaiModel) {
+      // Build display model string with resolved model + reasoning effort
+      let modelDisplay = openaiModel;
+      const resolved = resolveProviderRequest({ model: openaiModel });
+      const resolvedModel = resolved.resolvedModel;
+      const reasoningEffort = resolved.reasoning?.effort;
+      if (resolvedModel && resolvedModel !== openaiModel.toLowerCase()) {
+        // Show resolved model name
+        modelDisplay = resolvedModel;
       }
-      const geminiModel = process.env.GEMINI_MODEL;
-      if (geminiModel) {
-        properties.push({
-          label: 'Model',
-          value: redactSecretValueForDisplay(geminiModel, process.env) ?? geminiModel
-        });
+      if (reasoningEffort) {
+        modelDisplay = `${modelDisplay} (${reasoningEffort})`;
       }
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
+      });
+    }
+  } else if (apiProvider === 'gemini') {
+    const geminiBaseUrl = process.env.GEMINI_BASE_URL;
+    if (geminiBaseUrl) {
+      properties.push({
+        label: 'Gemini base URL',
+        value: redactSecretValueForDisplay(geminiBaseUrl, process.env) ?? geminiBaseUrl
+      });
+    }
+    const geminiModel = process.env.GEMINI_MODEL;
+    if (geminiModel) {
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(geminiModel, process.env) ?? geminiModel
+      });
+    }
   }
   const proxyUrl = getProxyUrl();
   if (proxyUrl) {

@@ -6,6 +6,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
+import { isAntEmployee } from 'src/utils/buildConfig.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { checkForReleaseNotes } from 'src/utils/releaseNotes.js'
 import { setCwd } from 'src/utils/Shell.js'
@@ -334,7 +335,7 @@ export async function setup(
   // overhead. NOT an early-return: the --dangerously-skip-permissions safety
   // gate, tengu_started beacon, and apiKeyHelper prefetch below must still run.
   if (!isBareMode()) {
-    if (process.env.USER_TYPE === 'ant') {
+    if (isAntEmployee()) {
       // Prime repo classification cache for auto-undercover mode. Default is
       // undercover ON until proven internal; if this resolves to internal, clear
       // the prompt cache so the next turn picks up the OFF state.
@@ -414,7 +415,7 @@ export async function setup(
     }
 
     if (
-      process.env.USER_TYPE === 'ant' &&
+      isAntEmployee() &&
       // Skip for Desktop's local agent mode — same trust model as CCR/BYOC
       // (trusted Anthropic-managed launcher intentionally pre-approving everything).
       // Precedent: permissionSetup.ts:861, applySettingsChange.ts:55 (PR #19116)

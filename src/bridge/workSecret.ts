@@ -39,8 +39,8 @@ export function decodeWorkSecret(secret: string): WorkSecret {
  * and /v1/ for production (Envoy rewrites /v1/ → /v2/).
  */
 export function buildSdkUrl(apiBaseUrl: string, sessionId: string): string {
-  const isLocalhost =
-    apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')
+  const hostname = new URL(apiBaseUrl).hostname
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
   const protocol = isLocalhost ? 'ws' : 'wss'
   const version = isLocalhost ? 'v2' : 'v1'
   const host = apiBaseUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '')

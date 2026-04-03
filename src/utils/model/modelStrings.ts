@@ -23,9 +23,12 @@ export type ModelStrings = Record<ModelKey, string>
 const MODEL_KEYS = Object.keys(ALL_MODEL_CONFIGS) as ModelKey[]
 
 function getBuiltinModelStrings(provider: APIProvider): ModelStrings {
+  // Codex piggybacks on the OpenAI provider transport for Anthropic tier aliases.
+  // Reuse OpenAI mappings so model string lookups never return undefined.
+  const providerKey = provider === 'codex' ? 'openai' : provider
   const out = {} as ModelStrings
   for (const key of MODEL_KEYS) {
-    out[key] = ALL_MODEL_CONFIGS[key][provider]
+    out[key] = ALL_MODEL_CONFIGS[key][providerKey]
   }
   return out
 }

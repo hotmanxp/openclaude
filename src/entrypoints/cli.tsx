@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle';
 import {
+  isLocalProviderUrl,
   resolveCodexApiCredentials,
   resolveProviderRequest,
 } from '../services/api/providerConfig.js'
@@ -38,16 +39,6 @@ function isEnvTruthy(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
   return normalized !== '' && normalized !== '0' && normalized !== 'false' && normalized !== 'no'
-}
-
-function isLocalProviderUrl(baseUrl: string | undefined): boolean {
-  if (!baseUrl) return false
-  try {
-    const parsed = new URL(baseUrl)
-    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1'
-  } catch {
-    return false
-  }
 }
 
 function getProviderValidationError(

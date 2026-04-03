@@ -17,6 +17,69 @@ const MAX_ACTIVITIES = 10
 const MAX_STDERR_LINES = 10
 
 /**
+ * Safe OS and runtime variables that the child process needs to function.
+ * Everything else (API keys, DB passwords, proxy secrets, etc.) must not
+ * be inherited — the child authenticates via CLAUDE_CODE_SESSION_ACCESS_TOKEN.
+ */
+const CHILD_ENV_ALLOWLIST = new Set([
+  // System / shell
+  'PATH', 'HOME', 'USERPROFILE', 'HOMEPATH', 'HOMEDRIVE',
+  'USERNAME', 'USER', 'LOGNAME',
+  'TEMP', 'TMP', 'TMPDIR',
+  'SYSTEMROOT', 'SYSTEMDRIVE', 'COMSPEC', 'WINDIR',
+  'LANG', 'LC_ALL', 'LC_CTYPE',
+  // Node.js runtime
+  'NODE_OPTIONS', 'NODE_PATH', 'NODE_ENV',
+  // OpenClaude session / bridge (non-secret)
+  'CLAUDE_CODE_ENVIRONMENT_KIND',
+  'CLAUDE_CODE_FORCE_SANDBOX',
+  'CLAUDE_CODE_BUBBLEWRAP',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_COORDINATOR_MODE',
+  'CLAUDE_CODE_PERMISSIONS_VERSION',
+  'CLAUDE_CODE_PERMISSIONS_SETTING',
+  // Display / terminal
+  'TERM', 'COLORTERM', 'FORCE_COLOR', 'NO_COLOR',
+])
+
+type BuildChildEnvOpts = {
+  accessToken: string
+  useCcrV2: boolean
+  workerEpoch?: number
+  sandbox?: boolean
+}
+
+/**
+ * Build the environment for the child CC process from an explicit allowlist.
+ * This prevents the parent's API keys and credentials from leaking to the child.
+ */
+export function buildChildEnv(
+  parentEnv: NodeJS.ProcessEnv,
+  opts: BuildChildEnvOpts,
+): NodeJS.ProcessEnv {
+  // Start from allowlisted parent vars only
+  const env: NodeJS.ProcessEnv = {}
+  for (const key of Object.keys(parentEnv)) {
+    if (CHILD_ENV_ALLOWLIST.has(key)) {
+      env[key] = parentEnv[key]
+    }
+  }
+
+  // Bridge-required overrides
+  env.CLAUDE_CODE_OAUTH_TOKEN = undefined // explicitly strip
+  env.CLAUDE_CODE_ENVIRONMENT_KIND = 'bridge'
+  if (opts.sandbox) env.CLAUDE_CODE_FORCE_SANDBOX = '1'
+  env.CLAUDE_CODE_SESSION_ACCESS_TOKEN = opts.accessToken
+  env.CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2 = '1'
+  if (opts.useCcrV2) {
+    env.CLAUDE_CODE_USE_CCR_V2 = '1'
+    env.CLAUDE_CODE_WORKER_EPOCH = String(opts.workerEpoch)
+  }
+
+  return env
+}
+
+/**
  * Sanitize a session ID for use in file names.
  * Strips any characters that could cause path traversal (e.g. `../`, `/`)
  * or other filesystem issues, replacing them with underscores.
@@ -303,24 +366,12 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
           : []),
       ]
 
-      const env: NodeJS.ProcessEnv = {
-        ...deps.env,
-        // Strip the bridge's OAuth token so the child CC process uses
-        // the session access token for inference instead.
-        CLAUDE_CODE_OAUTH_TOKEN: undefined,
-        CLAUDE_CODE_ENVIRONMENT_KIND: 'bridge',
-        ...(deps.sandbox && { CLAUDE_CODE_FORCE_SANDBOX: '1' }),
-        CLAUDE_CODE_SESSION_ACCESS_TOKEN: opts.accessToken,
-        // v1: HybridTransport (WS reads + POST writes) to Session-Ingress.
-        // Harmless in v2 mode — transportUtils checks CLAUDE_CODE_USE_CCR_V2 first.
-        CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2: '1',
-        // v2: SSETransport + CCRClient to CCR's /v1/code/sessions/* endpoints.
-        // Same env vars environment-manager sets in the container path.
-        ...(opts.useCcrV2 && {
-          CLAUDE_CODE_USE_CCR_V2: '1',
-          CLAUDE_CODE_WORKER_EPOCH: String(opts.workerEpoch),
-        }),
-      }
+      const env = buildChildEnv(deps.env, {
+        accessToken: opts.accessToken,
+        useCcrV2: opts.useCcrV2,
+        workerEpoch: opts.workerEpoch,
+        sandbox: deps.sandbox,
+      })
 
       deps.onDebug(
         `[bridge:session] Spawning sessionId=${opts.sessionId} sdkUrl=${opts.sdkUrl} accessToken=${opts.accessToken ? 'present' : 'MISSING'}`,

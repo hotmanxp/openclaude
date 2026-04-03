@@ -17,6 +17,14 @@ export const EFFORT_LEVELS = [
   'max',
 ] as const satisfies readonly EffortLevel[]
 
+export const OPENAI_EFFORT_LEVELS = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const
+
+export type OpenAIEffortLevel = typeof OPENAI_EFFORT_LEVELS[number]
 export type EffortValue = EffortLevel | number
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
@@ -66,6 +74,46 @@ export function modelSupportsMaxEffort(model: string): boolean {
 
 export function isEffortLevel(value: string): value is EffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
+}
+
+export function isOpenAIEffortLevel(value: string): value is OpenAIEffortLevel {
+  return (OPENAI_EFFORT_LEVELS as readonly string[]).includes(value)
+}
+
+export function modelUsesOpenAIEffort(model: string): boolean {
+  const provider = getAPIProvider()
+  return provider === 'openai' || provider === 'codex'
+}
+
+export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
+  if (modelUsesOpenAIEffort(model)) {
+    return [...OPENAI_EFFORT_LEVELS] as OpenAIEffortLevel[]
+  }
+  const levels: EffortLevel[] = ['low', 'medium', 'high']
+  if (modelSupportsMaxEffort(model)) {
+    levels.push('max')
+  }
+  return levels
+}
+
+export function getEffortLevelLabel(level: EffortLevel | OpenAIEffortLevel): string {
+  if (level === 'xhigh') return 'Extra High'
+  if (level === 'max') return 'Max'
+  return capitalize(level)
+}
+
+export function openAIEffortToStandard(level: OpenAIEffortLevel): EffortLevel {
+  if (level === 'xhigh') return 'max'
+  return level
+}
+
+export function standardEffortToOpenAI(level: EffortLevel): OpenAIEffortLevel {
+  if (level === 'max') return 'xhigh'
+  return level as OpenAIEffortLevel
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 export function parseEffortValue(value: unknown): EffortValue | undefined {
@@ -221,7 +269,7 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
  * @param level The effort level to describe
  * @returns Human-readable description
  */
-export function getEffortLevelDescription(level: EffortLevel): string {
+export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel): string {
   switch (level) {
     case 'low':
       return 'Quick, straightforward implementation with minimal overhead'
@@ -231,6 +279,8 @@ export function getEffortLevelDescription(level: EffortLevel): string {
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'max':
       return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
+    case 'xhigh':
+      return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
   }
 }
 

@@ -11,7 +11,7 @@ import { isAwsCredentialsProviderError } from 'src/utils/aws.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { logError } from 'src/utils/log.js'
 import { createSystemAPIErrorMessage } from 'src/utils/messages.js'
-import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
+import { getAPIProvider, getAPIProviderForStatsig } from 'src/utils/model/providers.js'
 import {
   clearApiKeyHelperCache,
   clearAwsCredentialsCache,
@@ -811,12 +811,49 @@ function getRetryAfterMs(error: APIError): number | null {
   return null
 }
 
-function getRateLimitResetDelayMs(error: APIError): number | null {
-  const resetHeader = error.headers?.get?.('anthropic-ratelimit-unified-reset')
-  if (!resetHeader) return null
-  const resetUnixSec = Number(resetHeader)
-  if (!Number.isFinite(resetUnixSec)) return null
-  const delayMs = resetUnixSec * 1000 - Date.now()
-  if (delayMs <= 0) return null
-  return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
+/**
+ * Parse OpenAI-style relative duration strings into milliseconds.
+ * Formats: "1s", "6m0s", "1h30m0s", "500ms", "2m"
+ * Returns null for unrecognized formats.
+ */
+export function parseOpenAIDuration(s: string): number | null {
+  if (!s) return null
+  // Try matching hours/minutes/seconds/milliseconds components
+  const re = /^(?:(\d+)h)?(?:(\d+)m(?!s))?(?:(\d+)s)?(?:(\d+)ms)?$/
+  const m = re.exec(s)
+  if (!m || m[0] === '') return null
+  const h = parseInt(m[1] ?? '0', 10)
+  const min = parseInt(m[2] ?? '0', 10)
+  const sec = parseInt(m[3] ?? '0', 10)
+  const ms = parseInt(m[4] ?? '0', 10)
+  const total = h * 3_600_000 + min * 60_000 + sec * 1_000 + ms
+  return total > 0 ? total : null
+}
+
+export function getRateLimitResetDelayMs(error: APIError): number | null {
+  const provider = getAPIProvider()
+
+  if (provider === 'firstParty') {
+    const resetHeader = error.headers?.get?.('anthropic-ratelimit-unified-reset')
+    if (!resetHeader) return null
+    const resetUnixSec = Number(resetHeader)
+    if (!Number.isFinite(resetUnixSec)) return null
+    const delayMs = resetUnixSec * 1000 - Date.now()
+    if (delayMs <= 0) return null
+    return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
+  }
+
+  if (provider === 'openai' || provider === 'codex' || provider === 'github') {
+    const reqHeader = error.headers?.get?.('x-ratelimit-reset-requests')
+    const tokHeader = error.headers?.get?.('x-ratelimit-reset-tokens')
+    const reqMs = reqHeader ? parseOpenAIDuration(reqHeader) : null
+    const tokMs = tokHeader ? parseOpenAIDuration(tokHeader) : null
+    if (reqMs === null && tokMs === null) return null
+    // Use the larger delay so we don't retry before both limits reset
+    const delayMs = Math.max(reqMs ?? 0, tokMs ?? 0)
+    return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
+  }
+
+  // bedrock, vertex, foundry, gemini — no standard reset header
+  return null
 }

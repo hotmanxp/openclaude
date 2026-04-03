@@ -194,7 +194,7 @@ bun run hardening:strict
 Notes:
 
 - `doctor:runtime` fails fast if `CLAUDE_CODE_USE_OPENAI=1` with a placeholder key or a missing key for non-local providers.
-- Local providers such as `http://localhost:11434/v1` and `http://127.0.0.1:1337/v1` can run without `OPENAI_API_KEY`.
+- Local providers such as `http://localhost:11434/v1`, `http://10.0.0.1:11434/v1`, and `http://127.0.0.1:1337/v1` can run without `OPENAI_API_KEY`.
 - Codex profiles validate `CODEX_API_KEY` or the Codex CLI auth file and probe `POST /responses` instead of `GET /models`.
 
 ## Provider Launch Profiles

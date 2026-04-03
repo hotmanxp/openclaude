@@ -84,44 +84,44 @@ const reducer = <T>(state: State<T>, action: Action<T>): State<T> => {
         return state
       }
 
-      // Wrap to first item if at the end
-      const next = item.next || state.optionMap.first
+      // If there's a next item in the list, go to it
+      if (item.next) {
+        const needsToScroll = item.next.index >= state.visibleToIndex
 
-      if (!next) {
+        if (!needsToScroll) {
+          return {
+            ...state,
+            focusedValue: item.next.value,
+          }
+        }
+
+        const nextVisibleToIndex = Math.min(
+          state.optionMap.size,
+          state.visibleToIndex + 1,
+        )
+
+        const nextVisibleFromIndex = nextVisibleToIndex - state.visibleOptionCount
+
+        return {
+          ...state,
+          focusedValue: item.next.value,
+          visibleFromIndex: nextVisibleFromIndex,
+          visibleToIndex: nextVisibleToIndex,
+        }
+      }
+
+      // No next item - wrap to first item
+      const firstItem = state.optionMap.first
+      if (!firstItem) {
         return state
       }
 
       // When wrapping to first, reset viewport to start
-      if (!item.next && next === state.optionMap.first) {
-        return {
-          ...state,
-          focusedValue: next.value,
-          visibleFromIndex: 0,
-          visibleToIndex: state.visibleOptionCount,
-        }
-      }
-
-      const needsToScroll = next.index >= state.visibleToIndex
-
-      if (!needsToScroll) {
-        return {
-          ...state,
-          focusedValue: next.value,
-        }
-      }
-
-      const nextVisibleToIndex = Math.min(
-        state.optionMap.size,
-        state.visibleToIndex + 1,
-      )
-
-      const nextVisibleFromIndex = nextVisibleToIndex - state.visibleOptionCount
-
       return {
         ...state,
-        focusedValue: next.value,
-        visibleFromIndex: nextVisibleFromIndex,
-        visibleToIndex: nextVisibleToIndex,
+        focusedValue: firstItem.value,
+        visibleFromIndex: 0,
+        visibleToIndex: state.visibleOptionCount,
       }
     }
 
@@ -136,44 +136,43 @@ const reducer = <T>(state: State<T>, action: Action<T>): State<T> => {
         return state
       }
 
-      // Wrap to last item if at the beginning
-      const previous = item.previous || state.optionMap.last
+      // If there's a previous item in the list, go to it
+      if (item.previous) {
+        const needsToScroll = item.previous.index < state.visibleFromIndex
 
-      if (!previous) {
-        return state
-      }
+        if (!needsToScroll) {
+          return {
+            ...state,
+            focusedValue: item.previous.value,
+          }
+        }
 
-      // When wrapping to last, reset viewport to end
-      if (!item.previous && previous === state.optionMap.last) {
-        const nextVisibleToIndex = state.optionMap.size
-        const nextVisibleFromIndex = Math.max(
-          0,
-          nextVisibleToIndex - state.visibleOptionCount,
-        )
+        const nextVisibleFromIndex = Math.max(0, state.visibleFromIndex - 1)
+        const nextVisibleToIndex = nextVisibleFromIndex + state.visibleOptionCount
+
         return {
           ...state,
-          focusedValue: previous.value,
+          focusedValue: item.previous.value,
           visibleFromIndex: nextVisibleFromIndex,
           visibleToIndex: nextVisibleToIndex,
         }
       }
 
-      const needsToScroll = previous.index <= state.visibleFromIndex
-
-      if (!needsToScroll) {
-        return {
-          ...state,
-          focusedValue: previous.value,
-        }
+      // No previous item - wrap to last item
+      const lastItem = state.optionMap.last
+      if (!lastItem) {
+        return state
       }
 
-      const nextVisibleFromIndex = Math.max(0, state.visibleFromIndex - 1)
-
-      const nextVisibleToIndex = nextVisibleFromIndex + state.visibleOptionCount
-
+      // When wrapping to last, reset viewport to end
+      const nextVisibleToIndex = state.optionMap.size
+      const nextVisibleFromIndex = Math.max(
+        0,
+        nextVisibleToIndex - state.visibleOptionCount,
+      )
       return {
         ...state,
-        focusedValue: previous.value,
+        focusedValue: lastItem.value,
         visibleFromIndex: nextVisibleFromIndex,
         visibleToIndex: nextVisibleToIndex,
       }

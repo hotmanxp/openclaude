@@ -164,6 +164,12 @@ export const TOKEN_REVOKED_ERROR_MESSAGE =
 export const CCR_AUTH_ERROR_MESSAGE =
   'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
+export function getCustomOffSwitchMessage(): string {
+  return getAPIProvider() === 'firstParty'
+    ? 'Opus is experiencing high load, please use /model to switch to Sonnet'
+    : 'The API is experiencing high load, please try again shortly or use /model to switch models'
+}
+// Backward-compatible constant for string matching in error handlers
 export const CUSTOM_OFF_SWITCH_MESSAGE =
   'Opus is experiencing high load, please use /model to switch to Sonnet'
 export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
@@ -457,7 +463,7 @@ export function getAssistantMessageFromError(
     error.message.includes(CUSTOM_OFF_SWITCH_MESSAGE)
   ) {
     return createAssistantAPIErrorMessage({
-      content: CUSTOM_OFF_SWITCH_MESSAGE,
+      content: getCustomOffSwitchMessage(),
       error: 'rate_limit',
     })
   }
@@ -812,7 +818,8 @@ export function getAssistantMessageFromError(
 
   if (
     error instanceof Error &&
-    error.message.toLowerCase().includes('x-api-key')
+    error.message.toLowerCase().includes('x-api-key') &&
+    getAPIProvider() === 'firstParty'
   ) {
     // In CCR mode, auth is via JWTs - this is likely a transient network issue
     if (isCCRMode()) {

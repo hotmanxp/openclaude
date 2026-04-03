@@ -287,6 +287,25 @@ function createCommandSuggestionItem(
 }
 
 /**
+ * Ensure suggestion IDs are unique for React keys and selection logic.
+ * If duplicates exist, append a stable numeric suffix to subsequent entries.
+ */
+function ensureUniqueSuggestionIds(items: SuggestionItem[]): SuggestionItem[] {
+  const counts = new Map<string, number>()
+  return items.map(item => {
+    const seen = counts.get(item.id) ?? 0
+    counts.set(item.id, seen + 1)
+    if (seen === 0) {
+      return item
+    }
+    return {
+      ...item,
+      id: `${item.id}#${seen + 1}`,
+    }
+  })
+}
+
+/**
  * Generate command suggestions based on input
  */
 export function generateCommandSuggestions(
@@ -369,14 +388,14 @@ export function generateCommandSuggestions(
 
     // Combine with built-in commands prioritized after recently used,
     // so they remain visible even when many skills are installed
-    return [
+    return ensureUniqueSuggestionIds([
       ...recentlyUsed,
       ...builtinCommands,
       ...userCommands,
       ...projectCommands,
       ...policyCommands,
       ...otherCommands,
-    ].map(cmd => createCommandSuggestionItem(cmd))
+    ].map(cmd => createCommandSuggestionItem(cmd)))
   }
 
   // The Fuse index filters isHidden at build time and is keyed on the
@@ -491,10 +510,13 @@ export function generateCommandSuggestions(
   if (hiddenExact) {
     const hiddenId = getCommandId(hiddenExact)
     if (!fuseSuggestions.some(s => s.id === hiddenId)) {
-      return [createCommandSuggestionItem(hiddenExact), ...fuseSuggestions]
+      return ensureUniqueSuggestionIds([
+        createCommandSuggestionItem(hiddenExact),
+        ...fuseSuggestions,
+      ])
     }
   }
-  return fuseSuggestions
+  return ensureUniqueSuggestionIds(fuseSuggestions)
 }
 
 /**

@@ -21,6 +21,7 @@
  *   OPENAI_MODEL                     — optional; use github:copilot or openai/gpt-4.1 style IDs
  */
 
+import { APIError } from '@anthropic-ai/sdk'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { hydrateGithubModelsTokenFromSecureStorage } from '../../utils/githubModelsCredentials.js'
 import {
@@ -33,9 +34,11 @@ import {
   type ShimCreateParams,
 } from './codexShim.js'
 import {
+  isLocalProviderUrl,
   resolveCodexApiCredentials,
   resolveProviderRequest,
 } from './providerConfig.js'
+import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
 
 const GITHUB_MODELS_DEFAULT_BASE = 'https://models.github.ai/inference'
@@ -214,7 +217,10 @@ function convertMessages(
 
         const assistantMsg: OpenAIMessage = {
           role: 'assistant',
-          content: convertContentBlocks(textContent) as string,
+          content: (() => {
+            const c = convertContentBlocks(textContent)
+            return typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: { text?: string }) => p.text ?? '').join('') : ''
+          })(),
         }
 
         if (toolUses.length > 0) {
@@ -225,7 +231,7 @@ function convertMessages(
               input?: unknown
               extra_content?: Record<string, unknown>
             }) => ({
-              id: tu.id ?? `call_${Math.random().toString(36).slice(2)}`,
+              id: tu.id ?? `call_${crypto.randomUUID().replace(/-/g, '')}`,
               type: 'function' as const,
               function: {
                 name: tu.name ?? 'unknown',
@@ -243,7 +249,10 @@ function convertMessages(
       } else {
         result.push({
           role: 'assistant',
-          content: convertContentBlocks(content) as string,
+          content: (() => {
+            const c = convertContentBlocks(content)
+            return typeof c === 'string' ? c : Array.isArray(c) ? c.map((p: { text?: string }) => p.text ?? '').join('') : ''
+          })(),
         })
       }
     }
@@ -262,11 +271,7 @@ function normalizeSchemaForOpenAI(
   schema: Record<string, unknown>,
   strict = true,
 ): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-    return (schema ?? {}) as Record<string, unknown>
-  }
-
-  const record = { ...schema }
+  const record = sanitizeSchemaForOpenAICompat(schema)
 
   if (record.type === 'object' && record.properties) {
     const properties = record.properties as Record<string, Record<string, unknown>>
@@ -377,11 +382,14 @@ interface OpenAIStreamChunk {
     prompt_tokens?: number
     completion_tokens?: number
     total_tokens?: number
+    prompt_tokens_details?: {
+      cached_tokens?: number
+    }
   }
 }
 
 function makeMessageId(): string {
-  return `msg_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+  return `msg_${crypto.randomUUID().replace(/-/g, '')}`
 }
 
 function convertChunkUsage(
@@ -393,7 +401,7 @@ function convertChunkUsage(
     input_tokens: usage.prompt_tokens ?? 0,
     output_tokens: usage.completion_tokens ?? 0,
     cache_creation_input_tokens: 0,
-    cache_read_input_tokens: 0,
+    cache_read_input_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
   }
 }
 
@@ -602,6 +610,23 @@ async function* openaiStreamToAnthropic(
               : choice.finish_reason === 'length'
                 ? 'max_tokens'
                 : 'end_turn'
+          if (choice.finish_reason === 'content_filter' || choice.finish_reason === 'safety') {
+            // Gemini/Azure content safety filter blocked the response.
+            // Emit a visible text block so the user knows why output was truncated.
+            if (!hasEmittedContentStart) {
+              yield {
+                type: 'content_block_start',
+                index: contentBlockIndex,
+                content_block: { type: 'text', text: '' },
+              }
+              hasEmittedContentStart = true
+            }
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: { type: 'text_delta', text: '\n\n[Content blocked by provider safety filter]' },
+            }
+          }
           lastStopReason = stopReason
 
           yield {
@@ -618,7 +643,8 @@ async function* openaiStreamToAnthropic(
       if (
         !hasEmittedFinalUsage &&
         chunkUsage &&
-        (chunk.choices?.length ?? 0) === 0
+        (chunk.choices?.length ?? 0) === 0 &&
+        lastStopReason !== null
       ) {
         yield {
           type: 'message_delta',
@@ -656,9 +682,11 @@ class OpenAIShimStream {
 
 class OpenAIShimMessages {
   private defaultHeaders: Record<string, string>
+  private reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
 
-  constructor(defaultHeaders: Record<string, string>) {
+  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh') {
     this.defaultHeaders = defaultHeaders
+    this.reasoningEffort = reasoningEffort
   }
 
   create(
@@ -667,9 +695,12 @@ class OpenAIShimMessages {
   ) {
     const self = this
 
+    let httpResponse: Response | undefined
+
     const promise = (async () => {
-      const request = resolveProviderRequest({ model: params.model })
+      const request = resolveProviderRequest({ model: params.model, reasoningEffortOverride: self.reasoningEffort })
       const response = await self._doRequest(request, params, options)
+      httpResponse = response
 
       if (params.stream) {
         return new OpenAIShimStream(
@@ -696,8 +727,9 @@ class OpenAIShimMessages {
           const data = await promise
           return {
             data,
-            response: new Response(),
-            request_id: makeMessageId(),
+            response: httpResponse ?? new Response(),
+            request_id:
+              httpResponse?.headers.get('x-request-id') ?? makeMessageId(),
           }
         }
 
@@ -778,7 +810,7 @@ class OpenAIShimMessages {
       body.max_completion_tokens = maxCompletionTokensValue
     }
 
-    if (params.stream) {
+    if (params.stream && !isLocalProviderUrl(request.baseUrl)) {
       body.stream_options = { include_usage: true }
     }
 
@@ -826,7 +858,14 @@ class OpenAIShimMessages {
     }
 
     const apiKey = process.env.OPENAI_API_KEY ?? ''
-    const isAzure = /cognitiveservices\.azure\.com|openai\.azure\.com/.test(request.baseUrl)
+    // Detect Azure endpoints by hostname (not raw URL) to prevent bypass via
+    // path segments like https://evil.com/cognitiveservices.azure.com/
+    let isAzure = false
+    try {
+      const { hostname } = new URL(request.baseUrl)
+      isAzure = hostname.endsWith('.azure.com') &&
+        (hostname.includes('cognitiveservices') || hostname.includes('openai') || hostname.includes('services.ai'))
+    } catch { /* malformed URL — not Azure */ }
 
     if (apiKey) {
       if (isAzure) {
@@ -894,12 +933,20 @@ class OpenAIShimMessages {
       const errorBody = await response.text().catch(() => 'unknown error')
       const rateHint =
         isGithub && response.status === 429 ? formatRetryAfterHint(response) : ''
-      throw new Error(
+      let errorResponse: object | undefined
+      try { errorResponse = JSON.parse(errorBody) } catch { /* raw text */ }
+      throw APIError.generate(
+        response.status,
+        errorResponse,
         `OpenAI API error ${response.status}: ${errorBody}${rateHint}`,
+        response.headers as unknown as Record<string, string>,
       )
     }
 
-    throw new Error('OpenAI shim: request loop exited unexpectedly')
+    throw APIError.generate(
+      500, undefined, 'OpenAI shim: request loop exited unexpectedly',
+      {} as Record<string, string>,
+    )
   }
 
   private _convertNonStreamingResponse(
@@ -924,6 +971,9 @@ class OpenAIShimMessages {
       usage?: {
         prompt_tokens?: number
         completion_tokens?: number
+        prompt_tokens_details?: {
+          cached_tokens?: number
+        }
       }
     },
     model: string,
@@ -977,6 +1027,13 @@ class OpenAIShimMessages {
           ? 'max_tokens'
           : 'end_turn'
 
+    if (choice?.finish_reason === 'content_filter' || choice?.finish_reason === 'safety') {
+      content.push({
+        type: 'text',
+        text: '\n\n[Content blocked by provider safety filter]',
+      })
+    }
+
     return {
       id: data.id ?? makeMessageId(),
       type: 'message',
@@ -989,7 +1046,7 @@ class OpenAIShimMessages {
         input_tokens: data.usage?.prompt_tokens ?? 0,
         output_tokens: data.usage?.completion_tokens ?? 0,
         cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
+        cache_read_input_tokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
       },
     }
   }
@@ -997,9 +1054,11 @@ class OpenAIShimMessages {
 
 class OpenAIShimBeta {
   messages: OpenAIShimMessages
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
 
-  constructor(defaultHeaders: Record<string, string>) {
-    this.messages = new OpenAIShimMessages(defaultHeaders)
+  constructor(defaultHeaders: Record<string, string>, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh') {
+    this.messages = new OpenAIShimMessages(defaultHeaders, reasoningEffort)
+    this.reasoningEffort = reasoningEffort
   }
 }
 
@@ -1007,6 +1066,7 @@ export function createOpenAIShimClient(options: {
   defaultHeaders?: Record<string, string>
   maxRetries?: number
   timeout?: number
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
 }): unknown {
   hydrateGithubModelsTokenFromSecureStorage()
 
@@ -1029,7 +1089,7 @@ export function createOpenAIShimClient(options: {
 
   const beta = new OpenAIShimBeta({
     ...(options.defaultHeaders ?? {}),
-  })
+  }, options.reasoningEffort)
 
   return {
     beta,

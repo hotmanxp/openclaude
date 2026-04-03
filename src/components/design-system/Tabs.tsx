@@ -199,7 +199,7 @@ export function Tabs(t0) {
   const t12 = 0;
   const t13 = true;
   const t14 = modalScrollRef ? 0 : undefined;
-  const t15 = !hidden && <Box flexDirection="row" gap={1} flexShrink={modalScrollRef ? 0 : undefined}>{title !== undefined && <Text bold={true} color={color}>{title}</Text>}{tabs.map((t16, i) => {
+  const t15 = !hidden && <Box key={`${selectedTabIndex}-${headerFocused ? "focused" : "blurred"}`} flexDirection="row" gap={1} flexShrink={modalScrollRef ? 0 : undefined}>{title !== undefined && <Text bold={true} color={color}>{title}</Text>}{tabs.map((t16, i) => {
       const [id, title_0] = t16;
       const isCurrent = selectedTabIndex === i;
       const hasColorCursor = color && isCurrent && headerFocused;

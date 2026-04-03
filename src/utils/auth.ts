@@ -286,7 +286,7 @@ export function getAnthropicApiKeyWithSource(
       )
     }
 
-    if (apiKeyEnv) {
+    if (apiKeyEnv && !isUsing3PServices()) {
       return {
         key: apiKeyEnv,
         source: 'ANTHROPIC_API_KEY',
@@ -294,6 +294,7 @@ export function getAnthropicApiKeyWithSource(
     }
 
     // OAuth token is present but this function returns API keys only
+    // Also reached when 3P provider is active — ANTHROPIC_API_KEY is ignored
     return {
       key: null,
       source: 'none',

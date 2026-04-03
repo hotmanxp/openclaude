@@ -97,21 +97,45 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
   }
 
   if (useOpenAI) {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o'
+    const rawModel = process.env.OPENAI_MODEL || 'gpt-4o'
     const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
     const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(baseUrl)
     let name = 'OpenAI'
-    if (/deepseek/i.test(baseUrl) || /deepseek/i.test(model))       name = 'DeepSeek'
+    if (/deepseek/i.test(baseUrl) || /deepseek/i.test(rawModel))       name = 'DeepSeek'
     else if (/openrouter/i.test(baseUrl))                             name = 'OpenRouter'
     else if (/together/i.test(baseUrl))                               name = 'Together AI'
     else if (/groq/i.test(baseUrl))                                   name = 'Groq'
-    else if (/mistral/i.test(baseUrl) || /mistral/i.test(model))     name = 'Mistral'
+    else if (/mistral/i.test(baseUrl) || /mistral/i.test(rawModel))     name = 'Mistral'
     else if (/azure/i.test(baseUrl))                                  name = 'Azure OpenAI'
     else if (/localhost:11434/i.test(baseUrl))                        name = 'Ollama'
     else if (/localhost:1234/i.test(baseUrl))                         name = 'LM Studio'
-    else if (/llama/i.test(model))                                    name = 'Meta Llama'
+    else if (/llama/i.test(rawModel))                                    name = 'Meta Llama'
     else if (isLocal)                                                  name = 'Local'
-    return { name, model, baseUrl, isLocal }
+    
+    // Resolve model alias to actual model name + reasoning effort
+    let displayModel = rawModel
+    const codexAliases: Record<string, { model: string; reasoningEffort?: string }> = {
+      codexplan: { model: 'gpt-5.4', reasoningEffort: 'high' },
+      'gpt-5.4': { model: 'gpt-5.4', reasoningEffort: 'high' },
+      'gpt-5.3-codex': { model: 'gpt-5.3-codex', reasoningEffort: 'high' },
+      'gpt-5.3-codex-spark': { model: 'gpt-5.3-codex-spark' },
+      codexspark: { model: 'gpt-5.3-codex-spark' },
+      'gpt-5.2-codex': { model: 'gpt-5.2-codex', reasoningEffort: 'high' },
+      'gpt-5.1-codex-max': { model: 'gpt-5.1-codex-max', reasoningEffort: 'high' },
+      'gpt-5.1-codex-mini': { model: 'gpt-5.1-codex-mini' },
+      'gpt-5.4-mini': { model: 'gpt-5.4-mini', reasoningEffort: 'medium' },
+      'gpt-5.2': { model: 'gpt-5.2', reasoningEffort: 'medium' },
+    }
+    const alias = rawModel.toLowerCase()
+    if (alias in codexAliases) {
+      const resolved = codexAliases[alias]
+      displayModel = resolved.model
+      if (resolved.reasoningEffort) {
+        displayModel = `${displayModel} (${resolved.reasoningEffort})`
+      }
+    }
+    
+    return { name, model: displayModel, baseUrl, isLocal }
   }
 
   // Default: Anthropic

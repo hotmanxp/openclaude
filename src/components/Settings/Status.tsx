@@ -22,7 +22,7 @@ function buildPrimarySection(): Property[] {
   const nameValue = customTitle ?? <Text dimColor>/rename to add a name</Text>;
   return [{
     label: 'Version',
-    value: MACRO.VERSION
+    value: MACRO.DISPLAY_VERSION ?? MACRO.VERSION
   }, {
     label: 'Session name',
     value: nameValue

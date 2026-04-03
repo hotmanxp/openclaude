@@ -203,6 +203,18 @@ export function resetUpstreamProxyForTests(): void {
   state = { enabled: false }
 }
 
+/**
+ * Validate that a string contains only well-formed PEM certificate blocks.
+ * Used to guard against a compromised upstream proxy sending arbitrary data
+ * that would be written into the system CA bundle.
+ */
+export function isValidPemContent(content: string): boolean {
+  if (!content || !content.trim()) return false
+  const pemBlockRegex =
+    /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g
+  return pemBlockRegex.test(content)
+}
+
 async function readToken(path: string): Promise<string | null> {
   try {
     const raw = await readFile(path, 'utf8')
@@ -271,6 +283,13 @@ async function downloadCaBundle(
       return false
     }
     const ccrCa = await resp.text()
+    if (!isValidPemContent(ccrCa)) {
+      logForDebugging(
+        `[upstreamproxy] ca-cert response is not valid PEM; proxy disabled`,
+        { level: 'warn' },
+      )
+      return false
+    }
     const systemCa = await readFile(systemCaPath, 'utf8').catch(() => '')
     await mkdir(join(outPath, '..'), { recursive: true })
     await writeFile(outPath, systemCa + '\n' + ccrCa, 'utf8')
