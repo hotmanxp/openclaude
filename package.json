@@ -49,8 +49,10 @@
     "@anthropic-ai/sandbox-runtime": "0.0.46",
     "@anthropic-ai/sdk": "0.81.0",
     "@anthropic-ai/vertex-sdk": "0.14.4",
+    "@aws-sdk/client-bedrock-runtime": "^3.1023.0",
     "@commander-js/extra-typings": "12.1.0",
     "@growthbook/growthbook": "1.6.5",
+    "@mendable/firecrawl-js": "4.18.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.214.0",
@@ -112,8 +114,7 @@
     "ws": "8.20.0",
     "xss": "1.0.15",
     "yaml": "2.8.3",
-    "zod": "3.25.76",
-    "@mendable/firecrawl-js": "4.18.1"
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/bun": "1.3.11",

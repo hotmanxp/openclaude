@@ -33,9 +33,10 @@ bun run smoke                  # Build + quick smoke test
 bun run hardening:check        # smoke + doctor checks
 bun run hardening:strict      # typecheck + hardening:check
 
-# Tests
-bun test src/utils/providerRecommendation.test.ts src/utils/providerProfile.test.ts
-bun test src/services/api/*.test.ts src/utils/context.test.ts
+# Tests (co-located as *.test.ts next to source)
+bun test                      # Run all tests
+bun run test:provider          # Provider API tests
+bun run test:provider-recommendation  # Provider recommendation tests
 ```
 
 ## Architecture
@@ -93,6 +94,31 @@ Local model profiles are stored in `.openclaude-profile.json` (gitignored) and m
 - `scripts/provider-bootstrap.ts` — Creates profile from CLI args
 - `scripts/provider-launch.ts` — Launches with profile config
 - `scripts/provider-recommend.ts` — Recommends models by goal (coding, balanced, latency)
+
+## Conventions
+
+- **ES modules only** — `"type": "module"` in package.json, all imports use `.js` extensions
+- **Tests** — co-located as `*.test.ts` next to source
+- **No linting** — no ESLint or Prettier configured
+- **TypeScript strict mode** — `strict: true` in tsconfig
+- **Feature flags** — `scripts/build.ts` disables internal features (voice, proactive, kairos, etc.)
+
+## Anti-Patterns
+
+**NEVER do these things:**
+
+- Update git config, run destructive git commands (reset --hard, push --force), or use `git commit --amend`
+- Skip git hooks with `--no-verify`
+- Use `grep` or `rg` as bash commands — use the `GrepTool` instead
+- Create new files unless explicitly necessary for the task
+- Write or edit files while in plan mode
+- Mention skills without loading them via the skill system
+
+## Important Notes
+
+- **269 deprecated functions** across 96 files — grep for `_DEPRECATED` before modifying core files
+- **Build output** goes to `dist/cli.mjs` — never edit this file directly
+- **CI pipeline**: smoke → test:provider → test:provider-recommendation (no typecheck in CI)
 
 ## Environment Variables for Development
 
