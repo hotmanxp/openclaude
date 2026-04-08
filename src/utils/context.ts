@@ -1,4 +1,4 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+// biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -53,7 +53,7 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
-  // Allow override via environment variable (ant-only)
+  // Allow override via environment variable (internal-only)
   // This takes precedence over all other context window resolution, including 1M detection,
   // so users can cap the effective context window for local decisions (auto-compact, etc.)
   // while still using a 1M-capable endpoint.
@@ -72,16 +72,23 @@ export function getContextWindowForModel(
     return 1_000_000
   }
 
-  // OpenAI-compatible provider — use known context windows for the model
-  if (
+  // OpenAI-compatible provider — use known context windows for the model.
+  // Unknown models get a conservative 8k default so auto-compact triggers
+  // before hitting a hard context_window_exceeded error.
+  const isOpenAIProvider =
     isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-  ) {
+  if (isOpenAIProvider) {
     const openaiWindow = getOpenAIContextWindow(model)
     if (openaiWindow !== undefined) {
       return openaiWindow
     }
+    console.error(
+      `[context] Warning: model "${model}" not in context window table — using conservative 8k default. ` +
+      'Add it to src/utils/model/openaiContextWindows.ts for accurate compaction.',
+    )
+    return 8_000
   }
 
   const cap = getModelCapability(model)
