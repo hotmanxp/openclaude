@@ -139,7 +139,7 @@ export type ToolPermissionContext = DeepImmutable<{
 
 export const getEmptyToolPermissionContext: () => ToolPermissionContext =
   () => ({
-    mode: 'default',
+    mode: 'acceptEdits',
     additionalWorkingDirectories: new Map(),
     alwaysAllowRules: {},
     alwaysDenyRules: {},
