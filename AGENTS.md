@@ -1,77 +1,109 @@
-# AGENTS.md
+# CLAUDE.md
 
-## OVERVIEW
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-OpenClaude is a fork of Claude Code that enables use with any LLM via an OpenAI-compatible API shim. The application is a TypeScript CLI app using Bun as the runtime and Ink/React for the terminal UI.
+## Build & Run Commands
 
-- **Entry**: `bin/openclaude` → `dist/cli.mjs` → `src/entrypoints/cli.tsx`
-- **Package manager**: Bun (bun.lock)
-- **Runtime**: Bun with `node >= 20.0.0`
-- **No ESLint/Prettier** configured
-- **259 large files** (>500 lines), handle with care
+```bash
+# Build (required before running)
+bun run build
 
-## STRUCTURE
+# Development (build + run)
+bun run dev                    # Generic dev
+bun run dev:profile           # Uses .openclaude-profile.json config
+bun run dev:ollama            # Ollama local provider
+bun run dev:openai            # OpenAI provider
+bun run dev:gemini            # Gemini provider
+bun run dev:codex             # Codex backend
+bun run dev:atomic-chat       # Atomic Chat (Apple Silicon local inference)
+
+# Profile management (local model setup)
+bun run profile:init -- --provider ollama --model llama3.1:8b
+bun run profile:recommend     # Get model recommendations
+bun run profile:auto           # Auto-select best available provider
+
+# Diagnostics
+bun run doctor:runtime         # Check runtime environment
+bun run doctor:runtime:json    # JSON output for automation
+bun run doctor:report          # Save report to reports/doctor-runtime.json
+
+# Quality checks
+bun run typecheck             # TypeScript type checking
+bun run smoke                  # Build + quick smoke test
+bun run hardening:check        # smoke + doctor checks
+bun run hardening:strict      # typecheck + hardening:check
+
+# Tests (co-located as *.test.ts next to source)
+bun test                      # Run all tests
+bun run test:provider          # Provider API tests
+bun run test:provider-recommendation  # Provider recommendation tests
+```
+
+## Architecture
+
+### Provider System
+
+The codebase supports multiple LLM providers through environment variables. The routing happens in `src/services/api/client.ts:getAnthropicClient()`:
+
+- `CLAUDE_CODE_USE_OPENAI=1` → OpenAI-compatible shim
+- `CLAUDE_CODE_USE_GITHUB=1` → GitHub Models
+- `CLAUDE_CODE_USE_BEDROCK=1` → AWS Bedrock
+- `CLAUDE_CODE_USE_VERTEX=1` → Google Vertex AI
+- `CLAUDE_CODE_USE_FOUNDRY=1` → Azure Foundry
+- `CLAUDE_CODE_USE_GEMINI=1` → Google Gemini
+- Default → First-party Anthropic API
+
+### The API Shim Pattern
+
+The key architectural insight is `src/services/api/openaiShim.ts` (and `codexShim.ts`):
 
 ```
-src/
-  entrypoints/          # CLI entry points (cli.tsx, init.ts, mcp.ts, sandboxTypes.ts, agentSdkTypes.ts)
-  commands/             # CLI command handlers (15 files: commit.ts, review.ts, init.ts, etc.)
-  components/           # React/Ink UI components (114 files)
-  hooks/               # React hooks (84 files)
-  ink/                 # Ink rendering layer (46 files)
-  services/            # API, MCP, LSP, GitHub services (52 files)
-    api/               # OpenAI shim, client, provider config
-    mcp/               # MCP client and server implementation
-    lsp/               # Language Server Protocol integration
-    github/            # GitHub device flow auth
-    analytics/         # Event tracking and metrics
-    autoDream/         # Dream consolidation
-    teamMemorySync/    # Team memory synchronization
-    settingsSync/       # Settings synchronization
-  skills/              # Skill loading and MCP skill builders
-  tasks/               # Task system (LocalMainSessionTask, types)
-  tools/               # Tool utilities
-  utils/               # Utilities: model, provider, bash, plugins, permissions (309 files)
-  context/             # React context providers
-  remote/              # Remote session management
+Claude Code Tool System
+        |
+        v
+  Anthropic SDK interface (duck-typed)
+        |
+        v
+  openaiShim.ts  ← translates Anthropic ↔ OpenAI formats
+        |
+        v
+  OpenAI Chat Completions API (or compatible)
+        |
+        v
+  Any compatible model (GPT-4o, DeepSeek, Llama, etc.)
 ```
 
-## WHERE TO LOOK
+The shim translates:
+- Anthropic message blocks ↔ OpenAI messages
+- Anthropic tool_use/tool_result ↔ OpenAI function calls
+- OpenAI SSE streaming ↔ Anthropic stream events
 
-- **OpenAI shim**: `src/services/api/openaiShim.ts` — translates Anthropic API calls to OpenAI format
-- **Provider routing**: `src/services/api/client.ts` — routes API calls to shim or direct
-- **CLI entry**: `src/entrypoints/cli.tsx` — main CLI entry point with provider validation
-- **Build system**: `scripts/build.ts` — Bun bundler with feature flags
-- **Model configs**: `src/utils/model/providers.ts`, `src/utils/model/configs.ts`
-- **UI components**: `src/components/App.tsx`, `src/components/Messages.tsx`, `src/components/MessageRow.tsx`
-- **Ink rendering**: `src/ink/ink.tsx`, `src/ink/renderer.ts`, `src/ink/screen.ts`
-- **MCP system**: `src/services/mcp/client.ts`, `src/services/mcp/MCPConnectionManager.tsx`
-- **Commands**: `src/commands/commit.ts`, `src/commands/review.ts`, `src/commands/init.ts`
+### Key Files
 
-## CODE MAP
+- `src/services/api/client.ts` — API client factory, routes to correct provider
+- `src/services/api/openaiShim.ts` — OpenAI-compatible API shim
+- `src/services/api/codexShim.ts` — Codex backend support for `codexplan`/`codexspark`
+- `src/services/api/providerConfig.ts` — Provider configuration resolution
+- `src/utils/model/` — Model configs, context windows, capabilities
+- `src/utils/model/providers.ts` — Provider detection via `getAPIProvider()`
+- `scripts/provider-*.ts` — Profile bootstrap and provider launch scripts
 
-| Symbol | Location |
-|--------|----------|
-| `openaiShim` | `src/services/api/openaiShim.ts` |
-| `resolveProviderRequest` | `src/services/api/providerConfig.ts` |
-| `applyProfileEnvToProcessEnv` | `src/utils/providerProfile.ts` |
-| `loadSkillsDir` | `src/skills/loadSkillsDir.ts` |
-| `useManageMCPConnections` | `src/services/mcp/useManageMCPConnections.ts` |
-| `BashTool` | `src/tools/` (see utils.ts) |
-| `Task`, `Tool` | `src/Task.ts`, `src/Tool.ts` |
-| `QueryEngine` | `src/QueryEngine.ts` |
+### Profile System
 
-## CONVENTIONS
+Local model profiles are stored in `.openclaude-profile.json` (gitignored) and managed via:
+- `scripts/provider-bootstrap.ts` — Creates profile from CLI args
+- `scripts/provider-launch.ts` — Launches with profile config
+- `scripts/provider-recommend.ts` — Recommends models by goal (coding, balanced, latency)
+
+## Conventions
 
 - **ES modules only** — `"type": "module"` in package.json, all imports use `.js` extensions
-- **Tests** — co-located as `*.test.ts` next to source; run with `bun test`
-- **No linting** — no ESLint or Prettier configured; manual code style
+- **Tests** — co-located as `*.test.ts` next to source
+- **No linting** — no ESLint or Prettier configured
 - **TypeScript strict mode** — `strict: true` in tsconfig
-- **Bundler resolution** — `moduleResolution: "bundler"` in tsconfig
-- **Feature flags** — `scripts/build.ts` disables all internal features (voice, proactive, kairos, etc.)
-- **269 deprecated functions** across 96 files — grep for `_DEPRECATED` before modifying core files
+- **Feature flags** — `scripts/build.ts` disables internal features (voice, proactive, kairos, etc.)
 
-## ANTI-PATTERNS
+## Anti-Patterns
 
 **NEVER do these things:**
 
@@ -82,46 +114,27 @@ src/
 - Write or edit files while in plan mode
 - Mention skills without loading them via the skill system
 
-## COMMANDS
+## Important Notes
+
+- **269 deprecated functions** across 96 files — grep for `_DEPRECATED` before modifying core files
+- **Build output** goes to `dist/cli.mjs` — never edit this file directly
+- **CI pipeline**: smoke → test:provider → test:provider-recommendation (no typecheck in CI)
+
+## Environment Variables for Development
 
 ```bash
-# Build and dev
-bun run build           # Build with Bun bundler
-bun run dev             # Build and run directly
-bun run dev:ollama      # Dev with Ollama provider
-bun run dev:openai      # Dev with OpenAI provider
-bun run dev:gemini      # Dev with Gemini provider
+# OpenAI-compatible (most providers)
+CLAUDE_CODE_USE_OPENAI=1
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=http://localhost:11434/v1  # For Ollama
+OPENAI_MODEL=gpt-4o
 
-# Testing
-bun test                # Run all tests
-bun run smoke           # Build + version check
-bun run test:provider   # Provider API tests
-bun run test:provider-recommendation  # Provider recommendation tests
+# GitHub Models
+CLAUDE_CODE_USE_GITHUB=1
+GITHUB_TOKEN=ghp_...
 
-# Type checking
-bun run typecheck       # tsc --noEmit (not in CI)
-
-# Provider setup
-bun run profile:init    # Bootstrap provider profile
-bun run profile:recommend  # Recommend provider
-bun run profile:auto    # Auto-apply recommended provider
-
-# System checks
-bun run doctor:runtime  # Runtime environment check
-bun run hardening:check # smoke + doctor:runtime
-bun run hardening:strict # typecheck + hardening:check
-
-# CI pipeline (.github/workflows/pr-checks.yml)
-# smoke → test:provider → test:provider-recommendation
-# No typecheck, no linting, no deployment
+# Local Ollama
+CLAUDE_CODE_USE_OPENAI=1
+OPENAI_BASE_URL=http://localhost:11434/v1
+# No API key needed
 ```
-
-## NOTES
-
-- The build output goes to `dist/cli.mjs` — never edit this file directly
-- When adding tests, place them as `*.test.ts` adjacent to the source file
-- The OpenAI shim in `openaiShim.ts` is the key integration point for adding new providers
-- If you see `feature()` calls in source, these are build-time flags from `scripts/build.ts`
-- Environment variables prefixed with `CLAUDE_CODE_USE_*` control provider selection
-- MCP servers are managed via `src/services/mcp/MCPConnectionManager.tsx`
-- Many internal features are disabled via `scripts/build.ts` feature flags for the open build

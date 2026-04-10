@@ -18,6 +18,7 @@ import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { AGENTS_FILENAME, AGENTS_LOCAL_FILENAME } from './claudemd.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -31,7 +32,6 @@ import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './theme.js'
-import { PRIMARY_PROJECT_INSTRUCTION_FILE } from './projectInstructions.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const teamMemPaths = feature('TEAMMEM')
@@ -1820,13 +1820,13 @@ export function getMemoryPath(memoryType: MemoryType): string {
 
   switch (memoryType) {
     case 'User':
-      return join(getClaudeConfigHomeDir(), 'CLAUDE.md')
+      return join(getClaudeConfigHomeDir(), AGENTS_FILENAME)
     case 'Local':
-      return join(cwd, 'CLAUDE.local.md')
+      return join(cwd, AGENTS_LOCAL_FILENAME)
     case 'Project':
-      return join(cwd, PRIMARY_PROJECT_INSTRUCTION_FILE)
+      return join(cwd, AGENTS_FILENAME)
     case 'Managed':
-      return join(getManagedFilePath(), 'CLAUDE.md')
+      return join(getManagedFilePath(), AGENTS_FILENAME)
     case 'AutoMem':
       return getAutoMemEntrypoint()
   }
