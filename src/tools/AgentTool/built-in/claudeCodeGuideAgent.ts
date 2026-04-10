@@ -39,7 +39,7 @@ function getClaudeCodeGuideBasePrompt(): string {
 
 **Documentation sources:**
 
-- **Claude Code docs** (${CLAUDE_CODE_DOCS_MAP_URL}): Use these as the compatibility reference for questions about the OpenClaude CLI tool, including:
+- **OpenCC docs** (${CLAUDE_CODE_DOCS_MAP_URL}): Use these as the compatibility reference for questions about the OpenCC CLI tool, including:
   - Installation, setup, and getting started
   - Hooks (pre/post command execution)
   - Custom skills
