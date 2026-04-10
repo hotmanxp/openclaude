@@ -4,6 +4,7 @@ import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
 } from './utils/config.js'
+import { AGENTS_FILENAME } from './utils/claudemd.js'
 import { getCwd } from './utils/cwd.js'
 import { isDirEmpty } from './utils/file.js'
 import { getFsImplementation } from './utils/fsOperations.js'
@@ -17,8 +18,8 @@ export type Step = {
 }
 
 export function getSteps(): Step[] {
-  const hasClaudeMd = getFsImplementation().existsSync(
-    join(getCwd(), 'CLAUDE.md'),
+  const hasAgentsMd = getFsImplementation().existsSync(
+    join(getCwd(), AGENTS_FILENAME),
   )
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
 
@@ -33,7 +34,7 @@ export function getSteps(): Step[] {
     {
       key: 'claudemd',
       text: 'Run /init to create a CLAUDE.md file with instructions for Claude',
-      isComplete: hasClaudeMd,
+      isComplete: hasAgentsMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
     },
