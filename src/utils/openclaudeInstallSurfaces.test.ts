@@ -45,7 +45,7 @@ test('install command displays openclaude.exe path on Windows', async () => {
 test('cleanupNpmInstallations removes both openclaude and legacy claude local install dirs', async () => {
   const removedPaths: string[] = []
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@hotmanxp/opencc',
   }
 
   mock.module('fs/promises', () => ({

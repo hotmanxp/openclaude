@@ -1,10 +1,10 @@
 {
-  "name": "@gitlawb/openclaude",
-  "version": "0.2.3",
+  "name": "@hotmanxp/opencc",
+  "version": "0.1.8",
   "description": "Claude Code opened to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
-    "openclaude": "./bin/openclaude"
+    "opencc": "./bin/opencc"
   },
   "files": [
     "bin/",
@@ -133,6 +133,7 @@
     "@types/bun": "1.3.11",
     "@types/node": "25.5.0",
     "@types/react": "19.2.14",
+    "bun": "^1.3.11",
     "tsx": "^4.21.0",
     "typescript": "5.9.3"
   },
@@ -141,7 +142,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Gitlawb/openclaude.git"
+    "url": "https://github.com/hotmanxp/opencc"
   },
   "keywords": [
     "claude-code",
