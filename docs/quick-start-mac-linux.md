@@ -18,7 +18,7 @@ npm --version
 ## 2. Install OpenClaude
 
 ```bash
-npm install -g @gitlawb/openclaude
+npm install -g @hotmanxp/opencc
 ```
 
 ## 3. Pick One Provider
@@ -127,13 +127,13 @@ Check the basics:
 ## 6. Updating OpenClaude
 
 ```bash
-npm install -g @gitlawb/openclaude@latest
+npm install -g @hotmanxp/opencc@latest
 ```
 
 ## 7. Uninstalling OpenClaude
 
 ```bash
-npm uninstall -g @gitlawb/openclaude
+npm uninstall -g @hotmanxp/opencc
 ```
 
 ## Need Advanced Setup?
