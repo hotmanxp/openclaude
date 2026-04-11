@@ -1,47 +1,16 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
-import { shouldUseCodexTransport } from '../../services/api/providerConfig.js'
 import { isEnvTruthy } from '../envUtils.js'
 
-export type APIProvider =
-  | 'firstParty'
-  | 'bedrock'
-  | 'vertex'
-  | 'foundry'
-  | 'openai'
-  | 'gemini'
-  | 'github'
-  | 'codex'
-  | 'mistral'
+export type APIProvider = 'firstParty' | 'openai'
 
 export function getAPIProvider(): APIProvider {
-  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
-    ? 'gemini'
-    :
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
-    ? 'mistral'
-    : isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-      ? 'github'
-      : isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-        ? isCodexModel()
-          ? 'codex'
-          : 'openai'
-        : isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)
-          ? 'bedrock'
-          : isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)
-            ? 'vertex'
-            : isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-              ? 'foundry'
-              : 'firstParty'
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
+    ? 'openai'
+    : 'firstParty'
 }
 
 export function usesAnthropicAccountFlow(): boolean {
   return getAPIProvider() === 'firstParty'
-}
-function isCodexModel(): boolean {
-  return shouldUseCodexTransport(
-    process.env.OPENAI_MODEL || '',
-    process.env.OPENAI_BASE_URL ?? process.env.OPENAI_API_BASE,
-  )
 }
 
 export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS {

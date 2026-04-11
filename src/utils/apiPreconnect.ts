@@ -38,14 +38,6 @@ export function preconnectAnthropicApi(): void {
     return
   }
 
-  // Skip if using a cloud provider — different endpoint + auth
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-  ) {
-    return
-  }
   // Skip if proxy/mTLS/unix — SDK's custom dispatcher won't reuse this pool
   if (
     process.env.HTTPS_PROXY ||

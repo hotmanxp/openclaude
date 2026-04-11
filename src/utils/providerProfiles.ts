@@ -13,9 +13,9 @@ export type ProviderPreset =
   | 'moonshotai'
   | 'deepseek'
   | 'gemini'
-  | 'mistral'
   | 'together'
   | 'groq'
+  | 'mistral'
   | 'azure-openai'
   | 'openrouter'
   | 'lmstudio'
@@ -163,15 +163,6 @@ export function getProviderPresetDefaults(
         apiKey: '',
         requiresApiKey: true,
       }
-    case 'mistral':
-      return {
-        provider: 'openai',
-        name: 'Mistral',
-        baseUrl: 'https://api.mistral.ai/v1',
-        model: 'devstral-latest',
-        apiKey: '',
-        requiresApiKey: true
-      }
     case 'together':
       return {
         provider: 'openai',
@@ -187,6 +178,15 @@ export function getProviderPresetDefaults(
         name: 'Groq',
         baseUrl: 'https://api.groq.com/openai/v1',
         model: 'llama-3.3-70b-versatile',
+        apiKey: '',
+        requiresApiKey: true,
+      }
+    case 'mistral':
+      return {
+        provider: 'openai',
+        name: 'Mistral',
+        baseUrl: 'https://api.mistral.ai/v1',
+        model: 'mistral-large-latest',
         apiKey: '',
         requiresApiKey: true,
       }
@@ -255,15 +255,7 @@ export function hasProviderProfiles(config = getGlobalConfig()): boolean {
 function hasProviderSelectionFlags(
   processEnv: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return (
-    processEnv.CLAUDE_CODE_USE_OPENAI !== undefined ||
-    processEnv.CLAUDE_CODE_USE_GEMINI !== undefined ||
-    processEnv.CLAUDE_CODE_USE_MISTRAL !== undefined ||
-    processEnv.CLAUDE_CODE_USE_GITHUB !== undefined ||
-    processEnv.CLAUDE_CODE_USE_BEDROCK !== undefined ||
-    processEnv.CLAUDE_CODE_USE_VERTEX !== undefined ||
-    processEnv.CLAUDE_CODE_USE_FOUNDRY !== undefined
-  )
+  return processEnv.CLAUDE_CODE_USE_OPENAI !== undefined
 }
 
 function hasConflictingProviderFlagsForProfile(
@@ -274,13 +266,7 @@ function hasConflictingProviderFlagsForProfile(
     return hasProviderSelectionFlags(processEnv)
   }
 
-  return (
-    processEnv.CLAUDE_CODE_USE_GEMINI !== undefined ||
-    processEnv.CLAUDE_CODE_USE_GITHUB !== undefined ||
-    processEnv.CLAUDE_CODE_USE_BEDROCK !== undefined ||
-    processEnv.CLAUDE_CODE_USE_VERTEX !== undefined ||
-    processEnv.CLAUDE_CODE_USE_FOUNDRY !== undefined
-  )
+  return false
 }
 
 function sameOptionalEnvValue(
@@ -319,12 +305,6 @@ function isProcessEnvAlignedWithProfile(
 
   return (
     processEnv.CLAUDE_CODE_USE_OPENAI !== undefined &&
-    processEnv.CLAUDE_CODE_USE_GEMINI === undefined &&
-    processEnv.CLAUDE_CODE_USE_MISTRAL === undefined &&
-    processEnv.CLAUDE_CODE_USE_GITHUB === undefined &&
-    processEnv.CLAUDE_CODE_USE_BEDROCK === undefined &&
-    processEnv.CLAUDE_CODE_USE_VERTEX === undefined &&
-    processEnv.CLAUDE_CODE_USE_FOUNDRY === undefined &&
     sameOptionalEnvValue(processEnv.OPENAI_BASE_URL, profile.baseUrl) &&
     sameOptionalEnvValue(processEnv.OPENAI_MODEL, profile.model) &&
     (!includeApiKey ||
@@ -348,12 +328,6 @@ export function clearProviderProfileEnvFromProcessEnv(
   processEnv: NodeJS.ProcessEnv = process.env,
 ): void {
   delete processEnv.CLAUDE_CODE_USE_OPENAI
-  delete processEnv.CLAUDE_CODE_USE_GEMINI
-  delete processEnv.CLAUDE_CODE_USE_MISTRAL
-  delete processEnv.CLAUDE_CODE_USE_GITHUB
-  delete processEnv.CLAUDE_CODE_USE_BEDROCK
-  delete processEnv.CLAUDE_CODE_USE_VERTEX
-  delete processEnv.CLAUDE_CODE_USE_FOUNDRY
 
   delete processEnv.OPENAI_BASE_URL
   delete processEnv.OPENAI_API_BASE
@@ -417,7 +391,7 @@ export function applyActiveProviderProfileFromConfig(
     processEnv[PROFILE_ENV_APPLIED_FLAG] === '1' &&
     trimOrUndefined(processEnv[PROFILE_ENV_APPLIED_ID]) === activeProfile.id
 
-  if (!options?.force && (hasProviderSelectionFlags(processEnv) || processEnv[PROFILE_ENV_APPLIED_FLAG] === '1')) {
+  if (!options?.force && hasProviderSelectionFlags(processEnv)) {
     // Respect explicit startup provider intent. Auto-heal only when this
     // exact active profile previously applied the current env.
     if (!isCurrentEnvProfileManaged) {
