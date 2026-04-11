@@ -49,7 +49,7 @@ const result = await Bun.build({
   target: 'node',
   format: 'esm',
   splitting: false,
-  sourcemap: 'external',
+  sourcemap: false,
   minify: false,
   naming: 'cli.mjs',
   define: {
