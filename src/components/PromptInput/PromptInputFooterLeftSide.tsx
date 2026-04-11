@@ -21,9 +21,10 @@ import { getVisibleAgentTasks } from '../CoordinatorAgentStatus.js';
 import { count } from '../../utils/array.js';
 import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import { getBranch } from '../../utils/git.js';
 import { TeamStatus } from '../teams/TeamStatus.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
-import { useAppState, useAppStateStore } from 'src/state/AppState.js';
+import { useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import HistorySearchInput from './HistorySearchInput.js';
 import { usePrStatus } from '../../hooks/usePrStatus.js';
@@ -249,8 +250,9 @@ function ModeIndicator({
     columns
   } = useTerminalSize();
   const modeCycleShortcut = useShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab');
+  const branch = useAppState(s => s.branch);
   const tasks = useAppState(s => s.tasks);
-  const teamContext = useAppState(s_0 => s_0.teamContext);
+  const teamContext = useAppState(s => s.teamContext);
   // Set once in initialState (main.tsx --remote mode) and never mutated — lazy
   // init captures the immutable value without a subscription.
   const store = useAppStateStore();
@@ -272,6 +274,21 @@ function ModeIndicator({
   useVoiceState(s_6 => s_6.voiceWarmingUp) : false;
   const hasSelection = useHasSelection();
   const selGetState = useSelection().getState;
+  const setAppState = useSetAppState();
+
+  // Fetch git branch and store in AppState (runs once on mount)
+  useEffect(() => {
+    let cancelled = false;
+    void getBranch().then(branch => {
+      if (!cancelled) {
+        setAppState(prev => {
+          if (prev.branch === branch) return prev;
+          return { ...prev, branch };
+        });
+      }
+    }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [setAppState]);
   const hasNextTick = nextTickAt !== null;
   const isCoordinator = feature('COORDINATOR_MODE') ? coordinatorModule?.isCoordinatorMode() === true : false;
   const runningTaskCount = useMemo(() => count(Object.values(tasks), t => isBackgroundTask(t) && !("external" === 'ant' && isPanelAgentTask(t))), [tasks]);
@@ -387,7 +404,8 @@ function ModeIndicator({
   if (hasTeammatePills) {
     // Don't append spinner hints when viewing a completed teammate —
     // the "esc to return to team lead" hint already replaces "esc to interrupt"
-    const otherParts = [...(modePart ? [modePart] : []), ...parts, ...(isViewingCompletedTeammate ? [] : hintParts)];
+    const branchPart = branch ? <Text dimColor key="branch">{branch}</Text> : null;
+    const otherParts = [...(modePart ? [modePart] : []), ...(branch ? [branchPart] : []), ...parts, ...(isViewingCompletedTeammate ? [] : hintParts)];
     return <Box flexDirection="column">
         <Box>
           <BackgroundTaskStatus tasksSelected={tasksSelected} isViewingTeammate={isViewingTeammate} teammateFooterIndex={teammateFooterIndex} isLeaderIdle={!isLoading} onOpenDialog={onOpenTasksDialog} />
@@ -470,12 +488,13 @@ function ModeIndicator({
   return <Box height={1} overflow="hidden">
       {modePart && <Box flexShrink={0}>
           {modePart}
-          {(tasksPart || parts.length > 0) && <Text dimColor> · </Text>}
+          {(tasksPart || parts.length > 0 || branch) && <Text dimColor> · </Text>}
         </Box>}
       {tasksPart && <Box flexShrink={0}>
           {tasksPart}
-          {parts.length > 0 && <Text dimColor> · </Text>}
+          {(parts.length > 0 || branch) && <Text dimColor> · </Text>}
         </Box>}
+      {branch && <Text dimColor key="branch">{branch}</Text>}
       {parts.length > 0 && <Text wrap="truncate">
           <Byline>{parts}</Byline>
         </Text>}
