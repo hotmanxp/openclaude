@@ -498,7 +498,7 @@ function ModeIndicator({
   return <Box height={1} overflow="hidden">
       {modePart && <Box flexShrink={0}>
           {modePart}
-          {(tasksPart || parts.length > 0 || branch) && <Text dimColor> · </Text>}
+          {(tasksPart || parts.length > 0) && <Text dimColor> · </Text>}
         </Box>}
       {tasksPart && <Box flexShrink={0}>
           {tasksPart}
