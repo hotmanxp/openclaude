@@ -149,8 +149,6 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
           }),
         )
 
-        // NOTE: @opentelemetry/* kept as external deps (too many named exports to stub)
-
         // Resolve native addon and missing snapshot imports to stubs
         for (const mod of [
           'audio-capture-napi',
@@ -168,8 +166,11 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
           'fuse',
           'code-excerpt',
           'stack-utils',
+          // Cloud auth libraries (disabled in open build)
+          '@azure/identity',
+          'google-auth-library',
         ]) {
-          build.onResolve({ filter: new RegExp(`^${mod}$`) }, () => ({
+          build.onResolve({ filter: new RegExp(`^${mod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }, () => ({
             path: mod,
             namespace: 'native-stub',
           }))
@@ -181,6 +182,7 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
             contents: `
 const noop = () => null;
 const noopClass = class {};
+const noopAsync = async () => null;
 const handler = {
   get(_, prop) {
     if (prop === '__esModule') return true;
@@ -222,7 +224,7 @@ export const SimpleLogRecordProcessor = noopClass;
 export const BatchLogRecordProcessor = noopClass;
 export const MeterProvider = noopClass;
 export const PeriodicExportingMetricReader = noopClass;
-export const trace = { getTracer: () => ({ startSpan: () => ({ end: noop, setAttribute: noop, setStatus: noop, recordException: noop }) }) };
+export const trace = { getTracer: () => ({ startSpan: () => ({ end: noop, setAttribute: noop, setStatus: noop, recordException: noop, setAttributes: noop }) }) };
 export const context = { active: noop, with: (_, fn) => fn() };
 export const SpanStatusCode = { OK: 0, ERROR: 1, UNSET: 2 };
 export const ATTR_SERVICE_NAME = 'service.name';
@@ -234,6 +236,41 @@ export const DataPointType = { HISTOGRAM: 0, SUM: 1, GAUGE: 2 };
 export const InstrumentType = { COUNTER: 0, HISTOGRAM: 1, UP_DOWN_COUNTER: 2 };
 export const PushMetricExporter = noopClass;
 export const SeverityNumber = {};
+export const DiagLogger = noopClass;
+export const DiagLogLevel = { NONE: 0, ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
+export const diag = { error: noop, warn: noop, info: noop, debug: noop, debugV: noop };
+export const logs = { getLogger: () => ({ error: noop, warn: noop, info: noop, debug: noop }) };
+export const Meter = noopClass;
+export const Logger = noopClass;
+export const AnyValueMap = noopClass;
+// AWS SDK exports
+export const BedrockClient = noopClass;
+export const BedrockRuntimeClient = noopClass;
+export const fromIni = noop;
+export const fromEnv = noop;
+export const Credentials = noopClass;
+export const AwsError = noopClass;
+// Logs/exports needed for telemetry bootstrap
+export const parseExporterTypes = () => [];
+export const bootstrapTelemetry = noop;
+export const getBedrockInferenceProfiles = noopAsync;
+export const createBedrockRuntimeClient = noopAsync;
+export const findFirstMatch = () => null;
+export const isFoundationModel = () => false;
+export const extractModelIdFromArn = (id) => id;
+export const getBedrockRegionPrefix = () => null;
+export const applyBedrockRegionPrefix = (id) => id;
+export const BEDROCK_REGION_PREFIXES = [];
+export const BEDROCK_INFERENCE_PROFILES = [];
+// Azure Identity exports
+export const DefaultAzureCredential = noopClass;
+export const getBearerTokenProvider = () => () => Promise.resolve('');
+// Google Auth exports
+export const GoogleAuth = class {
+  constructor() {}
+  getClient() { return { getAccessToken: () => Promise.resolve({ token: '' }) }; }
+  getProjectId() { return Promise.resolve(''); }
+};
 `,
             loader: 'js',
           }),
@@ -352,35 +389,8 @@ ${exports}
     },
   ],
   external: [
-    // OpenTelemetry — too many named exports to stub, kept external
-    '@opentelemetry/api',
-    '@opentelemetry/api-logs',
-    '@opentelemetry/core',
-    '@opentelemetry/exporter-trace-otlp-grpc',
-    '@opentelemetry/exporter-trace-otlp-http',
-    '@opentelemetry/exporter-trace-otlp-proto',
-    '@opentelemetry/exporter-logs-otlp-http',
-    '@opentelemetry/exporter-logs-otlp-proto',
-    '@opentelemetry/exporter-logs-otlp-grpc',
-    '@opentelemetry/exporter-metrics-otlp-proto',
-    '@opentelemetry/exporter-metrics-otlp-grpc',
-    '@opentelemetry/exporter-metrics-otlp-http',
-    '@opentelemetry/exporter-prometheus',
-    '@opentelemetry/resources',
-    '@opentelemetry/sdk-trace-base',
-    '@opentelemetry/sdk-trace-node',
-    '@opentelemetry/sdk-logs',
-    '@opentelemetry/sdk-metrics',
-    '@opentelemetry/semantic-conventions',
-    // Native image processing
+    // Native image processing (requires native binaries)
     'sharp',
-    // Cloud provider SDKs
-    '@aws-sdk/client-bedrock',
-    '@aws-sdk/client-bedrock-runtime',
-    '@aws-sdk/client-sts',
-    '@aws-sdk/credential-providers',
-    '@azure/identity',
-    'google-auth-library',
   ],
 })
 
