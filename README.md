@@ -1,6 +1,6 @@
-# OpenClaude
+# OpenCC
 
-OpenClaude is an open-source coding-agent CLI for cloud and local model providers.
+OpenCC is an open-source coding-agent CLI for cloud and local model providers.
 
 Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex, Ollama, Atomic Chat, and other supported backends while keeping one terminal-first workflow: prompts, tools, agents, MCP, slash commands, and streaming output.
 
@@ -12,7 +12,7 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex, Ollama, Atomic Chat, a
 
 [Quick Start](#quick-start) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Community](#community)
 
-## Why OpenClaude
+## Why OpenCC
 
 - Use one CLI across cloud APIs and local model backends
 - Save provider profiles inside the app with `/provider`
@@ -28,7 +28,7 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex, Ollama, Atomic Chat, a
 npm install -g @hotmanxp/opencc
 ```
 
-If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenClaude.
+If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenCC.
 
 ### Start
 
@@ -36,7 +36,7 @@ If the install later reports `ripgrep not found`, install ripgrep system-wide an
 openclaude
 ```
 
-Inside OpenClaude:
+Inside OpenCC:
 
 - run `/provider` for guided provider setup and saved profiles
 - run `/onboard-github` for GitHub Models onboarding
@@ -121,18 +121,18 @@ Advanced and source-build guides:
 
 ## Provider Notes
 
-OpenClaude supports multiple providers, but behavior is not identical across all of them.
+OpenCC supports multiple providers, but behavior is not identical across all of them.
 
 - Anthropic-specific features may not exist on other providers
 - Tool quality depends heavily on the selected model
 - Smaller local models can struggle with long multi-step tool flows
-- Some providers impose lower output caps than the CLI defaults, and OpenClaude adapts where possible
+- Some providers impose lower output caps than the CLI defaults, and OpenCC adapts where possible
 
 For best results, use models with strong tool/function calling support.
 
 ## Agent Routing
 
-OpenClaude can route different agents to different models through settings-based routing. This is useful for cost optimization or splitting work by model strength.
+OpenCC can route different agents to different models through settings-based routing. This is useful for cost optimization or splitting work by model strength.
 
 Add to `~/.claude/settings.json`:
 
@@ -168,7 +168,7 @@ By default, `WebSearch` works on non-Anthropic models using DuckDuckGo. This giv
 
 > **Note:** DuckDuckGo fallback works by scraping search results and may be rate-limited, blocked, or subject to DuckDuckGo's Terms of Service. If you want a more reliable supported option, configure Firecrawl.
 
-For Anthropic-native backends and Codex responses, OpenClaude keeps the native provider web search behavior.
+For Anthropic-native backends and Codex responses, OpenCC keeps the native provider web search behavior.
 
 `WebFetch` works, but its basic HTTP plus HTML-to-markdown path can still fail on JavaScript-rendered sites or sites that block plain HTTP requests.
 
@@ -189,7 +189,7 @@ Free tier at [firecrawl.dev](https://firecrawl.dev) includes 500 credits. The ke
 
 ## Headless gRPC Server
 
-OpenClaude can be run as a headless gRPC service, allowing you to integrate its agentic capabilities (tools, bash, file editing) into other applications, CI/CD pipelines, or custom user interfaces. The server uses bidirectional streaming to send real-time text chunks, tool calls, and request permissions for sensitive commands.
+OpenCC can be run as a headless gRPC service, allowing you to integrate its agentic capabilities (tools, bash, file editing) into other applications, CI/CD pipelines, or custom user interfaces. The server uses bidirectional streaming to send real-time text chunks, tool calls, and request permissions for sensitive commands.
 
 ### 1. Start the gRPC Server
 
@@ -241,7 +241,7 @@ Helpful commands:
 
 ## Testing And Coverage
 
-OpenClaude uses Bun's built-in test runner for unit tests.
+OpenCC uses Bun's built-in test runner for unit tests.
 
 Run the full unit suite:
 
@@ -280,7 +280,7 @@ Recommended contributor validation before opening a PR:
 - `bun run test:coverage` for broader unit coverage when your change affects shared runtime or provider logic
 - focused `bun test ...` runs for the files and flows you changed
 
-Coverage output is written to `coverage/lcov.info`, and OpenClaude also generates a git-activity-style heatmap at `coverage/index.html`.
+Coverage output is written to `coverage/lcov.info`, and OpenCC also generates a git-activity-style heatmap at `coverage/index.html`.
 ## Repository Structure
 
 - `src/` - core CLI/runtime
@@ -293,7 +293,7 @@ Coverage output is written to `coverage/lcov.info`, and OpenClaude also generate
 
 ## VS Code Extension
 
-The repo includes a VS Code extension in [`vscode-extension/openclaude-vscode`](vscode-extension/openclaude-vscode) for OpenClaude launch integration, provider-aware control-center UI, and theme support.
+The repo includes a VS Code extension in [`vscode-extension/openclaude-vscode`](vscode-extension/openclaude-vscode) for OpenCC launch integration, provider-aware control-center UI, and theme support.
 
 ## Security
 
@@ -317,9 +317,9 @@ For larger changes, open an issue first so the scope is clear before implementat
 
 ## Disclaimer
 
-OpenClaude is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
+OpenCC is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
 
-OpenClaude originated from the Claude Code codebase and has since been substantially modified to support multiple providers and open use. "Claude" and "Claude Code" are trademarks of Anthropic PBC. See [LICENSE](LICENSE) for details.
+OpenCC originated from the Claude Code codebase and has since been substantially modified to support multiple providers and open use. "Claude" and "Claude Code" are trademarks of Anthropic PBC. See [LICENSE](LICENSE) for details.
 
 ## License
 

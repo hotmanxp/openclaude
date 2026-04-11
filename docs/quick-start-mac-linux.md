@@ -1,4 +1,4 @@
-# OpenClaude Quick Start for macOS and Linux
+# OpenCC Quick Start for macOS and Linux
 
 This guide uses a standard shell such as Terminal, iTerm, bash, or zsh.
 
@@ -15,7 +15,7 @@ node --version
 npm --version
 ```
 
-## 2. Install OpenClaude
+## 2. Install OpenCC
 
 ```bash
 npm install -g @hotmanxp/opencc
@@ -124,13 +124,13 @@ Check the basics:
 - make sure a model is loaded in LM Studio
 - make sure the model name matches what you set in `OPENAI_MODEL`
 
-## 6. Updating OpenClaude
+## 6. Updating OpenCC
 
 ```bash
 npm install -g @hotmanxp/opencc@latest
 ```
 
-## 7. Uninstalling OpenClaude
+## 7. Uninstalling OpenCC
 
 ```bash
 npm uninstall -g @hotmanxp/opencc
