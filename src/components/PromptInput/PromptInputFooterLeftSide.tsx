@@ -13,7 +13,7 @@ import type { VimMode, PromptInputMode } from '../../types/textInputTypes.js';
 import type { ToolPermissionContext } from '../../Tool.js';
 import { isVimModeEnabled } from './utils.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
-import { isDefaultMode, permissionModeSymbol, permissionModeTitle, getModeColor } from '../../utils/permissions/PermissionMode.js';
+import { isDefaultMode, permissionModeTitle, getModeColor } from '../../utils/permissions/PermissionMode.js';
 import { BackgroundTaskStatus } from '../tasks/BackgroundTaskStatus.js';
 import { isBackgroundTask } from '../../tasks/types.js';
 import { isPanelAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
@@ -276,18 +276,28 @@ function ModeIndicator({
   const selGetState = useSelection().getState;
   const setAppState = useSetAppState();
 
-  // Fetch git branch and store in AppState (runs once on mount)
+  // Fetch git branch and store in AppState. Refresh periodically to detect branch switches.
   useEffect(() => {
     let cancelled = false;
-    void getBranch().then(branch => {
-      if (!cancelled) {
-        setAppState(prev => {
-          if (prev.branch === branch) return prev;
-          return { ...prev, branch };
-        });
-      }
-    }).catch(() => { /* ignore */ });
-    return () => { cancelled = true; };
+    const refreshBranch = () => {
+      if (cancelled) return;
+      void getBranch().then(branch => {
+        if (!cancelled) {
+          setAppState(prev => {
+            if (prev.branch === branch) return prev;
+            return { ...prev, branch };
+          });
+        }
+      }).catch(() => { /* ignore */ });
+    };
+    // Initial fetch
+    refreshBranch();
+    // Refresh every 5 seconds to detect branch switches
+    const interval = setInterval(refreshBranch, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [setAppState]);
   const hasNextTick = nextTickAt !== null;
   const isCoordinator = feature('COORDINATOR_MODE') ? coordinatorModule?.isCoordinatorMode() === true : false;
@@ -363,7 +373,6 @@ function ModeIndicator({
   // Rendered before the tasks pill so a long pill label (e.g. ultraplan URL)
   // doesn't push the mode indicator off-screen.
   const modePart = currentMode && hasActiveMode && !getIsRemoteMode() ? <Text color={getModeColor(currentMode)} key="mode">
-        {permissionModeSymbol(currentMode)}{' '}
         {permissionModeTitle(currentMode).toLowerCase()} on
         {shouldShowModeHint && <Text dimColor>
             {' '}
