@@ -392,4 +392,4 @@ if (!result.success) {
   process.exit(1)
 }
 
-console.log(`✓ Built openclaude v${version} → dist/cli.mjs`)
+console.log(`✓ Built opencc v${version} → dist/cli.mjs`)
