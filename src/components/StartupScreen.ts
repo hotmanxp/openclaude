@@ -5,6 +5,7 @@
 
 import { isLocalProviderUrl } from '../services/api/providerConfig.js'
 import { getAPIProvider } from '../utils/model/providers.js'
+import { getContextWindowForModel } from '../utils/context.js'
 
 declare const MACRO: { VERSION: string; DISPLAY_VERSION?: string }
 
@@ -114,9 +115,11 @@ export function printStartupScreen(): void {
   let sLen: number
 
   if (modelDisplay) {
-    const providerInfo = `${rgb(180, 180, 180)}${providerName}/${RESET}${rgb(...ACCENT)}${modelDisplay}${RESET}`
+    const contextWindow = getContextWindowForModel(modelDisplay)
+    const contextWindowStr = contextWindow > 0 ? ` ${Math.round(contextWindow / 1000)}K` : ''
+    const providerInfo = `${rgb(180, 180, 180)}${providerName}/${RESET}${rgb(...ACCENT)}${modelDisplay}${RESET}${rgb(140, 140, 140)}${contextWindowStr}${RESET}`
     sRow = `${statusLeft} ${providerInfo}    ${statusRight}`
-    sLen = ` ${'\u25cf'} ${sL} ${providerName}/${modelDisplay}    Ready \u2014 type /help    ${versionStr}`.length
+    sLen = ` ${'\u25cf'} ${sL} ${providerName}/${modelDisplay}${contextWindowStr}    Ready \u2014 type /help    ${versionStr}`.length
   } else {
     sRow = `${statusLeft}    ${statusRight}`
     sLen = ` ${'\u25cf'} ${sL}    Ready \u2014 type /help    ${versionStr}`.length

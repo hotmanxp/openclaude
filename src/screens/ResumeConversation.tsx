@@ -88,7 +88,7 @@ export function ResumeConversation({
   const {
     rows
   } = useTerminalSize();
-  const agentDefinitions = useAppState(s => s.agentDefinitions);
+  const agentDefinitions = useAppState((s: { agentDefinitions: unknown }) => s.agentDefinitions);
   const setAppState = useSetAppState();
   const [logs, setLogs] = React.useState<LogOption[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -267,7 +267,7 @@ export function ResumeConversation({
       if (feature('CONTEXT_COLLAPSE')) {
         /* eslint-disable @typescript-eslint/no-require-imports */
         ;
-        (require('../services/contextCollapse/persist.js') as typeof import('../services/contextCollapse/persist.js')).restoreFromEntries(result_3.contextCollapseCommits ?? [], result_3.contextCollapseSnapshot);
+        (require('../services/contextCollapse/persist.ts') as typeof import('../services/contextCollapse/persist.ts')).restoreFromEntries(result_3.contextCollapseCommits ?? [], result_3.contextCollapseSnapshot);
         /* eslint-enable @typescript-eslint/no-require-imports */
       }
       logEvent('tengu_session_resumed', {
@@ -349,12 +349,12 @@ function NoConversationsMessage() {
 function _temp() {
   process.exit(1);
 }
-function CrossProjectMessage(t0) {
+function CrossProjectMessage(t0: { command: string }) {
   const $ = _c(8);
   const {
     command
   } = t0;
-  let t1;
+  let t1: unknown[];
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
     $[0] = t1;

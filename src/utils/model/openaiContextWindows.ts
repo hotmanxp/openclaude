@@ -85,6 +85,8 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   // MiniMax
   'MiniMax-M2.7':             204_800,
   'minimax-m2.7':             204_800,
+  'MiniMax-M2.7-highspeed':   204_800,
+  'minimax-m2.7-highspeed':  204_800,
 
   // Google (via OpenRouter)
   'google/gemini-2.0-flash':1_048_576,
