@@ -13,20 +13,14 @@ import { LoadingState } from '../../components/design-system/LoadingState.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { Box, Text } from '../../ink.js'
 import {
-  DEFAULT_CODEX_BASE_URL,
   DEFAULT_OPENAI_BASE_URL,
   isLocalProviderUrl,
-  resolveCodexApiCredentials,
   resolveProviderRequest,
 } from '../../services/api/providerConfig.js'
 import {
-  buildCodexProfileEnv,
-  buildGeminiProfileEnv,
   buildOllamaProfileEnv,
   buildOpenAIProfileEnv,
   createProfileFile,
-  DEFAULT_GEMINI_BASE_URL,
-  DEFAULT_GEMINI_MODEL,
   deleteProfileFile,
   loadProfileFile,
   maskSecretForDisplay,
@@ -38,14 +32,6 @@ import {
   type ProfileFile,
   type ProviderProfile,
 } from '../../utils/providerProfile.js'
-import {
-  getGeminiProjectIdHint,
-  mayHaveGeminiAdcCredentials,
-} from '../../utils/geminiAuth.js'
-import {
-  readGeminiAccessToken,
-  saveGeminiAccessToken,
-} from '../../utils/geminiCredentials.js'
 import {
   getGoalDefaultOpenAIModel,
   normalizeRecommendationGoal,

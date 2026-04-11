@@ -75,11 +75,7 @@ export function getContextWindowForModel(
   // OpenAI-compatible provider — use known context windows for the model.
   // Unknown models get a conservative 8k default so auto-compact triggers
   // before hitting a hard context_window_exceeded error.
-  const isOpenAIProvider =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-  if (isOpenAIProvider) {
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
     const openaiWindow = getOpenAIContextWindow(model)
     if (openaiWindow !== undefined) {
       return openaiWindow
@@ -183,11 +179,7 @@ export function getModelMaxOutputTokens(model: string): {
   }
 
   // OpenAI-compatible provider — use known output limits to avoid 400 errors
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-  ) {
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
     const openaiMax = getOpenAIMaxOutputTokens(model)
     if (openaiMax !== undefined) {
       return { default: openaiMax, upperLimit: openaiMax }

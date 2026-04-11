@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import {
-  resolveCodexApiCredentials,
   resolveProviderRequest,
   isLocalProviderUrl as isProviderLocalUrl,
 } from '../src/services/api/providerConfig.js'

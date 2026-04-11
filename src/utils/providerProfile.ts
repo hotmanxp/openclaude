@@ -1,10 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
-  DEFAULT_CODEX_BASE_URL,
   DEFAULT_OPENAI_BASE_URL,
-  isCodexBaseUrl,
-  resolveCodexApiCredentials,
   resolveProviderRequest,
 } from '../services/api/providerConfig.ts'
 import {
@@ -12,54 +9,27 @@ import {
   normalizeRecommendationGoal,
   type RecommendationGoal,
 } from './providerRecommendation.ts'
-import { readGeminiAccessToken } from './geminiCredentials.ts'
 import { getOllamaChatBaseUrl } from './providerDiscovery.ts'
 
 export const PROFILE_FILE_NAME = '.openclaude-profile.json'
-export const DEFAULT_GEMINI_BASE_URL =
-  'https://generativelanguage.googleapis.com/v1beta/openai'
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 
 const PROFILE_ENV_KEYS = [
   'CLAUDE_CODE_USE_OPENAI',
-  'CLAUDE_CODE_USE_GEMINI',
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
   'OPENAI_BASE_URL',
   'OPENAI_MODEL',
   'OPENAI_API_KEY',
-  'CODEX_API_KEY',
-  'CHATGPT_ACCOUNT_ID',
-  'CODEX_ACCOUNT_ID',
-  'GEMINI_API_KEY',
-  'GEMINI_AUTH_MODE',
-  'GEMINI_ACCESS_TOKEN',
-  'GEMINI_MODEL',
-  'GEMINI_BASE_URL',
-  'GOOGLE_API_KEY',
 ] as const
 
 const SECRET_ENV_KEYS = [
   'OPENAI_API_KEY',
-  'CODEX_API_KEY',
-  'GEMINI_API_KEY',
-  'GOOGLE_API_KEY',
 ] as const
 
-export type ProviderProfile = 'openai' | 'ollama' | 'codex' | 'gemini' | 'atomic-chat'
+export type ProviderProfile = 'openai' | 'ollama' | 'atomic-chat'
 
 export type ProfileEnv = {
   OPENAI_BASE_URL?: string
   OPENAI_MODEL?: string
   OPENAI_API_KEY?: string
-  CODEX_API_KEY?: string
-  CHATGPT_ACCOUNT_ID?: string
-  CODEX_ACCOUNT_ID?: string
-  GEMINI_API_KEY?: string
-  GEMINI_AUTH_MODE?: 'api-key' | 'access-token' | 'adc'
-  GEMINI_MODEL?: string
-  GEMINI_BASE_URL?: string
 }
 
 export type ProfileFile = {
@@ -92,8 +62,6 @@ export function isProviderProfile(value: unknown): value is ProviderProfile {
   return (
     value === 'openai' ||
     value === 'ollama' ||
-    value === 'codex' ||
-    value === 'gemini' ||
     value === 'atomic-chat'
   )
 }
@@ -110,10 +78,6 @@ function looksLikeSecretValue(value: string): boolean {
   if (!trimmed) return false
 
   if (trimmed.startsWith('sk-') || trimmed.startsWith('sk-ant-')) {
-    return true
-  }
-
-  if (trimmed.startsWith('AIza')) {
     return true
   }
 
@@ -151,10 +115,6 @@ export function maskSecretForDisplay(
 
   if (sanitized.startsWith('sk-')) {
     return `${sanitized.slice(0, 3)}...${sanitized.slice(-4)}`
-  }
-
-  if (sanitized.startsWith('AIza')) {
-    return `${sanitized.slice(0, 4)}...${sanitized.slice(-4)}`
   }
 
   return `${sanitized.slice(0, 2)}...${sanitized.slice(-4)}`
@@ -220,54 +180,6 @@ export function buildAtomicChatProfileEnv(
   }
 }
 
-export function buildGeminiProfileEnv(options: {
-  model?: string | null
-  baseUrl?: string | null
-  apiKey?: string | null
-  authMode?: 'api-key' | 'access-token' | 'adc'
-  processEnv?: NodeJS.ProcessEnv
-}): ProfileEnv | null {
-  const processEnv = options.processEnv ?? process.env
-  const authMode = options.authMode ?? 'api-key'
-  const key = sanitizeApiKey(
-    options.apiKey ??
-      processEnv.GEMINI_API_KEY ??
-      processEnv.GOOGLE_API_KEY,
-  )
-  if (authMode === 'api-key' && !key) {
-    return null
-  }
-
-  const env: ProfileEnv = {
-    GEMINI_AUTH_MODE: authMode,
-    GEMINI_MODEL:
-      sanitizeProviderConfigValue(options.model, { GEMINI_API_KEY: key }, processEnv) ||
-      sanitizeProviderConfigValue(
-        processEnv.GEMINI_MODEL,
-        { GEMINI_API_KEY: key },
-        processEnv,
-      ) ||
-      DEFAULT_GEMINI_MODEL,
-  }
-
-  if (authMode === 'api-key' && key) {
-    env.GEMINI_API_KEY = key
-  }
-
-  const baseUrl =
-    sanitizeProviderConfigValue(options.baseUrl, { GEMINI_API_KEY: key }, processEnv) ||
-    sanitizeProviderConfigValue(
-      processEnv.GEMINI_BASE_URL,
-      { GEMINI_API_KEY: key },
-      processEnv,
-    )
-  if (baseUrl) {
-    env.GEMINI_BASE_URL = baseUrl
-  }
-
-  return env
-}
-
 export function buildOpenAIProfileEnv(options: {
   goal: RecommendationGoal
   model?: string | null
@@ -318,36 +230,6 @@ export function buildOpenAIProfileEnv(options: {
       defaultModel,
     OPENAI_API_KEY: key,
   }
-}
-
-export function buildCodexProfileEnv(options: {
-  model?: string | null
-  baseUrl?: string | null
-  apiKey?: string | null
-  processEnv?: NodeJS.ProcessEnv
-}): ProfileEnv | null {
-  const processEnv = options.processEnv ?? process.env
-  const key = sanitizeApiKey(options.apiKey ?? processEnv.CODEX_API_KEY)
-  const credentialEnv = key
-    ? ({ ...processEnv, CODEX_API_KEY: key } as NodeJS.ProcessEnv)
-    : processEnv
-  const credentials = resolveCodexApiCredentials(credentialEnv)
-  if (!credentials.apiKey || !credentials.accountId) {
-    return null
-  }
-
-  const env: ProfileEnv = {
-    OPENAI_BASE_URL: options.baseUrl || DEFAULT_CODEX_BASE_URL,
-    OPENAI_MODEL: options.model || 'codexplan',
-  }
-
-  if (key) {
-    env.CODEX_API_KEY = key
-  }
-
-  env.CHATGPT_ACCOUNT_ID = credentials.accountId
-
-  return env
 }
 
 export function createProfileFile(
@@ -412,14 +294,7 @@ export function hasExplicitProviderSelection(
     return true
   }
 
-  return (
-    processEnv.CLAUDE_CODE_USE_OPENAI !== undefined ||
-    processEnv.CLAUDE_CODE_USE_GITHUB !== undefined ||
-    processEnv.CLAUDE_CODE_USE_GEMINI !== undefined ||
-    processEnv.CLAUDE_CODE_USE_BEDROCK !== undefined ||
-    processEnv.CLAUDE_CODE_USE_VERTEX !== undefined ||
-    processEnv.CLAUDE_CODE_USE_FOUNDRY !== undefined
-  )
+  return processEnv.CLAUDE_CODE_USE_OPENAI !== undefined
 }
 
 export function selectAutoProfile(
@@ -437,7 +312,6 @@ export async function buildLaunchEnv(options: {
   resolveOllamaDefaultModel?: (goal: RecommendationGoal) => Promise<string>
   getAtomicChatChatBaseUrl?: (baseUrl?: string) => string
   resolveAtomicChatDefaultModel?: () => Promise<string | null>
-  readGeminiAccessToken?: () => string | undefined
 }): Promise<NodeJS.ProcessEnv> {
   const processEnv = options.processEnv ?? process.env
   const persistedEnv =
@@ -460,99 +334,11 @@ export async function buildLaunchEnv(options: {
     processEnv.OPENAI_BASE_URL,
     processEnv,
   )
-  const persistedGeminiModel = sanitizeProviderConfigValue(
-    persistedEnv.GEMINI_MODEL,
-    persistedEnv,
-  )
-  const persistedGeminiBaseUrl = sanitizeProviderConfigValue(
-    persistedEnv.GEMINI_BASE_URL,
-    persistedEnv,
-  )
-  const shellGeminiModel = sanitizeProviderConfigValue(
-    processEnv.GEMINI_MODEL,
-    processEnv,
-  )
-  const shellGeminiBaseUrl = sanitizeProviderConfigValue(
-    processEnv.GEMINI_BASE_URL,
-    processEnv,
-  )
-  const shellGeminiAccessToken =
-    processEnv.GEMINI_ACCESS_TOKEN?.trim() || undefined
-  const storedGeminiAccessToken =
-    options.readGeminiAccessToken?.() ?? readGeminiAccessToken()
-
-  const shellGeminiKey = sanitizeApiKey(
-    processEnv.GEMINI_API_KEY ?? processEnv.GOOGLE_API_KEY,
-  )
-  const persistedGeminiKey = sanitizeApiKey(persistedEnv.GEMINI_API_KEY)
-  const persistedGeminiAuthMode = persistedEnv.GEMINI_AUTH_MODE
-
-  if (options.profile === 'gemini') {
-    const env: NodeJS.ProcessEnv = {
-      ...processEnv,
-      CLAUDE_CODE_USE_GEMINI: '1',
-    }
-
-    delete env.CLAUDE_CODE_USE_OPENAI
-    delete env.CLAUDE_CODE_USE_GITHUB
-
-    env.GEMINI_MODEL =
-      shellGeminiModel ||
-      persistedGeminiModel ||
-      DEFAULT_GEMINI_MODEL
-    env.GEMINI_BASE_URL =
-      shellGeminiBaseUrl ||
-      persistedGeminiBaseUrl ||
-      DEFAULT_GEMINI_BASE_URL
-
-    const geminiAuthMode =
-      persistedGeminiAuthMode === 'access-token' ||
-      persistedGeminiAuthMode === 'adc'
-        ? persistedGeminiAuthMode
-        : 'api-key'
-    const geminiKey = shellGeminiKey || persistedGeminiKey
-    if (geminiAuthMode === 'api-key' && geminiKey) {
-      env.GEMINI_API_KEY = geminiKey
-    } else {
-      delete env.GEMINI_API_KEY
-    }
-    env.GEMINI_AUTH_MODE = geminiAuthMode
-    if (geminiAuthMode === 'access-token') {
-      const geminiAccessToken =
-        shellGeminiAccessToken || storedGeminiAccessToken
-      if (geminiAccessToken) {
-        env.GEMINI_ACCESS_TOKEN = geminiAccessToken
-      } else {
-        delete env.GEMINI_ACCESS_TOKEN
-      }
-    } else {
-      delete env.GEMINI_ACCESS_TOKEN
-    }
-
-    delete env.GOOGLE_API_KEY
-    delete env.OPENAI_BASE_URL
-    delete env.OPENAI_MODEL
-    delete env.OPENAI_API_KEY
-    delete env.CODEX_API_KEY
-    delete env.CHATGPT_ACCOUNT_ID
-    delete env.CODEX_ACCOUNT_ID
-
-    return env
-  }
 
   const env: NodeJS.ProcessEnv = {
     ...processEnv,
     CLAUDE_CODE_USE_OPENAI: '1',
   }
-
-  delete env.CLAUDE_CODE_USE_GEMINI
-  delete env.CLAUDE_CODE_USE_GITHUB
-  delete env.GEMINI_API_KEY
-  delete env.GEMINI_AUTH_MODE
-  delete env.GEMINI_ACCESS_TOKEN
-  delete env.GEMINI_MODEL
-  delete env.GEMINI_BASE_URL
-  delete env.GOOGLE_API_KEY
 
   if (options.profile === 'ollama') {
     const getOllamaBaseUrl =
@@ -566,9 +352,6 @@ export async function buildLaunchEnv(options: {
       (await resolveOllamaModel(options.goal))
 
     delete env.OPENAI_API_KEY
-    delete env.CODEX_API_KEY
-    delete env.CHATGPT_ACCOUNT_ID
-    delete env.CODEX_ACCOUNT_ID
 
     return env
   }
@@ -586,47 +369,11 @@ export async function buildLaunchEnv(options: {
       ''
 
     delete env.OPENAI_API_KEY
-    delete env.CODEX_API_KEY
-    delete env.CHATGPT_ACCOUNT_ID
-    delete env.CODEX_ACCOUNT_ID
 
     return env
   }
 
-  if (options.profile === 'codex') {
-    env.OPENAI_BASE_URL =
-      persistedOpenAIBaseUrl && isCodexBaseUrl(persistedOpenAIBaseUrl)
-        ? persistedOpenAIBaseUrl
-        : DEFAULT_CODEX_BASE_URL
-    env.OPENAI_MODEL = persistedOpenAIModel || 'codexplan'
-    delete env.OPENAI_API_KEY
-
-    const codexKey =
-      sanitizeApiKey(processEnv.CODEX_API_KEY) ||
-      sanitizeApiKey(persistedEnv.CODEX_API_KEY)
-    const liveCodexCredentials = resolveCodexApiCredentials(processEnv)
-    const codexAccountId =
-      processEnv.CHATGPT_ACCOUNT_ID ||
-      processEnv.CODEX_ACCOUNT_ID ||
-      liveCodexCredentials.accountId ||
-      persistedEnv.CHATGPT_ACCOUNT_ID ||
-      persistedEnv.CODEX_ACCOUNT_ID
-    if (codexKey) {
-      env.CODEX_API_KEY = codexKey
-    } else {
-      delete env.CODEX_API_KEY
-    }
-
-    if (codexAccountId) {
-      env.CHATGPT_ACCOUNT_ID = codexAccountId
-    } else {
-      delete env.CHATGPT_ACCOUNT_ID
-    }
-    delete env.CODEX_ACCOUNT_ID
-
-    return env
-  }
-
+  // openai profile
   const defaultOpenAIModel = getGoalDefaultOpenAIModel(options.goal)
   const shellOpenAIRequest = resolveProviderRequest({
     model: shellOpenAIModel,
@@ -652,9 +399,6 @@ export async function buildLaunchEnv(options: {
     (usePersistedOpenAIConfig ? persistedOpenAIModel : undefined) ||
     defaultOpenAIModel
   env.OPENAI_API_KEY = processEnv.OPENAI_API_KEY || persistedEnv.OPENAI_API_KEY
-  delete env.CODEX_API_KEY
-  delete env.CHATGPT_ACCOUNT_ID
-  delete env.CODEX_ACCOUNT_ID
   return env
 }
 
@@ -664,7 +408,6 @@ export async function buildStartupEnvFromProfile(options?: {
   processEnv?: NodeJS.ProcessEnv
   getOllamaChatBaseUrl?: (baseUrl?: string) => string
   resolveOllamaDefaultModel?: (goal: RecommendationGoal) => Promise<string>
-  readGeminiAccessToken?: () => string | undefined
 }): Promise<NodeJS.ProcessEnv> {
   const processEnv = options?.processEnv ?? process.env
   const persisted = options?.persisted ?? loadProfileFile()
@@ -703,7 +446,6 @@ export async function buildStartupEnvFromProfile(options?: {
     getOllamaChatBaseUrl:
       options?.getOllamaChatBaseUrl ?? getOllamaChatBaseUrl,
     resolveOllamaDefaultModel: options?.resolveOllamaDefaultModel,
-    readGeminiAccessToken: options?.readGeminiAccessToken,
   })
 }
 

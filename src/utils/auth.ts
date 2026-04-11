@@ -112,13 +112,7 @@ export function isAnthropicAuthEnabled(): boolean {
     return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
   }
 
-  const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
+  const is3P = isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
 
   // Check if user has configured an external API key source
   // This allows externally-provided API keys to work (without requiring proxy configuration)
@@ -1593,17 +1587,6 @@ export function is1PApiCustomer(): boolean {
   // 1. Claude.ai subscribers (Max, Pro, Enterprise, Team)
   // 2. Vertex AI users
   // 3. AWS Bedrock users
-  // 4. Foundry users
-
-  // Exclude Vertex, Bedrock, and Foundry customers
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-  ) {
-    return false
-  }
-
   // Exclude Claude.ai subscribers
   if (isClaudeAISubscriber()) {
     return false
@@ -1733,16 +1716,9 @@ export function getSubscriptionName(): string {
   }
 }
 
-/** Check if using third-party services (Bedrock or Vertex or Foundry or OpenAI-compatible or Gemini or GitHub Models) */
+/** Check if using third-party services (OpenAI-compatible) */
 export function isUsing3PServices(): boolean {
-  return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-  )
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
 }
 
 /**
