@@ -187,6 +187,16 @@ export async function getAnthropicClient({
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
     }) as unknown as Anthropic
   }
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_AI_SDK_ANTHROPIC)) {
+    const { createAISDKAnthropicShim } = await import('./aiSdkAnthropicShim.js')
+    const apiKey =
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.AI_SDK_ANTHROPIC_API_KEY ||
+      getAnthropicApiKey() ||
+      ''
+    const baseURL = process.env.AI_SDK_ANTHROPIC_BASE_URL
+    return createAISDKAnthropicShim(apiKey, baseURL) as unknown as Anthropic
+  }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
     // Use region override for small fast model if specified
@@ -341,8 +351,16 @@ export async function getAnthropicClient({
   }
 
   // Determine authentication method based on available tokens
+  const resolvedApiKey = isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey()
+  console.error('[DEBUG] Original SDK clientConfig:', {
+    hasApiKey: !!resolvedApiKey,
+    apiKeyPrefix: resolvedApiKey?.slice(0, 10),
+    baseURL: process.env.ANTHROPIC_BASE_URL,
+    isClaudeAISubscriber: isClaudeAISubscriber(),
+  })
+
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
-    apiKey: isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey(),
+    apiKey: resolvedApiKey,
     authToken: isClaudeAISubscriber()
       ? getClaudeAIOAuthTokens()?.accessToken
       : undefined,
@@ -354,6 +372,12 @@ export async function getAnthropicClient({
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   }
+
+  console.error('[DEBUG] Creating Anthropic client with config:', {
+    hasApiKey: !!clientConfig.apiKey,
+    apiKeyPrefix: (clientConfig.apiKey as string)?.slice(0, 10),
+    baseURL: (clientConfig as any).baseURL,
+  })
 
   return new Anthropic(clientConfig)
 }
