@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
+import { AGENT_INSTRUCTIONS_FILE, BRAND_NAME } from '../constants/product.js'
 import { queryWithModel } from '../services/api/claude.js'
 import {
   AGENT_TOOL_NAME,
@@ -427,13 +428,13 @@ function getSessionMetaDir(): string {
   return join(getDataDir(), 'session-meta')
 }
 
-const FACET_EXTRACTION_PROMPT = `Analyze this Claude Code session and extract structured facets.
+const FACET_EXTRACTION_PROMPT = `Analyze this ${BRAND_NAME} session and extract structured facets.
 
 CRITICAL GUIDELINES:
 
 1. **goal_categories**: Count ONLY what the USER explicitly asked for.
-   - DO NOT count Claude's autonomous codebase exploration
-   - DO NOT count work Claude decided to do on its own
+   - DO NOT count ${BRAND_NAME}'s autonomous codebase exploration
+   - DO NOT count work ${BRAND_NAME} decided to do on its own
    - ONLY count when user says "can you...", "please...", "I need...", "let's..."
 
 2. **user_satisfaction_counts**: Base ONLY on explicit user signals.
@@ -444,7 +445,7 @@ CRITICAL GUIDELINES:
    - "this is broken", "I give up" → frustrated
 
 3. **friction_counts**: Be specific about what went wrong.
-   - misunderstood_request: Claude interpreted incorrectly
+   - misunderstood_request: ${BRAND_NAME} interpreted incorrectly
    - wrong_approach: Right goal, wrong solution method
    - buggy_code: Code didn't work correctly
    - user_rejected_action: User said no/stop to a tool call
@@ -1417,7 +1418,7 @@ Include 3 friction categories with 2 examples each.`,
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
   "claude_md_additions": [
-    {"addition": "A specific line or block to add to CLAUDE.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in CLAUDE.md. E.g., 'Add under ## Testing section'"}
+    {"addition": "A specific line or block to add to ${AGENT_INSTRUCTIONS_FILE} based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in ${AGENT_INSTRUCTIONS_FILE}. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
     {"feature": "Feature name from CC FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
@@ -1741,7 +1742,7 @@ Use this 4-part structure:
 
 1. **What's working** - What is the user's unique style of interacting with Claude and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
 
-2. **What's hindering you** - Split into (a) Claude's fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
+2. **What's hindering you** - Split into (a) ${BRAND_NAME}'s fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
 
 3. **Quick wins to try** - Specific Claude Code features they could try from the examples below, or a workflow technique if you think it's really compelling. (Avoid stuff like "Ask Claude to confirm before taking actions" or "Type out more context up front" which are less compelling.)
 
@@ -2069,8 +2070,8 @@ function generateHtmlReport(
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
     <div class="claude-md-section">
-      <h3>Suggested CLAUDE.md Additions</h3>
-      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into Claude Code to add it to your CLAUDE.md.</p>
+      <h3>Suggested ${AGENT_INSTRUCTIONS_FILE} Additions</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into Claude Code to add it to your ${AGENT_INSTRUCTIONS_FILE}.</p>
       <div class="claude-md-actions">
         <button class="copy-all-btn" onclick="copyAllCheckedClaudeMd()">Copy All Checked</button>
       </div>
@@ -2078,7 +2079,7 @@ function generateHtmlReport(
         .map(
           (add, i) => `
         <div class="claude-md-item">
-          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to CLAUDE.md')}\\n\\n${escapeHtml(add.addition)}">
+          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to ${AGENT_INSTRUCTIONS_FILE}')}\\n\\n${escapeHtml(add.addition)}">
           <label for="cmd-${i}">
             <code class="cmd-code">${escapeHtml(add.addition)}</code>
             <button class="copy-btn" onclick="copyCmdItem(${i})">Copy</button>
@@ -2610,7 +2611,7 @@ function generateHtmlReport(
 
     <div class="charts-row">
       <div class="chart-card">
-        <div class="chart-title">What Helped Most (Claude's Capabilities)</div>
+        <div class="chart-title">What Helped Most (${BRAND_NAME}'s Capabilities)</div>
         ${generateBarChart(data.success, '#16a34a')}
       </div>
       <div class="chart-card">

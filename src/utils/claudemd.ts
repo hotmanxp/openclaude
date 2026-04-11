@@ -92,7 +92,8 @@ const MEMORY_INSTRUCTION_PROMPT =
 export const MAX_MEMORY_CHARACTER_COUNT = 40000
 
 // Memory file names
-export const AGENTS_FILENAME = 'AGENTS.md'
+import { AGENTS_FILENAME } from '../constants/product.js'
+export { AGENTS_FILENAME }
 export const AGENTS_LOCAL_FILENAME = 'AGENTS.local.md'
 
 // File extensions that are allowed for @include directives

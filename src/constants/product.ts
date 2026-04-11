@@ -1,3 +1,11 @@
+// Brand name
+export const BRAND_NAME = 'OpenCC'
+
+// Agent instruction filenames
+export const AGENT_INSTRUCTIONS_FILE = 'CLAUDE.md'
+export const AGENT_INSTRUCTIONS_LOCAL_FILE = 'CLAUDE.local.md'
+export const AGENTS_FILENAME = 'AGENTS.md'
+
 export const PRODUCT_URL = 'https://claude.com/claude-code'
 
 // Claude Code Remote session URLs

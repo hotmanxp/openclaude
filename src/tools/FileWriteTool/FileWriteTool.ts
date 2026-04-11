@@ -1,4 +1,5 @@
 import { dirname, sep } from 'path'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -336,11 +337,8 @@ export const FileWriteTool = buildTool({
       limit: undefined,
     })
 
-    // Log when writing to the root project instruction file
-    if (
-      fullFilePath.endsWith(`${sep}AGENTS.md`) ||
-      fullFilePath.endsWith(`${sep}CLAUDE.md`)
-    ) {
+    // Log when writing to CLAUDE.md
+    if (fullFilePath.endsWith(`${sep}${AGENT_INSTRUCTIONS_FILE}`)) {
       logEvent('tengu_write_claudemd', {})
     }
 

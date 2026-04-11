@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, sep } from 'path'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
@@ -525,10 +526,7 @@ export const FileEditTool = buildTool({
     })
 
     // 7. Log events
-    if (
-      absoluteFilePath.endsWith(`${sep}AGENTS.md`) ||
-      absoluteFilePath.endsWith(`${sep}CLAUDE.md`)
-    ) {
+    if (absoluteFilePath.endsWith(`${sep}${AGENT_INSTRUCTIONS_FILE}`)) {
       logEvent('tengu_write_claudemd', {})
     }
     countLinesChanged(patch)
