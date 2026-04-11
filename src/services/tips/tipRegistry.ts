@@ -54,6 +54,7 @@ import {
   getCachedReferrerReward,
 } from '../api/referral.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import type { Tip, TipContext } from './types.js'
 
 let _isOfficialMarketplaceInstalledCache: boolean | undefined
@@ -638,7 +639,7 @@ const internalOnlyTips: Tip[] =
         {
           id: 'important-claudemd',
           content: async () =>
-            '[internal] Use "IMPORTANT:" prefix for must-follow CLAUDE.md rules',
+            `[internal] Use "IMPORTANT:" prefix for must-follow ${AGENT_INSTRUCTIONS_FILE} rules`,
           cooldownSessions: 30,
           isRelevant: async () => true,
         },

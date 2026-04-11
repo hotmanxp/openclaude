@@ -4,7 +4,7 @@ import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
 } from './utils/config.js'
-import { AGENTS_FILENAME } from './utils/claudemd.js'
+import { AGENT_INSTRUCTIONS_FILE, AGENTS_FILENAME } from './constants/product.js'
 import { getCwd } from './utils/cwd.js'
 import { isDirEmpty } from './utils/file.js'
 import { getFsImplementation } from './utils/fsOperations.js'
@@ -33,7 +33,7 @@ export function getSteps(): Step[] {
     },
     {
       key: 'claudemd',
-      text: 'Run /init to create a CLAUDE.md file with instructions for Claude',
+      text: `Run /init to create a ${AGENT_INSTRUCTIONS_FILE} file with instructions for Claude`,
       isComplete: hasAgentsMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,

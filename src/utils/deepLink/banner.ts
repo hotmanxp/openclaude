@@ -9,9 +9,10 @@
  *
  * The user must press Enter to submit; this banner primes them to read the
  * prompt (which may use homoglyphs or padding to hide instructions) and
- * notice which directory — and therefore which CLAUDE.md — was loaded.
+ * notice which directory — and therefore which ${AGENT_INSTRUCTIONS_FILE} — was loaded.
  */
 
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join, sep } from 'path'
@@ -43,13 +44,13 @@ export type DeepLinkBannerInfo = {
 /**
  * Build the multi-line warning banner for a deep-link-originated session.
  *
- * Always shows the working directory so the user can see which CLAUDE.md
+ * Always shows the working directory so the user can see which AGENTS.md
  * will load. When the link pre-filled a prompt, adds a second line prompting
  * the user to review it — the prompt itself is visible in the input box.
  *
  * When the cwd was resolved from a ?repo= slug, also shows the slug and the
  * clone's last-fetch age so the user knows which local clone was selected
- * and whether its CLAUDE.md may be stale relative to upstream.
+ * and whether its AGENTS.md may be stale relative to upstream.
  */
 export function buildDeepLinkBanner(info: DeepLinkBannerInfo): string {
   const lines = [
@@ -61,7 +62,7 @@ export function buildDeepLinkBanner(info: DeepLinkBannerInfo): string {
       !info.lastFetch ||
       Date.now() - info.lastFetch.getTime() > STALE_FETCH_WARN_MS
     lines.push(
-      `Resolved ${info.repo} from local clones · last fetched ${age}${stale ? ' — CLAUDE.md may be stale' : ''}`,
+      `Resolved ${info.repo} from local clones · last fetched ${age}${stale ? ` — ${AGENT_INSTRUCTIONS_FILE} may be stale` : ''}`,
     )
   }
   if (info.prefillLength) {

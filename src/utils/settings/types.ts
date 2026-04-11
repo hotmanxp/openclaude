@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { lazySchema } from '../lazySchema.js'
@@ -1082,10 +1083,10 @@ export const SettingsSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Glob patterns or absolute paths of CLAUDE.md files to exclude from loading. ' +
+          `Glob patterns or absolute paths of ${AGENT_INSTRUCTIONS_FILE} files to exclude from loading. ` +
             'Patterns are matched against absolute file paths using picomatch. ' +
-            'Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ' +
-            'Examples: "/home/user/monorepo/CLAUDE.md", "**/code/CLAUDE.md", "**/some-dir/.claude/rules/**"',
+            `Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ` +
+            `Examples: "/home/user/monorepo/${AGENT_INSTRUCTIONS_FILE}", "**/code/${AGENT_INSTRUCTIONS_FILE}", "**/some-dir/.claude/rules/**"`,
         ),
       pluginTrustMessage: z
         .string()

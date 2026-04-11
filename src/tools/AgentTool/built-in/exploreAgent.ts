@@ -1,3 +1,4 @@
+import { AGENT_INSTRUCTIONS_FILE } from '../../../constants/product.js'
 import { BASH_TOOL_NAME } from 'src/tools/BashTool/toolName.js'
 import { EXIT_PLAN_MODE_TOOL_NAME } from 'src/tools/ExitPlanModeTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from 'src/tools/FileEditTool/constants.js'
@@ -77,7 +78,7 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   // Note: For ants, getAgentModel() checks tengu_explore_agent GrowthBook flag at runtime
   model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'haiku',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
-  // rules from CLAUDE.md. The main agent has full context and interprets results.
+  // rules from AGENTS.md. The main agent has full context and interprets results.
   omitClaudeMd: true,
   getSystemPrompt: () => getExploreSystemPrompt(),
 }

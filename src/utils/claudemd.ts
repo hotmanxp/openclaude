@@ -933,7 +933,7 @@ export const getMemoryFiles = memoize(
         )
       }
 
-      // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
+      // Try reading AGENTS.local.md (Local) - only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
         const localPath = join(dir, AGENTS_LOCAL_FILENAME)
         result.push(
