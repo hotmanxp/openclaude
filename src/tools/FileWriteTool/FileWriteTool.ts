@@ -337,7 +337,7 @@ export const FileWriteTool = buildTool({
       limit: undefined,
     })
 
-    // Log when writing to CLAUDE.md
+    // Log when writing to AGENTS.md
     if (fullFilePath.endsWith(`${sep}${AGENT_INSTRUCTIONS_FILE}`)) {
       logEvent('tengu_write_claudemd', {})
     }

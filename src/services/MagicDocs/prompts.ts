@@ -1,4 +1,5 @@
 import { join } from 'path'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 
@@ -51,7 +52,7 @@ What NOT to document:
 - Exhaustive lists of files, functions, or parameters
 - Step-by-step implementation details
 - Low-level code mechanics
-- Information already in CLAUDE.md or other project docs
+- Information already in ${AGENT_INSTRUCTIONS_FILE} or other project docs
 
 Use the Edit tool with file_path: {{docPath}}
 

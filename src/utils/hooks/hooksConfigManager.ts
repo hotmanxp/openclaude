@@ -1,3 +1,4 @@
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import memoize from 'lodash-es/memoize.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { getRegisteredHooks } from '../../bootstrap/state.js'
@@ -227,7 +228,7 @@ export const getHookEventMetadata = memoize(
         },
       },
       InstructionsLoaded: {
-        summary: 'When an instruction file (CLAUDE.md or rule) is loaded',
+        summary: `When an instruction file (${AGENT_INSTRUCTIONS_FILE} or rule) is loaded`,
         description:
           'Input to command is JSON with file_path, memory_type (User, Project, Local, Managed), load_reason (session_start, nested_traversal, path_glob_match, include, compact), globs (optional — the paths: frontmatter patterns that matched), trigger_file_path (optional — the file Claude touched that caused the load), and parent_file_path (optional — the file that @-included this one).\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only\nThis hook is observability-only and does not support blocking.',
         matcherMetadata: {
