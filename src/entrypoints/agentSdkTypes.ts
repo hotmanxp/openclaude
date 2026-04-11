@@ -68,6 +68,9 @@ export type {
   ForkSessionOptions,
   ForkSessionResult,
   SDKSessionInfo,
+  SDKMessage,
+  SDKResultMessage,
+  SDKUserMessage,
 }
 
 export function tool<Schema extends AnyZodRawShape>(
