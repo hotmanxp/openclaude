@@ -8,11 +8,14 @@
   },
   "files": [
     "bin/",
+    "dist/",
     "dist/cli.mjs",
+    "dist/bundle/",
     "README.md"
   ],
   "scripts": {
     "build": "bun run scripts/build.ts",
+    "bundle": "bun run build && bun run scripts/copy_bundle_assets.ts",
     "dev": "bun run build && node dist/cli.mjs",
     "dev:profile": "bun run scripts/provider-launch.ts",
     "dev:profile:fast": "bun run scripts/provider-launch.ts auto --fast --bare",
