@@ -5,7 +5,7 @@ import { useShortcutDisplay } from 'src/keybindings/useShortcutDisplay.js';
 import { builtInCommandNames, type Command, type CommandResultDisplay, INTERNAL_ONLY_COMMANDS } from '../../commands.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import { Box, Link, Text } from '../../ink.js';
+import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { Pane } from '../design-system/Pane.js';
 import { Tab, Tabs } from '../design-system/Tabs.js';
@@ -138,19 +138,13 @@ export function HelpV2(t0) {
   const t5 = insideModal ? undefined : maxHeight;
   let t6;
   if ($[31] !== tabs) {
-    t6 = <Tabs title={false ? "/help" : `Claude Code v${MACRO.VERSION}`} color="professionalBlue" defaultTab="general">{tabs}</Tabs>;
+    t6 = <Tabs title={false ? "/help" : undefined} color="professionalBlue" defaultTab="general">{tabs}</Tabs>;
     $[31] = tabs;
     $[32] = t6;
   } else {
     t6 = $[32];
   }
-  let t7;
-  if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Box marginTop={1}><Text>For more help:{" "}<Link url="https://code.claude.com/docs/en/overview" /></Text></Box>;
-    $[33] = t7;
-  } else {
-    t7 = $[33];
-  }
+  let t7 = null;
   let t8;
   if ($[34] !== dismissShortcut || $[35] !== exitState.keyName || $[36] !== exitState.pending) {
     t8 = <Box marginTop={1}><Text dimColor={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Text italic={true}>{dismissShortcut} to cancel</Text>}</Text></Box>;
@@ -163,7 +157,7 @@ export function HelpV2(t0) {
   }
   let t9;
   if ($[38] !== t6 || $[39] !== t8) {
-    t9 = <Pane color="professionalBlue">{t6}{t7}{t8}</Pane>;
+    t9 = <Pane color="professionalBlue">{t6}{t8}</Pane>;
     $[38] = t6;
     $[39] = t8;
     $[40] = t9;
