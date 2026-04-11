@@ -117,7 +117,6 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gemini-2.0-flash',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
@@ -148,7 +147,7 @@ test('strips Anthropic-specific custom headers before sending OpenAI-compatible 
     'anthropic-version: 2023-06-01',
     'anthropic-beta: prompt-caching-2024-07-31',
     'x-anthropic-additional-protection: true',
-    'x-claude-remote-session-id: remote-123',
+    'x-opencc-remote-session-id: remote-123',
     'x-app: cli',
     'x-safe-header: keep-me',
   ].join('\n')
@@ -185,7 +184,6 @@ test('strips Anthropic-specific custom headers before sending OpenAI-compatible 
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gpt-4o',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
@@ -199,7 +197,7 @@ test('strips Anthropic-specific custom headers before sending OpenAI-compatible 
   expect(capturedHeaders?.get('anthropic-version')).toBeNull()
   expect(capturedHeaders?.get('anthropic-beta')).toBeNull()
   expect(capturedHeaders?.get('x-anthropic-additional-protection')).toBeNull()
-  expect(capturedHeaders?.get('x-claude-remote-session-id')).toBeNull()
+  expect(capturedHeaders?.get('x-opencc-remote-session-id')).toBeNull()
   expect(capturedHeaders?.get('x-app')).toBeNull()
   expect(capturedHeaders?.get('x-safe-header')).toBe('keep-me')
   expect(capturedHeaders?.get('authorization')).toBe('Bearer openai-test-key')
@@ -211,7 +209,7 @@ test('strips Anthropic-specific custom headers on providerOverride shim requests
   process.env.ANTHROPIC_CUSTOM_HEADERS = [
     'anthropic-version: 2023-06-01',
     'anthropic-beta: prompt-caching-2024-07-31',
-    'x-claude-remote-session-id: remote-123',
+    'x-opencc-remote-session-id: remote-123',
     'x-safe-header: keep-me',
   ].join('\n')
 
@@ -264,7 +262,7 @@ test('strips Anthropic-specific custom headers on providerOverride shim requests
 
   expect(capturedHeaders?.get('anthropic-version')).toBeNull()
   expect(capturedHeaders?.get('anthropic-beta')).toBeNull()
-  expect(capturedHeaders?.get('x-claude-remote-session-id')).toBeNull()
+  expect(capturedHeaders?.get('x-opencc-remote-session-id')).toBeNull()
   expect(capturedHeaders?.get('x-safe-header')).toBe('keep-me')
   expect(capturedHeaders?.get('authorization')).toBe('Bearer provider-test-key')
 })
