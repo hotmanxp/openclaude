@@ -5,6 +5,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { getOpenAIContextWindow, getOpenAIMaxOutputTokens } from './model/openaiContextWindows.js'
+import { resolveAntModel } from './model/antModels.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -75,16 +76,9 @@ export function getContextWindowForModel(
   // OpenAI-compatible provider — use known context windows for the model.
   // Unknown models get a conservative 8k default so auto-compact triggers
   // before hitting a hard context_window_exceeded error.
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
-    const openaiWindow = getOpenAIContextWindow(model)
-    if (openaiWindow !== undefined) {
-      return openaiWindow
-    }
-    console.error(
-      `[context] Warning: model "${model}" not in context window table — using conservative 8k default. ` +
-      'Add it to src/utils/model/openaiContextWindows.ts for accurate compaction.',
-    )
-    return 8_000
+  const openaiWindow = getOpenAIContextWindow(model)
+  if (openaiWindow !== undefined) {
+    return openaiWindow
   }
 
   const cap = getModelCapability(model)
