@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { createOpenAIShimClient } from './openaiShim.ts'
+import { createOpenAIShimClient } from './openaiShim.js'
 
 type FetchType = typeof globalThis.fetch
 
@@ -113,7 +113,7 @@ afterEach(() => {
 test('strips canonical Anthropic headers from direct shim defaultHeaders', async () => {
   let capturedHeaders: Headers | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     capturedHeaders = new Headers(init?.headers)
 
     return new Response(
@@ -148,7 +148,7 @@ test('strips canonical Anthropic headers from direct shim defaultHeaders', async
       'anthropic-version': '2023-06-01',
       'anthropic-beta': 'prompt-caching-2024-07-31',
       'x-anthropic-additional-protection': 'true',
-      'x-claude-remote-session-id': 'remote-123',
+      'x-opencc-remote-session-id': 'remote-123',
       'x-app': 'cli',
       'x-client-app': 'sdk',
       'x-safe-header': 'keep-me',
@@ -166,7 +166,7 @@ test('strips canonical Anthropic headers from direct shim defaultHeaders', async
   expect(capturedHeaders?.get('anthropic-version')).toBeNull()
   expect(capturedHeaders?.get('anthropic-beta')).toBeNull()
   expect(capturedHeaders?.get('x-anthropic-additional-protection')).toBeNull()
-  expect(capturedHeaders?.get('x-claude-remote-session-id')).toBeNull()
+  expect(capturedHeaders?.get('x-opencc-remote-session-id')).toBeNull()
   expect(capturedHeaders?.get('x-app')).toBeNull()
   expect(capturedHeaders?.get('x-client-app')).toBeNull()
   expect(capturedHeaders?.get('x-safe-header')).toBe('keep-me')
@@ -175,7 +175,7 @@ test('strips canonical Anthropic headers from direct shim defaultHeaders', async
 test('strips canonical Anthropic headers from per-request shim headers too', async () => {
   let capturedHeaders: Headers | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     capturedHeaders = new Headers(init?.headers)
 
     return new Response(
@@ -237,7 +237,7 @@ test('strips Anthropic-specific headers on GitHub Codex transport requests', asy
   delete process.env.OPENAI_BASE_URL
   delete process.env.OPENAI_MODEL
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     capturedHeaders = new Headers(init?.headers)
 
     return new Response('', {
@@ -284,7 +284,7 @@ test('strips Anthropic-specific headers on GitHub Codex transport with providerO
   delete process.env.OPENAI_BASE_URL
   delete process.env.OPENAI_MODEL
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     capturedHeaders = new Headers(init?.headers)
 
     return new Response('', {
@@ -314,22 +314,27 @@ test('strips Anthropic-specific headers on GitHub Codex transport with providerO
     {
       headers: {
         'anthropic-version': '2023-06-01',
-        'x-claude-remote-session-id': 'remote-123',
+        'x-opencc-remote-session-id': 'remote-123',
         'x-safe-header': 'keep-me',
       },
     },
   )
 
   expect(capturedHeaders?.get('anthropic-version')).toBeNull()
-  expect(capturedHeaders?.get('x-claude-remote-session-id')).toBeNull()
+  expect(capturedHeaders?.get('x-opencc-remote-session-id')).toBeNull()
   expect(capturedHeaders?.get('x-safe-header')).toBe('keep-me')
   expect(capturedHeaders?.get('authorization')).toBe('Bearer provider-override-key')
   expect(capturedHeaders?.get('editor-plugin-version')).toBe('copilot-chat/0.26.7')
 })
 
 test('preserves usage from final OpenAI stream chunk with empty choices', async () => {
-  globalThis.fetch = (async (_input, init) => {
-    const url = typeof _input === 'string' ? _input : _input.url
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
+    const url =
+      typeof _input === 'string'
+        ? _input
+        : _input instanceof URL
+          ? _input.toString()
+          : _input.url
     expect(url).toBe('http://example.test/v1/chat/completions')
 
     const body = JSON.parse(String(init?.body))
@@ -375,7 +380,7 @@ test('preserves usage from final OpenAI stream chunk with empty choices', async 
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -497,7 +502,7 @@ test('keeps max_completion_tokens for non-local non-github providers', async () 
 test('preserves Gemini tool call extra_content in follow-up requests', async () => {
   let requestBody: Record<string, unknown> | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     requestBody = JSON.parse(String(init?.body))
 
     return new Response(
@@ -587,7 +592,7 @@ test('preserves Gemini tool call extra_content in follow-up requests', async () 
 test('preserves Grep tool pattern field in OpenAI-compatible schemas', async () => {
   let requestBody: Record<string, unknown> | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     requestBody = JSON.parse(String(init?.body))
 
     return new Response(
@@ -659,7 +664,7 @@ test('does not infer Gemini mode from OPENAI_BASE_URL path substrings', async ()
   delete process.env.OPENAI_API_KEY
   process.env.GEMINI_API_KEY = 'gemini-secret'
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     const headers = init?.headers as Record<string, string> | undefined
     capturedAuthorization =
       headers?.Authorization ?? headers?.authorization ?? null
@@ -706,7 +711,7 @@ test('does not infer Gemini mode from OPENAI_BASE_URL path substrings', async ()
 test('preserves image tool results as placeholders in follow-up requests', async () => {
   let requestBody: Record<string, unknown> | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     requestBody = JSON.parse(String(init?.body))
 
     return new Response(
@@ -910,8 +915,13 @@ test('uses GEMINI_ACCESS_TOKEN for Gemini OpenAI-compatible requests', async () 
   delete process.env.GEMINI_API_KEY
   delete process.env.GOOGLE_API_KEY
 
-  globalThis.fetch = (async (input, init) => {
-    requestUrl = typeof input === 'string' ? input : input.url
+  globalThis.fetch = (async (input: RequestInfo, init: RequestInit | undefined) => {
+    requestUrl =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
     const headers = init?.headers as Record<string, string> | undefined
     capturedAuthorization =
       headers?.Authorization ?? headers?.authorization ?? null
@@ -959,12 +969,12 @@ test('uses GEMINI_ACCESS_TOKEN for Gemini OpenAI-compatible requests', async () 
   expect(requestUrl).toBe(
     'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
   )
-  expect(capturedAuthorization).toBe('Bearer gemini-access-token')
-  expect(capturedProject).toBe('gemini-project')
+  expect(capturedAuthorization as unknown as string).toBe('Bearer gemini-access-token')
+  expect(capturedProject as unknown as string).toBe('gemini-project')
 })
 
 test('preserves Gemini tool call extra_content from streaming chunks', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1011,7 +1021,7 @@ test('preserves Gemini tool call extra_content from streaming chunks', async () 
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1051,7 +1061,7 @@ test('preserves Gemini tool call extra_content from streaming chunks', async () 
 })
 
 test('normalizes plain string Bash tool arguments from OpenAI-compatible responses', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -1113,7 +1123,7 @@ test('normalizes plain string Bash tool arguments from OpenAI-compatible respons
 })
 
 test('normalizes Bash tool arguments that are valid JSON strings', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -1179,7 +1189,7 @@ test.each([
 ])(
   'preserves malformed Bash JSON literals as parsed values in non-streaming responses: %s',
   async (argumentsValue, expectedInput) => {
-    globalThis.fetch = (async (_input, _init) => {
+    globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
       return new Response(
         JSON.stringify({
           id: 'chatcmpl-1',
@@ -1240,7 +1250,7 @@ test.each([
 )
 
 test('keeps terminal empty Bash tool arguments invalid in non-streaming responses', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -1300,7 +1310,7 @@ test('keeps terminal empty Bash tool arguments invalid in non-streaming response
 })
 
 test('normalizes plain string Bash tool arguments in streaming responses', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1342,7 +1352,7 @@ test('normalizes plain string Bash tool arguments in streaming responses', async
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1376,7 +1386,7 @@ test('normalizes plain string Bash tool arguments in streaming responses', async
 })
 
 test('normalizes plain string Bash tool arguments when streaming starts with an empty chunk', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1440,7 +1450,7 @@ test('normalizes plain string Bash tool arguments when streaming starts with an 
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1474,7 +1484,7 @@ test('normalizes plain string Bash tool arguments when streaming starts with an 
 })
 
 test('normalizes plain string Bash tool arguments when streaming starts with whitespace', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1538,7 +1548,7 @@ test('normalizes plain string Bash tool arguments when streaming starts with whi
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1572,7 +1582,7 @@ test('normalizes plain string Bash tool arguments when streaming starts with whi
 })
 
 test('keeps terminal whitespace-only Bash arguments invalid in streaming responses', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1614,7 +1624,7 @@ test('keeps terminal whitespace-only Bash arguments invalid in streaming respons
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1648,7 +1658,7 @@ test('keeps terminal whitespace-only Bash arguments invalid in streaming respons
 })
 
 test('normalizes streaming Bash arguments that begin with bracket syntax', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1690,7 +1700,7 @@ test('normalizes streaming Bash arguments that begin with bracket syntax', async
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1724,7 +1734,7 @@ test('normalizes streaming Bash arguments that begin with bracket syntax', async
 })
 
 test('normalizes streaming Bash arguments when the first chunk is only an opening brace', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1788,7 +1798,7 @@ test('normalizes streaming Bash arguments when the first chunk is only an openin
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1822,7 +1832,7 @@ test('normalizes streaming Bash arguments when the first chunk is only an openin
 })
 
 test('repairs truncated structured Bash JSON in streaming responses', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1864,7 +1874,7 @@ test('repairs truncated structured Bash JSON in streaming responses', async () =
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1898,7 +1908,7 @@ test('repairs truncated structured Bash JSON in streaming responses', async () =
 })
 
 test('does not normalize incomplete streamed Bash commands when finish_reason is length', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -1940,7 +1950,7 @@ test('does not normalize incomplete streamed Bash commands when finish_reason is
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -1974,7 +1984,7 @@ test('does not normalize incomplete streamed Bash commands when finish_reason is
 })
 
 test('repairs truncated JSON objects even without command field', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -2016,7 +2026,7 @@ test('repairs truncated JSON objects even without command field', async () => {
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -2050,7 +2060,7 @@ test('repairs truncated JSON objects even without command field', async () => {
 })
 
 test('preserves raw input for unknown plain string tool arguments', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -2110,7 +2120,7 @@ test('preserves raw input for unknown plain string tool arguments', async () => 
 })
 
 test('preserves parsed string input for unknown JSON string tool arguments', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -2172,7 +2182,7 @@ test('preserves parsed string input for unknown JSON string tool arguments', asy
 test('sanitizes malformed MCP tool schemas before sending them to OpenAI', async () => {
   let requestBody: Record<string, unknown> | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     requestBody = JSON.parse(String(init?.body))
 
     return new Response(
@@ -2249,7 +2259,7 @@ test('optional tool properties are not added to required[] — fixes Groq/Azure 
   // causing providers like Groq to reject valid tool calls where the model omits optional args.
   let requestBody: Record<string, unknown> | undefined
 
-  globalThis.fetch = (async (_input, init) => {
+  globalThis.fetch = (async (_input: RequestInfo, init: RequestInit | undefined) => {
     requestBody = JSON.parse(String(init?.body))
 
     return new Response(
@@ -2261,7 +2271,7 @@ test('optional tool properties are not added to required[] — fixes Groq/Azure 
       }),
       { headers: { 'Content-Type': 'application/json' } },
     )
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -2378,7 +2388,7 @@ test('coalesces consecutive assistant messages preserving tool_calls (issue #202
 })
 
 test('non-streaming: reasoning_content emitted as thinking block only when content is null', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -2423,7 +2433,7 @@ test('non-streaming: reasoning_content emitted as thinking block only when conte
 })
 
 test('non-streaming: empty string content does not fall through to reasoning_content as text', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -2468,7 +2478,7 @@ test('non-streaming: empty string content does not fall through to reasoning_con
 })
 
 test('non-streaming: real content takes precedence over reasoning_content', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     return new Response(
       JSON.stringify({
         id: 'chatcmpl-1',
@@ -2537,7 +2547,7 @@ test('non-streaming: strips leaked reasoning preamble from assistant content', a
       }),
       { headers: { 'Content-Type': 'application/json' } },
     )
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
   const result = (await client.beta.messages.create({
@@ -2554,7 +2564,7 @@ test('non-streaming: strips leaked reasoning preamble from assistant content', a
 })
 
 test('streaming: thinking block closed before tool call', async () => {
-  globalThis.fetch = (async (_input, _init) => {
+  globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
       {
         id: 'chatcmpl-1',
@@ -2607,7 +2617,7 @@ test('streaming: thinking block closed before tool call', async () => {
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -2679,7 +2689,7 @@ test('streaming: strips leaked reasoning preamble from assistant content deltas'
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
   const result = await client.beta.messages
@@ -2751,7 +2761,7 @@ test('streaming: strips leaked reasoning preamble when split across multiple con
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
