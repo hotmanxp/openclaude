@@ -17,35 +17,7 @@ const DIM = `${ESC}2m`
 type RGB = [number, number, number]
 const rgb = (r: number, g: number, b: number) => `${ESC}38;2;${r};${g};${b}m`
 
-function lerp(a: RGB, b: RGB, t: number): RGB {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ]
-}
-
-function gradAt(stops: RGB[], t: number): RGB {
-  const c = Math.max(0, Math.min(1, t))
-  const s = c * (stops.length - 1)
-  const i = Math.floor(s)
-  if (i >= stops.length - 1) return stops[stops.length - 1]
-  return lerp(stops[i], stops[i + 1], s - i)
-}
-
-function paintLine(text: string, stops: RGB[], lineT: number): string {
-  let out = ''
-  for (let i = 0; i < text.length; i++) {
-    const t = text.length > 1 ? lineT * 0.5 + (i / (text.length - 1)) * 0.5 : lineT
-    const [r, g, b] = gradAt(stops, t)
-    out += `${rgb(r, g, b)}${text[i]}`
-  }
-  return out + RESET
-}
-
 const ACCENT: RGB = [240, 148, 100]
-const CREAM: RGB = [220, 195, 170]
-const DIMCOL: RGB = [120, 100, 82]
 const BORDER: RGB = [100, 80, 65]
 
 // ─── Provider detection ───────────────────────────────────────────────────────
@@ -143,34 +115,17 @@ export function printStartupScreen(): void {
 
   out.push('')
 
-  // Provider info box
+  // Status line only (no provider info)
   out.push(`${rgb(...BORDER)}\u2554${'\u2550'.repeat(W - 2)}\u2557${RESET}`)
-
-  const lbl = (k: string, v: string, c: RGB = CREAM): [string, number] => {
-    const padK = k.padEnd(9)
-    return [` ${DIM}${rgb(...DIMCOL)}${padK}${RESET} ${rgb(...c)}${v}${RESET}`, ` ${padK} ${v}`.length]
-  }
-
-  const provC: RGB = p.isLocal ? [130, 175, 130] : ACCENT
-  let [r, l] = lbl('Provider', p.name, provC)
-  out.push(boxRow(r, W, l))
-  ;[r, l] = lbl('Model', p.model)
-  out.push(boxRow(r, W, l))
-  const ep = p.baseUrl.length > 38 ? p.baseUrl.slice(0, 35) + '...' : p.baseUrl
-  ;[r, l] = lbl('Endpoint', ep)
-  out.push(boxRow(r, W, l))
-
-  out.push(`${rgb(...BORDER)}\u2560${'\u2550'.repeat(W - 2)}\u2563${RESET}`)
 
   const sC: RGB = p.isLocal ? [130, 175, 130] : ACCENT
   const sL = p.isLocal ? 'local' : 'cloud'
-  const sRow = ` ${rgb(...sC)}\u25cf${RESET} ${DIM}${rgb(...DIMCOL)}${sL}${RESET}    ${DIM}${rgb(...DIMCOL)}Ready \u2014 type ${RESET}${rgb(...ACCENT)}/help${RESET}${DIM}${rgb(...DIMCOL)} to begin${RESET}`
-  const sLen = ` \u25cf ${sL}    Ready \u2014 type /help to begin`.length
+  const versionStr = `opencc v${MACRO.DISPLAY_VERSION ?? MACRO.VERSION}`
+  const sRow = ` ${rgb(...sC)}\u25cf${RESET} ${rgb(180, 180, 180)}${sL}${RESET}    ${rgb(180, 180, 180)}Ready \u2014 type ${RESET}${rgb(...ACCENT)}/help${RESET}    ${rgb(255, 255, 255)}${versionStr}${RESET}`
+  const sLen = ` \u25cf ${sL}    Ready \u2014 type /help    ${versionStr}`.length
   out.push(boxRow(sRow, W, sLen))
 
   out.push(`${rgb(...BORDER)}\u255a${'\u2550'.repeat(W - 2)}\u255d${RESET}`)
-  out.push(`  ${DIM}${rgb(...DIMCOL)}opencc ${RESET}${rgb(...ACCENT)}v${MACRO.DISPLAY_VERSION ?? MACRO.VERSION}${RESET}`)
-  out.push('')
 
   process.stdout.write(out.join('\n') + '\n')
 }
