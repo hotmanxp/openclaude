@@ -352,12 +352,6 @@ export async function getAnthropicClient({
 
   // Determine authentication method based on available tokens
   const resolvedApiKey = isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey()
-  console.error('[DEBUG] Original SDK clientConfig:', {
-    hasApiKey: !!resolvedApiKey,
-    apiKeyPrefix: resolvedApiKey?.slice(0, 10),
-    baseURL: process.env.ANTHROPIC_BASE_URL,
-    isClaudeAISubscriber: isClaudeAISubscriber(),
-  })
 
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
     apiKey: resolvedApiKey,
@@ -372,12 +366,6 @@ export async function getAnthropicClient({
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   }
-
-  console.error('[DEBUG] Creating Anthropic client with config:', {
-    hasApiKey: !!clientConfig.apiKey,
-    apiKeyPrefix: (clientConfig.apiKey as string)?.slice(0, 10),
-    baseURL: (clientConfig as any).baseURL,
-  })
 
   return new Anthropic(clientConfig)
 }
