@@ -343,7 +343,7 @@ export const FileEditTool = buildTool({
       }
     }
 
-    // Additional validation for Claude settings files
+    // Additional validation for Open CC settings files
     const settingsValidationResult = validateInputForSettingsFileEdit(
       fullFilePath,
       file,
