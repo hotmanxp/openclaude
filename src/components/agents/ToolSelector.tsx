@@ -46,6 +46,14 @@ type ToolBuckets = {
   MCP: ToolBucket;
   OTHER: ToolBucket;
 };
+type NavigableItem = {
+  id: string;
+  label: string;
+  action: () => void;
+  isContinue?: boolean;
+  isToggle?: boolean;
+  isHeader?: boolean;
+};
 function getToolBuckets(): ToolBuckets {
   return {
     READ_ONLY: {
@@ -58,7 +66,7 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set([BashTool.name, "external" === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
+      toolNames: new Set([BashTool.name])
     },
     MCP: {
       name: 'MCP tools',
@@ -94,7 +102,7 @@ function getMcpServerBuckets(tools: Tools): Array<{
     tools
   })).sort((a, b) => a.serverName.localeCompare(b.serverName));
 }
-export function ToolSelector(t0) {
+export function ToolSelector(t0: Props) {
   const $ = _c(69);
   const {
     tools,
@@ -141,7 +149,7 @@ export function ToolSelector(t0) {
   if ($[7] !== selectedTools || $[8] !== toolNames) {
     let t5;
     if ($[10] !== toolNames) {
-      t5 = name => toolNames.has(name);
+      t5 = (name: string) => toolNames.has(name);
       $[10] = toolNames;
       $[11] = t5;
     } else {
@@ -167,11 +175,11 @@ export function ToolSelector(t0) {
   const isAllSelected = validSelectedTools.length === customAgentTools.length && customAgentTools.length > 0;
   let t6;
   if ($[14] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = toolName => {
+    t6 = (toolName: string) => {
       if (!toolName) {
         return;
       }
-      setSelectedTools(current => current.includes(toolName) ? current.filter(t_1 => t_1 !== toolName) : [...current, toolName]);
+      setSelectedTools((current: string[]) => current.includes(toolName) ? current.filter((t_1: string) => t_1 !== toolName) : [...current, toolName]);
     };
     $[14] = t6;
   } else {
@@ -180,13 +188,13 @@ export function ToolSelector(t0) {
   const handleToggleTool = t6;
   let t7;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = (toolNames_0, select) => {
-      setSelectedTools(current_0 => {
+    t7 = (toolNames_0: string[], select: boolean) => {
+      setSelectedTools((current_0: string[]) => {
         if (select) {
-          const toolsToAdd = toolNames_0.filter(t_2 => !current_0.includes(t_2));
+          const toolsToAdd = toolNames_0.filter((t_2: string) => !current_0.includes(t_2));
           return [...current_0, ...toolsToAdd];
         } else {
-          return current_0.filter(t_3 => !toolNames_0.includes(t_3));
+          return current_0.filter((t_3: string) => !toolNames_0.includes(t_3));
         }
       });
     };
@@ -199,7 +207,7 @@ export function ToolSelector(t0) {
   if ($[16] !== customAgentTools || $[17] !== onComplete || $[18] !== validSelectedTools) {
     t8 = () => {
       const allToolNames = customAgentTools.map(_temp3);
-      const areAllToolsSelected = validSelectedTools.length === allToolNames.length && allToolNames.every(name_0 => validSelectedTools.includes(name_0));
+      const areAllToolsSelected = validSelectedTools.length === allToolNames.length && allToolNames.every((name_0: string) => validSelectedTools.includes(name_0));
       const finalTools = areAllToolsSelected ? undefined : validSelectedTools;
       onComplete(finalTools);
     };
@@ -211,7 +219,7 @@ export function ToolSelector(t0) {
     t8 = $[19];
   }
   const handleConfirm = t8;
-  let buckets;
+  let buckets: { readOnly: Tool[]; edit: Tool[]; execution: Tool[]; mcp: Tool[]; other: Tool[] };
   if ($[20] !== customAgentTools) {
     const toolBuckets = getToolBuckets();
     buckets = {
@@ -221,7 +229,7 @@ export function ToolSelector(t0) {
       mcp: [] as Tool[],
       other: [] as Tool[]
     };
-    customAgentTools.forEach(tool => {
+    customAgentTools.forEach((tool: Tool) => {
       if (isMcpTool(tool)) {
         buckets.mcp.push(tool);
       } else {
@@ -250,8 +258,8 @@ export function ToolSelector(t0) {
   const toolsByBucket = buckets;
   let t9;
   if ($[22] !== selectedSet) {
-    t9 = bucketTools => {
-      const selected = count(bucketTools, t_5 => selectedSet.has(t_5.name));
+    t9 = (bucketTools: Tool[]) => {
+      const selected = count(bucketTools, (t_5: Tool) => selectedSet.has(t_5.name));
       const needsSelection = selected < bucketTools.length;
       return () => {
         const toolNames_1 = bucketTools.map(_temp4);
@@ -264,7 +272,7 @@ export function ToolSelector(t0) {
     t9 = $[23];
   }
   const createBucketToggleAction = t9;
-  let navigableItems;
+  let navigableItems: NavigableItem[];
   if ($[24] !== createBucketToggleAction || $[25] !== customAgentTools || $[26] !== focusIndex || $[27] !== handleConfirm || $[28] !== isAllSelected || $[29] !== selectedSet || $[30] !== showIndividualTools || $[31] !== toolsByBucket.edit || $[32] !== toolsByBucket.execution || $[33] !== toolsByBucket.mcp || $[34] !== toolsByBucket.other || $[35] !== toolsByBucket.readOnly) {
     navigableItems = [];
     navigableItems.push({
@@ -321,7 +329,7 @@ export function ToolSelector(t0) {
       if (bucketTools_0.length === 0) {
         return;
       }
-      const selected_0 = count(bucketTools_0, t_8 => selectedSet.has(t_8.name));
+      const selected_0 = count(bucketTools_0, (t_8: Tool) => selectedSet.has(t_8.name));
       const isFullySelected = selected_0 === bucketTools_0.length;
       navigableItems.push({
         id,
@@ -383,7 +391,7 @@ export function ToolSelector(t0) {
           isHeader: true
         });
       }
-      customAgentTools.forEach(tool_0 => {
+      customAgentTools.forEach((tool_0: Tool) => {
         let displayName = tool_0.name;
         if (tool_0.name.startsWith("mcp__")) {
           const mcpInfo = mcpInfoFromString(tool_0.name);
@@ -441,7 +449,7 @@ export function ToolSelector(t0) {
   useKeybinding("confirm:no", handleCancel, t11);
   let t12;
   if ($[49] !== focusIndex || $[50] !== navigableItems) {
-    t12 = e => {
+    t12 = (e: KeyboardEvent) => {
       if (e.key === "return") {
         e.preventDefault();
         const item = navigableItems[focusIndex];
@@ -505,7 +513,7 @@ export function ToolSelector(t0) {
   }
   let t19;
   if ($[59] !== focusIndex || $[60] !== t18) {
-    t19 = t18.map((item_0, index) => {
+    t19 = t18.map((item_0: NavigableItem, index: number) => {
       const isCurrentlyFocused = index + 1 === focusIndex;
       const isToggleButton = item_0.isToggle;
       const isHeader = item_0.isHeader;
@@ -540,22 +548,22 @@ export function ToolSelector(t0) {
   return t22;
 }
 function _temp8() {}
-function _temp7(t_10) {
+function _temp7(t_10: Tool) {
   return t_10.name;
 }
 function _temp6() {}
-function _temp5(t_7) {
+function _temp5(t_7: Tool) {
   return t_7.name;
 }
-function _temp4(t_6) {
+function _temp4(t_6: Tool) {
   return t_6.name;
 }
-function _temp3(t_4) {
+function _temp3(t_4: Tool) {
   return t_4.name;
 }
-function _temp2(t_0) {
+function _temp2(t_0: Tool) {
   return t_0.name;
 }
-function _temp(t) {
+function _temp(t: Tool) {
   return t.name;
 }

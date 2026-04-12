@@ -127,6 +127,7 @@ import type {
   SDKControlResponse,
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
+  StdinMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
@@ -414,6 +415,22 @@ function trackReceivedMessageUuid(uuid: UUID): boolean {
     }
   }
   return true // new UUID
+}
+
+/**
+ * Type guard to narrow SDKControlRequest from SDKControlRequest | SDKMessage union.
+ * SDKMessage has an index signature [key: string]: unknown, so TypeScript cannot
+ * narrow based on type === 'control_request' alone. Checking for the 'request'
+ * property (which only exists on SDKControlRequest) properly narrows the type.
+ */
+function isSDKControlRequest(
+  msg: StdinMessage | SDKMessage,
+): msg is SDKControlRequest {
+  return (
+    msg.type === 'control_request' &&
+    'request' in msg &&
+    typeof (msg as SDKControlRequest).request === 'object'
+  )
 }
 
 type PromptValue = string | ContentBlockParam[]
@@ -2829,7 +2846,7 @@ function runHeadlessStreaming(
         notifyCommandLifecycle(eventId, 'completed')
       }
 
-      if (message.type === 'control_request') {
+      if (isSDKControlRequest(message)) {
         if (message.request.subtype === 'interrupt') {
           // Track escapes for attribution (internal-only feature)
           if (feature('COMMIT_ATTRIBUTION')) {

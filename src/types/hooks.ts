@@ -14,6 +14,18 @@ export { HOOK_EVENTS } from 'src/entrypoints/agentSdkTypes.js'
 export type { HookEvent, PermissionUpdate } from 'src/entrypoints/agentSdkTypes.js'
 // HookInput is the generic SDK type - used for callback signatures
 export type HookInput = {
+  hook_event_name: HookEvent
+  tool_name?: string
+  tool_input?: unknown
+  source?: string
+  trigger?: string
+  notification_type?: string
+  reason?: string
+  error?: string
+  agent_type?: string
+  mcp_server_name?: string
+  load_reason?: string
+  file_path?: string
   [key: string]: unknown
 }
 

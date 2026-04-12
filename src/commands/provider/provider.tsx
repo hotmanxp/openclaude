@@ -20,11 +20,18 @@ import {
 import {
   buildOllamaProfileEnv,
   buildOpenAIProfileEnv,
+  buildGeminiProfileEnv,
+  buildCodexProfileEnv,
   createProfileFile,
   deleteProfileFile,
   loadProfileFile,
   maskSecretForDisplay,
   redactSecretValueForDisplay,
+  resolveCodexApiCredentials,
+  readGeminiAccessToken,
+  saveGeminiAccessToken,
+  mayHaveGeminiAdcCredentials,
+  getGeminiProjectIdHint,
   sanitizeApiKey,
   sanitizeProviderConfigValue,
   saveProfileFile,
@@ -41,11 +48,17 @@ import {
 } from '../../utils/providerRecommendation.js'
 import {
   getLocalOpenAICompatibleProviderLabel,
+  getOllamaChatBaseUrl,
   hasLocalOllama,
   listOllamaModels,
 } from '../../utils/providerDiscovery.js'
 
-type ProviderChoice = 'auto' | ProviderProfile | 'clear'
+// Default constants for provider setup
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
+const DEFAULT_CODEX_BASE_URL = 'https://api.githubcopilot.com';
+
+type ProviderChoice = 'auto' | ProviderProfile | 'clear' | 'gemini' | 'codex'
 
 type Step =
   | { name: 'choose' }
@@ -188,7 +201,7 @@ export function buildCurrentProviderSummary(options?: {
     })
 
     let providerLabel = 'OpenAI-compatible'
-    if (request.transport === 'codex_responses') {
+    if ((request.transport as string) === 'codex_responses') {
       providerLabel = 'Codex'
     } else if (isLocalProviderUrl(request.baseUrl)) {
       providerLabel = getLocalOpenAICompatibleProviderLabel(request.baseUrl)
@@ -636,7 +649,7 @@ function AutoRecommendationStep({
               { label: 'Back', value: 'back' },
               { label: 'Cancel', value: 'cancel' },
             ]}
-            onChange={value => (value === 'back' ? onBack() : onCancel())}
+            onChange={(value: string) => (value === 'back' ? onBack() : onCancel())}
             onCancel={onCancel}
           />
         </Box>
@@ -659,7 +672,7 @@ function AutoRecommendationStep({
               { label: 'Back', value: 'back' },
               { label: 'Cancel', value: 'cancel' },
             ]}
-            onChange={value => {
+            onChange={(value: string) => {
               if (value === 'continue') {
                 onNeedOpenAI(status.defaultModel)
               } else if (value === 'back') {
@@ -692,7 +705,7 @@ function AutoRecommendationStep({
             { label: 'Back', value: 'back' },
             { label: 'Cancel', value: 'cancel' },
           ]}
-          onChange={value => {
+          onChange={(value: string) => {
             if (value === 'save') {
               onSave(
                 'ollama',
@@ -794,7 +807,7 @@ function OllamaModelStep({
               { label: 'Back', value: 'back' },
               { label: 'Cancel', value: 'cancel' },
             ]}
-            onChange={value => (value === 'back' ? onBack() : onCancel())}
+            onChange={(value: string) => (value === 'back' ? onBack() : onCancel())}
             onCancel={onCancel}
           />
         </Box>
@@ -815,7 +828,7 @@ function OllamaModelStep({
           defaultFocusValue={status.defaultValue}
           inlineDescriptions
           visibleOptionCount={Math.min(8, status.options.length)}
-          onChange={value => {
+          onChange={(value: string) => {
             onSave(
               'ollama',
               buildOllamaProfileEnv(value, {
@@ -851,7 +864,7 @@ function CodexCredentialStep({
               { label: 'Back', value: 'back' },
               { label: 'Cancel', value: 'cancel' },
             ]}
-            onChange={value => (value === 'back' ? onBack() : onCancel())}
+            onChange={(value: string) => (value === 'back' ? onBack() : onCancel())}
             onCancel={onCancel}
           />
         </Box>
@@ -885,7 +898,7 @@ function CodexCredentialStep({
           defaultFocusValue="codexplan"
           inlineDescriptions
           visibleOptionCount={options.length}
-          onChange={value => {
+          onChange={(value: string) => {
             const env = buildCodexProfileEnv({
               model: value,
               processEnv: process.env,
@@ -1141,7 +1154,7 @@ export function ProviderWizard({
               options={options}
               inlineDescriptions
               visibleOptionCount={options.length}
-              onChange={value => {
+              onChange={(value: string) => {
                 if (value === 'api-key') {
                   setStep({ name: 'gemini-key' })
                 } else if (value === 'access-token') {

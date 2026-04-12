@@ -104,13 +104,15 @@ const VoiceKeybindingHandler: typeof import('../hooks/useVoiceIntegration.js').V
 // Frustration detection is internal-only (dogfooding). Conditional require so external
 // builds eliminate the module entirely (including its two O(n) useMemos that run
 // on every messages change, plus the GrowthBook fetch).
-const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection = "external" === 'ant' ? require('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection : () => ({
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build, module doesn't exist in external
+const useFrustrationDetection = "external" === 'ant' ? require('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection : () => ({
   state: 'closed',
   handleTranscriptSelect: () => { }
 });
 // Ant-only org warning. Conditional require so the org UUID list is
 // eliminated from external builds (one UUID is on excluded-strings).
-const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification = "external" === 'ant' ? require('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification : () => { };
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build, module doesn't exist in external
+const useAntOrgWarningNotification = "external" === 'ant' ? require('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification : () => { };
 // Dead code elimination: conditional import for coordinator mode
 const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
   name: string;
@@ -219,8 +221,11 @@ import type { EffortValue } from '../utils/effort.js';
 import { RemoteCallout } from '../components/RemoteCallout.js';
 import { getAPIProvider } from '../utils/model/providers.js';
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build
 const AntModelSwitchCallout = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').AntModelSwitchCallout : null;
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build
 const shouldShowAntModelSwitch = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').shouldShowModelSwitchCallout : (): boolean => false;
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build
 const UndercoverAutoCallout = "external" === 'ant' ? require('../components/UndercoverAutoCallout.js').UndercoverAutoCallout : null;
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { activityManager } from '../utils/activityManager.js';
@@ -272,7 +277,7 @@ import { AutoRunIssueNotification, shouldAutoRunIssue, getAutoRunIssueReasonText
 import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
-const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
+const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as any : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
@@ -606,6 +611,7 @@ export function REPL({
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
   // includes, and these were on the render path (hot during PageUp spam).
   const titleDisabled = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE), []);
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   const moreRightEnabled = useMemo(() => "external" === 'ant' && isEnvTruthy(process.env.CLAUDE_MORERIGHT), []);
   const disableVirtualScroll = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL), []);
   const disableMessageActions = feature('MESSAGE_ACTIONS') ?
@@ -731,6 +737,7 @@ export function REPL({
   const [showIdeOnboarding, setShowIdeOnboarding] = useState(false);
   // Dead code elimination: model switch callout state (internal-only)
   const [showModelSwitchCallout, setShowModelSwitchCallout] = useState(() => {
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant') {
       return shouldShowAntModelSwitch();
     }
@@ -1014,6 +1021,7 @@ export function REPL({
   }, []);
   const [showUndercoverCallout, setShowUndercoverCallout] = useState(false);
   useEffect(() => {
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant') {
       void (async () => {
         // Wait for repo classification to settle (memoized, no-op if primed).
@@ -2072,9 +2080,11 @@ export function REPL({
     if (allowDialogsWithAnimation && showIdeOnboarding) return 'ide-onboarding';
 
     // Model switch callout (internal-only, eliminated from external builds)
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && allowDialogsWithAnimation && showModelSwitchCallout) return 'model-switch';
 
     // Undercover auto-enable explainer (internal-only, eliminated from external builds)
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && allowDialogsWithAnimation && showUndercoverCallout) return 'undercover-callout';
 
     // Effort callout (shown once for Opus 4.6 users when effort is enabled)
@@ -2514,6 +2524,7 @@ export function REPL({
       dynamicSkillDirTriggers: new Set<string>(),
       discoveredSkillNames: discoveredSkillNamesRef.current,
       setResponseLength,
+      // @ts-expect-error - Build-time conditional: "external" vs "ant" build
       pushApiMetricsEntry: "external" === 'ant' ? (ttftMs: number) => {
         const now = Date.now();
         const baseline = responseLengthRef.current;
@@ -2844,6 +2855,7 @@ export function REPL({
 
     // Capture internal-only API metrics before resetLoadingState clears the ref.
     // For multi-request turns (tool use loops), compute P50 across all requests.
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && apiMetricsRef.current.length > 0) {
       const entries = apiMetricsRef.current;
       const ttfts = entries.map(e => e.ttftMs);
@@ -2972,6 +2984,7 @@ export function REPL({
         // minutes — wiping the session made the pill disappear entirely, forcing
         // the user to re-invoke Tmux just to peek. Skip on abort so the panel
         // stays open for inspection (matches the turn-duration guard below).
+        // @ts-expect-error - Build-time conditional: "external" vs "ant" build
         if ("external" === 'ant' && !abortController.signal.aborted) {
           setAppState(prev => {
             if (prev.tungstenActiveSession === undefined) return prev;
@@ -3095,6 +3108,7 @@ export function REPL({
       }
 
       // Atomically: clear initial message, set permission mode and rules, and store plan for verification
+      // @ts-expect-error - Build-time conditional: "external" vs "ant" build
       const shouldStorePlanForVerification = initialMsg.message.planContent && "external" === 'ant' && isEnvTruthy(undefined);
       setAppState(prev => {
         // Build and apply permission updates (mode + allowedPrompts rules)
@@ -3628,6 +3642,7 @@ export function REPL({
 
   // Handler for when user presses 1 on survey thanks screen to share details
   const handleSurveyRequestFeedback = useCallback(() => {
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     const command = "external" === 'ant' ? '/issue' : '/feedback';
     onSubmit(command, {
       setCursorOffset: () => { },
@@ -4096,6 +4111,7 @@ export function REPL({
   // - Workers receive permission responses via mailbox messages
   // - Leaders receive permission requests via mailbox messages
 
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
     // Tasks mode: watch for tasks and auto-process them
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -4205,6 +4221,7 @@ export function REPL({
 
     // Fall back to default behavior
     const hookType = currentHooks[0]?.data.hookEvent === 'SubagentStop' ? 'subagent stop' : 'stop';
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant') {
       const cmd = currentHooks[completedCount]?.data.command;
       const label = cmd ? ` '${truncateToWidth(cmd, 40)}'` : '';
@@ -4614,6 +4631,7 @@ export function REPL({
         {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
           {toolJSX.jsx}
         </Box>}
+        {/* @ts-expect-error - Build-time conditional: "external" vs "ant" build */}
         {"external" === 'ant' && <TungstenLiveMonitor />}
         {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
         <Box flexGrow={1} />
@@ -4837,6 +4855,7 @@ export function REPL({
             });
           }} />}
           {focusedInputDialog === 'ide-onboarding' && <IdeOnboardingDialog onDone={() => setShowIdeOnboarding(false)} installationStatus={ideInstallationStatus} />}
+          {/* @ts-expect-error - Build-time conditional: "external" vs "ant" build */}
           {"external" === 'ant' && focusedInputDialog === 'model-switch' && AntModelSwitchCallout && <AntModelSwitchCallout onDone={(selection: string, modelAlias?: string) => {
             setShowModelSwitchCallout(false);
             if (selection === 'switch' && modelAlias) {
@@ -4847,6 +4866,7 @@ export function REPL({
               }));
             }
           }} />}
+          {/* @ts-expect-error - Build-time conditional: "external" vs "ant" build */}
           {"external" === 'ant' && focusedInputDialog === 'undercover-callout' && UndercoverAutoCallout && <UndercoverAutoCallout onDone={() => setShowUndercoverCallout(false)} />}
           {focusedInputDialog === 'effort-callout' && <EffortCallout model={mainLoopModel} onDone={selection => {
             setShowEffortCallout(false);
@@ -4930,6 +4950,7 @@ export function REPL({
             {/* Frustration-triggered transcript sharing prompt */}
             {frustrationDetection.state !== 'closed' && <FeedbackSurvey state={frustrationDetection.state} lastResponse={null} handleSelect={() => { }} handleTranscriptSelect={frustrationDetection.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
             {/* Skill improvement survey - appears when improvements detected (internal-only) */}
+            {/* @ts-expect-error - Build-time conditional: "external" vs "ant" build */}
             {"external" === 'ant' && skillImprovementSurvey.suggestion && <SkillImprovementSurvey isOpen={skillImprovementSurvey.isOpen} skillName={skillImprovementSurvey.suggestion.skillName} updates={skillImprovementSurvey.suggestion.updates} handleSelect={skillImprovementSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} />}
             {showIssueFlagBanner && <IssueFlagBanner />}
             { }
@@ -4988,6 +5009,7 @@ export function REPL({
             // useLogMessages path, so boundary never persisted).
             // Find by uuid since old is raw REPL history and snipped
             // entries can shift the projected messageIndex.
+            // @ts-expect-error - PartialCompactDirection is incorrectly used as string
             if (isFullscreenEnvEnabled() && direction === 'from') {
               setMessages(old => {
                 const rawIdx = old.findIndex(m => m.uuid === message.uuid);
@@ -5003,6 +5025,7 @@ export function REPL({
             }
             setConversationId(randomUUID());
             runPostCompactCleanup(context.options.querySource);
+            // @ts-expect-error - PartialCompactDirection is incorrectly used as string
             if (direction === 'from') {
               const r = textForResubmit(message);
               if (r) {

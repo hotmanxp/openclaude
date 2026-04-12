@@ -1609,7 +1609,7 @@ export async function createAsyncAgentAttachmentsIfNeeded(
 function collectReadToolFilePaths(messages: Message[]): Set<string> {
   const stubIds = new Set<string>()
   for (const message of messages) {
-    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
+    if (message.type !== 'user' || !message.message || !Array.isArray(message.message.content)) {
       continue
     }
     for (const block of message.message.content) {
@@ -1627,6 +1627,7 @@ function collectReadToolFilePaths(messages: Message[]): Set<string> {
   for (const message of messages) {
     if (
       message.type !== 'assistant' ||
+      !message.message ||
       !Array.isArray(message.message.content)
     ) {
       continue

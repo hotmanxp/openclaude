@@ -2390,13 +2390,14 @@ function recoverOrphanedParallelToolResults(
   const siblingsByMsgId = new Map<string, TranscriptMessage[]>()
   const toolResultsByAsst = new Map<UUID, TranscriptMessage[]>()
   for (const m of messages.values()) {
-    if (m.type === 'assistant' && m.message.id) {
+    if (m.type === 'assistant' && m.message?.id) {
       const group = siblingsByMsgId.get(m.message.id)
       if (group) group.push(m)
       else siblingsByMsgId.set(m.message.id, [m])
     } else if (
       m.type === 'user' &&
       m.parentUuid &&
+      m.message !== undefined &&
       Array.isArray(m.message.content) &&
       m.message.content.some(b => b.type === 'tool_result')
     ) {
@@ -2414,7 +2415,7 @@ function recoverOrphanedParallelToolResults(
   const inserts = new Map<UUID, TranscriptMessage[]>()
   let recoveredCount = 0
   for (const asst of chainAssistants) {
-    const msgId = asst.message.id
+    const msgId = asst.message?.id
     if (!msgId || processedGroups.has(msgId)) continue
     processedGroups.add(msgId)
 

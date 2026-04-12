@@ -22,7 +22,7 @@ import type { Message as MessageType, NormalizedMessage, ProgressMessage as Prog
 import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
 import { collapseBackgroundBashNotifications } from '../utils/collapseBackgroundBashNotifications.js';
 import { collapseHookSummaries } from '../utils/collapseHookSummaries.js';
-import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js';
+import { collapseReadSearchGroups, type CollapseRenderableMessage } from '../utils/collapseReadSearch.js';
 import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
@@ -52,7 +52,7 @@ import type { JumpHandle } from './VirtualMessageList.js';
 // and pegs CPU at 100%. Memo on agentDefinitions so a new messages array
 // doesn't invalidate the logo subtree. LogoV2/StatusNotices internally
 // subscribe to useAppState/useSettings for their own updates.
-const LogoHeader = React.memo(function LogoHeader(t0) {
+const LogoHeader = React.memo(function LogoHeader(t0: { agentDefinitions?: AgentDefinitionsResult }): React.ReactNode {
   const $ = _c(3);
   const {
     agentDefinitions
@@ -610,8 +610,8 @@ const MessagesImpl = ({
   useEffect(() => {
     return () => progress(null);
   }, [progress]);
-  const messageKey = useCallback((msg_7: RenderableMessage) => `${msg_7.uuid}-${conversationId}`, [conversationId]);
-  const renderMessageRow = (msg_8: RenderableMessage, index: number) => {
+  const messageKey = useCallback((msg_7: CollapseRenderableMessage) => `${msg_7.uuid}-${conversationId}`, [conversationId]);
+  const renderMessageRow = (msg_8: CollapseRenderableMessage, index: number) => {
     const prevType = index > 0 ? renderableMessages[index - 1]?.type : undefined;
     const isUserContinuation = msg_8.type === 'user' && prevType === 'user';
     // hasContentAfter is only consumed for collapsed_read_search groups;

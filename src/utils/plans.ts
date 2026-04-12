@@ -7,6 +7,7 @@ import type { LogOption } from 'src/types/logs.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
+  Message,
   SystemFileSnapshotMessage,
   UserMessage,
 } from 'src/types/message.js'
@@ -390,7 +391,7 @@ export async function persistFileSnapshotIfRemote(): Promise<void> {
     }
 
     const { recordTranscript } = await import('./sessionStorage.js')
-    await recordTranscript([message])
+    await recordTranscript([message as Message])
   } catch (error) {
     logError(error)
   }

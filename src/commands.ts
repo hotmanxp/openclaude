@@ -1,9 +1,13 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
+// @ts-ignore - internal ant command without type declarations
 import autofixPr from './commands/autofix-pr/index.js'
+// @ts-ignore - internal ant command without type declarations
 import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
+// @ts-ignore - internal ant command without type declarations
 import goodClaude from './commands/good-claude/index.js'
+// @ts-ignore - internal ant command without type declarations
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
@@ -18,6 +22,7 @@ import { context, contextNonInteractive } from './commands/context/index.js'
 import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import dream from './commands/dream/index.js'
+// @ts-ignore - internal ant command without type declarations
 import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
@@ -30,10 +35,12 @@ import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
+// @ts-ignore - internal ant command without type declarations
 import breakCache from './commands/break-cache/index.js'
 import cacheProbe from './commands/cache-probe/index.js'
 import mcp from './commands/mcp/index.js'
 import mobile from './commands/mobile/index.js'
+// @ts-ignore - internal ant command without type declarations
 import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
 import releaseNotes from './commands/release-notes/index.js'
@@ -42,10 +49,12 @@ import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
 import session from './commands/session/index.js'
+// @ts-ignore - internal ant command without type declarations
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
 import tasks from './commands/tasks/index.js'
+// @ts-ignore - internal ant command without type declarations
 import teleport from './commands/teleport/index.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const agentsPlatform =
@@ -54,6 +63,7 @@ const agentsPlatform =
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import securityReview from './commands/security-review.js'
+// @ts-ignore - internal ant command without type declarations
 import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
@@ -89,7 +99,8 @@ const forceSnip = feature('HISTORY_SNIP')
   : null
 const workflowsCmd = feature('WORKFLOW_SCRIPTS')
   ? (
-      require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
+      // @ts-ignore - module may not exist in external builds
+      require('./commands/workflows/index.js') as unknown as typeof import('./commands/workflows/index.js')
     ).default
   : null
 const webCmd = feature('CCR_REMOTE_SETUP')
@@ -99,7 +110,8 @@ const webCmd = feature('CCR_REMOTE_SETUP')
   : null
 const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (
-      require('./services/skillSearch/localSearch.js') as typeof import('./services/skillSearch/localSearch.js')
+      // @ts-ignore - module may not exist in external builds
+      require('./services/skillSearch/localSearch.js') as unknown as typeof import('./services/skillSearch/localSearch.js')
     ).clearSkillIndexCache
   : null
 const subscribePr = feature('KAIROS_GITHUB_WEBHOOKS')
@@ -111,12 +123,14 @@ const ultraplan = feature('ULTRAPLAN')
 const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd = feature('UDS_INBOX')
   ? (
-      require('./commands/peers/index.js') as typeof import('./commands/peers/index.js')
+      // @ts-ignore - module may not exist in external builds
+      require('./commands/peers/index.js') as unknown as typeof import('./commands/peers/index.js')
     ).default
   : null
 const forkCmd = feature('FORK_SUBAGENT')
   ? (
-      require('./commands/fork/index.js') as typeof import('./commands/fork/index.js')
+      // @ts-ignore - module may not exist in external builds
+      require('./commands/fork/index.js') as unknown as typeof import('./commands/fork/index.js')
     ).default
   : null
 const buddy = isBuddyEnabled()
@@ -142,16 +156,18 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
+// @ts-ignore - internal ant command without type declarations
 import mockLimits from './commands/mock-limits/index.js'
 import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import wiki from './commands/wiki/index.js'
+// @ts-ignore - internal ant command without type declarations
 import summary from './commands/summary/index.js'
-import {
-  resetLimits,
-  resetLimitsNonInteractive,
-} from './commands/reset-limits/index.js'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { resetLimits, resetLimitsNonInteractive } = require('./commands/reset-limits/index.js') as { resetLimits: unknown; resetLimitsNonInteractive: unknown };
+// @ts-ignore - internal ant command without type declarations
 import antTrace from './commands/ant-trace/index.js'
+// @ts-ignore - internal ant command without type declarations
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import chrome from './commands/chrome/index.js'
@@ -176,6 +192,7 @@ import {
 import memoize from 'lodash-es/memoize.js'
 import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth.js'
 import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js'
+// @ts-ignore - internal ant command without type declarations
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
@@ -207,7 +224,9 @@ const usageReport: Command = {
     return real.getPromptForCommand(args, context)
   },
 }
+// @ts-ignore - internal ant command without type declarations
 import oauthRefresh from './commands/oauth-refresh/index.js'
+// @ts-ignore - internal ant command without type declarations
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
@@ -413,7 +432,8 @@ async function getSkills(cwd: string): Promise<{
 /* eslint-disable @typescript-eslint/no-require-imports */
 const getWorkflowCommands = feature('WORKFLOW_SCRIPTS')
   ? (
-      require('./tools/WorkflowTool/createWorkflowCommand.js') as typeof import('./tools/WorkflowTool/createWorkflowCommand.js')
+      // @ts-ignore - module may not exist in external builds
+      require('./tools/WorkflowTool/createWorkflowCommand.js') as unknown as typeof import('./tools/WorkflowTool/createWorkflowCommand.js')
     ).getWorkflowCommands
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */

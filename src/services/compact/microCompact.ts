@@ -175,7 +175,7 @@ export function estimateMessageTokens(messages: Message[]): number {
       continue
     }
 
-    if (!Array.isArray(message.message.content)) {
+    if (!message.message || !Array.isArray(message.message.content)) {
       continue
     }
 
@@ -183,7 +183,7 @@ export function estimateMessageTokens(messages: Message[]): number {
       if (block.type === 'text') {
         totalTokens += roughTokenCountEstimation(block.text)
       } else if (block.type === 'tool_result') {
-        totalTokens += calculateToolResultTokens(block)
+        totalTokens += calculateToolResultTokens(block as ToolResultBlockParam)
       } else if (block.type === 'image' || block.type === 'document') {
         totalTokens += IMAGE_MAX_TOKEN_SIZE
       } else if (block.type === 'thinking') {
@@ -234,6 +234,7 @@ function collectCompactableToolIds(messages: Message[]): string[] {
   for (const message of messages) {
     if (
       message.type === 'assistant' &&
+      message.message &&
       Array.isArray(message.message.content)
     ) {
       for (const block of message.message.content) {
@@ -314,12 +315,12 @@ async function cachedMicrocompactPath(
 ): Promise<MicrocompactResult> {
   const mod = await getCachedMCModule()
   const state = ensureCachedMCState()
-  const config = mod.getCachedMCConfig()
+  const config = mod.getCachedMCConfig() as { triggerThreshold: number; keepRecent: number } | null
 
   const compactableToolIds = new Set(collectCompactableToolIds(messages))
   // Second pass: register tool results grouped by user message
   for (const message of messages) {
-    if (message.type === 'user' && Array.isArray(message.message.content)) {
+    if (message.type === 'user' && message.message && Array.isArray(message.message.content)) {
       const groupIds: string[] = []
       for (const block of message.message.content) {
         if (
@@ -349,6 +350,7 @@ async function cachedMicrocompactPath(
     )
 
     // Log the event
+    const cfg = config ?? { triggerThreshold: 0, keepRecent: 1 }
     logEvent('tengu_cached_microcompact', {
       toolsDeleted: toolsToDelete.length,
       deletedToolIds: toolsToDelete.join(
@@ -357,8 +359,8 @@ async function cachedMicrocompactPath(
       activeToolCount: state.toolOrder.length - state.deletedRefs.size,
       triggerType:
         'auto' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      threshold: config.triggerThreshold,
-      keepRecent: config.keepRecent,
+      threshold: cfg.triggerThreshold,
+      keepRecent: cfg.keepRecent,
     })
 
     // Suppress warning after successful compaction
@@ -379,13 +381,8 @@ async function cachedMicrocompactPath(
     // assistant message so we can compute a per-operation delta after the API call
     const lastAsst = messages.findLast(m => m.type === 'assistant')
     const baseline =
-      lastAsst?.type === 'assistant'
-        ? ((
-            lastAsst.message.usage as unknown as Record<
-              string,
-              number | undefined
-            >
-          )?.cache_deleted_input_tokens ?? 0)
+      lastAsst?.type === 'assistant' && lastAsst.message
+        ? ((lastAsst.message as unknown as { usage?: Record<string, number | undefined> })?.usage?.cache_deleted_input_tokens ?? 0)
         : 0
 
     return {
@@ -474,7 +471,7 @@ function maybeTimeBasedMicrocompact(
 
   let tokensSaved = 0
   const result: Message[] = messages.map(message => {
-    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
+    if (message.type !== 'user' || !message.message || !Array.isArray(message.message.content)) {
       return message
     }
     let touched = false
@@ -484,7 +481,7 @@ function maybeTimeBasedMicrocompact(
         clearSet.has(block.tool_use_id) &&
         block.content !== TIME_BASED_MC_CLEARED_MESSAGE
       ) {
-        tokensSaved += calculateToolResultTokens(block)
+        tokensSaved += calculateToolResultTokens(block as ToolResultBlockParam)
         touched = true
         return { ...block, content: TIME_BASED_MC_CLEARED_MESSAGE }
       }

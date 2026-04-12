@@ -9,12 +9,13 @@ export type SDKMessage = {
   uuid?: string
   parentUuid?: string
   content?: string
-  timestamp?: number
+  timestamp?: number | string
   subtype?: string
   message?: {
     content?: string | unknown[]
     role?: string
   }
+  tool_use_result?: unknown
   [key: string]: unknown
 }
 
@@ -33,11 +34,21 @@ export type SDKAssistantMessage = {
   content: string
   timestamp: number
   toolUses?: unknown[]
+  message?: {
+    content: string | unknown[]
+    role?: string
+    id?: string
+    context_management?: unknown
+    model?: string
+    stop_reason?: string
+    stop_sequence?: string
+  }
+  error?: unknown
 }
 
 export type SDKPartialAssistantMessage = {
   type: 'stream_event'
-  event: unknown
+  event: string
   parent_tool_use_id: string | null
   uuid: string
   session_id: string
@@ -45,7 +56,12 @@ export type SDKPartialAssistantMessage = {
 
 export type SDKResultMessage = {
   type: 'result'
+  subtype: 'success' | 'error'
   content: string
+  errors?: string[]
+  uuid?: string
+  result?: string
+  session_id?: string
 }
 
 export type SDKPostTurnSummaryMessage = {
@@ -143,6 +159,8 @@ export type SDKStatusMessage = SDKStatus
 export type SDKSystemMessage = {
   type: 'system'
   subtype?: string
+  uuid?: string
+  model?: string
   [key: string]: unknown
 }
 
@@ -150,7 +168,18 @@ export type SDKSystemMessage = {
 export type SDKCompactBoundaryMessage = {
   type: 'system'
   subtype: 'compact_boundary'
+  compact_metadata?: unknown
+  uuid?: string
   [key: string]: unknown
+}
+
+// Tool progress message
+export type SDKToolProgressMessage = {
+  type: 'tool_progress'
+  tool_name: string
+  elapsed_time_seconds: number
+  tool_use_id: string
+  uuid?: string
 }
 
 // Permission denial

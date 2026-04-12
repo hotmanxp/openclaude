@@ -11,12 +11,29 @@ import {
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
+
+// Interface for reactive compact module (used for REACTIVE_COMPACT feature)
+interface ReactiveCompactModule {
+  isReactiveCompactEnabled(): boolean
+  isWithheldPromptTooLong(message: unknown): boolean
+  isWithheldMediaSizeError(message: unknown): boolean
+  tryReactiveCompact(opts: unknown): Promise<unknown>
+}
+
+// Interface for context collapse module (used for CONTEXT_COLLAPSE feature)
+interface ContextCollapseModule {
+  isContextCollapseEnabled(): boolean
+  applyCollapsesIfNeeded(messages: unknown[], context: unknown, source: unknown): Promise<{ messages: unknown[] }>
+  isWithheldPromptTooLong(message: unknown, isPromptTooLong: unknown, source: unknown): boolean
+  recoverFromOverflow(messages: unknown[], source: unknown): { committed: number; messages: unknown[] }
+}
+
 /* eslint-disable @typescript-eslint/no-require-imports */
-const reactiveCompact = feature('REACTIVE_COMPACT')
-  ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
+const reactiveCompact: ReactiveCompactModule | null = feature('REACTIVE_COMPACT')
+  ? (require('./services/compact/reactiveCompact.js') as ReactiveCompactModule)
   : null
-const contextCollapse = feature('CONTEXT_COLLAPSE')
-  ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
+const contextCollapse: ContextCollapseModule | null = feature('CONTEXT_COLLAPSE')
+  ? (require('./services/contextCollapse/index.js') as ContextCollapseModule)
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
@@ -61,12 +78,24 @@ import {
   getAttachmentMessages,
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
+
+// Interface for skill prefetch module (used for EXPERIMENTAL_SKILL_SEARCH feature)
+interface SkillPrefetchModule {
+  startSkillDiscoveryPrefetch(_null: null, messages: unknown[], context: unknown): unknown
+  collectSkillDiscoveryPrefetch(prefetch: unknown): Promise<unknown[]>
+}
+
+// Interface for job classifier module (used for TEMPLATES feature)
+interface JobClassifierModule {
+  classifyAndWriteState(jobDir: string, messages: unknown[]): Promise<unknown>
+}
+
 /* eslint-disable @typescript-eslint/no-require-imports */
-const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
+const skillPrefetch: SkillPrefetchModule | null = feature('EXPERIMENTAL_SKILL_SEARCH')
+  ? (require('./services/skillSearch/prefetch.js') as SkillPrefetchModule)
   : null
-const jobClassifier = feature('TEMPLATES')
-  ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
+const jobClassifier: JobClassifierModule | null = feature('TEMPLATES')
+  ? (require('./jobs/classifier.js') as JobClassifierModule)
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
@@ -99,7 +128,6 @@ import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
-import type { Terminal, Continue } from './query/transitions.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
@@ -109,12 +137,46 @@ import {
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 
+// Continue type - reason why the query loop continued to the next iteration
+type Continue =
+  | { reason: 'collapse_drain_retry'; committed: number }
+  | { reason: 'reactive_compact_retry' }
+  | { reason: 'max_output_tokens_escalate' }
+  | { reason: 'max_output_tokens_recovery'; attempt: number }
+  | { reason: 'stop_hook_blocking' }
+  | { reason: 'token_budget_continuation' }
+  | { reason: 'next_turn' }
+
+// Terminal type - final result of the query loop
+type Terminal =
+  | { reason: 'blocking_limit' }
+  | { reason: 'image_error' }
+  | { reason: 'model_error'; error: unknown }
+  | { reason: 'aborted_streaming' }
+  | { reason: 'prompt_too_long' }
+  | { reason: 'completed' }
+  | { reason: 'stop_hook_prevented' }
+  | { reason: 'aborted_tools' }
+  | { reason: 'hook_stopped' }
+  | { reason: 'max_turns'; turnCount: number }
+
+// Interface for snip module (used for HISTORY_SNIP feature)
+interface SnipModule {
+  snipCompactIfNeeded(messages: unknown[]): { messages: unknown[]; tokensFreed: number; boundaryMessage?: unknown }
+}
+
+// Interface for task summary module (used for BG_SESSIONS feature)
+interface TaskSummaryModule {
+  shouldGenerateTaskSummary(): boolean
+  maybeGenerateTaskSummary(opts: unknown): void
+}
+
 /* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
+const snipModule: SnipModule | null = feature('HISTORY_SNIP')
+  ? (require('./services/compact/snipCompact.js') as SnipModule)
   : null
-const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
+const taskSummaryModule: TaskSummaryModule | null = feature('BG_SESSIONS')
+  ? (require('./utils/taskSummary.js') as TaskSummaryModule)
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 

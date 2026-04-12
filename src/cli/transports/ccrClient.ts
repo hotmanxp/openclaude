@@ -178,19 +178,22 @@ export function accumulateStreamEvents(
     const event = msg.event as StreamEvent
     switch (event.type) {
       case 'message_start': {
-        const id = event.message.id
-        const prevId = state.scopeToMessage.get(scopeKey(msg))
+        if (!event.message) break
+        const id = event.message!.id as string
+        const msgTyped = msg as SDKPartialAssistantMessage
+        const prevId = state.scopeToMessage.get(scopeKey(msgTyped))
         if (prevId) state.byMessage.delete(prevId)
-        state.scopeToMessage.set(scopeKey(msg), id)
+        state.scopeToMessage.set(scopeKey(msgTyped), id)
         state.byMessage.set(id, [])
         out.push(msg)
         break
       }
       case 'content_block_delta': {
-        if (event.delta.type !== 'text_delta') {
+        if (!event.delta || event.delta.type !== 'text_delta') {
           out.push(msg)
           break
         }
+        const delta = event.delta
         const messageId = state.scopeToMessage.get(scopeKey(msg))
         const blocks = messageId ? state.byMessage.get(messageId) : undefined
         if (!blocks) {
@@ -201,8 +204,13 @@ export function accumulateStreamEvents(
           out.push(msg)
           break
         }
-        const chunks = (blocks[event.index] ??= [])
-        chunks.push(event.delta.text)
+        const index = event.index as number
+        if (index === undefined) {
+          out.push(msg)
+          break
+        }
+        const chunks = (blocks[index] ??= [])
+        chunks.push(delta.text as string)
         const existing = touched.get(chunks)
         if (existing) {
           existing.event.delta.text = chunks.join('')
@@ -215,7 +223,7 @@ export function accumulateStreamEvents(
           parent_tool_use_id: msg.parent_tool_use_id,
           event: {
             type: 'content_block_delta',
-            index: event.index,
+            index,
             delta: { type: 'text_delta', text: chunks.join('') },
           },
         }
@@ -762,7 +770,11 @@ export class CCRClient {
    */
   async writeEvent(message: StdoutMessage): Promise<void> {
     if (message.type === 'stream_event') {
-      this.streamEventBuffer.push(message)
+      // SDKPartialAssistantMessage is not in StdoutMessage union, but SDKMessage
+      // acts as a catch-all with index signature. When type === 'stream_event',
+      // we know it's SDKPartialAssistantMessage - use assertion since discriminant
+      // narrowing doesn't work with the index signature.
+      this.streamEventBuffer.push(message as SDKPartialAssistantMessage)
       if (!this.streamEventTimer) {
         this.streamEventTimer = setTimeout(
           () => void this.flushStreamEventBuffer(),
@@ -773,7 +785,16 @@ export class CCRClient {
     }
     await this.flushStreamEventBuffer()
     if (message.type === 'assistant') {
-      clearStreamAccumulatorForMessage(this.streamTextAccumulator, message)
+      // The type check narrows to SDKAssistantMessage, but the function expects
+      // SDKPartialAssistantMessage structure with message.id. Using unknown to bypass.
+      clearStreamAccumulatorForMessage(
+        this.streamTextAccumulator,
+        message as unknown as {
+          session_id: string
+          parent_tool_use_id: string | null
+          message: { id: string }
+        },
+      )
     }
     await this.eventUploader.enqueue(this.toClientEvent(message))
   }

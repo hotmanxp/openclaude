@@ -5,7 +5,7 @@ import { Box } from '../ink.js';
 import type { Screen } from '../screens/REPL.js';
 import type { Tools } from '../Tool.js';
 import type { RenderableMessage } from '../types/message.js';
-import { getDisplayMessageFromCollapsed, getToolSearchOrReadInfo, getToolUseIdsFromCollapsedGroup, hasAnyToolInProgress } from '../utils/collapseReadSearch.js';
+import { type CollapseRenderableMessage, getDisplayMessageFromCollapsed, getToolSearchOrReadInfo, getToolUseIdsFromCollapsedGroup, hasAnyToolInProgress } from '../utils/collapseReadSearch.js';
 import { type buildMessageLookups, EMPTY_STRING_SET, getProgressMessagesFromLookup, getSiblingToolUseIDsFromLookup, getToolUseID } from '../utils/messages.js';
 import { hasThinkingContent, Message } from './Message.js';
 import { MessageModel } from './MessageModel.js';
@@ -13,7 +13,7 @@ import { shouldRenderStatically } from './Messages.js';
 import { MessageTimestamp } from './MessageTimestamp.js';
 import { OffscreenFreeze } from './OffscreenFreeze.js';
 export type Props = {
-  message: RenderableMessage;
+  message: CollapseRenderableMessage;
   /** Whether the previous message in renderableMessages is also a user message. */
   isUserContinuation: boolean;
   /**
@@ -47,7 +47,7 @@ export type Props = {
  * to each MessageRow (which React Compiler would pin in the fiber's memoCache,
  * accumulating every historical version of the array ≈ 1-2MB over a 7-turn session).
  */
-export function hasContentAfterIndex(messages: RenderableMessage[], index: number, tools: Tools, streamingToolUseIDs: Set<string>): boolean {
+export function hasContentAfterIndex(messages: CollapseRenderableMessage[], index: number, tools: Tools, streamingToolUseIDs: Set<string>): boolean {
   for (let i = index + 1; i < messages.length; i++) {
     const msg = messages[i];
     if (msg?.type === 'assistant') {

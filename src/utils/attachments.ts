@@ -175,10 +175,8 @@ import {
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from './claudeInChrome/common.js'
 import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from './claudeInChrome/prompt.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
-import type {
-  HookEvent,
-  SyncHookJSONOutput,
-} from 'src/entrypoints/agentSdkTypes.js'
+import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
+import type { SyncHookJSONOutput } from '../types/hooks.js'
 import {
   checkForAsyncHookResponses,
   removeDeliveredAsyncHooks,
@@ -996,11 +994,13 @@ export async function getAttachments(
 
   clearTimeout(timeoutId)
   // Defensive: a getter leaking [undefined] crashes .map(a => a.type) below.
-  return [
-    ...userAttachmentResults.flat(),
-    ...threadAttachmentResults.flat(),
-    ...mainThreadAttachmentResults.flat(),
-  ].filter(a => a !== undefined && a !== null)
+  return (
+    [
+      ...userAttachmentResults.flat(),
+      ...threadAttachmentResults.flat(),
+      ...mainThreadAttachmentResults.flat(),
+    ].filter((a): a is Attachment => a !== undefined && a !== null)
+  )
 }
 
 async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
@@ -1147,11 +1147,12 @@ function getPlanModeAttachmentTurnCount(messages: Message[]): {
     if (
       message?.type === 'user' &&
       !message.isMeta &&
-      !hasToolResultContent(message.message.content)
+      !hasToolResultContent(message.message?.content)
     ) {
       turnsSinceLastAttachment++
     } else if (
       message?.type === 'attachment' &&
+      message.attachment &&
       (message.attachment.type === 'plan_mode' ||
         message.attachment.type === 'plan_mode_reentry')
     ) {
@@ -1172,7 +1173,7 @@ function countPlanModeAttachmentsSinceLastExit(messages: Message[]): number {
   // Iterate backwards - if we hit a plan_mode_exit, stop counting
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
-    if (message?.type === 'attachment') {
+    if (message?.type === 'attachment' && message.attachment) {
       if (message.attachment.type === 'plan_mode_exit') {
         break // Stop counting at the last exit
       }
@@ -1292,17 +1293,19 @@ function getAutoModeAttachmentTurnCount(messages: Message[]): {
     if (
       message?.type === 'user' &&
       !message.isMeta &&
-      !hasToolResultContent(message.message.content)
+      !hasToolResultContent(message.message?.content)
     ) {
       turnsSinceLastAttachment++
     } else if (
       message?.type === 'attachment' &&
+      message.attachment &&
       message.attachment.type === 'auto_mode'
     ) {
       foundAutoModeAttachment = true
       break
     } else if (
       message?.type === 'attachment' &&
+      message.attachment &&
       message.attachment.type === 'auto_mode_exit'
     ) {
       // Exit resets the throttle — treat as if no prior attachment exists
@@ -1321,7 +1324,7 @@ function countAutoModeAttachmentsSinceLastExit(messages: Message[]): number {
   let count = 0
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
-    if (message?.type === 'attachment') {
+    if (message?.type === 'attachment' && message.attachment) {
       if (message.attachment.type === 'auto_mode_exit') {
         break
       }
@@ -1524,10 +1527,11 @@ export function getAgentListingDeltaAttachment(
   // Reconstruct announced set from prior deltas in the transcript.
   const announced = new Set<string>()
   for (const msg of messages ?? []) {
-    if (msg.type !== 'attachment') continue
+    if (msg.type !== 'attachment' || !msg.attachment) continue
     if (msg.attachment.type !== 'agent_listing_delta') continue
-    for (const t of msg.attachment.addedTypes) announced.add(t)
-    for (const t of msg.attachment.removedTypes) announced.delete(t)
+    const deltaAttachment = msg.attachment as Attachment & { type: 'agent_listing_delta'; addedTypes: string[]; addedLines: string[]; removedTypes: string[] }
+    for (const t of deltaAttachment.addedTypes) announced.add(t)
+    for (const t of deltaAttachment.removedTypes) announced.delete(t)
   }
 
   const currentTypes = new Set(filtered.map(a => a.agentType))
@@ -2256,8 +2260,8 @@ export function collectSurfacedMemories(messages: ReadonlyArray<Message>): {
   const paths = new Set<string>()
   let totalBytes = 0
   for (const m of messages) {
-    if (m.type === 'attachment' && m.attachment.type === 'relevant_memories') {
-      for (const mem of m.attachment.memories) {
+    if (m.type === 'attachment' && m.attachment && m.attachment.type === 'relevant_memories') {
+      for (const mem of (m.attachment as Attachment & { type: 'relevant_memories'; memories: Array<{ path: string; content: string }> }).memories) {
         paths.add(mem.path)
         totalBytes += mem.content.length
       }
@@ -2473,13 +2477,14 @@ export function collectRecentSuccessfulTools(
     const m = messages[i]
     if (!m) continue
     if (isHumanTurn(m) && m !== lastUserMessage) break
-    if (m.type === 'assistant' && typeof m.message.content !== 'string') {
+    if (m.type === 'assistant' && m.message && typeof m.message.content !== 'string') {
       for (const block of m.message.content) {
         if (block.type === 'tool_use') useIdToName.set(block.id, block.name)
       }
     } else if (
       m.type === 'user' &&
       'message' in m &&
+      m.message &&
       Array.isArray(m.message.content)
     ) {
       for (const block of m.message.content) {
@@ -3267,6 +3272,7 @@ function getTodoReminderTurnCounts(messages: Message[]): {
     } else if (
       lastReminderIndex === -1 &&
       message?.type === 'attachment' &&
+      message.attachment &&
       message.attachment.type === 'todo_reminder'
     ) {
       lastReminderIndex = i
@@ -3376,6 +3382,7 @@ function getTaskReminderTurnCounts(messages: Message[]): {
     } else if (
       lastReminderIndex === -1 &&
       message?.type === 'attachment' &&
+      message.attachment &&
       message.attachment.type === 'task_reminder'
     ) {
       lastReminderIndex = i
@@ -3624,10 +3631,26 @@ async function getTeammateMailboxAttachments(
   // (including self-echo from broadcasts). Teammates receive messages exclusively
   // through their file-based mailbox + waitForNextPromptOrShutdown.
   // Note: viewedTeammate was already computed above for agentName resolution
-  const pendingInboxMessages =
+  const pendingInboxMessages: Array<{
+    id: string
+    from: string
+    text: string
+    timestamp: string
+    color?: string
+    summary?: string
+    status: string
+  }> =
     viewedTeammate || isInProcessTeammate()
       ? [] // Viewing teammate or running as in-process teammate - don't show leader's inbox
-      : appState.inbox.messages.filter(m => m.status === 'pending')
+      : appState.inbox.messages.filter((m: {
+        id: string
+        from: string
+        text: string
+        timestamp: string
+        color?: string
+        summary?: string
+        status: string
+      }) => m.status === 'pending')
   logForDebugging(
     `[SwarmMailbox] Found ${pendingInboxMessages.length} pending message(s) in AppState.inbox`,
   )
@@ -3729,7 +3752,7 @@ async function getTeammateMailboxAttachments(
 
         // Find the teammate ID by name
         const teammateId = appState.teamContext?.teammates
-          ? Object.entries(appState.teamContext.teammates).find(
+          ? (Object.entries(appState.teamContext.teammates) as [string, { name: string }][]).find(
               ([, t]) => t.name === teammateToRemove,
             )?.[0]
           : undefined
@@ -3778,7 +3801,7 @@ async function getTeammateMailboxAttachments(
     toolUseContext.setAppState(prev => ({
       ...prev,
       inbox: {
-        messages: prev.inbox.messages.map(m =>
+        messages: (prev.inbox.messages as Array<{ id: string; status: string }>).map(m =>
           pendingIds.has(m.id) ? { ...m, status: 'processed' as const } : m,
         ),
       },
@@ -3899,6 +3922,7 @@ export function getVerifyPlanReminderTurnCount(messages: Message[]): number {
     // Stop counting at plan_mode_exit attachment (marks when implementation started)
     if (
       message?.type === 'attachment' &&
+      message.attachment &&
       message.attachment.type === 'plan_mode_exit'
     ) {
       return turnCount

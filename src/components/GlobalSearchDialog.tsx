@@ -35,7 +35,7 @@ const MAX_TOTAL_MATCHES = 500;
  * Global Search dialog (ctrl+shift+f / cmd+shift+f).
  * Debounced ripgrep search across the workspace.
  */
-export function GlobalSearchDialog(t0: Props) {
+export function GlobalSearchDialog(t0: Props): React.ReactNode {
   const $ = _c(40);
   const {
     onDone,
@@ -48,7 +48,7 @@ export function GlobalSearchDialog(t0: Props) {
   } = useTerminalSize();
   const previewOnRight = columns >= 140;
   const visibleResults = Math.min(VISIBLE_RESULTS, Math.max(4, rows - 14));
-  let t1;
+  let t1: Match[];
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
     $[0] = t1;
@@ -59,12 +59,12 @@ export function GlobalSearchDialog(t0: Props) {
   const [truncated, setTruncated] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(undefined);
-  const [preview, setPreview] = useState(null);
-  const abortRef = useRef(null);
-  const timeoutRef = useRef(null);
-  let t2;
-  let t3;
+  const [focused, setFocused] = useState<Match | null>(null);
+  const [preview, setPreview] = useState<{ file: string; line: number; content: string } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  let t2: () => void;
+  let t3: React.DependencyList;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = () => () => {
       if (timeoutRef.current) {
@@ -262,14 +262,20 @@ export function GlobalSearchDialog(t0: Props) {
   }
   return t15;
 }
-function _temp4(query_0, controller_1, setMatches_0, setTruncated_0, setIsSearching_0) {
+function _temp4(
+  query_0: string,
+  controller_1: AbortController,
+  setMatches_0: React.Dispatch<React.SetStateAction<Match[]>>,
+  setTruncated_0: React.Dispatch<React.SetStateAction<boolean>>,
+  setIsSearching_0: React.Dispatch<React.SetStateAction<boolean>>
+): void {
   const cwd = getCwd();
   let collected = 0;
-  ripGrepStream(["-n", "--no-heading", "-i", "-m", String(MAX_MATCHES_PER_FILE), "-F", "-e", query_0], cwd, controller_1.signal, lines => {
+  ripGrepStream(["-n", "--no-heading", "-i", "-m", String(MAX_MATCHES_PER_FILE), "-F", "-e", query_0], cwd, controller_1.signal, (lines: string[]) => {
     if (controller_1.signal.aborted) {
       return;
     }
-    const parsed = [];
+    const parsed: Match[] = [];
     for (const line of lines) {
       const m_1 = parseRipgrepLine(line);
       if (!m_1) {
@@ -286,7 +292,7 @@ function _temp4(query_0, controller_1, setMatches_0, setTruncated_0, setIsSearch
     }
     collected = collected + parsed.length;
     collected;
-    setMatches_0(prev => {
+    setMatches_0((prev: Match[]) => {
       const seen = new Set(prev.map(matchKey));
       const fresh = parsed.filter(p => !seen.has(matchKey(p)));
       if (!fresh.length) {
@@ -310,11 +316,11 @@ function _temp4(query_0, controller_1, setMatches_0, setTruncated_0, setIsSearch
     setIsSearching_0(false);
   });
 }
-function _temp3(m_2) {
+function _temp3(m_2: Match[]): Match[] {
   return m_2.length ? [] : m_2;
 }
-function _temp2() {}
-function _temp(m) {
+function _temp2(): void {}
+function _temp(m: Match[]): Match[] {
   return m.length ? [] : m;
 }
 function matchKey(m: Match): string {

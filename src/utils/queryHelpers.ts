@@ -16,7 +16,16 @@ import {
   FILE_UNCHANGED_STUB,
 } from '../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../tools/FileWriteTool/prompt.js'
-import type { Message } from '../types/message.js'
+import type {
+  AgentProgressData,
+  AssistantMessage,
+  BashProgressData,
+  Message,
+  PowerShellProgressData,
+  ProgressMessageData,
+  SkillProgressData,
+  UserMessage,
+} from '../types/message.js'
 import type { OrphanedPermission } from '../types/textInputTypes.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -60,7 +69,10 @@ export function isResultSuccessful(
   if (!message) return false
 
   if (message.type === 'assistant') {
-    const lastContent = last(message.message.content)
+    const msg = message as AssistantMessage
+    const content = msg.message?.content
+    if (!content || typeof content === 'string') return false
+    const lastContent = last(content)
     return (
       lastContent?.type === 'text' ||
       lastContent?.type === 'thinking' ||
@@ -70,7 +82,8 @@ export function isResultSuccessful(
 
   if (message.type === 'user') {
     // Check if all content blocks are tool_result type
-    const content = message.message.content
+    const msg = message as UserMessage
+    const content = msg.message?.content
     if (
       Array.isArray(content) &&
       content.length > 0 &&
@@ -104,60 +117,65 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
     case 'assistant':
       for (const _ of normalizeMessages([message])) {
         // Skip empty messages (e.g., "(no content)") that shouldn't be output to SDK
-        if (!isNotEmptyMessage(_)) {
+        if (!isNotEmptyMessage(_ as Message)) {
           continue
         }
+        const normalizedAsst = _ as import('../types/message.js').NormalizedAssistantMessage
         yield {
           type: 'assistant',
-          message: _.message,
+          message: normalizedAsst.message,
           parent_tool_use_id: null,
           session_id: getSessionId(),
-          uuid: _.uuid,
-          error: _.error,
+          uuid: normalizedAsst.uuid,
+          error: normalizedAsst.error,
         }
       }
       return
     case 'progress':
       if (
-        message.data.type === 'agent_progress' ||
-        message.data.type === 'skill_progress'
+        (message.data as ProgressMessageData).type === 'agent_progress' ||
+        (message.data as ProgressMessageData).type === 'skill_progress'
       ) {
-        for (const _ of normalizeMessages([message.data.message])) {
+        const data = message.data as AgentProgressData | SkillProgressData
+        for (const _ of normalizeMessages([data.message])) {
           switch (_.type) {
             case 'assistant':
               // Skip empty messages (e.g., "(no content)") that shouldn't be output to SDK
-              if (!isNotEmptyMessage(_)) {
+              if (!isNotEmptyMessage(_ as Message)) {
                 break
               }
+              const asstMsg = _ as import('../types/message.js').NormalizedAssistantMessage
               yield {
                 type: 'assistant',
-                message: _.message,
+                message: asstMsg.message,
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
-                uuid: _.uuid,
-                error: _.error,
+                uuid: asstMsg.uuid,
+                error: asstMsg.error,
               }
               break
             case 'user':
+              const userMsg = _ as import('../types/message.js').NormalizedUserMessage
               yield {
                 type: 'user',
-                message: _.message,
+                message: userMsg.message,
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
-                uuid: _.uuid,
-                timestamp: _.timestamp,
-                isSynthetic: _.isMeta || _.isVisibleInTranscriptOnly,
-                tool_use_result: _.mcpMeta
-                  ? { content: _.toolUseResult, ..._.mcpMeta }
-                  : _.toolUseResult,
+                uuid: userMsg.uuid,
+                timestamp: userMsg.timestamp,
+                isSynthetic: userMsg.isVisibleInTranscriptOnly ?? false,
+                tool_use_result: userMsg.mcpMeta
+                  ? { content: userMsg.toolUseResult, ...userMsg.mcpMeta }
+                  : userMsg.toolUseResult,
               }
               break
           }
         }
       } else if (
-        message.data.type === 'bash_progress' ||
-        message.data.type === 'powershell_progress'
+        (message.data as ProgressMessageData).type === 'bash_progress' ||
+        (message.data as ProgressMessageData).type === 'powershell_progress'
       ) {
+        const data = message.data as BashProgressData | PowerShellProgressData
         // Filter bash progress to send only one per minute
         // Only emit for Claude Code Remote for now
         if (
@@ -168,7 +186,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         }
 
         // Use parentToolUseID as the key since toolUseID changes for each progress message
-        const trackingKey = message.parentToolUseID
+        const trackingKey = message.parentToolUseID ?? ''
         const now = Date.now()
         const lastSent = toolProgressLastSentTime.get(trackingKey) || 0
         const timeSinceLastSent = now - lastSent
@@ -189,11 +207,10 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
           yield {
             type: 'tool_progress',
             tool_use_id: message.toolUseID,
-            tool_name:
-              message.data.type === 'bash_progress' ? 'Bash' : 'PowerShell',
+            tool_name: data.type === 'bash_progress' ? 'Bash' : 'PowerShell',
             parent_tool_use_id: message.parentToolUseID,
-            elapsed_time_seconds: message.data.elapsedTimeSeconds,
-            task_id: message.data.taskId,
+            elapsed_time_seconds: data.elapsedTimeSeconds,
+            task_id: data.taskId,
             session_id: getSessionId(),
             uuid: message.uuid,
           }
@@ -202,17 +219,18 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
       break
     case 'user':
       for (const _ of normalizeMessages([message])) {
+        const userMsg = _ as import('../types/message.js').NormalizedUserMessage
         yield {
           type: 'user',
-          message: _.message,
+          message: userMsg.message,
           parent_tool_use_id: null,
           session_id: getSessionId(),
-          uuid: _.uuid,
-          timestamp: _.timestamp,
-          isSynthetic: _.isMeta || _.isVisibleInTranscriptOnly,
-          tool_use_result: _.mcpMeta
-            ? { content: _.toolUseResult, ..._.mcpMeta }
-            : _.toolUseResult,
+          uuid: userMsg.uuid,
+          timestamp: userMsg.timestamp,
+          isSynthetic: userMsg.isVisibleInTranscriptOnly ?? false,
+          tool_use_result: userMsg.mcpMeta
+            ? { content: userMsg.toolUseResult, ...userMsg.mcpMeta }
+            : userMsg.toolUseResult,
         }
       }
       return
@@ -229,7 +247,8 @@ export async function* handleOrphanedPermission(
 ): AsyncGenerator<SDKMessage, void, unknown> {
   const persistSession = !isSessionPersistenceDisabled()
   const { permissionResult, assistantMessage } = orphanedPermission
-  const { toolUseID } = permissionResult
+  // toolUseID exists on PermissionAllowDecision and PermissionDenyDecision
+  const toolUseID = (permissionResult as { toolUseID?: string }).toolUseID
 
   if (!toolUseID) {
     return
@@ -260,9 +279,10 @@ export async function* handleOrphanedPermission(
 
   // Create ToolUseBlock with the updated input if permission was allowed
   let finalInput = toolInput
-  if (permissionResult.behavior === 'allow') {
-    if (permissionResult.updatedInput !== undefined) {
-      finalInput = permissionResult.updatedInput
+  const permResult = permissionResult as { behavior?: string; updatedInput?: unknown }
+  if (permResult.behavior === 'allow') {
+    if (permResult.updatedInput !== undefined) {
+      finalInput = permResult.updatedInput
     } else {
       logForDebugging(
         `Orphaned permission for ${toolName}: updatedInput is undefined, falling back to original tool input`,
@@ -281,7 +301,7 @@ export async function* handleOrphanedPermission(
       type: 'mode',
       mode: 'default' as const,
     },
-  })
+  }) as unknown as Promise<import('../types/permissions.js').PermissionDecision<Record<string, unknown>>>
 
   // Add the assistant message with tool_use to messages BEFORE executing
   // so the conversation history is complete (tool_use -> tool_result).
@@ -299,13 +319,14 @@ export async function* handleOrphanedPermission(
   const alreadyPresent = mutableMessages.some(
     m =>
       m.type === 'assistant' &&
+      m.message !== undefined &&
       Array.isArray(m.message.content) &&
       m.message.content.some(
         b => b.type === 'tool_use' && 'id' in b && b.id === toolUseID,
       ),
   )
   if (!alreadyPresent) {
-    mutableMessages.push(assistantMessage)
+    mutableMessages.push(assistantMessage as Message)
     if (persistSession) {
       await recordTranscript(mutableMessages)
     }
@@ -361,6 +382,7 @@ export function extractReadFilesFromMessages(
   for (const message of messages) {
     if (
       message.type === 'assistant' &&
+      message.message !== undefined &&
       Array.isArray(message.message.content)
     ) {
       for (const content of message.message.content) {
@@ -414,7 +436,7 @@ export function extractReadFilesFromMessages(
 
   // Second pass: find corresponding tool results and extract content
   for (const message of messages) {
-    if (message.type === 'user' && Array.isArray(message.message.content)) {
+    if (message.type === 'user' && message.message !== undefined && Array.isArray(message.message.content)) {
       for (const content of message.message.content) {
         if (content.type === 'tool_result' && content.tool_use_id) {
           // Handle Read tool results
@@ -509,6 +531,7 @@ export function extractBashToolsFromMessages(messages: Message[]): Set<string> {
   for (const message of messages) {
     if (
       message.type === 'assistant' &&
+      message.message !== undefined &&
       Array.isArray(message.message.content)
     ) {
       for (const content of message.message.content) {
