@@ -12,7 +12,7 @@ type Props = {
   answers: Record<string, string>;
   hideSubmitTab?: boolean;
 };
-export function QuestionNavigationBar(t0) {
+export function QuestionNavigationBar(t0: Props) {
   const $ = _c(39);
   const {
     questions,
@@ -35,7 +35,7 @@ export function QuestionNavigationBar(t0) {
         if ($[5] !== currentQuestionIndex || $[6] !== questions) {
           let t4;
           if ($[8] !== currentQuestionIndex) {
-            t4 = (q, index) => {
+            t4 = (q: Question | undefined, index: number) => {
               const header = q?.header || `Q${index + 1}`;
               return index === currentQuestionIndex ? header.slice(0, 3) : "";
             };
@@ -69,7 +69,7 @@ export function QuestionNavigationBar(t0) {
       const widthPerOtherTab = Math.max(6, Math.floor(remainingWidth / Math.max(otherTabCount, 1)));
       let t3;
       if ($[10] !== currentQuestionIndex || $[11] !== currentTabWidth || $[12] !== widthPerOtherTab) {
-        t3 = (header_1, index_1) => {
+        t3 = (header_1: string, index_1: number) => {
           if (index_1 === currentQuestionIndex) {
             const maxTextWidth = currentTabWidth - 2 - 2;
             return truncateToWidth(header_1, maxTextWidth);
@@ -110,7 +110,7 @@ export function QuestionNavigationBar(t0) {
   if ($[17] !== answers || $[18] !== currentQuestionIndex || $[19] !== questions || $[20] !== tabDisplayTexts) {
     let t5;
     if ($[22] !== answers || $[23] !== currentQuestionIndex || $[24] !== tabDisplayTexts) {
-      t5 = (q_1, index_2) => {
+      t5 = (q_1: Question | undefined, index_2: number) => {
         const isSelected = index_2 === currentQuestionIndex;
         const isAnswered = q_1?.question && !!answers[q_1.question];
         const checkbox = isAnswered ? figures.checkboxOn : figures.checkboxOff;
@@ -166,12 +166,12 @@ export function QuestionNavigationBar(t0) {
   }
   return t7;
 }
-function _temp3(sum, w) {
+function _temp3(sum: number, w: number) {
   return sum + w;
 }
-function _temp2(header_0) {
+function _temp2(header_0: string) {
   return 4 + stringWidth(header_0);
 }
-function _temp(q_0, index_0) {
+function _temp(q_0: Question | undefined, index_0: number) {
   return q_0?.header || `Q${index_0 + 1}`;
 }

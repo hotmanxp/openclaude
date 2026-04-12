@@ -51,7 +51,7 @@ export function collectRecentAssistantTexts(messages: Message[]): string[] {
   const texts: string[] = [];
   for (let i = messages.length - 1; i >= 0 && texts.length < MAX_LOOKBACK; i--) {
     const msg = messages[i];
-    if (msg?.type !== 'assistant' || msg.isApiErrorMessage) continue;
+    if (msg?.type !== 'assistant' || (msg as AssistantMessage).isApiErrorMessage) continue;
     const content = (msg as AssistantMessage).message.content;
     if (!Array.isArray(content)) continue;
     const text = extractTextContent(content, '\n\n');

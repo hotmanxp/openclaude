@@ -150,7 +150,7 @@ async function compactViaReactive(
     type: 'hooks_start',
     hookType: 'pre_compact',
   })
-  context.setSDKStatus?.('compacting')
+  context.setSDKStatus?.({ type: 'status', status: 'compacting' })
 
   try {
     // Hooks and cache-param build are independent — run concurrently.
@@ -223,7 +223,7 @@ async function compactViaReactive(
     context.setStreamMode?.('requesting')
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_end' })
-    context.setSDKStatus?.(null)
+    context.setSDKStatus?.({ type: 'status', status: 'idle' })
   }
 }
 

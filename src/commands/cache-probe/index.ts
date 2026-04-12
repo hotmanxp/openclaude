@@ -1,4 +1,5 @@
 import type { Command } from '../../commands.js'
+import type { LocalCommandModule } from '../../types/command.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
 const cacheProbe: Command = {
@@ -10,7 +11,10 @@ const cacheProbe: Command = {
     isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB),
   supportsNonInteractive: false,
-  load: () => import('./cache-probe.js'),
+  load: async (): Promise<LocalCommandModule> => {
+    const mod = await import('./cache-probe.js')
+    return { call: mod.runCacheProbe }
+  },
 }
 
 export default cacheProbe

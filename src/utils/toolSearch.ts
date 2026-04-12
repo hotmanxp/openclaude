@@ -571,8 +571,9 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
       // tool_reference blocks only appear inside tool_result content, specifically
       // in results from ToolSearchTool. The API expands these references into full
       // tool definitions in the model's context.
-      if (isToolResultBlockWithContent(block)) {
-        for (const item of block.content) {
+      const blockWithContent = block as unknown as ToolResultBlock
+      if (isToolResultBlockWithContent(blockWithContent)) {
+        for (const item of blockWithContent.content) {
           if (isToolReferenceWithName(item)) {
             discoveredTools.add(item.tool_name)
           }
@@ -656,14 +657,14 @@ export function getDeferredToolsDelta(
   const attachmentTypesSeen = new Set<string>()
   for (const msg of messages) {
     if (msg.type !== 'attachment') continue
-    const attachment = msg.attachment
+    const attachment = (msg as { attachment?: { type: string; addedNames?: string[]; removedNames?: string[] } }).attachment
     if (!attachment) continue
     attachmentCount++
     attachmentTypesSeen.add(attachment.type)
     if (attachment.type !== 'deferred_tools_delta') continue
     dtdCount++
-    for (const n of attachment.addedNames) announced.add(n)
-    for (const n of attachment.removedNames) announced.delete(n)
+    for (const n of attachment.addedNames ?? []) announced.add(n)
+    for (const n of attachment.removedNames ?? []) announced.delete(n)
   }
 
   const deferred: Tool[] = tools.filter(isDeferredTool)

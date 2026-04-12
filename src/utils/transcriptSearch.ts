@@ -1,4 +1,4 @@
-import type { RenderableMessage } from '../types/message.js'
+import type { RenderableAttachment, RenderableMessage } from '../types/message.js'
 import {
   INTERRUPT_MESSAGE,
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
@@ -33,6 +33,7 @@ function computeSearchText(msg: RenderableMessage): string {
   let raw = ''
   switch (msg.type) {
     case 'user': {
+      if (!msg.message) break
       const c = msg.message.content
       if (typeof c === 'string') {
         raw = RENDERED_AS_SENTINEL.has(c) ? '' : c
@@ -56,7 +57,8 @@ function computeSearchText(msg: RenderableMessage): string {
             // {file.content}. Unknown shapes index empty — under-count is
             // honest, phantom is a lie. Proper fix is per-tool
             // extractSearchText(Out) on the Tool interface (TODO).
-            parts.push(toolResultSearchText(msg.toolUseResult))
+            const toolUseResult = (msg as { toolUseResult?: unknown }).toolUseResult
+            parts.push(toolResultSearchText(toolUseResult))
           }
         }
         raw = parts.join('\n')
@@ -64,6 +66,7 @@ function computeSearchText(msg: RenderableMessage): string {
       break
     }
     case 'assistant': {
+      if (!msg.message) break
       const c = msg.message.content
       if (Array.isArray(c)) {
         // text blocks + tool_use inputs. tool_use renders as "⏺ Bash(cmd)"
@@ -72,7 +75,7 @@ function computeSearchText(msg: RenderableMessage): string {
         raw = c
           .flatMap(b => {
             if (b.type === 'text') return [b.text]
-            if (b.type === 'tool_use') return [toolUseSearchText(b.input)]
+            if (b.type === 'tool_use') return [toolUseSearchText((b as unknown as { input?: unknown }).input)]
             return []
           })
           .join('\n')
@@ -83,9 +86,9 @@ function computeSearchText(msg: RenderableMessage): string {
       // relevant_memories renders full m.content in transcript mode
       // (AttachmentMessage.tsx <Ansi>{m.content}</Ansi>). Visible but
       // unsearchable without this — [ dump finds it, / doesn't.
-      const attachment = msg.attachment
+      const attachment = (msg as { attachment?: RenderableAttachment }).attachment
       if (attachment?.type === 'relevant_memories') {
-        const memories = attachment.memories ?? []
+        const memories: Array<{ content: string }> = attachment.memories ?? []
         raw = memories.map(m => m.content).join('\n')
       } else if (
         // Mid-turn prompts — queued while an agent is running. Render via
@@ -105,21 +108,17 @@ function computeSearchText(msg: RenderableMessage): string {
       }
       break
     }
-    case 'collapsed_read_search': {
-      // relevant_memories attachments are absorbed into collapse groups
-      // (collapseReadSearch.ts); their content is visible in transcript mode
-      // via CollapsedReadSearchContent, so mirror it here for / search.
+    default: {
+      // grouped_tool_use, system, collapsed_read_search — no text content
+      // (collapsed_read_search relevant_memories handled below via cast)
       const relevantMemories = (
         msg as { relevantMemories?: Array<{ content: string }> }
       ).relevantMemories
       if (relevantMemories) {
-        raw = relevantMemories.map(m => m.content).join('\n')
+        raw = relevantMemories.map((m: { content: string }) => m.content).join('\n')
       }
       break
     }
-    default:
-      // grouped_tool_use, system — no text content
-      break
   }
   // Strip <system-reminder> anywhere — Claude context, not user-visible.
   // Mid-message on cc -c resumes (memory reminders between prompt lines).
