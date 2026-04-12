@@ -12,6 +12,7 @@ declare const MACRO: {
   PACKAGE_URL?: string
   NATIVE_PACKAGE_URL?: string
   VERSION_CHANGELOG?: string
+  FEEDBACK_CHANNEL?: string
 }
 
 /**
