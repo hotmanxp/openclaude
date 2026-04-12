@@ -998,18 +998,17 @@ export function reorderMessagesInUI(
     }
 
     // Check if this message is part of a tool use group
-    if (
-      isHookAttachmentMessage(message) &&
-      (message.attachment.hookEvent === 'PreToolUse' ||
-        message.attachment.hookEvent === 'PostToolUse')
-    ) {
-      // Skip - already handled in tool use groups
-      continue
+    if (isHookAttachmentMessage(message)) {
+      const attachment = message.attachment as HookAttachment
+      if (attachment.hookEvent === 'PreToolUse' || attachment.hookEvent === 'PostToolUse') {
+        // Skip - already handled in tool use groups
+        continue
+      }
     }
 
     if (
       message.type === 'user' &&
-      message.message.content[0]?.type === 'tool_result'
+      (message.message.content as ContentBlock[])[0]?.type === 'tool_result'
     ) {
       // Skip - already handled in tool use groups
       continue
@@ -1043,7 +1042,7 @@ export function reorderMessagesInUI(
 }
 
 function isHookAttachmentMessage(
-  message: Message,
+  message: NormalizedAssistantMessage | NormalizedUserMessage | AttachmentMessage | SystemMessage | Message,
 ): message is AttachmentMessage {
   return (
     message.type === 'attachment' &&
@@ -1065,11 +1064,14 @@ function getInProgressHookCount(
 ): number {
   return count(
     messages,
-    // @ts-expect-error - NormalizedMessage doesn't include progress type but this function counts progress messages
     _ =>
+      // @ts-expect-error - NormalizedMessage doesn't include progress type but this function counts progress messages
       _.type === 'progress' &&
+      // @ts-expect-error - data property only exists on progress messages
       _.data.type === 'hook_progress' &&
+      // @ts-expect-error - data property only exists on progress messages
       _.data.hookEvent === hookEvent &&
+      // @ts-expect-error - parentToolUseID only exists on progress messages
       _.parentToolUseID === toolUseID,
   )
 }
@@ -1142,21 +1144,21 @@ export function getSiblingToolUseIDs(
   const unnormalizedMessage = messages.find(
     (_): _ is AssistantMessage =>
       _.type === 'assistant' &&
-      _.message.content.some(_ => _.type === 'tool_use' && _.id === toolUseID),
+      (_.message!.content as ContentBlock[]).some(_ => _.type === 'tool_use' && _.id === toolUseID),
   )
   if (!unnormalizedMessage) {
     return new Set()
   }
 
-  const messageID = unnormalizedMessage.message.id
+  const messageID = unnormalizedMessage.message!.id
   const siblingMessages = messages.filter(
     (_): _ is AssistantMessage =>
-      _.type === 'assistant' && _.message.id === messageID,
+      _.type === 'assistant' && _.message!.id === messageID,
   )
 
   return new Set(
     siblingMessages.flatMap(_ =>
-      _.message.content.filter(_ => _.type === 'tool_use').map(_ => _.id),
+      (_.message!.content as ContentBlock[]).filter(_ => _.type === 'tool_use').map(_ => _.id),
     ),
   )
 }
@@ -1194,18 +1196,18 @@ export function buildMessageLookups(
   const toolUseIDToMessageID = new Map<string, string>()
   const toolUseByToolUseID = new Map<string, ToolUseBlockParam>()
   for (const msg of messages) {
-    if (msg.type === 'assistant') {
-      const id = msg.message.id
+    if (msg.type === 'assistant' && msg.message) {
+      const id = msg.message.id!
       let toolUseIDs = toolUseIDsByMessageID.get(id)
       if (!toolUseIDs) {
         toolUseIDs = new Set()
         toolUseIDsByMessageID.set(id, toolUseIDs)
       }
-      for (const content of msg.message.content) {
+      for (const content of msg.message.content as ContentBlock[]) {
         if (content.type === 'tool_use') {
           toolUseIDs.add(content.id)
           toolUseIDToMessageID.set(content.id, id)
-          toolUseByToolUseID.set(content.id, content)
+          toolUseByToolUseID.set(content.id, content as ToolUseBlockParam)
         }
       }
     }
@@ -1230,8 +1232,10 @@ export function buildMessageLookups(
   const erroredToolUseIDs = new Set<string>()
 
   for (const msg of normalizedMessages) {
+    // @ts-expect-error - NormalizedMessage doesn't include progress type but this function handles progress messages
     if (msg.type === 'progress') {
       // Build progress messages lookup
+      // @ts-expect-error - parentToolUseID only exists on progress messages
       const toolUseID = msg.parentToolUseID
       const existing = progressMessagesByToolUseID.get(toolUseID)
       if (existing) {
@@ -1241,7 +1245,9 @@ export function buildMessageLookups(
       }
 
       // Count in-progress hooks
+      // @ts-expect-error - data only exists on progress messages
       if (msg.data.type === 'hook_progress') {
+        // @ts-expect-error - data only exists on progress messages
         const hookEvent = msg.data.hookEvent
         let byHookEvent = inProgressHookCounts.get(toolUseID)
         if (!byHookEvent) {
@@ -1253,8 +1259,9 @@ export function buildMessageLookups(
     }
 
     // Build tool result lookup and resolved/errored sets
+    // @ts-expect-error - NormalizedMessage type narrowing
     if (msg.type === 'user') {
-      for (const content of msg.message.content) {
+      for (const content of msg.message.content as ContentBlock[]) {
         if (content.type === 'tool_result') {
           toolResultByToolUseID.set(content.tool_use_id, msg)
           resolvedToolUseIDs.add(content.tool_use_id)
@@ -1291,8 +1298,9 @@ export function buildMessageLookups(
 
     // Count resolved hooks (deduplicate by hookName)
     if (isHookAttachmentMessage(msg)) {
-      const toolUseID = msg.attachment.toolUseID
-      const hookEvent = msg.attachment.hookEvent
+      const attachment = msg.attachment as HookAttachment
+      const toolUseID = attachment.toolUseID
+      const hookEvent = attachment.hookEvent
       const hookName = (msg.attachment as HookAttachmentWithName).hookName
       if (hookName !== undefined) {
         let byHookEvent = resolvedHookNames.get(toolUseID)

@@ -2293,7 +2293,7 @@ function applySnipRemovals(messages: Map<UUID, TranscriptMessage>): void {
   for (const [uuid, msg] of messages) {
     const parentUuid = msg.parentUuid
     if (!parentUuid || !toDelete.has(parentUuid)) continue
-    messages.set(uuid, { ...msg, parentUuid: resolve(parentUuid) as UUID | null })
+    messages.set(uuid, { ...msg, parentUuid: resolve(parentUuid) as UUID })
     relinkedCount++
   }
 
@@ -3909,7 +3909,7 @@ export async function loadTranscriptFile(
         )
       } else if (isTranscriptMessage(entry)) {
         if (entry.parentUuid && progressBridge.has(entry.parentUuid as UUID)) {
-          entry.parentUuid = (progressBridge.get(entry.parentUuid as UUID) ?? null) as UUID | null
+          entry.parentUuid = (progressBridge.get(entry.parentUuid as UUID) ?? null) as UUID
         }
         messages.set(entry.uuid as UUID, entry)
         // Compact boundary: prior marble-origami-commit entries reference
@@ -4671,7 +4671,8 @@ function transformMessagesForExternalTranscript(
   messages: Transcript,
   replIds: Set<string>,
 ): Transcript {
-  return messages.flatMap(m => {
+  const result: Transcript = []
+  for (const m of messages) {
     if (m.type === 'assistant' && Array.isArray(m.message.content)) {
       const content = m.message.content
       const hasRepl = content.some(
@@ -4682,17 +4683,16 @@ function transformMessagesForExternalTranscript(
             b => !(b.type === 'tool_use' && b.name === REPL_TOOL_NAME),
           )
         : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
+      if (filtered.length === 0) continue
+      if ((m as Message).isVirtual) {
+        const { isVirtual: _omit, ...rest } = m as Message
+        result.push({ ...rest, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else if (filtered !== content) {
+        result.push({ ...m, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else {
+        result.push(m)
       }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    if (m.type === 'user' && Array.isArray(m.message.content)) {
+    } else if (m.type === 'user' && Array.isArray(m.message.content)) {
       const content = m.message.content
       const hasRepl = content.some(
         b => b.type === 'tool_result' && replIds.has(b.tool_use_id),
@@ -4702,23 +4702,23 @@ function transformMessagesForExternalTranscript(
             b => !(b.type === 'tool_result' && replIds.has(b.tool_use_id)),
           )
         : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
+      if (filtered.length === 0) continue
+      if ((m as Message).isVirtual) {
+        const { isVirtual: _omit, ...rest } = m as Message
+        result.push({ ...rest, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else if (filtered !== content) {
+        result.push({ ...m, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else {
+        result.push(m)
       }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    // string-content user, system, attachment
-    if ('isVirtual' in m && m.isVirtual) {
+    } else if ('isVirtual' in m && (m as Message).isVirtual) {
       const { isVirtual: _omit, ...rest } = m
-      return [rest]
+      result.push(rest as Transcript[number])
+    } else {
+      result.push(m)
     }
-    return [m]
-  }) as Transcript
+  }
+  return result
 }
 
 export function cleanMessagesForLogging(
@@ -4760,7 +4760,7 @@ export async function findUnresolvedToolUse(
 
     // Find the tool use but make sure there's not also a result
     for (const message of messages.values()) {
-      if (message.type === 'assistant') {
+      if (message.type === 'assistant' && message.message) {
         const content = message.message.content
         if (Array.isArray(content)) {
           for (const block of content) {
@@ -4770,7 +4770,7 @@ export async function findUnresolvedToolUse(
             }
           }
         }
-      } else if (message.type === 'user') {
+      } else if (message.type === 'user' && message.message) {
         const content = message.message.content
         if (Array.isArray(content)) {
           for (const block of content) {
@@ -4786,7 +4786,7 @@ export async function findUnresolvedToolUse(
       }
     }
 
-    return toolUseMessage
+    return toolUseMessage as AssistantMessage | null
   } catch {
     return null
   }

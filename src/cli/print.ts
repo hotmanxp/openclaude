@@ -3342,7 +3342,7 @@ function runHeadlessStreaming(
               sendControlResponseError(message, errorMessage)
             }
           }
-        } else if (message.request.subtype === 'channel_enable') {
+        } else if ((message.request.subtype as string) === 'channel_enable') {
           const currentAppState = getAppState()
           const channelRequest = message.request as unknown as {
             server_name?: string
@@ -3359,7 +3359,7 @@ function runHeadlessStreaming(
             ],
             output,
           )
-        } else if (message.request.subtype === 'mcp_authenticate') {
+        } else if ((message.request.subtype as string) === 'mcp_authenticate') {
           const authRequest = message.request as unknown as {
             server_name: string
             serverName?: string
@@ -3368,8 +3368,8 @@ function runHeadlessStreaming(
           const currentAppState = getAppState()
           const config =
             getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
+            mcpClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find((c: MCPServerConnection) => c.name === serverName)
               ?.config ??
             null
           if (!config) {
@@ -3516,7 +3516,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               sendControlResponseError(message, errorMessage(error))
             }
           }
-        } else if (message.request.subtype === 'mcp_oauth_callback_url') {
+        } else if ((message.request.subtype as string) === 'mcp_oauth_callback_url') {
           const oauthCallbackRequest = message.request as unknown as {
             server_name: string
             serverName?: string
@@ -3573,7 +3573,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               `No active OAuth flow for server: ${serverName}`,
             )
           }
-        } else if (message.request.subtype === 'claude_authenticate') {
+        } else if ((message.request.subtype as string) === 'claude_authenticate') {
           // Anthropic OAuth over the control channel. The SDK client owns
           // the user's browser (we're headless in -p mode); we hand back
           // both URLs and wait. Automatic URL → localhost listener catches
@@ -3726,8 +3726,8 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
           const currentAppState = getAppState()
           const config =
             getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
+            mcpClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find((c: MCPServerConnection) => c.name === serverName)
               ?.config ??
             null
           if (!config) {
@@ -4531,8 +4531,8 @@ async function handleInitializeRequest(
   if (request.hooks) {
     const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {}
     for (const [event, matchers] of Object.entries(request.hooks)) {
-      hooks[event as HookEvent] = matchers.map(matcher => {
-        const callbacks = matcher.hookCallbackIds.map(callbackId => {
+      hooks[event as HookEvent] = (matchers as unknown as Array<{ hookCallbackIds: string[]; timeout?: number; matcher?: string }>).map(matcher => {
+        const callbacks = matcher.hookCallbackIds.map((callbackId: string) => {
           return structuredIO.createHookCallback(callbackId, matcher.timeout)
         })
         return {
@@ -4544,7 +4544,7 @@ async function handleInitializeRequest(
     registerHookCallbacks(hooks)
   }
   if (request.jsonSchema) {
-    setInitJsonSchema(request.jsonSchema)
+    setInitJsonSchema(request.jsonSchema as Record<string, unknown>)
   }
   const initResponse: SDKControlInitializeResponse = {
     commands: commands
@@ -5315,7 +5315,7 @@ function getStructuredIO(
             content: inputPrompt,
           },
           parent_tool_use_id: null,
-        } satisfies SDKUserMessage),
+        } as unknown as SDKUserMessage),
       ])
     } else {
       // Empty string - create empty stream
@@ -5353,7 +5353,7 @@ export async function handleOrphanedPermissionResponse({
     message.response.response?.toolUseID &&
     typeof message.response.response.toolUseID === 'string'
   ) {
-    const permissionResult = message.response.response as PermissionResult
+    const permissionResult = message.response.response as PermissionResult & { toolUseID?: string }
     const { toolUseID } = permissionResult
     if (!toolUseID) {
       return false
@@ -5662,7 +5662,7 @@ export async function reconcileMcpServers(
     ])
 
     // Remove old dynamic tools
-    const nonDynamicTools = prev.mcp.tools.filter(t => {
+    const nonDynamicTools = prev.mcp.tools.filter((t: Tool) => {
       for (const serverName of allDynamicServerNames) {
         if (t.name.startsWith(`mcp__${serverName}__`)) {
           return false
@@ -5672,7 +5672,7 @@ export async function reconcileMcpServers(
     })
 
     // Remove old dynamic clients
-    const nonDynamicClients = prev.mcp.clients.filter(c => {
+    const nonDynamicClients = prev.mcp.clients.filter((c: MCPServerConnection) => {
       return !allDynamicServerNames.has(c.name)
     })
 
