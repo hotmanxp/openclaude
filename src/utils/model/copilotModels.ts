@@ -194,7 +194,7 @@ export const COPILOT_MODELS: Record<string, CopilotModel> = {
   },
   'claude-opus-4.6': {
     id: 'claude-opus-4.6',
-    name: 'Claude Opus 4.6',
+    name: 'Open CC Opus 4.6',
     family: 'claude-opus',
     attachment: true,
     reasoning: true,
@@ -210,7 +210,7 @@ export const COPILOT_MODELS: Record<string, CopilotModel> = {
   },
   'claude-opus-4.5': {
     id: 'claude-opus-4.5',
-    name: 'Claude Opus 4.5',
+    name: 'Open CC Opus 4.5',
     family: 'claude-opus',
     attachment: true,
     reasoning: true,
@@ -226,7 +226,7 @@ export const COPILOT_MODELS: Record<string, CopilotModel> = {
   },
   'claude-sonnet-4.6': {
     id: 'claude-sonnet-4.6',
-    name: 'Claude Sonnet 4.6',
+    name: 'Open CC Sonnet 4.6',
     family: 'claude-sonnet',
     attachment: true,
     reasoning: true,
@@ -242,7 +242,7 @@ export const COPILOT_MODELS: Record<string, CopilotModel> = {
   },
   'claude-sonnet-4.5': {
     id: 'claude-sonnet-4.5',
-    name: 'Claude Sonnet 4.5',
+    name: 'Open CC Sonnet 4.5',
     family: 'claude-sonnet',
     attachment: true,
     reasoning: true,
@@ -258,7 +258,7 @@ export const COPILOT_MODELS: Record<string, CopilotModel> = {
   },
   'claude-haiku-4.5': {
     id: 'claude-haiku-4.5',
-    name: 'Claude Haiku 4.5',
+    name: 'Open CC Haiku 4.5',
     family: 'claude-haiku',
     attachment: true,
     reasoning: true,
