@@ -11,6 +11,7 @@ import {
   getRemoteControlAtStartup,
   saveGlobalConfig,
 } from '../../utils/config.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { errorMessage } from '../../utils/errors.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
@@ -66,7 +67,7 @@ export type Output = z.infer<OutputSchema>
 
 export const ConfigTool = buildTool({
   name: CONFIG_TOOL_NAME,
-  searchHint: 'get or set Claude Code settings (theme, model)',
+  searchHint: `get or set ${BRAND_NAME} settings (theme, model)`,
   maxResultSizeChars: 100_000,
   async description() {
     return DESCRIPTION

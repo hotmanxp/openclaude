@@ -3,6 +3,7 @@
  * Used for validation and JSON schema generation.
  */
 
+import { BRAND_NAME } from '../constants/product.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../utils/lazySchema.js'
 
@@ -224,7 +225,7 @@ export const KeybindingsSchema = lazySchema(() =>
         .describe('Array of keybinding blocks by context'),
     })
     .describe(
-      'Claude Code keybindings configuration. Customize keyboard shortcuts by context.',
+      `${BRAND_NAME} keybindings configuration. Customize keyboard shortcuts by context.`,
     ),
 )
 

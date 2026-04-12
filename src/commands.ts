@@ -1,4 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
+import { BRAND_NAME } from './constants/product.js'
 import addDir from './commands/add-dir/index.js'
 // @ts-ignore - internal ant command without type declarations
 import autofixPr from './commands/autofix-pr/index.js'
@@ -214,7 +215,7 @@ import stats from './commands/stats/index.js'
 const usageReport: Command = {
   type: 'prompt',
   name: 'insights',
-  description: 'Generate a report analyzing your Claude Code sessions',
+  description: `Generate a report analyzing your ${BRAND_NAME} sessions`,
   contentLength: 0,
   progressMessage: 'analyzing your sessions',
   source: 'builtin',

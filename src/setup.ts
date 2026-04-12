@@ -2,6 +2,7 @@
 
 import { feature } from 'bun:bundle'
 import chalk from 'chalk'
+import { BRAND_NAME } from 'src/constants/product.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -72,7 +73,7 @@ export async function setup(
     // biome-ignore lint/suspicious/noConsole:: intentional console output
     console.error(
       chalk.bold.red(
-        'Error: Claude Code requires Node.js version 18 or higher.',
+        `Error: ${BRAND_NAME} requires Node.js version 18 or higher.`,
       ),
     )
     process.exit(1)
