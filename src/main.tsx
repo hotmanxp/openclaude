@@ -79,7 +79,7 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 // Dead code elimination: conditional import for KAIROS (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assistantModule = feature('KAIROS') ? require('./assistant/index.js') as typeof import('./assistant/index.js') : null;
-const kairosGate = feature('KAIROS') ? require('./assistant/gate.js') as typeof import('./assistant/gate.js') : null;
+const kairosGate = feature('KAIROS') ? require('./assistant/gate.js') as any : null;
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from 'src/services/analytics/config.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
@@ -264,6 +264,7 @@ function isBeingDebugged() {
 }
 
 // Exit if we detect node debugging or inspection
+// @ts-expect-error - Build-time conditional: "external" vs "ant" build
 if ("external" !== 'ant' && isBeingDebugged()) {
   // Use process.exit directly here since we're in the top-level code before imports
   // and gracefulShutdown is not yet available
@@ -338,6 +339,7 @@ function runMigrations(): void {
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       resetAutoModeOptInForDefaultOffer();
     }
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant') {
       migrateFennecToOpus();
     }
@@ -426,8 +428,9 @@ export function startDeferredPrefetches(): void {
   }
 
   // Event loop stall detector — logs when the main thread is blocked >500ms
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
-    void import('./utils/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
+    void import('./utils/eventLoopStallDetector.js' as string).then((m: any) => m.startEventLoopStallDetector());
   }
 }
 function loadSettingsFromFlag(settingsFile: string): void {
@@ -617,7 +620,7 @@ export async function main() {
       const ccUrl = rawCliArgs[ccIdx]!;
       const {
         parseConnectUrl
-      } = await import('./server/parseConnectUrl.js');
+      } = await import('./server/parseConnectUrl.js' as string);
       const parsed = parseConnectUrl(ccUrl);
       _pendingConnect.dangerouslySkipPermissions = rawCliArgs.includes('--dangerously-skip-permissions');
       if (rawCliArgs.includes('-p') || rawCliArgs.includes('--print')) {
@@ -1128,10 +1131,12 @@ async function run(): Promise<CommanderCommand> {
     const disableSlashCommands = options.disableSlashCommands || false;
 
     // Extract tasks mode options (internal-only)
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     const tasksOption = "external" === 'ant' && (options as {
       tasks?: boolean | string;
     }).tasks;
     const taskListId = tasksOption ? typeof tasksOption === 'string' ? tasksOption : DEFAULT_TASKS_MODE_TASK_LIST_ID : undefined;
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && taskListId) {
       process.env.CLAUDE_CODE_TASK_LIST_ID = taskListId;
     }
@@ -1522,6 +1527,7 @@ async function run(): Promise<CommanderCommand> {
     };
     // Store the explicit CLI flag so teammates can inherit it
     setChromeFlagOverride(chromeOpts.chrome);
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     const enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome) && ("external" === 'ant' || isClaudeAISubscriber());
     const autoEnableClaudeInChrome = !enableClaudeInChrome && shouldAutoEnableClaudeInChrome();
     if (enableClaudeInChrome) {
@@ -1754,6 +1760,7 @@ async function run(): Promise<CommanderCommand> {
     } = initResult;
 
     // Handle overly broad shell allow rules for ant users (Bash(*), PowerShell(*))
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && overlyBroadBashPermissions.length > 0) {
       for (const permission of overlyBroadBashPermissions) {
         logForDebugging(`Ignoring overly broad shell permission ${permission.ruleDisplay} from ${permission.sourceDisplay}`);
@@ -2004,6 +2011,7 @@ async function run(): Promise<CommanderCommand> {
     //  - no env override (which short-circuits _CACHED_MAY_BE_STALE before disk)
     //  - flag absent from disk (== null also catches pre-#22279 poisoned null)
     const explicitModel = options.model || process.env.ANTHROPIC_MODEL;
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant' && explicitModel && explicitModel !== 'default' && !hasGrowthBookEnvOverride('tengu_ant_model_override') && getGlobalConfig().cachedGrowthBookFeatures?.['tengu_ant_model_override'] == null) {
       await initializeGrowthBook();
     }
@@ -2150,6 +2158,7 @@ async function run(): Promise<CommanderCommand> {
         // Log agent memory loaded event for tmux teammates
         if (customAgent.memory) {
           logEvent('tengu_agent_memory_loaded', {
+            // @ts-expect-error - Build-time conditional: "external" vs "ant" build
             ...("external" === 'ant' && {
               agent_type: customAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
             }),
@@ -2214,6 +2223,7 @@ async function run(): Promise<CommanderCommand> {
       getFpsMetrics = ctx.getFpsMetrics;
       stats = ctx.stats;
       // Install asciicast recorder before Ink mounts (internal-only, opt-in via CLAUDE_CODE_TERMINAL_RECORDING=1)
+      // @ts-expect-error - Build-time conditional: "external" vs "ant" build
       if ("external" === 'ant') {
         installAsciicastRecorder();
       }
@@ -2805,8 +2815,9 @@ async function run(): Promise<CommanderCommand> {
       if (!isBareMode()) {
         startDeferredPrefetches();
         void import('./utils/backgroundHousekeeping.js').then(m => m.startBackgroundHousekeeping());
+        // @ts-expect-error - Build-time conditional: "external" vs "ant" build
         if ("external" === 'ant') {
-          void import('./utils/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());
+          void import('./utils/sdkHeapDumpMonitor.js' as string).then((m: any) => m.startSdkMemoryMonitor());
         }
       }
       logSessionTelemetry();
@@ -3049,6 +3060,7 @@ async function run(): Promise<CommanderCommand> {
     //   - Runtime: uploader checks github.com/anthropics/* remote + gcloud auth.
     //   - Safety: CLAUDE_CODE_DISABLE_SESSION_DATA_UPLOAD=1 bypasses (tests set this).
     // Import is dynamic + async to avoid adding startup latency.
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     const sessionUploaderPromise = "external" === 'ant' ? import('./utils/sessionDataUploader.js') : null;
 
     // Defer session uploader resolution to the onTurnComplete callback to avoid
@@ -3251,7 +3263,7 @@ async function run(): Promise<CommanderCommand> {
       // loaded by useAssistantHistory on scroll-up (no blocking fetch here).
       const {
         discoverAssistantSessions
-      } = await import('./assistant/sessionDiscovery.js');
+      } = await import('./assistant/sessionDiscovery.js' as string);
       let targetSessionId = _pendingAssistantChat.sessionId;
 
       // Discovery flow — list bridge environments, filter sessions
@@ -3566,13 +3578,14 @@ async function run(): Promise<CommanderCommand> {
           }
         }
       }
+      // @ts-expect-error - Build-time conditional: "external" vs "ant" build
       if ("external" === 'ant') {
         if (options.resume && typeof options.resume === 'string' && !maybeSessionId) {
           // Check for ccshare URL (e.g. https://go/ccshare/boris-20260311-211036)
           const {
             parseCcshareId,
             loadCcshare
-          } = await import('./utils/ccshareResume.js');
+          } = await import('./utils/ccshareResume.js' as string);
           const ccshareId = parseCcshareId(options.resume);
           if (ccshareId) {
             try {
@@ -3797,6 +3810,7 @@ async function run(): Promise<CommanderCommand> {
   if (canUserConfigureAdvisor()) {
     program.addOption(new Option('--advisor <model>', 'Enable the server-side advisor tool with the specified model (alias or full ID).').hideHelp());
   }
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
     program.addOption(new Option('--delegate-permissions', '[internal-only] Alias for --permission-mode auto.').implies({
       permissionMode: 'auto'
@@ -3958,24 +3972,24 @@ async function run(): Promise<CommanderCommand> {
       } = await import('crypto');
       const {
         startServer
-      } = await import('./server/server.js');
+      } = await import('./server/server.js' as string);
       const {
         SessionManager
-      } = await import('./server/sessionManager.js');
+      } = await import('./server/sessionManager.js' as string);
       const {
         DangerousBackend
-      } = await import('./server/backends/dangerousBackend.js');
+      } = await import('./server/backends/dangerousBackend.js' as string);
       const {
         printBanner
-      } = await import('./server/serverBanner.js');
+      } = await import('./server/serverBanner.js' as string);
       const {
         createServerLogger
-      } = await import('./server/serverLog.js');
+      } = await import('./server/serverLog.js' as string);
       const {
         writeServerLock,
         removeServerLock,
         probeRunningServer
-      } = await import('./server/lockfile.js');
+      } = await import('./server/lockfile.js' as string);
       const existing = await probeRunningServer();
       if (existing) {
         process.stderr.write(`A claude server is already running (pid ${existing.pid}) at ${existing.httpUrl}\n`);
@@ -4047,7 +4061,7 @@ async function run(): Promise<CommanderCommand> {
     }) => {
       const {
         parseConnectUrl
-      } = await import('./server/parseConnectUrl.js');
+      } = await import('./server/parseConnectUrl.js' as string);
       const {
         serverUrl,
         authToken
@@ -4073,7 +4087,7 @@ async function run(): Promise<CommanderCommand> {
       }
       const {
         runConnectHeadless
-      } = await import('./server/connectHeadless.js');
+      } = await import('./server/connectHeadless.js' as string);
       const prompt = typeof opts.print === 'string' ? opts.print : '';
       const interactive = opts.print === true;
       await runConnectHeadless(connectConfig, prompt, opts.outputFormat, interactive);
@@ -4352,6 +4366,7 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // claude up — run the project's CLAUDE.md "# claude up" setup instructions.
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
     program.command('up').description('[internal-only] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md').action(async () => {
       const {
@@ -4363,6 +4378,7 @@ async function run(): Promise<CommanderCommand> {
 
   // claude rollback (internal-only)
   // Rolls back to previous releases
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
     program.command('rollback [target]').description('[internal-only] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version').option('-l, --list', 'List recent published versions with ages').option('--dry-run', 'Show what would be installed without installing').option('--safe', 'Roll back to the server-pinned safe version (set by oncall during incidents)').action(async (target?: string, options?: {
       list?: boolean;
@@ -4387,6 +4403,7 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // internal-only commands
+  // @ts-expect-error - Build-time conditional: "external" vs "ant" build
   if ("external" === 'ant') {
     const validateLogId = (value: string) => {
       const maybeSessionId = validateUuid(value);
@@ -4397,7 +4414,7 @@ async function run(): Promise<CommanderCommand> {
     program.command('log').description('[internal-only] Manage conversation logs.').argument('[number|sessionId]', 'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log', validateLogId).action(async (logId: string | number | undefined) => {
       const {
         logHandler
-      } = await import('./cli/handlers/ant.js');
+      } = await import('./cli/handlers/ant.js' as string);
       await logHandler(logId);
     });
 
@@ -4405,7 +4422,7 @@ async function run(): Promise<CommanderCommand> {
     program.command('error').description('[internal-only] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.').argument('[number]', 'A number (0, 1, 2, etc.) to display a specific log', parseInt).action(async (number: number | undefined) => {
       const {
         errorHandler
-      } = await import('./cli/handlers/ant.js');
+      } = await import('./cli/handlers/ant.js' as string);
       await errorHandler(number);
     });
 
@@ -4418,9 +4435,10 @@ Examples:
   $ claude export <uuid>.jsonl output.txt           Render JSONL session file to text`).action(async (source: string, outputFile: string) => {
       const {
         exportHandler
-      } = await import('./cli/handlers/ant.js');
+      } = await import('./cli/handlers/ant.js' as string);
       await exportHandler(source, outputFile);
     });
+    // @ts-expect-error - Build-time conditional: "external" vs "ant" build
     if ("external" === 'ant') {
       const taskCmd = program.command('task').description('[internal-only] Manage task list tasks');
       taskCmd.command('create <subject>').description('Create a new task').option('-d, --description <text>', 'Task description').option('-l, --list <id>', 'Task list ID (defaults to "tasklist")').action(async (subject: string, opts: {
@@ -4429,7 +4447,7 @@ Examples:
       }) => {
         const {
           taskCreateHandler
-        } = await import('./cli/handlers/ant.js');
+        } = await import('./cli/handlers/ant.js' as string);
         await taskCreateHandler(subject, opts);
       });
       taskCmd.command('list').description('List all tasks').option('-l, --list <id>', 'Task list ID (defaults to "tasklist")').option('--pending', 'Show only pending tasks').option('--json', 'Output as JSON').action(async (opts: {
@@ -4439,7 +4457,7 @@ Examples:
       }) => {
         const {
           taskListHandler
-        } = await import('./cli/handlers/ant.js');
+        } = await import('./cli/handlers/ant.js' as string);
         await taskListHandler(opts);
       });
       taskCmd.command('get <id>').description('Get details of a task').option('-l, --list <id>', 'Task list ID (defaults to "tasklist")').action(async (id: string, opts: {
@@ -4447,7 +4465,7 @@ Examples:
       }) => {
         const {
           taskGetHandler
-        } = await import('./cli/handlers/ant.js');
+        } = await import('./cli/handlers/ant.js' as string);
         await taskGetHandler(id, opts);
       });
       taskCmd.command('update <id>').description('Update a task').option('-l, --list <id>', 'Task list ID (defaults to "tasklist")').option('-s, --status <status>', `Set status (${TASK_STATUSES.join(', ')})`).option('--subject <text>', 'Update subject').option('-d, --description <text>', 'Update description').option('--owner <agentId>', 'Set owner').option('--clear-owner', 'Clear owner').action(async (id: string, opts: {
@@ -4460,7 +4478,7 @@ Examples:
       }) => {
         const {
           taskUpdateHandler
-        } = await import('./cli/handlers/ant.js');
+        } = await import('./cli/handlers/ant.js' as string);
         await taskUpdateHandler(id, opts);
       });
       taskCmd.command('dir').description('Show the tasks directory path').option('-l, --list <id>', 'Task list ID (defaults to "tasklist")').action(async (opts: {
@@ -4468,7 +4486,7 @@ Examples:
       }) => {
         const {
           taskDirHandler
-        } = await import('./cli/handlers/ant.js');
+        } = await import('./cli/handlers/ant.js' as string);
         await taskDirHandler(opts);
       });
     }
@@ -4481,7 +4499,7 @@ Examples:
     }) => {
       const {
         completionHandler
-      } = await import('./cli/handlers/ant.js');
+      } = await import('./cli/handlers/ant.js' as string);
       await completionHandler(shell, opts, program);
     });
   }
@@ -4580,6 +4598,7 @@ async function logTenguInit({
         assistantActivationPath: assistantActivationPath as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),
       autoUpdatesChannel: (getInitialSettings().autoUpdatesChannel ?? 'latest') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      // @ts-expect-error - Build-time conditional: "external" vs "ant" build
       ...("external" === 'ant' ? (() => {
         const cwd = getCwd();
         const gitRoot = findGitRoot(cwd);

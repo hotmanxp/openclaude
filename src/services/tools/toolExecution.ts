@@ -255,7 +255,8 @@ function getNextImagePasteId(messages: Message[]): number {
   for (const message of messages) {
     if (message.type === 'user' && message.imagePasteIds) {
       for (const id of message.imagePasteIds) {
-        if (id > maxId) maxId = id
+        const numId = typeof id === 'string' ? parseInt(id, 10) : id
+        if (numId > maxId) maxId = numId
       }
     }
   }
@@ -634,7 +635,7 @@ async function checkPermissionsAndCallTool(
   mcpServerType: McpServerType,
   mcpServerBaseUrl: ReturnType<typeof getLoggingSafeMcpBaseUrl>,
   onToolProgress: (
-    progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>,
+    progress: ToolProgress<ToolProgressData> | ProgressMessage,
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)

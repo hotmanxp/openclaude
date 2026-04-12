@@ -39,12 +39,75 @@ export type ThinkingBlock = {
 
 export type RedactedThinkingBlock = {
   type: 'redacted_thinking'
-  thinking: string
+  data: string
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ImageBlock | ThinkingBlock | RedactedThinkingBlock
+export type DocumentBlock = {
+  type: 'document'
+  source: {
+    type: 'base64'
+    media_type: string
+    data: string
+  }
+  name?: string
+}
 
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ImageBlock | ThinkingBlock | RedactedThinkingBlock | DocumentBlock
+
+// ============================================================================
+// Progress message data types
+// ============================================================================
+
+/**
+ * Progress data for agent execution progress.
+ */
+export type AgentProgressData = {
+  type: 'agent_progress'
+  message: Message
+  agentId: string
+}
+
+/**
+ * Progress data for skill execution progress.
+ */
+export type SkillProgressData = {
+  type: 'skill_progress'
+  message: Message
+  prompt?: string
+  agentId: string
+}
+
+/**
+ * Progress data for bash tool execution.
+ */
+export type BashProgressData = {
+  type: 'bash_progress'
+  elapsedTimeSeconds: number
+  taskId: string
+}
+
+/**
+ * Progress data for powershell tool execution.
+ */
+export type PowerShellProgressData = {
+  type: 'powershell_progress'
+  elapsedTimeSeconds: number
+  taskId: string
+}
+
+/**
+ * Union of all possible progress message data types.
+ */
+export type ProgressMessageData =
+  | AgentProgressData
+  | SkillProgressData
+  | BashProgressData
+  | PowerShellProgressData
+
+// ============================================================================
 // Message origin type
+// ============================================================================
+
 export type MessageOrigin = {
   kind: 'human' | 'tool' | 'assistant' | 'server' | string
   server?: string
@@ -54,7 +117,7 @@ export type MessageOrigin = {
 export interface Message {
   uuid: string
   parentUuid?: string
-  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder' | 'attachment' | 'progress' | 'tombstone' | 'request_start' | 'stream_event' | 'tool_summary' | 'hook_result' | 'system_local_command' | 'text' | 'summary' | 'result'
+  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder' | 'attachment' | 'progress' | 'tombstone' | 'request_start' | 'stream_event' | 'tool_summary' | 'hook_result' | 'system_local_command' | 'text' | 'summary' | 'result' | 'control_request' | 'control_response' | 'control_cancel_request'
   content: string
   timestamp: number | string
   isMeta?: boolean
@@ -63,9 +126,13 @@ export interface Message {
   isVirtual?: boolean
   origin?: MessageOrigin
   requestId?: string
+  request_id?: string
+  request?: unknown
   error?: unknown
   isApiErrorMessage?: boolean
   advisorModel?: string
+  // Note: parentToolUseID is only present on progress messages
+  parentToolUseID?: string
   message?: {
     content: string | ContentBlock[]
     role?: string
@@ -113,21 +180,23 @@ export interface Message {
 }
 
 // Progress message for tool execution
-export interface ProgressMessage {
+export interface ProgressMessage<T = unknown> {
   type: 'progress'
-  toolUseId: string
-  progress: number
+  toolUseID: string
+  parentToolUseID?: string
+  progress?: number
   content?: string
-  data?: unknown
+  data?: T
+  uuid?: string
+  timestamp?: string
 }
 
-// Attachment message for file uploads
+// Attachment message for hook results
 export interface AttachmentMessage {
   type: 'attachment'
-  id: string
-  name: string
-  mimeType: string
-  content: string
+  attachment: unknown
+  uuid?: string
+  timestamp?: string
 }
 
 // System message for internal events
@@ -135,6 +204,8 @@ export interface SystemMessage {
   type: 'system'
   content: string
   subtype?: string
+  uuid: string
+  timestamp: string
   toolUseID?: string
   level?: string
   preventedContinuation?: boolean
@@ -183,8 +254,8 @@ export interface UserMessage {
     content: string | ContentBlock[]
   }
   origin?: MessageOrigin
-  uuid?: string
-  timestamp?: string
+  uuid: string
+  timestamp: number | string
   isMeta?: boolean
   isVisibleInTranscriptOnly?: boolean
   isVirtual?: boolean
@@ -201,6 +272,8 @@ export interface UserMessage {
 export interface AssistantMessage {
   type: 'assistant'
   content: string
+  uuid: string
+  timestamp: number | string
   message: {
     content: string | ContentBlock[]
     role?: string
@@ -269,6 +342,10 @@ export type NormalizedUserMessage = {
   sourceToolUseID?: string
   permissionMode?: string
   summarizeMetadata?: unknown
+  isMeta?: boolean
+  isVirtual?: boolean
+  isCompactSummary?: boolean
+  toolUseResult?: unknown
 }
 
 export type NormalizedAssistantMessage = {
@@ -285,6 +362,7 @@ export type NormalizedAssistantMessage = {
   advisorModel?: string
   isMeta?: boolean
   isVirtual?: boolean
+  mcpMeta?: unknown
 }
 
 export type NormalizedMessage = NormalizedUserMessage | NormalizedAssistantMessage
@@ -315,10 +393,12 @@ export type SystemMessageLevel = 'info' | 'warning' | 'error'
 
 // Stop hook info
 export type StopHookInfo = {
-  hookName: string
+  hookName?: string
+  command?: string
   durationMs?: number
   output?: string
   error?: string
+  promptText?: string
 }
 
 // System message subtypes
@@ -389,16 +469,36 @@ export type SystemApiMetricsMessage = SystemMessage & {
   configWriteCount?: number
 }
 
+export type CompactMetadata = {
+  trigger: string
+  preTokens: number
+  userContext?: string
+  messagesSummarized: number
+  preCompactDiscoveredTools?: string[]
+  preservedSegment?: {
+    headUuid: string
+    anchorUuid: string
+    tailUuid: string
+  }
+}
+
 export type SystemCompactBoundaryMessage = SystemMessage & {
   trigger: 'manual' | 'auto'
   preTokens: number
   logicalParentUuid?: string
-  compactMetadata?: {
-    trigger: string
-    preTokens: number
-    userContext?: string
-    messagesSummarized: number
-  }
+  compactMetadata?: CompactMetadata
+}
+
+export type SystemFileSnapshotMessage = SystemMessage & {
+  subtype: 'file_snapshot'
+  snapshotFiles: Array<{
+    key: string
+    path: string
+    content: string
+  }>
+  uuid?: string
+  timestamp?: string
+  isMeta?: boolean
 }
 
 export type SystemMicrocompactBoundaryMessage = SystemMessage & {
@@ -480,6 +580,9 @@ export type GroupedToolUseMessage = {
   type: 'grouped_tool_use'
   messages: NormalizedAssistantMessage[]
   displayMessage: NormalizedAssistantMessage
+  results: NormalizedUserMessage[]
+  toolName: string
+  messageId: string
   uuid: string
   timestamp: number
 }

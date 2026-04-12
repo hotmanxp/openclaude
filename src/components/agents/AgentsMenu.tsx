@@ -28,7 +28,7 @@ type Props = {
     display?: CommandResultDisplay;
   }) => void;
 };
-export function AgentsMenu(t0) {
+export function AgentsMenu(t0: Props) {
   const $ = _c(157);
   const {
     tools,
@@ -53,7 +53,7 @@ export function AgentsMenu(t0) {
     allAgents,
     activeAgents: agents
   } = agentDefinitions;
-  let t2;
+  let t2: string[];
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = [];
     $[1] = t2;
@@ -146,8 +146,8 @@ export function AgentsMenu(t0) {
   const agentsBySource = t10;
   let t11;
   if ($[25] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = message => {
-      setChanges(prev => [...prev, message]);
+    t11 = (message: string) => {
+      setChanges((prev: string[]) => [...prev, message]);
       setModeState({
         mode: "list-agents",
         source: "all"
@@ -160,12 +160,12 @@ export function AgentsMenu(t0) {
   const handleAgentCreated = t11;
   let t12;
   if ($[26] !== setAppState) {
-    t12 = async agent => {
+    t12 = async (agent: AgentDefinition) => {
       ;
       try {
         await deleteAgentFromFile(agent);
         setAppState(state => {
-          const allAgents_0 = state.agentDefinitions.allAgents.filter(a_6 => !(a_6.agentType === agent.agentType && a_6.source === agent.source));
+          const allAgents_0 = state.agentDefinitions.allAgents.filter((a_6: AgentDefinition) => !(a_6.agentType === agent.agentType && a_6.source === agent.source));
           return {
             ...state,
             agentDefinitions: {
@@ -175,7 +175,7 @@ export function AgentsMenu(t0) {
             }
           };
         });
-        setChanges(prev_0 => [...prev_0, `Deleted agent: ${chalk.bold(agent.agentType)}`]);
+        setChanges((prev_0: string[]) => [...prev_0, `Deleted agent: ${chalk.bold(agent.agentType)}`]);
         setModeState({
           mode: "list-agents",
           source: "all"
@@ -231,7 +231,7 @@ export function AgentsMenu(t0) {
         }
         let t16;
         if ($[37] !== modeState) {
-          t16 = agent_0 => setModeState({
+          t16 = (agent_0: ResolvedAgent) => setModeState({
             mode: "agent-menu",
             agent: agent_0,
             previousMode: modeState
@@ -308,7 +308,7 @@ export function AgentsMenu(t0) {
         if ($[53] !== allAgents || $[54] !== modeState.agent.agentType || $[55] !== modeState.agent.source) {
           let t14;
           if ($[57] !== modeState.agent.agentType || $[58] !== modeState.agent.source) {
-            t14 = a_9 => a_9.agentType === modeState.agent.agentType && a_9.source === modeState.agent.source;
+            t14 = (a_9: AgentDefinition) => a_9.agentType === modeState.agent.agentType && a_9.source === modeState.agent.source;
             $[57] = modeState.agent.agentType;
             $[58] = modeState.agent.source;
             $[59] = t14;
@@ -371,7 +371,7 @@ export function AgentsMenu(t0) {
         const menuItems = t17;
         let t18;
         if ($[66] !== agentToUse || $[67] !== modeState) {
-          t18 = value_0 => {
+          t18 = (value_0: string) => {
             bb129: switch (value_0) {
               case "view":
                 {
@@ -489,7 +489,7 @@ export function AgentsMenu(t0) {
         if ($[89] !== allAgents || $[90] !== modeState.agent) {
           let t14;
           if ($[92] !== modeState.agent) {
-            t14 = a_8 => a_8.agentType === modeState.agent.agentType && a_8.source === modeState.agent.source;
+            t14 = (a_8: AgentDefinition) => a_8.agentType === modeState.agent.agentType && a_8.source === modeState.agent.source;
             $[92] = modeState.agent;
             $[93] = t14;
           } else {
@@ -614,7 +614,7 @@ export function AgentsMenu(t0) {
         }
         let t17;
         if ($[119] !== handleAgentDeleted || $[120] !== modeState) {
-          t17 = value => {
+          t17 = (value: string) => {
             if (value === "yes") {
               handleAgentDeleted(modeState.agent);
             } else {
@@ -684,7 +684,7 @@ export function AgentsMenu(t0) {
         if ($[135] !== allAgents || $[136] !== modeState.agent) {
           let t14;
           if ($[138] !== modeState.agent) {
-            t14 = a_7 => a_7.agentType === modeState.agent.agentType && a_7.source === modeState.agent.source;
+            t14 = (a_7: AgentDefinition) => a_7.agentType === modeState.agent.agentType && a_7.source === modeState.agent.source;
             $[138] = modeState.agent;
             $[139] = t14;
           } else {
@@ -711,7 +711,7 @@ export function AgentsMenu(t0) {
         let t16;
         let t17;
         if ($[142] !== modeState.previousMode) {
-          t16 = message_0 => {
+          t16 = (message_0: string) => {
             handleAgentCreated(message_0);
             setModeState(modeState.previousMode);
           };
@@ -767,33 +767,33 @@ export function AgentsMenu(t0) {
       }
   }
 }
-function _temp0(a_5) {
+function _temp0(a_5: AgentDefinition) {
   return a_5.source === "plugin";
 }
-function _temp9(a_4) {
+function _temp9(a_4: AgentDefinition) {
   return a_4.source === "flagSettings";
 }
-function _temp8(a_3) {
+function _temp8(a_3: AgentDefinition) {
   return a_3.source === "localSettings";
 }
-function _temp7(a_2) {
+function _temp7(a_2: AgentDefinition) {
   return a_2.source === "policySettings";
 }
-function _temp6(a_1) {
+function _temp6(a_1: AgentDefinition) {
   return a_1.source === "projectSettings";
 }
-function _temp5(a_0) {
+function _temp5(a_0: AgentDefinition) {
   return a_0.source === "userSettings";
 }
-function _temp4(a) {
+function _temp4(a: AgentDefinition) {
   return a.source === "built-in";
 }
-function _temp3(s_1) {
+function _temp3(s_1: { toolPermissionContext: unknown }) {
   return s_1.toolPermissionContext;
 }
-function _temp2(s_0) {
+function _temp2(s_0: { mcp: { tools: Tools } }) {
   return s_0.mcp.tools;
 }
-function _temp(s) {
+function _temp(s: { agentDefinitions: { allAgents: AgentDefinition[]; activeAgents: AgentDefinition[] } }) {
   return s.agentDefinitions;
 }

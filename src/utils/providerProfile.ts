@@ -22,14 +22,21 @@ const PROFILE_ENV_KEYS = [
 
 const SECRET_ENV_KEYS = [
   'OPENAI_API_KEY',
+  'GEMINI_API_KEY',
+  'CODEX_API_KEY',
 ] as const
 
-export type ProviderProfile = 'openai' | 'ollama' | 'atomic-chat'
+export type ProviderProfile = 'openai' | 'ollama' | 'atomic-chat' | 'gemini' | 'codex'
 
 export type ProfileEnv = {
   OPENAI_BASE_URL?: string
   OPENAI_MODEL?: string
   OPENAI_API_KEY?: string
+  GEMINI_MODEL?: string
+  GEMINI_BASE_URL?: string
+  GEMINI_AUTH_MODE?: 'api-key' | 'access-token' | 'adc'
+  GEMINI_API_KEY?: string
+  CODEX_API_KEY?: string
 }
 
 export type ProfileFile = {
@@ -39,9 +46,9 @@ export type ProfileFile = {
 }
 
 type SecretValueSource = Partial<
-  Pick<
-    NodeJS.ProcessEnv & ProfileEnv,
-    (typeof SECRET_ENV_KEYS)[number]
+  Record<
+    (typeof SECRET_ENV_KEYS)[number],
+    string | undefined
   >
 >
 
@@ -62,7 +69,9 @@ export function isProviderProfile(value: unknown): value is ProviderProfile {
   return (
     value === 'openai' ||
     value === 'ollama' ||
-    value === 'atomic-chat'
+    value === 'atomic-chat' ||
+    value === 'gemini' ||
+    value === 'codex'
   )
 }
 
@@ -85,7 +94,7 @@ function looksLikeSecretValue(value: string): boolean {
 }
 
 function collectSecretValues(
-  sources: Array<SecretValueSource | null | undefined>,
+  sources: Array<Record<string, string | undefined> | null | undefined>,
 ): string[] {
   const values = new Set<string>()
 
@@ -122,7 +131,7 @@ export function maskSecretForDisplay(
 
 export function redactSecretValueForDisplay(
   value: string | null | undefined,
-  ...sources: Array<SecretValueSource | null | undefined>
+  ...sources: Array<Record<string, string | undefined> | null | undefined>
 ): string | undefined {
   if (!value) return undefined
 
@@ -139,7 +148,7 @@ export function redactSecretValueForDisplay(
 
 export function sanitizeProviderConfigValue(
   value: string | null | undefined,
-  ...sources: Array<SecretValueSource | null | undefined>
+  ...sources: Array<Record<string, string | undefined> | null | undefined>
 ): string | undefined {
   if (!value) return undefined
 
@@ -458,4 +467,76 @@ export function applyProfileEnvToProcessEnv(
   }
 
   Object.assign(targetEnv, nextEnv)
+}
+
+export function buildGeminiProfileEnv(options: {
+  apiKey?: string
+  authMode: 'api-key' | 'access-token' | 'adc'
+  model?: string | null
+  processEnv?: NodeJS.ProcessEnv
+}): ProfileEnv | null {
+  const processEnv = options.processEnv ?? process.env
+
+  return {
+    GEMINI_MODEL: options.model ?? 'gemini-2.5-flash',
+    GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com',
+    GEMINI_AUTH_MODE: options.authMode,
+    GEMINI_API_KEY: options.apiKey,
+  }
+}
+
+export function buildCodexProfileEnv(options: {
+  model: string
+  processEnv?: NodeJS.ProcessEnv
+}): ProfileEnv | null {
+  const processEnv = options.processEnv ?? process.env
+  const apiKey = sanitizeApiKey(options.processEnv?.CODEX_API_KEY ?? processEnv.CODEX_API_KEY)
+
+  if (!apiKey) {
+    return null
+  }
+
+  return {
+    OPENAI_BASE_URL: 'https://api.githubcopilot.com',
+    OPENAI_MODEL: options.model,
+    OPENAI_API_KEY: apiKey,
+    CODEX_API_KEY: apiKey,
+  }
+}
+
+export function resolveCodexApiCredentials(processEnv: NodeJS.ProcessEnv): {
+  apiKey?: string
+  accountId?: string
+  authPath?: string
+  source?: 'env' | 'file'
+} {
+  const apiKey = processEnv.CODEX_API_KEY || processEnv.CHATGPT_API_KEY
+  const accountId = processEnv.CHATGPT_ACCOUNT_ID || processEnv.CODEX_ACCOUNT_ID
+  const authPath = processEnv.CHATGPT_AUTH_FILE_PATH || processEnv.CODEX_AUTH_FILE_PATH
+
+  if (apiKey) {
+    return { apiKey, accountId, authPath, source: 'env' }
+  }
+
+  return { accountId, authPath }
+}
+
+export function readGeminiAccessToken(): string | undefined {
+  // Stub implementation - would read from secure storage
+  return undefined
+}
+
+export function saveGeminiAccessToken(token: string): { success: boolean; warning?: string } {
+  // Stub implementation - would save to secure storage
+  return { success: false, warning: 'Not implemented' }
+}
+
+export function mayHaveGeminiAdcCredentials(processEnv: NodeJS.ProcessEnv): boolean {
+  // Stub implementation - would check for ADC credentials
+  return false
+}
+
+export function getGeminiProjectIdHint(processEnv: NodeJS.ProcessEnv): string | undefined {
+  // Stub implementation - would get project ID from ADC
+  return undefined
 }

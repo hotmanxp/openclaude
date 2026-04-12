@@ -8,6 +8,8 @@ import { getModelMaxOutputTokens } from 'src/utils/context.js';
 import { getClaudeConfigHomeDir } from 'src/utils/envUtils.js';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import { getOriginalCwd } from '../bootstrap/state.js';
+import type { Tool, ToolPermissionContext } from '../Tool.js';
+import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import type { CommandResultDisplay } from '../commands.js';
 import { Pane } from '../components/design-system/Pane.js';
 import { PressEnterToContinue } from '../components/PressEnterToContinue.js';
@@ -17,15 +19,16 @@ import { useSettingsErrors } from '../hooks/notifs/useSettingsErrors.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
-import { useAppState } from '../state/AppState.js';
-import { getPluginErrorMessage } from '../types/plugin.js';
+import { useAppState, type AppState } from '../state/AppState.js';
+import { getPluginErrorMessage, type PluginError } from '../types/plugin.js';
 import { getGcsDistTags, getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
-import { validateBoundedIntEnvVar } from '../utils/envValidation.js';
+import { validateBoundedIntEnvVar, type EnvVarValidationResult } from '../utils/envValidation.js';
 import { pathExists } from '../utils/file.js';
 import { cleanupStaleLocks, getAllLockInfo, isPidBasedLockingEnabled, type LockInfo } from '../utils/nativeInstaller/pidLock.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
+import type { ValidationError } from '../utils/settings/validation.js';
 import { BASH_MAX_OUTPUT_DEFAULT, BASH_MAX_OUTPUT_UPPER_LIMIT } from '../utils/shell/outputLimits.js';
 import { TASK_MAX_OUTPUT_DEFAULT, TASK_MAX_OUTPUT_UPPER_LIMIT } from '../utils/task/outputFormatting.js';
 import { getXDGStateHome } from '../utils/xdg.js';
@@ -500,46 +503,46 @@ export function Doctor(t0: Props) {
   }
   return t41;
 }
-function _temp18(detail_2, i_8) {
+function _temp18(detail_2: string, i_8: number): React.ReactElement {
   return <Text key={i_8} dimColor={true}>{"    "}└ {detail_2}</Text>;
 }
-function _temp17(detail_1, i_7) {
+function _temp17(detail_1: string, i_7: number): React.ReactElement {
   return <Text key={i_7} dimColor={true}>{"    "}└ {detail_1}</Text>;
 }
-function _temp16(detail_0, i_6) {
+function _temp16(detail_0: string, i_6: number): React.ReactElement {
   return <Text key={i_6} dimColor={true}>{"    "}└ {detail_0}</Text>;
 }
-function _temp15(detail, i_5) {
+function _temp15(detail: string, i_5: number): React.ReactElement {
   return <Text key={i_5} dimColor={true}>{"  "}└ {detail}</Text>;
 }
-function _temp14(error_0, i_4) {
+function _temp14(error_0: PluginError, i_4: number): React.ReactElement {
   return <Text key={i_4} dimColor={true}>{"  "}└ {error_0.source || "unknown"}{"plugin" in error_0 && error_0.plugin ? ` [${error_0.plugin}]` : ""}:{" "}{getPluginErrorMessage(error_0)}</Text>;
 }
-function _temp13(file, i_3) {
+function _temp13(file: { path: string; error: string }, i_3: number): React.ReactElement {
   return <Text key={i_3} dimColor={true}>{"  "}└ {file.path}: {file.error}</Text>;
 }
-function _temp12(lock, i_2) {
+function _temp12(lock: LockInfo, i_2: number): React.ReactElement {
   return <Text key={i_2}>└ {lock.version}: PID {lock.pid}{" "}{lock.isProcessRunning ? <Text>(running)</Text> : <Text color="warning">(stale)</Text>}</Text>;
 }
-function _temp11(validation, i_1) {
+function _temp11(validation: { name: string } & EnvVarValidationResult, i_1: number): React.ReactElement {
   return <Text key={i_1}>└ {validation.name}:{" "}<Text color={validation.status === "capped" ? "warning" : "error"}>{validation.message}</Text></Text>;
 }
-function _temp10(warning, i_0) {
+function _temp10(warning: { issue: string; fix: string }, i_0: number): React.ReactElement {
   return <Box key={i_0} flexDirection="column"><Text color="warning">Warning: {warning.issue}</Text><Text>Fix: {warning.fix}</Text></Box>;
 }
-function _temp1(install, i) {
+function _temp1(install: { type: string; path: string }, i: number): React.ReactElement {
   return <Text key={i}>└ {install.type} at {install.path}</Text>;
 }
-function _temp0(a) {
+function _temp0(a: { agentType: string; source: SettingSource | 'built-in' | 'plugin' }): { agentType: string; source: SettingSource | 'built-in' | 'plugin' } {
   return {
     agentType: a.agentType,
     source: a.source
   };
 }
-function _temp9(v_0) {
+function _temp9(v_0: { name: string } & EnvVarValidationResult): boolean {
   return v_0.status !== "valid";
 }
-function _temp8(v) {
+function _temp8(v: { name: string; default: number; upperLimit: number }): { name: string } & EnvVarValidationResult {
   const value = process.env[v.name];
   const result = validateBoundedIntEnvVar(v.name, value, v.default, v.upperLimit);
   return {
@@ -547,28 +550,28 @@ function _temp8(v) {
     ...result
   };
 }
-function _temp7(error) {
+function _temp7(error: ValidationError): boolean {
   return error.mcpErrorMetadata === undefined;
 }
-function _temp6(diag) {
+function _temp6(diag: DiagnosticInfo): Promise<NpmDistTags> {
   const fetchDistTags = diag.installationType === "native" ? getGcsDistTags : getNpmDistTags;
   return fetchDistTags().catch(_temp5);
 }
-function _temp5() {
+function _temp5(): { latest: null; stable: null } {
   return {
     latest: null,
     stable: null
   };
 }
-function _temp4(s_2) {
+function _temp4(s_2: AppState): PluginError[] {
   return s_2.plugins.errors;
 }
-function _temp3(s_1) {
+function _temp3(s_1: AppState): ToolPermissionContext {
   return s_1.toolPermissionContext;
 }
-function _temp2(s_0) {
+function _temp2(s_0: AppState): Tool[] {
   return s_0.mcp.tools;
 }
-function _temp(s) {
+function _temp(s: AppState): AgentDefinitionsResult {
   return s.agentDefinitions;
 }

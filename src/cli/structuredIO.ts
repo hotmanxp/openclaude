@@ -8,8 +8,11 @@ import type { AssistantMessage } from 'src/types/message.js'
 import type {
   HookInput,
   HookJSONOutput,
-  PermissionUpdate,
+  PermissionUpdate as AgentSdkPermissionUpdate,
 } from 'src/entrypoints/agentSdkTypes.js'
+import type {
+  PermissionUpdate,
+} from 'src/types/permissions.js'
 import { SDKControlElicitationResponseSchema } from 'src/entrypoints/sdk/controlSchemas.js'
 import type {
   SDKControlRequest,
@@ -800,7 +803,7 @@ async function executePermissionRequestHooksForSDK(
   toolUseID: string,
   input: Record<string, unknown>,
   toolUseContext: ToolUseContext,
-  suggestions: PermissionUpdate[] | undefined,
+  suggestions: AgentSdkPermissionUpdate[] | undefined,
 ): Promise<PermissionDecision | undefined> {
   const appState = toolUseContext.getAppState()
   const permissionMode = appState.toolPermissionContext.mode

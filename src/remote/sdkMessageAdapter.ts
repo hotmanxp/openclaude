@@ -1,3 +1,4 @@
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type {
   SDKAssistantMessage,
   SDKCompactBoundaryMessage,
@@ -10,6 +11,7 @@ import type {
 } from '../entrypoints/agentSdkTypes.js'
 import type {
   AssistantMessage,
+  ContentBlock,
   Message,
   StreamEvent,
   SystemMessage,
@@ -29,14 +31,39 @@ import { createUserMessage } from '../utils/messages.js'
  * Convert an SDKAssistantMessage to an AssistantMessage
  */
 function convertAssistantMessage(msg: SDKAssistantMessage): AssistantMessage {
-  return {
+  const messageContent = msg.message?.content ?? ''
+  const result: AssistantMessage = {
     type: 'assistant',
-    message: msg.message,
+    content: typeof messageContent === 'string' ? messageContent : '',
+    message: {
+      content: messageContent as string | ContentBlock[],
+    },
     uuid: msg.uuid,
     requestId: undefined,
     timestamp: new Date().toISOString(),
     error: msg.error,
   }
+  if (msg.message) {
+    if (msg.message.role !== undefined) {
+      result.message.role = msg.message.role
+    }
+    if (msg.message.id !== undefined) {
+      result.message.id = msg.message.id
+    }
+    if (msg.message.context_management !== undefined) {
+      result.message.context_management = msg.message.context_management as unknown
+    }
+    if (msg.message.model !== undefined) {
+      result.message.model = msg.message.model
+    }
+    if (msg.message.stop_reason !== undefined) {
+      result.message.stop_reason = msg.message.stop_reason
+    }
+    if (msg.message.stop_sequence !== undefined) {
+      result.message.stop_sequence = msg.message.stop_sequence
+    }
+  }
+  return result
 }
 
 /**
@@ -46,6 +73,7 @@ function convertStreamEvent(msg: SDKPartialAssistantMessage): StreamEvent {
   return {
     type: 'stream_event',
     event: msg.event,
+    data: msg,
   }
 }
 
@@ -63,7 +91,7 @@ function convertResultMessage(msg: SDKResultMessage): SystemMessage {
     subtype: 'informational',
     content,
     level: isError ? 'warning' : 'info',
-    uuid: msg.uuid,
+    uuid: msg.uuid || 'unknown',
     timestamp: new Date().toISOString(),
   }
 }
@@ -75,9 +103,9 @@ function convertInitMessage(msg: SDKSystemMessage): SystemMessage {
   return {
     type: 'system',
     subtype: 'informational',
-    content: `Remote session initialized (model: ${msg.model})`,
+    content: `Remote session initialized (model: ${msg.model || 'unknown'})`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: msg.uuid || 'unknown',
     timestamp: new Date().toISOString(),
   }
 }
@@ -98,7 +126,7 @@ function convertStatusMessage(msg: SDKStatusMessage): SystemMessage | null {
         ? 'Compacting conversation…'
         : `Status: ${msg.status}`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: (msg as { uuid?: string }).uuid || 'unknown',
     timestamp: new Date().toISOString(),
   }
 }
@@ -116,9 +144,9 @@ function convertToolProgressMessage(
     subtype: 'informational',
     content: `Tool ${msg.tool_name} running for ${msg.elapsed_time_seconds}s…`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: msg.uuid || 'unknown',
     timestamp: new Date().toISOString(),
-    toolUseID: msg.tool_use_id,
+    toolUseID: msg.tool_use_id || 'unknown',
   }
 }
 
@@ -133,7 +161,7 @@ function convertCompactBoundaryMessage(
     subtype: 'compact_boundary',
     content: 'Conversation compacted',
     level: 'info',
-    uuid: msg.uuid,
+    uuid: (msg as { uuid?: string }).uuid || 'unknown',
     timestamp: new Date().toISOString(),
     compactMetadata: fromSDKCompactMetadata(msg.compact_metadata),
   }
@@ -171,7 +199,7 @@ export function convertSDKMessage(
 ): ConvertedMessage {
   switch (msg.type) {
     case 'assistant':
-      return { type: 'message', message: convertAssistantMessage(msg) }
+      return { type: 'message', message: convertAssistantMessage(msg as SDKAssistantMessage) }
 
     case 'user': {
       const content = msg.message?.content
@@ -181,16 +209,16 @@ export function convertSDKMessage(
       // agent-side normalizeMessage() hardcodes it to null for top-level
       // tool results, so it can't distinguish tool results from prompt echoes.
       const isToolResult =
-        Array.isArray(content) && content.some(b => b.type === 'tool_result')
+        Array.isArray(content) && content.some(b => (b as { type?: string }).type === 'tool_result')
       if (opts?.convertToolResults && isToolResult) {
         return {
           type: 'message',
           message: createUserMessage({
-            content,
+            content: content as string | ContentBlockParam[],
             toolUseResult: msg.tool_use_result,
-            uuid: msg.uuid,
-            timestamp: msg.timestamp,
-          }),
+            uuid: msg.uuid as string | undefined,
+            timestamp: typeof msg.timestamp === 'string' ? msg.timestamp : undefined,
+          }) as Message,
         }
       }
       // When converting historical events, user-typed messages need to be
@@ -201,11 +229,11 @@ export function convertSDKMessage(
           return {
             type: 'message',
             message: createUserMessage({
-              content,
+              content: content as string | ContentBlockParam[],
               toolUseResult: msg.tool_use_result,
-              uuid: msg.uuid,
-              timestamp: msg.timestamp,
-            }),
+              uuid: msg.uuid as string | undefined,
+              timestamp: typeof msg.timestamp === 'string' ? msg.timestamp : undefined,
+            }) as Message,
           }
         }
       }
@@ -215,22 +243,22 @@ export function convertSDKMessage(
     }
 
     case 'stream_event':
-      return { type: 'stream_event', event: convertStreamEvent(msg) }
+      return { type: 'stream_event', event: convertStreamEvent(msg as SDKPartialAssistantMessage) }
 
     case 'result':
       // Only show result messages for errors. Success results are noise
       // in multi-turn sessions (isLoading=false is sufficient signal).
       if (msg.subtype !== 'success') {
-        return { type: 'message', message: convertResultMessage(msg) }
+        return { type: 'message', message: convertResultMessage(msg as SDKResultMessage) }
       }
       return { type: 'ignored' }
 
     case 'system':
       if (msg.subtype === 'init') {
-        return { type: 'message', message: convertInitMessage(msg) }
+        return { type: 'message', message: convertInitMessage(msg as SDKSystemMessage) }
       }
       if (msg.subtype === 'status') {
-        const statusMsg = convertStatusMessage(msg)
+        const statusMsg = convertStatusMessage(msg as SDKStatusMessage)
         return statusMsg
           ? { type: 'message', message: statusMsg }
           : { type: 'ignored' }
@@ -238,7 +266,7 @@ export function convertSDKMessage(
       if (msg.subtype === 'compact_boundary') {
         return {
           type: 'message',
-          message: convertCompactBoundaryMessage(msg),
+          message: convertCompactBoundaryMessage(msg as SDKCompactBoundaryMessage),
         }
       }
       // hook_response and other subtypes
@@ -248,7 +276,7 @@ export function convertSDKMessage(
       return { type: 'ignored' }
 
     case 'tool_progress':
-      return { type: 'message', message: convertToolProgressMessage(msg) }
+      return { type: 'message', message: convertToolProgressMessage(msg as SDKToolProgressMessage) }
 
     case 'auth_status':
       // Auth status is handled separately, not converted to a display message
@@ -296,7 +324,7 @@ export function isSuccessResult(msg: SDKResultMessage): boolean {
  */
 export function getResultText(msg: SDKResultMessage): string | null {
   if (msg.subtype === 'success') {
-    return msg.result
+    return msg.result ?? null
   }
   return null
 }

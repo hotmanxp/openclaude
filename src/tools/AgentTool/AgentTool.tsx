@@ -1,7 +1,8 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { buildTool, type ToolDef, toolMatchesName } from 'src/Tool.js';
-import type { Message as MessageType, NormalizedUserMessage } from 'src/types/message.js';
+import type { Message as MessageType, NormalizedUserMessage, ProgressMessage, AssistantMessage } from 'src/types/message.js';
+import type { MCPServerConnection } from '../../services/mcp/types.js';
 import { getQuerySourceForAgent } from 'src/utils/promptCategory.js';
 import { z } from 'zod/v4';
 import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
@@ -56,8 +57,14 @@ import { runAgent } from './runAgent.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule = feature('PROACTIVE') || feature('KAIROS') ? require('../../proactive/index.js') as typeof import('../../proactive/index.js') : null;
+const proactiveModule = feature('PROACTIVE') || feature('KAIROS')
+  // @ts-ignore - module may not exist in external builds
+  ? require('../../proactive/index.js') as unknown as typeof import('../../proactive/index.js')
+  : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
+
+// Dead code elimination helper - TypeScript doesn't understand the "external" === 'ant' pattern
+const IS_ANT_BUILD = ("external" as unknown as string) === 'ant';
 
 // Progress display constants (for showing background hint)
 const PROGRESS_THRESHOLD_MS = 2000; // Show background hint after 2 seconds
@@ -96,7 +103,7 @@ const fullInputSchema = lazySchema(() => {
     mode: permissionModeSchema().optional().describe('Permission mode for spawned teammate (e.g., "plan" to require plan approval).')
   });
   return baseInputSchema().merge(multiAgentInputSchema).extend({
-    isolation: ("external" === 'ant' ? z.enum(['worktree', 'remote']) : z.enum(['worktree'])).optional().describe("external" === 'ant' ? 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo. "remote" launches the agent in a remote CCR environment (always runs in background).' : 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo.'),
+    isolation: (IS_ANT_BUILD ? z.enum(['worktree', 'remote']) : z.enum(['worktree'])).optional().describe(IS_ANT_BUILD ? 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo. "remote" launches the agent in a remote CCR environment (always runs in background).' : 'Isolation mode. "worktree" creates a temporary git worktree so the agent works on an isolated copy of the repo.'),
     cwd: z.string().optional().describe('Absolute path to run the agent in. Overrides the working directory for all filesystem and shell operations within this agent. Mutually exclusive with isolation: "worktree".')
   });
 });
@@ -189,6 +196,7 @@ export type RemoteLaunchedOutput = {
   outputFile: string;
 };
 type InternalOutput = Output | TeammateSpawnedOutput | RemoteLaunchedOutput;
+// @ts-ignore - types may not exist in external builds
 import type { AgentToolProgress, ShellProgress } from '../../types/tools.js';
 // AgentTool forwards both its own progress events and shell progress
 // events from the sub-agent so the SDK receives tool_progress updates during bash/powershell runs.
@@ -372,7 +380,7 @@ export const AgentTool = buildTool({
       // If any required servers are still pending (connecting), wait for them
       // before checking tool availability. This avoids a race condition where
       // the agent is invoked before MCP servers finish connecting.
-      const hasPendingRequiredServers = appState.mcp.clients.some(c => c.type === 'pending' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
+      const hasPendingRequiredServers = appState.mcp.clients.some((c: MCPServerConnection) => c.type === 'pending' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
       let currentAppState = appState;
       if (hasPendingRequiredServers) {
         const MAX_WAIT_MS = 30_000;
@@ -384,9 +392,9 @@ export const AgentTool = buildTool({
 
           // Early exit: if any required server has already failed, no point
           // waiting for other pending servers — the check will fail regardless.
-          const hasFailedRequiredServer = currentAppState.mcp.clients.some(c => c.type === 'failed' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
+          const hasFailedRequiredServer = currentAppState.mcp.clients.some((c: MCPServerConnection) => c.type === 'failed' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
           if (hasFailedRequiredServer) break;
-          const stillPending = currentAppState.mcp.clients.some(c => c.type === 'pending' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
+          const stillPending = currentAppState.mcp.clients.some((c: MCPServerConnection) => c.type === 'pending' && requiredMcpServers.some(pattern => c.name.toLowerCase().includes(pattern.toLowerCase())));
           if (!stillPending) break;
         }
       }
@@ -432,7 +440,7 @@ export const AgentTool = buildTool({
 
     // Remote isolation: delegate to CCR. Gated internal-only — the guard enables
     // dead code elimination of the entire block for external builds.
-    if ("external" === 'ant' && effectiveIsolation === 'remote') {
+    if (IS_ANT_BUILD && effectiveIsolation === 'remote') {
       const eligibility = await checkRemoteAgentEligibility();
       if (!eligibility.eligible) {
         const reasons = eligibility.errors.map(formatPreconditionError).join('\n');
@@ -498,8 +506,8 @@ export const AgentTool = buildTool({
       } else {
         // Fallback: recompute. May diverge from parent's cached bytes if
         // GrowthBook state changed between parent turn-start and fork spawn.
-        const mainThreadAgentDefinition = appState.agent ? appState.agentDefinitions.activeAgents.find(a => a.agentType === appState.agent) : undefined;
-        const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
+        const mainThreadAgentDefinition = appState.agent ? appState.agentDefinitions.activeAgents.find((a: AgentDefinition) => a.agentType === appState.agent) : undefined;
+        const additionalWorkingDirectories: string[] = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
         const defaultSystemPrompt = await getSystemPrompt(toolUseContext.options.tools, toolUseContext.options.mainLoopModel, additionalWorkingDirectories, toolUseContext.options.mcpClients);
         forkParentSystemPrompt = buildEffectiveSystemPrompt({
           mainThreadAgentDefinition,
@@ -512,7 +520,7 @@ export const AgentTool = buildTool({
       promptMessages = buildForkedMessages(prompt, assistantMessage);
     } else {
       try {
-        const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
+        const additionalWorkingDirectories: string[] = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
 
         // All agents have getSystemPrompt - pass toolUseContext to all
         const agentPrompt = selectedAgent.getSystemPrompt({
@@ -522,7 +530,7 @@ export const AgentTool = buildTool({
         // Log agent memory loaded event for subagents
         if (selectedAgent.memory) {
           logEvent('tengu_agent_memory_loaded', {
-            ...("external" === 'ant' && {
+            ...(IS_ANT_BUILD && {
               agent_type: selectedAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
             }),
             scope: selectedAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -537,7 +545,7 @@ export const AgentTool = buildTool({
       }
       promptMessages = [createUserMessage({
         content: prompt
-      })];
+      })] as MessageType[];
     }
     const metadata = {
       prompt,
@@ -610,7 +618,7 @@ export const AgentTool = buildTool({
     if (isForkPath && worktreeInfo) {
       promptMessages.push(createUserMessage({
         content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
-      }));
+      }) as MessageType);
     }
     const runAgentParams: Parameters<typeof runAgent>[0] = {
       agentDefinition: selectedAgent,
@@ -1094,11 +1102,15 @@ export const AgentTool = buildTool({
 
             // Forward bash_progress events from sub-agent to parent so the SDK
             // receives tool_progress events just as it does for the main agent.
-            if (message.type === 'progress' && (message.data.type === 'bash_progress' || message.data.type === 'powershell_progress') && onProgress) {
-              onProgress({
-                toolUseID: message.toolUseID,
-                data: message.data
-              });
+            if (message.type === 'progress' && onProgress) {
+              const progressMessage = message as ProgressMessage;
+              const dataType = (progressMessage.data as {type?: string})?.type;
+              if (dataType === 'bash_progress' || dataType === 'powershell_progress') {
+                onProgress({
+                  toolUseID: progressMessage.toolUseID,
+                  data: progressMessage.data
+                });
+              }
             }
             if (message.type !== 'assistant' && message.type !== 'user') {
               continue;
@@ -1108,7 +1120,7 @@ export const AgentTool = buildTool({
             // Subagent streaming events are filtered out in runAgent.ts, so we
             // need to count tokens from completed messages here
             if (message.type === 'assistant') {
-              const contentLength = getAssistantMessageContentLength(message);
+              const contentLength = getAssistantMessageContentLength(message as AssistantMessage);
               if (contentLength > 0) {
                 toolUseContext.setResponseLength(len => len + contentLength);
               }
@@ -1116,7 +1128,7 @@ export const AgentTool = buildTool({
             const normalizedNew = normalizeMessages([message]);
             for (const m of normalizedNew) {
               for (const content of m.message.content) {
-                if (content.type !== 'tool_use' && content.type !== 'tool_result') {
+                if (typeof content === 'string' || (content.type !== 'tool_use' && content.type !== 'tool_result')) {
                   continue;
                 }
 
@@ -1297,7 +1309,7 @@ export const AgentTool = buildTool({
     // Only route through auto mode classifier when in auto mode
     // In all other modes, auto-approve sub-agent generation
     // Note: "external" === 'ant' guard enables dead code elimination for external builds
-    if ("external" === 'ant' && appState.toolPermissionContext.mode === 'auto') {
+    if (IS_ANT_BUILD && appState.toolPermissionContext.mode === 'auto') {
       return {
         behavior: 'passthrough',
         message: 'Agent tool requires permission to spawn sub-agents.'

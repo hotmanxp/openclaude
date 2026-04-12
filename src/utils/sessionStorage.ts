@@ -52,6 +52,7 @@ import {
   type PersistedWorktreeSession,
   type SerializedMessage,
   sortLogs,
+  type SummaryMessage,
   type TranscriptMessage,
 } from '../types/logs.js'
 import type {
@@ -1023,28 +1024,20 @@ class Project {
       const slug = getPlanSlugCache().get(sessionId)
 
       for (const message of messages) {
-        const isCompactBoundary = isCompactBoundaryMessage(message)
+        const isCompactBoundary = isCompactBoundaryMessage(message as Message)
 
         // For tool_result messages, use the assistant message UUID from the message
         // if available (set at creation time), otherwise fall back to sequential parent
-        let effectiveParentUuid = parentUuid
+        let effectiveParentUuid: UUID | null | undefined = parentUuid
         if (
           message.type === 'user' &&
           'sourceToolAssistantUUID' in message &&
           message.sourceToolAssistantUUID
         ) {
-          effectiveParentUuid = message.sourceToolAssistantUUID
+          effectiveParentUuid = message.sourceToolAssistantUUID as UUID
         }
 
         const transcriptMessage: TranscriptMessage = {
-          parentUuid: isCompactBoundary ? null : effectiveParentUuid,
-          logicalParentUuid: isCompactBoundary ? parentUuid : undefined,
-          isSidechain,
-          teamName: teamInfo?.teamName,
-          agentName: teamInfo?.agentName,
-          promptId:
-            message.type === 'user' ? (getPromptId() ?? undefined) : undefined,
-          agentId,
           ...message,
           // Session-stamp fields MUST come after the spread. On --fork-session
           // and --resume, messages arrive as SerializedMessage (carries source
@@ -1061,10 +1054,18 @@ class Project {
           version: VERSION,
           gitBranch,
           slug,
+          parentUuid: (isCompactBoundary ? null : (effectiveParentUuid ?? null)) as UUID | null,
+          logicalParentUuid: isCompactBoundary ? (parentUuid as UUID | null) : undefined,
+          isSidechain,
+          teamName: teamInfo?.teamName,
+          agentName: teamInfo?.agentName,
+          promptId:
+            message.type === 'user' ? (getPromptId() ?? undefined) : undefined,
+          agentId,
         }
         await this.appendEntry(transcriptMessage)
         if (isChainParticipant(message)) {
-          parentUuid = message.uuid
+          parentUuid = message.uuid as UUID
         }
       }
 
@@ -1072,7 +1073,7 @@ class Project {
       // the --resume picker shows what the user was last doing.
       // Overwritten every turn by design.
       if (!isSidechain) {
-        const text = getFirstMeaningfulUserMessageTextContent(messages)
+        const text = getFirstMeaningfulUserMessageTextContent(messages as Message[])
         if (text) {
           const flat = text.replace(/\n/g, ' ').trim()
           this.currentSessionLastPrompt =
@@ -1239,7 +1240,7 @@ class Project {
         // persistence (session-ingress) uses a single Last-Uuid chain per
         // sessionId, so re-POSTing a UUID it already has 409s and eventually
         // exhausts retries → gracefulShutdownSync(1). See inc-4718.
-        const isNewUuid = !messageSet.has(entry.uuid)
+        const isNewUuid = !messageSet.has(entry.uuid as UUID)
         if (isAgentSidechain || isNewUuid) {
           // Enqueue write — appendToFile handles ENOENT by creating directories
           void this.enqueueWrite(targetFile, entry)
@@ -1253,7 +1254,7 @@ class Project {
             // and --resume's buildConversationChain terminates at the dangling ref.
             // Same constraint for remote (inc-4718 above): sidechain persisting a
             // UUID the main thread hasn't written yet → 409 when main writes it.
-            messageSet.add(entry.uuid)
+            messageSet.add(entry.uuid as UUID)
 
             if (isTranscriptMessage(entry)) {
               await this.persistToRemote(sessionId, entry)
@@ -1842,9 +1843,11 @@ function applyPreservedSegmentRelinks(
   relinkFailed: boolean
 } {
   let relinkFailed = false
-  type Seg = NonNullable<
-    SystemCompactBoundaryMessage['compactMetadata']['preservedSegment']
-  >
+  type Seg = {
+    tailUuid: UUID
+    headUuid: UUID
+    anchorUuid: UUID
+  }
 
   // Find the absolute-last boundary and the last seg-boundary (can differ:
   // manual /compact after reactive compact → seg is stale).
@@ -1854,10 +1857,10 @@ function applyPreservedSegmentRelinks(
   const entryIndex = new Map<UUID, number>()
   let i = 0
   for (const entry of messages.values()) {
-    entryIndex.set(entry.uuid, i)
+    entryIndex.set(entry.uuid as UUID, i)
     if (isCompactBoundaryMessage(entry)) {
       absoluteLastBoundaryIdx = i
-      const seg = entry.compactMetadata?.preservedSegment
+      const seg = entry.compactMetadata?.preservedSegment as Seg | undefined
       if (seg) {
         lastSeg = seg
         lastSegBoundaryIdx = i
@@ -1878,10 +1881,10 @@ function applyPreservedSegmentRelinks(
   const preservedUuids = new Set<UUID>()
   if (segIsLive) {
     const walkSeen = new Set<UUID>()
-    const tailInTranscript = messages.has(lastSeg.tailUuid)
-    const headInTranscript = messages.has(lastSeg.headUuid)
-    const anchorInTranscript = messages.has(lastSeg.anchorUuid)
-    let cur = messages.get(lastSeg.tailUuid)
+    const tailInTranscript = messages.has(lastSeg.tailUuid as UUID)
+    const headInTranscript = messages.has(lastSeg.headUuid as UUID)
+    const anchorInTranscript = messages.has(lastSeg.anchorUuid as UUID)
+    let cur = messages.get(lastSeg.tailUuid as UUID)
     let reachedHead = false
     let failureKind:
       | 'missing_tail'
@@ -1894,13 +1897,13 @@ function applyPreservedSegmentRelinks(
     let breakParentUuid: UUID | null | undefined
 
     while (cur) {
-      if (walkSeen.has(cur.uuid)) {
+      if (walkSeen.has(cur.uuid as UUID)) {
         failureKind = 'cycle_before_head'
         break
       }
-      walkSeen.add(cur.uuid)
-      preservedUuids.add(cur.uuid)
-      lastSeenUuid = cur.uuid
+      walkSeen.add(cur.uuid as UUID)
+      preservedUuids.add(cur.uuid as UUID)
+      lastSeenUuid = cur.uuid as UUID
       lastSeenType = cur.type
       if (cur.uuid === lastSeg.headUuid) {
         reachedHead = true
@@ -1936,10 +1939,9 @@ function applyPreservedSegmentRelinks(
         anchorInTranscript,
         walkSteps: walkSeen.size,
         transcriptSize: messages.size,
-        tailIndex: entryIndex.get(lastSeg.tailUuid),
-        headIndex: entryIndex.get(lastSeg.headUuid),
-        anchorIndex: entryIndex.get(lastSeg.anchorUuid),
-        lastSeenType,
+        tailIndex: entryIndex.get(lastSeg.tailUuid as UUID),
+        headIndex: entryIndex.get(lastSeg.headUuid as UUID),
+        anchorIndex: entryIndex.get(lastSeg.anchorUuid as UUID),
         breakParentInTranscript: Boolean(
           breakParentUuid && messages.has(breakParentUuid),
         ),
@@ -1979,18 +1981,29 @@ function applyPreservedSegmentRelinks(
     // dedup-skipped. Without this, resume → immediate autocompact spiral.
     for (const uuid of preservedUuids) {
       const msg = messages.get(uuid)
-      if (msg?.type !== 'assistant') continue
+      if (msg?.type !== 'assistant' || !msg.message) continue
+      type MsgWithUsage = typeof msg.message & {
+        usage?: {
+          input_tokens: number
+          output_tokens: number
+          cache_creation_input_tokens: number
+          cache_read_input_tokens: number
+        }
+      }
+      const msgWithUsage = msg.message as MsgWithUsage
       messages.set(uuid, {
         ...msg,
         message: {
           ...msg.message,
-          usage: {
-            ...msg.message.usage,
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
-          },
+          ...(msgWithUsage.usage && {
+            usage: {
+              ...msgWithUsage.usage,
+              input_tokens: 0,
+              output_tokens: 0,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 0,
+            },
+          }),
         },
       })
     }
@@ -2278,8 +2291,9 @@ function applySnipRemovals(messages: Map<UUID, TranscriptMessage>): void {
   }
   let relinkedCount = 0
   for (const [uuid, msg] of messages) {
-    if (!msg.parentUuid || !toDelete.has(msg.parentUuid)) continue
-    messages.set(uuid, { ...msg, parentUuid: resolve(msg.parentUuid) })
+    const parentUuid = msg.parentUuid
+    if (!parentUuid || !toDelete.has(parentUuid)) continue
+    messages.set(uuid, { ...msg, parentUuid: resolve(parentUuid) as UUID })
     relinkedCount++
   }
 
@@ -2325,7 +2339,7 @@ export function buildConversationChain(
   const seen = new Set<UUID>()
   let currentMsg: TranscriptMessage | undefined = leafMessage
   while (currentMsg) {
-    if (seen.has(currentMsg.uuid)) {
+    if (seen.has(currentMsg.uuid as UUID)) {
       logError(
         new Error(
           `Cycle detected in parentUuid chain at message ${currentMsg.uuid}. Returning partial transcript.`,
@@ -2334,7 +2348,7 @@ export function buildConversationChain(
       logEvent('tengu_chain_parent_cycle', {})
       break
     }
-    seen.add(currentMsg.uuid)
+    seen.add(currentMsg.uuid as UUID)
     transcript.push(currentMsg)
     currentMsg = currentMsg.parentUuid
       ? messages.get(currentMsg.parentUuid)
@@ -2371,17 +2385,17 @@ function recoverOrphanedParallelToolResults(
   chain: TranscriptMessage[],
   seen: Set<UUID>,
 ): TranscriptMessage[] {
-  type ChainAssistant = Extract<TranscriptMessage, { type: 'assistant' }>
+  type ChainAssistant = AssistantMessage & Pick<TranscriptMessage, 'parentUuid' | 'logicalParentUuid' | 'isSidechain' | 'gitBranch' | 'agentId' | 'teamName' | 'agentName' | 'agentColor' | 'promptId'>
   const chainAssistants = chain.filter(
-    (m): m is ChainAssistant => m.type === 'assistant',
-  )
+    (m) => m.type === 'assistant',
+  ) as unknown as ChainAssistant[]
   if (chainAssistants.length === 0) return chain
 
   // Anchor = last on-chain member of each sibling group. chainAssistants is
   // already in chain order, so later iterations overwrite → last wins.
   const anchorByMsgId = new Map<string, ChainAssistant>()
   for (const a of chainAssistants) {
-    if (a.message.id) anchorByMsgId.set(a.message.id, a)
+    if (a.message?.id) anchorByMsgId.set(a.message.id, a)
   }
 
   // O(n) precompute: sibling groups and TR index.
@@ -2390,15 +2404,17 @@ function recoverOrphanedParallelToolResults(
   const siblingsByMsgId = new Map<string, TranscriptMessage[]>()
   const toolResultsByAsst = new Map<UUID, TranscriptMessage[]>()
   for (const m of messages.values()) {
-    if (m.type === 'assistant' && m.message.id) {
-      const group = siblingsByMsgId.get(m.message.id)
+    const msg = m as Message
+    if (m.type === 'assistant' && msg.message?.id) {
+      const group = siblingsByMsgId.get(msg.message.id)
       if (group) group.push(m)
-      else siblingsByMsgId.set(m.message.id, [m])
+      else siblingsByMsgId.set(msg.message.id, [m])
     } else if (
       m.type === 'user' &&
       m.parentUuid &&
-      Array.isArray(m.message.content) &&
-      m.message.content.some(b => b.type === 'tool_result')
+      msg.message !== undefined &&
+      Array.isArray(msg.message.content) &&
+      msg.message.content.some(b => b.type === 'tool_result')
     ) {
       const group = toolResultsByAsst.get(m.parentUuid)
       if (group) group.push(m)
@@ -2414,32 +2430,32 @@ function recoverOrphanedParallelToolResults(
   const inserts = new Map<UUID, TranscriptMessage[]>()
   let recoveredCount = 0
   for (const asst of chainAssistants) {
-    const msgId = asst.message.id
+    const msgId = asst.message?.id
     if (!msgId || processedGroups.has(msgId)) continue
     processedGroups.add(msgId)
 
-    const group = siblingsByMsgId.get(msgId) ?? [asst]
-    const orphanedSiblings = group.filter(s => !seen.has(s.uuid))
+    const group = siblingsByMsgId.get(msgId) ?? [asst as TranscriptMessage]
+    const orphanedSiblings = group.filter(s => !seen.has(s.uuid as UUID))
     const orphanedTRs: TranscriptMessage[] = []
     for (const member of group) {
-      const trs = toolResultsByAsst.get(member.uuid)
+      const trs = toolResultsByAsst.get(member.uuid as UUID)
       if (!trs) continue
       for (const tr of trs) {
-        if (!seen.has(tr.uuid)) orphanedTRs.push(tr)
+        if (!seen.has(tr.uuid as UUID)) orphanedTRs.push(tr)
       }
     }
     if (orphanedSiblings.length === 0 && orphanedTRs.length === 0) continue
 
     // Timestamp sort keeps content-block / completion order; stable-sort
     // preserves JSONL write order on ties.
-    orphanedSiblings.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    orphanedTRs.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    orphanedSiblings.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
+    orphanedTRs.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
 
     const anchor = anchorByMsgId.get(msgId)!
     const recovered = [...orphanedSiblings, ...orphanedTRs]
-    for (const r of recovered) seen.add(r.uuid)
+    for (const r of recovered) seen.add(r.uuid as UUID)
     recoveredCount += recovered.length
-    inserts.set(anchor.uuid, recovered)
+    inserts.set(anchor.uuid as UUID, recovered)
   }
 
   if (recoveredCount === 0) return chain
@@ -2450,7 +2466,7 @@ function recoverOrphanedParallelToolResults(
   const result: TranscriptMessage[] = []
   for (const m of chain) {
     result.push(m)
-    const toInsert = inserts.get(m.uuid)
+    const toInsert = inserts.get(m.uuid as UUID)
     if (toInsert) result.push(...toInsert)
   }
   return result
@@ -2476,7 +2492,7 @@ export function checkResumeConsistency(chain: Message[]): void {
   for (let i = chain.length - 1; i >= 0; i--) {
     const m = chain[i]!
     if (m.type !== 'system' || m.subtype !== 'turn_duration') continue
-    const expected = m.messageCount
+    const expected = (m as SystemMessage).messageCount
     if (expected === undefined) return
     // `i` is the 0-based index of the checkpoint in the reconstructed chain.
     // The checkpoint was appended AFTER messageCount messages, so its own
@@ -2504,7 +2520,7 @@ function buildFileHistorySnapshotChain(
   // messageId → last index in snapshots[] for O(1) update lookup
   const indexByMessageId = new Map<string, number>()
   for (const message of conversation) {
-    const snapshotMessage = fileHistorySnapshots.get(message.uuid)
+    const snapshotMessage = fileHistorySnapshots.get(message.uuid as UUID)
     if (!snapshotMessage) {
       continue
     }
@@ -2566,7 +2582,7 @@ export async function loadTranscriptFromFile(
 
     // Find the most recent leaf message using pre-computed leaf UUIDs
     const leafMessage = findLatestMessage(messages.values(), msg =>
-      leafUuids.has(msg.uuid),
+      leafUuids.has(msg.uuid as UUID),
     )
 
     if (!leafMessage) {
@@ -2576,7 +2592,7 @@ export async function loadTranscriptFromFile(
     // Build the conversation chain backwards from leaf to root
     const transcript = buildConversationChain(messages, leafMessage)
 
-    const summary = summaries.get(leafMessage.uuid)
+    const summary = summaries.get(leafMessage.uuid as UUID)
     const customTitle = customTitles.get(leafMessage.sessionId as UUID)
     const tag = tags.get(leafMessage.sessionId as UUID)
     const sessionId = leafMessage.sessionId as UUID
@@ -2762,7 +2778,7 @@ function convertToLogOption(
     teamName: firstMessage.teamName,
     agentName: firstMessage.agentName,
     agentSetting,
-    leafUuid: lastMessage.uuid,
+    leafUuid: lastMessage.uuid as UUID,
     summary,
     customTitle,
     tag,
@@ -3239,7 +3255,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
     const mostRecentLeaf = findLatestMessage(
       messages.values(),
       msg =>
-        leafUuids.has(msg.uuid) &&
+        leafUuids.has(msg.uuid as UUID) &&
         (msg.type === 'user' || msg.type === 'assistant'),
     )
     if (!mostRecentLeaf) {
@@ -3257,7 +3273,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       firstPrompt: extractFirstPrompt(transcript),
       messageCount: countVisibleMessages(transcript),
       summary: mostRecentLeaf
-        ? summaries.get(mostRecentLeaf.uuid)
+        ? summaries.get(mostRecentLeaf.uuid as UUID)
         : log.summary,
       customTitle: sessionId ? customTitles.get(sessionId) : log.customTitle,
       tag: sessionId ? tags.get(sessionId) : log.tag,
@@ -3277,7 +3293,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       gitBranch: mostRecentLeaf?.gitBranch ?? log.gitBranch,
       isSidechain: transcript[0]?.isSidechain ?? log.isSidechain,
       teamName: transcript[0]?.teamName ?? log.teamName,
-      leafUuid: mostRecentLeaf?.uuid ?? log.leafUuid,
+      leafUuid: (mostRecentLeaf?.uuid as UUID | undefined) ?? log.leafUuid,
       fileHistorySnapshots: buildFileHistorySnapshotChain(
         fileHistorySnapshots,
         transcript,
@@ -3842,8 +3858,9 @@ export async function loadTranscriptFile(
       forEachParsedJSONLBufferEntry<Entry>(
         Buffer.from(metadataLines.join('\n')),
         entry => {
-        if (entry.type === 'summary' && entry.leafUuid) {
-          summaries.set(entry.leafUuid, entry.summary)
+        if (entry.type === 'summary' && 'leafUuid' in entry) {
+          const summaryEntry = entry as SummaryMessage
+          summaries.set(summaryEntry.leafUuid, summaryEntry.summary)
         } else if (entry.type === 'custom-title' && entry.sessionId) {
           customTitles.set(entry.sessionId, entry.customTitle)
         } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3885,16 +3902,16 @@ export async function loadTranscriptFile(
         // nearest non-progress ancestor in one lookup.
         const parent = entry.parentUuid
         progressBridge.set(
-          entry.uuid,
-          parent && progressBridge.has(parent)
-            ? (progressBridge.get(parent) ?? null)
+          entry.uuid as UUID,
+          parent && progressBridge.has(parent as UUID)
+            ? (progressBridge.get(parent as UUID) ?? null)
             : parent,
         )
       } else if (isTranscriptMessage(entry)) {
-        if (entry.parentUuid && progressBridge.has(entry.parentUuid)) {
-          entry.parentUuid = progressBridge.get(entry.parentUuid) ?? null
+        if (entry.parentUuid && progressBridge.has(entry.parentUuid as UUID)) {
+          entry.parentUuid = (progressBridge.get(entry.parentUuid as UUID) ?? null) as UUID
         }
-        messages.set(entry.uuid, entry)
+        messages.set(entry.uuid as UUID, entry)
         // Compact boundary: prior marble-origami-commit entries reference
         // messages that won't be in the post-boundary chain. The >5MB
         // backward-scan path discards them naturally by never reading the
@@ -3906,8 +3923,9 @@ export async function loadTranscriptFile(
           contextCollapseCommits.length = 0
           contextCollapseSnapshot = undefined
         }
-      } else if (entry.type === 'summary' && entry.leafUuid) {
-        summaries.set(entry.leafUuid, entry.summary)
+      } else if (entry.type === 'summary' && 'leafUuid' in entry) {
+        const summaryEntry = entry as SummaryMessage
+        summaries.set(summaryEntry.leafUuid, summaryEntry.summary)
       } else if (entry.type === 'custom-title' && entry.sessionId) {
         customTitles.set(entry.sessionId, entry.customTitle)
       } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3979,7 +3997,7 @@ export async function loadTranscriptFile(
   )
 
   // Find all terminal messages (messages with no children)
-  const terminalMessages = allMessages.filter(msg => !parentUuids.has(msg.uuid))
+  const terminalMessages = allMessages.filter(msg => !parentUuids.has(msg.uuid as UUID))
 
   const leafUuids = new Set<UUID>()
   let hasCycle = false
@@ -3990,7 +4008,7 @@ export async function loadTranscriptFile(
     const hasUserAssistantChild = new Set<UUID>()
     for (const msg of allMessages) {
       if (msg.parentUuid && (msg.type === 'user' || msg.type === 'assistant')) {
-        hasUserAssistantChild.add(msg.parentUuid)
+        hasUserAssistantChild.add(msg.parentUuid as UUID)
       }
     }
 
@@ -4002,14 +4020,14 @@ export async function loadTranscriptFile(
       const seen = new Set<UUID>()
       let current: TranscriptMessage | undefined = terminal
       while (current) {
-        if (seen.has(current.uuid)) {
+        if (seen.has(current.uuid as UUID)) {
           hasCycle = true
           break
         }
-        seen.add(current.uuid)
+        seen.add(current.uuid as UUID)
         if (current.type === 'user' || current.type === 'assistant') {
-          if (!hasUserAssistantChild.has(current.uuid)) {
-            leafUuids.add(current.uuid)
+          if (!hasUserAssistantChild.has(current.uuid as UUID)) {
+            leafUuids.add(current.uuid as UUID)
           }
           break
         }
@@ -4025,13 +4043,13 @@ export async function loadTranscriptFile(
       const seen = new Set<UUID>()
       let current: TranscriptMessage | undefined = terminal
       while (current) {
-        if (seen.has(current.uuid)) {
+        if (seen.has(current.uuid as UUID)) {
           hasCycle = true
           break
         }
-        seen.add(current.uuid)
+        seen.add(current.uuid as UUID)
         if (current.type === 'user' || current.type === 'assistant') {
-          leafUuids.add(current.uuid)
+          leafUuids.add(current.uuid as UUID)
           break
         }
         current = current.parentUuid
@@ -4159,7 +4177,7 @@ export async function getLastSessionLog(
   // Build the transcript chain from the last message
   const transcript = buildConversationChain(messages, lastMessage)
 
-  const summary = summaries.get(lastMessage.uuid)
+  const summary = summaries.get(lastMessage.uuid as UUID)
   const customTitle = customTitles.get(lastMessage.sessionId as UUID)
   const tag = tags.get(lastMessage.sessionId as UUID)
   const agentSetting = agentSettings.get(sessionId)
@@ -4463,10 +4481,10 @@ export async function getAgentTranscript(agentId: AgentId): Promise<{
     }
 
     // Find the most recent leaf message with this agentId
-    const parentUuids = new Set(agentMessages.map(msg => msg.parentUuid))
+    const parentUuids = new Set(agentMessages.map(msg => msg.parentUuid).filter((uuid): uuid is UUID => uuid !== null))
     const leafMessage = findLatestMessage(
       agentMessages,
-      msg => !parentUuids.has(msg.uuid),
+      msg => !parentUuids.has(msg.uuid as UUID),
     )
 
     if (!leafMessage) {
@@ -4612,7 +4630,7 @@ export function isLoggableMessage(m: Message): boolean {
   // user-configured hook output that is useful for session context on resume.
   if (m.type === 'attachment' && getUserType() !== 'ant') {
     if (
-      m.attachment.type === 'hook_additional_context' &&
+      m.attachment?.type === 'hook_additional_context' &&
       isEnvTruthy(process.env.CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT)
     ) {
       return true
@@ -4625,7 +4643,7 @@ export function isLoggableMessage(m: Message): boolean {
 function collectReplIds(messages: readonly Message[]): Set<string> {
   const ids = new Set<string>()
   for (const m of messages) {
-    if (m.type === 'assistant' && Array.isArray(m.message.content)) {
+    if (m.type === 'assistant' && m.message && Array.isArray(m.message.content)) {
       for (const b of m.message.content) {
         if (b.type === 'tool_use' && b.name === REPL_TOOL_NAME) {
           ids.add(b.id)
@@ -4653,7 +4671,8 @@ function transformMessagesForExternalTranscript(
   messages: Transcript,
   replIds: Set<string>,
 ): Transcript {
-  return messages.flatMap(m => {
+  const result: Transcript = []
+  for (const m of messages) {
     if (m.type === 'assistant' && Array.isArray(m.message.content)) {
       const content = m.message.content
       const hasRepl = content.some(
@@ -4664,17 +4683,16 @@ function transformMessagesForExternalTranscript(
             b => !(b.type === 'tool_use' && b.name === REPL_TOOL_NAME),
           )
         : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
+      if (filtered.length === 0) continue
+      if ((m as Message).isVirtual) {
+        const { isVirtual: _omit, ...rest } = m as Message
+        result.push({ ...rest, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else if (filtered !== content) {
+        result.push({ ...m, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else {
+        result.push(m)
       }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    if (m.type === 'user' && Array.isArray(m.message.content)) {
+    } else if (m.type === 'user' && Array.isArray(m.message.content)) {
       const content = m.message.content
       const hasRepl = content.some(
         b => b.type === 'tool_result' && replIds.has(b.tool_use_id),
@@ -4684,23 +4702,23 @@ function transformMessagesForExternalTranscript(
             b => !(b.type === 'tool_result' && replIds.has(b.tool_use_id)),
           )
         : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
+      if (filtered.length === 0) continue
+      if ((m as Message).isVirtual) {
+        const { isVirtual: _omit, ...rest } = m as Message
+        result.push({ ...rest, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else if (filtered !== content) {
+        result.push({ ...m, message: { ...m.message, content: filtered } } as Transcript[number])
+      } else {
+        result.push(m)
       }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    // string-content user, system, attachment
-    if ('isVirtual' in m && m.isVirtual) {
+    } else if ('isVirtual' in m && (m as Message).isVirtual) {
       const { isVirtual: _omit, ...rest } = m
-      return [rest]
+      result.push(rest as Transcript[number])
+    } else {
+      result.push(m)
     }
-    return [m]
-  }) as Transcript
+  }
+  return result
 }
 
 export function cleanMessagesForLogging(
@@ -4742,7 +4760,7 @@ export async function findUnresolvedToolUse(
 
     // Find the tool use but make sure there's not also a result
     for (const message of messages.values()) {
-      if (message.type === 'assistant') {
+      if (message.type === 'assistant' && message.message) {
         const content = message.message.content
         if (Array.isArray(content)) {
           for (const block of content) {
@@ -4752,7 +4770,7 @@ export async function findUnresolvedToolUse(
             }
           }
         }
-      } else if (message.type === 'user') {
+      } else if (message.type === 'user' && message.message) {
         const content = message.message.content
         if (Array.isArray(content)) {
           for (const block of content) {
@@ -4768,7 +4786,7 @@ export async function findUnresolvedToolUse(
       }
     }
 
-    return toolUseMessage
+    return toolUseMessage as AssistantMessage | null
   } catch {
     return null
   }
@@ -4879,14 +4897,15 @@ export async function loadAllLogsFromSessionFile(
   // Build parentUuid → children index once (O(n)), so trailing-message lookup is O(1) per leaf
   const childrenByParent = new Map<UUID, TranscriptMessage[]>()
   for (const msg of messages.values()) {
-    if (leafUuids.has(msg.uuid)) {
+    if (leafUuids.has(msg.uuid as UUID)) {
       leafMessages.push(msg)
     } else if (msg.parentUuid) {
-      const siblings = childrenByParent.get(msg.parentUuid)
+      const parentUuid = msg.parentUuid as UUID
+      const siblings = childrenByParent.get(parentUuid)
       if (siblings) {
         siblings.push(msg)
       } else {
-        childrenByParent.set(msg.parentUuid, [msg])
+        childrenByParent.set(parentUuid, [msg])
       }
     }
   }
@@ -4898,7 +4917,7 @@ export async function loadAllLogsFromSessionFile(
     if (chain.length === 0) continue
 
     // Append trailing messages that are children of the leaf
-    const trailingMessages = childrenByParent.get(leafMessage.uuid)
+    const trailingMessages = childrenByParent.get(leafMessage.uuid as UUID)
     if (trailingMessages) {
       // ISO-8601 UTC timestamps are lexically sortable
       trailingMessages.sort((a, b) =>
@@ -4921,8 +4940,8 @@ export async function loadAllLogsFromSessionFile(
       messageCount: countVisibleMessages(chain),
       isSidechain: firstMessage.isSidechain ?? false,
       sessionId,
-      leafUuid: leafMessage.uuid,
-      summary: summaries.get(leafMessage.uuid),
+      leafUuid: leafMessage.uuid as UUID,
+      summary: summaries.get(leafMessage.uuid as UUID),
       customTitle: customTitles.get(sessionId),
       tag: tags.get(sessionId),
       agentName: agentNames.get(sessionId),

@@ -59,6 +59,14 @@ type LogTreeNode = TreeNode<{
   log: LogOption;
   indexInFiltered: number;
 }>;
+type DeepSearchResults = {
+  results: Array<{
+    log: LogOption;
+    score: number;
+    searchableText: string;
+  }>;
+  query: string;
+};
 function normalizeAndTruncateToWidth(text: string, maxWidth: number): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
   return truncateToWidth(normalized, maxWidth);
@@ -140,7 +148,7 @@ function buildLogMetadata(log: LogOption, options?: {
   const projectSuffix = showProjectPath && log.projectPath ? ` · ${log.projectPath}` : '';
   return childPadding + baseMetadata + projectSuffix;
 }
-export function LogSelector(t0) {
+export function LogSelector(t0: LogSelectorProps): React.ReactNode {
   const $ = _c(247);
   const {
     logs,
@@ -182,7 +190,7 @@ export function LogSelector(t0) {
   const theme = t4;
   let t5;
   if ($[3] !== theme.warning) {
-    t5 = text => applyColor(text, theme.warning as Color);
+    t5 = (text: string) => applyColor(text, theme.warning as Color);
     $[3] = theme.warning;
     $[4] = t5;
   } else {
@@ -190,7 +198,7 @@ export function LogSelector(t0) {
   }
   const highlightColor = t5;
   const isAgenticSearchEnabled = false;
-  const [currentBranch, setCurrentBranch] = React.useState(null);
+  const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [branchFilterEnabled, setBranchFilterEnabled] = React.useState(false);
   const [showAllWorktrees, setShowAllWorktrees] = React.useState(false);
   const [hasMultipleWorktrees, setHasMultipleWorktrees] = React.useState(false);
@@ -212,11 +220,11 @@ export function LogSelector(t0) {
     t7 = $[6];
   }
   const [expandedGroupSessionIds, setExpandedGroupSessionIds] = React.useState(t7);
-  const [focusedNode, setFocusedNode] = React.useState(null);
+  const [focusedNode, setFocusedNode] = React.useState<LogTreeNode | null>(null);
   const [focusedIndex, setFocusedIndex] = React.useState(1);
   const [viewMode, setViewMode] = React.useState("list");
-  const [previewLog, setPreviewLog] = React.useState(null);
-  const prevFocusedIdRef = React.useRef(null);
+  const [previewLog, setPreviewLog] = React.useState<LogOption | null>(null);
+  const prevFocusedIdRef = React.useRef<string | null>(null);
   const [selectedTagIndex, setSelectedTagIndex] = React.useState(0);
   let t8;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
@@ -229,7 +237,7 @@ export function LogSelector(t0) {
   }
   const [agenticSearchState, setAgenticSearchState] = React.useState(t8);
   const [isAgenticSearchOptionFocused, setIsAgenticSearchOptionFocused] = React.useState(false);
-  const agenticSearchAbortRef = React.useRef(null);
+  const agenticSearchAbortRef = React.useRef<AbortController | null>(null);
   const t9 = viewMode === "search" && agenticSearchState.status !== "searching";
   let t10;
   let t11;
@@ -299,7 +307,7 @@ export function LogSelector(t0) {
     t16 = $[16];
   }
   React.useEffect(t15, t16);
-  const [deepSearchResults, setDeepSearchResults] = React.useState(null);
+  const [deepSearchResults, setDeepSearchResults] = React.useState<DeepSearchResults | null>(null);
   const [isSearching, setIsSearching] = React.useState(false);
   let t17;
   let t18;
@@ -1451,10 +1459,10 @@ export function LogSelector(t0) {
  * Extracts searchable text content from a message.
  * Handles both string content and structured content blocks.
  */
-function _temp7(r_0) {
+function _temp7(r_0: { log: LogOption }) {
   return r_0.log;
 }
-function _temp6(log_6) {
+function _temp6(log_6: LogOption) {
   return log_6.messages[0]?.uuid;
 }
 function _temp5(fuseIndex_0, debouncedDeepSearchQuery_0, setDeepSearchResults_0, setIsSearching_0) {
@@ -1482,7 +1490,7 @@ function _temp3(a, b) {
   }
   return (a.score ?? 1) - (b.score ?? 1);
 }
-function _temp2(log_1) {
+function _temp2(log_1: LogOption) {
   const currentSessionId = getSessionId();
   const logSessionId = getSessionIdFromLog(log_1);
   const isCurrentSession = currentSessionId && logSessionId === currentSessionId;
@@ -1501,7 +1509,7 @@ function _temp2(log_1) {
   }
   return false;
 }
-function _temp(log) {
+function _temp(log: LogOption) {
   return [log, buildSearchableText(log)];
 }
 function extractSearchableText(message: SerializedMessage): string {

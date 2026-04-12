@@ -22,6 +22,7 @@ import {
 } from '../../tools/FileReadTool/prompt.js'
 import { ToolSearchTool } from '../../tools/ToolSearchTool/ToolSearchTool.js'
 import type { AgentId } from '../../types/ids.js'
+import type { SpinnerMode } from '../../components/Spinner.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -33,6 +34,7 @@ import type {
   UserMessage,
 } from '../../types/message.js'
 import {
+  type Attachment,
   createAttachmentMessage,
   generateFileAttachment,
   getAgentListingDeltaAttachment,
@@ -148,7 +150,7 @@ export function stripImagesFromMessages(messages: Message[]): Message[] {
       return message
     }
 
-    const content = message.message.content
+    const content = message.message?.content
     if (!Array.isArray(content)) {
       return message
     }
@@ -195,7 +197,7 @@ export function stripImagesFromMessages(messages: Message[]): Message[] {
         ...message.message,
         content: newContent,
       },
-    } as typeof message
+    } as Message
   })
 }
 
@@ -214,6 +216,7 @@ export function stripReinjectedAttachments(messages: Message[]): Message[] {
       m =>
         !(
           m.type === 'attachment' &&
+          m.attachment &&
           (m.attachment.type === 'skill_discovery' ||
             m.attachment.type === 'skill_listing')
         ),
@@ -247,10 +250,11 @@ export function truncateHeadForPTLRetry(
   // Strip our own synthetic marker from a previous retry before grouping.
   // Otherwise it becomes its own group 0 and the 20% fallback stalls
   // (drops only the marker, re-adds it, zero progress on retry 2+).
+  const firstMsg = messages[0]
   const input =
-    messages[0]?.type === 'user' &&
-    messages[0].isMeta &&
-    messages[0].message.content === PTL_RETRY_MARKER
+    firstMsg?.type === 'user' &&
+    firstMsg.isMeta &&
+    firstMsg.message?.content === PTL_RETRY_MARKER
       ? messages.slice(1)
       : messages
 
@@ -263,7 +267,7 @@ export function truncateHeadForPTLRetry(
     let acc = 0
     dropCount = 0
     for (const g of groups) {
-      acc += roughTokenCountEstimationForMessages(g)
+      acc += roughTokenCountEstimationForMessages(g as readonly { type: string; message?: { content?: unknown }; attachment?: Attachment }[])
       dropCount++
       if (acc >= tokenGap) break
     }
@@ -283,7 +287,7 @@ export function truncateHeadForPTLRetry(
   // already handles any orphaned tool_results this creates.
   if (sliced[0]?.type === 'assistant') {
     return [
-      createUserMessage({ content: PTL_RETRY_MARKER, isMeta: true }),
+      createUserMessage({ content: PTL_RETRY_MARKER, isMeta: true }) as Message,
       ...sliced,
     ]
   }
@@ -329,11 +333,11 @@ export type RecompactionInfo = {
  */
 export function buildPostCompactMessages(result: CompactionResult): Message[] {
   return [
-    result.boundaryMarker,
-    ...result.summaryMessages,
+    result.boundaryMarker as Message,
+    ...(result.summaryMessages as Message[]),
     ...(result.messagesToKeep ?? []),
-    ...result.attachments,
-    ...result.hookResults,
+    ...(result.attachments as Message[]),
+    ...(result.hookResults as Message[]),
   ]
 }
 
@@ -356,7 +360,7 @@ export function annotateBoundaryWithPreservedSegment(
   return {
     ...boundary,
     compactMetadata: {
-      ...boundary.compactMetadata,
+      ...boundary.compactMetadata!,
       preservedSegment: {
         headUuid: keep[0]!.uuid,
         anchorUuid,
@@ -408,7 +412,7 @@ export async function compactConversation(
     })
 
     // Execute PreCompact hooks
-    context.setSDKStatus?.('compacting')
+    context.setSDKStatus?.({ type: 'status', status: 'compacting' })
     const hookResult = await executePreCompactHooks(
       {
         trigger: isAutoCompact ? 'auto' : 'manual',
@@ -423,7 +427,7 @@ export async function compactConversation(
     const userDisplayMessage = hookResult.userDisplayMessage
 
     // Show requesting mode with up arrow and custom message
-    context.setStreamMode?.('requesting')
+    context.setStreamMode?.('spin' as SpinnerMode)
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_start' })
 
@@ -597,13 +601,13 @@ export async function compactConversation(
     const boundaryMarker = createCompactBoundaryMessage(
       isAutoCompact ? 'auto' : 'manual',
       preCompactTokenCount ?? 0,
-      messages.at(-1)?.uuid,
+      messages.at(-1)?.uuid as UUID | undefined,
     )
     // Carry loaded-tool state — the summary doesn't preserve tool_reference
     // blocks, so the post-compact schema filter needs this to keep sending
     // already-loaded deferred tool schemas to the API.
     const preCompactDiscovered = extractDiscoveredToolNames(messages)
-    if (preCompactDiscovered.size > 0) {
+    if (preCompactDiscovered.size > 0 && boundaryMarker.compactMetadata) {
       boundaryMarker.compactMetadata.preCompactDiscoveredTools = [
         ...preCompactDiscovered,
       ].sort()
@@ -638,7 +642,7 @@ export async function compactConversation(
       ...summaryMessages,
       ...postCompactFileAttachments,
       ...hookMessages,
-    ])
+    ] as readonly { type: string; message?: { content?: unknown }; attachment?: Attachment }[])
 
     // Extract compaction API usage metrics
     const compactionUsage = getTokenUsage(summaryResponse)
@@ -754,10 +758,10 @@ export async function compactConversation(
     }
     throw error
   } finally {
-    context.setStreamMode?.('requesting')
+    context.setStreamMode?.('spin' as SpinnerMode)
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_end' })
-    context.setSDKStatus?.(null)
+    context.setSDKStatus?.({ type: 'status', status: '' })
   }
 }
 
@@ -774,11 +778,14 @@ export async function partialCompactConversation(
   context: ToolUseContext,
   cacheSafeParams: CacheSafeParams,
   userFeedback?: string,
-  direction: PartialCompactDirection = 'from',
+  direction: PartialCompactDirection | 'from' | 'up_to' = 'from',
 ): Promise<CompactionResult> {
+  // Cast direction to string for comparison since the code expects 'from' | 'up_to'
+  // but the type definition is an object
+  const directionStr = direction as unknown as string
   try {
     const messagesToSummarize =
-      direction === 'up_to'
+      directionStr === 'up_to'
         ? allMessages.slice(0, pivotIndex)
         : allMessages.slice(pivotIndex)
     // 'up_to' must strip old compact boundaries/summaries: for 'up_to',
@@ -787,7 +794,7 @@ export async function partialCompactConversation(
     // 'from' keeps them: summary_B sits AFTER kept (backward scan still
     // works), and removing an old summary would lose its covered history.
     const messagesToKeep =
-      direction === 'up_to'
+      directionStr === 'up_to'
         ? allMessages
             .slice(pivotIndex)
             .filter(
@@ -800,7 +807,7 @@ export async function partialCompactConversation(
 
     if (messagesToSummarize.length === 0) {
       throw new Error(
-        direction === 'up_to'
+        directionStr === 'up_to'
           ? 'Nothing to summarize before the selected message.'
           : 'Nothing to summarize after the selected message.',
       )
@@ -813,7 +820,7 @@ export async function partialCompactConversation(
       hookType: 'pre_compact',
     })
 
-    context.setSDKStatus?.('compacting')
+    context.setSDKStatus?.({ type: 'status', status: 'compacting' })
     const hookResult = await executePreCompactHooks(
       {
         trigger: 'manual',
@@ -832,11 +839,11 @@ export async function partialCompactConversation(
       customInstructions = `User context: ${userFeedback}`
     }
 
-    context.setStreamMode?.('requesting')
+    context.setStreamMode?.('spin' as SpinnerMode)
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_start' })
 
-    const compactPrompt = getPartialCompactPrompt(customInstructions, direction)
+    const compactPrompt = getPartialCompactPrompt(customInstructions, direction as PartialCompactDirection)
     const summaryRequest = createUserMessage({
       content: compactPrompt,
     })
@@ -850,9 +857,9 @@ export async function partialCompactConversation(
 
     // 'up_to' prefix hits cache directly; 'from' sends all (tail wouldn't cache).
     // PTL retry breaks the cache prefix but unblocks the user (CC-1180).
-    let apiMessages = direction === 'up_to' ? messagesToSummarize : allMessages
+    let apiMessages = directionStr === 'up_to' ? messagesToSummarize : allMessages
     let retryCacheSafeParams =
-      direction === 'up_to'
+      directionStr === 'up_to'
         ? { ...cacheSafeParams, forkContextMessages: messagesToSummarize }
         : cacheSafeParams
     let summaryResponse: AssistantMessage
@@ -1005,11 +1012,12 @@ export async function partialCompactConversation(
 
     // Progress messages aren't loggable, so forkSessionImpl would null out
     // a logicalParentUuid pointing at one. Both directions skip them.
-    const lastPreCompactUuid =
-      direction === 'up_to'
+    const lastPreCompactUuid = (
+      directionStr === 'up_to'
         ? allMessages.slice(0, pivotIndex).findLast(m => m.type !== 'progress')
             ?.uuid
         : messagesToKeep.at(-1)?.uuid
+    ) as UUID | undefined
     const boundaryMarker = createCompactBoundaryMessage(
       'manual',
       preCompactTokenCount ?? 0,
@@ -1020,7 +1028,7 @@ export async function partialCompactConversation(
     // allMessages not just messagesToSummarize — set union is idempotent,
     // simpler than tracking which half each tool lived in.
     const preCompactDiscovered = extractDiscoveredToolNames(allMessages)
-    if (preCompactDiscovered.size > 0) {
+    if (preCompactDiscovered.size > 0 && boundaryMarker.compactMetadata) {
       boundaryMarker.compactMetadata.preCompactDiscoveredTools = [
         ...preCompactDiscovered,
       ].sort()
@@ -1036,7 +1044,7 @@ export async function partialCompactConversation(
               summarizeMetadata: {
                 messagesSummarized: messagesToSummarize.length,
                 userContext: userFeedback,
-                direction,
+                direction: direction as PartialCompactDirection,
               },
             }
           : { isVisibleInTranscriptOnly: true as const }),
@@ -1074,10 +1082,11 @@ export async function partialCompactConversation(
     )
 
     // 'from': prefix-preserving → boundary; 'up_to': suffix → last summary
-    const anchorUuid =
-      direction === 'up_to'
+    const anchorUuid = (
+      directionStr === 'up_to'
         ? (summaryMessages.at(-1)?.uuid ?? boundaryMarker.uuid)
         : boundaryMarker.uuid
+    ) as UUID
     return {
       boundaryMarker: annotateBoundaryWithPreservedSegment(
         boundaryMarker,
@@ -1097,10 +1106,10 @@ export async function partialCompactConversation(
     addErrorNotificationIfNeeded(error, context)
     throw error
   } finally {
-    context.setStreamMode?.('requesting')
+    context.setStreamMode?.('spin' as SpinnerMode)
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_end' })
-    context.setSDKStatus?.(null)
+    context.setSDKStatus?.({ type: 'status', status: '' })
   }
 }
 
@@ -1185,7 +1194,7 @@ async function streamCompactSummary({
         // The streaming fallback path (below) can safely set maxOutputTokensOverride
         // since it doesn't share cache with the main thread.
         const result = await runForkedAgent({
-          promptMessages: [summaryRequest],
+          promptMessages: [summaryRequest as Message],
           cacheSafeParams,
           canUseTool: createCompactCanUseTool(),
           querySource: 'compact',
@@ -1293,11 +1302,11 @@ async function streamCompactSummary({
           stripImagesFromMessages(
             stripReinjectedAttachments([
               ...getMessagesAfterCompactBoundary(messages),
-              summaryRequest,
+              summaryRequest as Message,
             ]),
           ),
           context.options.tools,
-        ),
+        ) as Message[],
         systemPrompt: asSystemPrompt([
           'You are a helpful AI assistant tasked with summarizing conversations.',
         ]),
@@ -1332,19 +1341,19 @@ async function streamCompactSummary({
         if (
           !hasStartedStreaming &&
           event.type === 'stream_event' &&
-          event.event.type === 'content_block_start' &&
-          event.event.content_block.type === 'text'
+          (event.event as unknown as { type: string; content_block?: { type: string } }).type === 'content_block_start' &&
+          (event.event as unknown as { type: string; content_block?: { type: string } }).content_block?.type === 'text'
         ) {
           hasStartedStreaming = true
-          context.setStreamMode?.('responding')
+          context.setStreamMode?.('spin' as SpinnerMode)
         }
 
         if (
           event.type === 'stream_event' &&
-          event.event.type === 'content_block_delta' &&
-          event.event.delta.type === 'text_delta'
+          (event.event as unknown as { type: string; delta?: { type: string; text?: string } }).type === 'content_block_delta' &&
+          (event.event as unknown as { type: string; delta?: { type: string; text?: string } }).delta?.type === 'text_delta'
         ) {
-          const charactersStreamed = event.event.delta.text.length
+          const charactersStreamed = (event.event as unknown as { type: string; delta?: { type: string; text?: string } }).delta?.text?.length ?? 0
           context.setResponseLength?.(length => length + charactersStreamed)
         }
 
@@ -1568,7 +1577,7 @@ export async function createAsyncAgentAttachmentsIfNeeded(
   context: ToolUseContext,
 ): Promise<AttachmentMessage[]> {
   const appState = context.getAppState()
-  const asyncAgents = Object.values(appState.tasks).filter(
+  const asyncAgents = Object.values(appState.tasks as Record<string, LocalAgentTaskState>).filter(
     (task): task is LocalAgentTaskState => task.type === 'local_agent',
   )
 
@@ -1609,7 +1618,7 @@ export async function createAsyncAgentAttachmentsIfNeeded(
 function collectReadToolFilePaths(messages: Message[]): Set<string> {
   const stubIds = new Set<string>()
   for (const message of messages) {
-    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
+    if (message.type !== 'user' || !message.message || !Array.isArray(message.message.content)) {
       continue
     }
     for (const block of message.message.content) {
@@ -1627,6 +1636,7 @@ function collectReadToolFilePaths(messages: Message[]): Set<string> {
   for (const message of messages) {
     if (
       message.type !== 'assistant' ||
+      !message.message ||
       !Array.isArray(message.message.content)
     ) {
       continue

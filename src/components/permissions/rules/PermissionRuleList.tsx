@@ -34,7 +34,12 @@ type TabType = 'recent' | 'allow' | 'ask' | 'deny' | 'workspace';
 type RuleSourceTextProps = {
   rule: PermissionRule;
 };
-function RuleSourceText(t0) {
+type RuleDetailsProps = {
+  rule: PermissionRule;
+  onDelete: () => void;
+  onCancel: () => void;
+};
+function RuleSourceText(t0: RuleSourceTextProps): React.ReactNode {
   const $ = _c(4);
   const {
     rule
@@ -72,7 +77,7 @@ function getRuleBehaviorLabel(ruleBehavior: PermissionBehavior): string {
 }
 
 // Component for showing tool details and managing the interactive deletion workflow
-function RuleDetails(t0) {
+function RuleDetails(t0: RuleDetailsProps): React.ReactNode {
   const $ = _c(42);
   const {
     rule,
@@ -263,9 +268,17 @@ type RulesTabContentProps = {
   cursorOffset?: number;
   onHeaderFocusChange?: (focused: boolean) => void;
 };
+type PermissionRulesTabProps = RulesTabContentProps & {
+  tab: TabType;
+  getRulesOptions: (tab: TabType, searchQuery?: string) => {
+    options: Option[];
+    rulesByKey: Map<string, PermissionRule>;
+  };
+  handleToolSelect: (value: string, tab: TabType) => void;
+};
 
 // Component for rendering rules tab content with full width support
-function RulesTabContent(props) {
+function RulesTabContent(props: RulesTabContentProps): React.ReactNode {
   const $ = _c(26);
   const {
     options,
@@ -361,7 +374,7 @@ function RulesTabContent(props) {
 }
 
 // Composes the subtitle + search + Select for a single allow/ask/deny tab.
-function PermissionRulesTab(t0) {
+function PermissionRulesTab(t0: PermissionRulesTabProps): React.ReactNode {
   const $ = _c(27);
   let T0;
   let T1;
@@ -470,7 +483,7 @@ type Props = {
   initialTab?: TabType;
   onRetryDenials?: (commands: string[]) => void;
 };
-export function PermissionRuleList(t0) {
+export function PermissionRuleList(t0: Props): React.ReactNode {
   const $ = _c(113);
   const {
     onExit,

@@ -140,7 +140,7 @@ function useAppStore(): AppStateStore {
  * const { text, promptId } = useAppState(s => s.promptSuggestion) // good
  * ```
  */
-export function useAppState(selector) {
+export function useAppState<T>(selector: (state: AppState) => T): T {
   const store = useAppStore();
   const selectorRef = React.useRef(selector);
   const storeRef = React.useRef(store);

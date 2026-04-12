@@ -17,6 +17,8 @@ import { TOOL_SEARCH_TOOL_NAME } from '../tools/ToolSearchTool/prompt.js'
 import type {
   CollapsedReadSearchGroup,
   CollapsibleMessage,
+  GroupedToolUseMessage,
+  NormalizedAssistantMessage,
   RenderableMessage,
   StopHookInfo,
   SystemStopHookSummaryMessage,
@@ -40,6 +42,13 @@ const SNIP_TOOL_NAME = feature('HISTORY_SNIP')
     ).SNIP_TOOL_NAME
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
+
+// Extended renderable message type that includes grouped_tool_use and collapsed_read_search
+// which are processed by this module but not part of the base RenderableMessage union.
+export type CollapseRenderableMessage =
+  | RenderableMessage
+  | GroupedToolUseMessage
+  | CollapsedReadSearchGroup
 
 /**
  * Result of checking if a tool use is a search or read operation.
@@ -288,7 +297,7 @@ function isToolSearchOrRead(
  * Returns null if the message is not a collapsible tool use.
  */
 function getCollapsibleToolInfo(
-  msg: RenderableMessage,
+  msg: CollapseRenderableMessage,
   tools: Tools,
 ): {
   name: string
@@ -303,23 +312,22 @@ function getCollapsibleToolInfo(
   isBash?: boolean
 } | null {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
-    const info = getSearchOrReadFromContent(content, tools)
-    if (info && content?.type === 'tool_use') {
-      return { name: content.name, input: content.input, ...info }
+    const content = msg.message?.content?.[0]
+    if (typeof content !== 'string' && content?.type === 'tool_use') {
+      const info = getSearchOrReadFromContent(content, tools)
+      if (info) {
+        return { name: content.name, input: content.input, ...info }
+      }
     }
   }
   if (msg.type === 'grouped_tool_use') {
     // For grouped tool uses, check the first message's input
-    const firstContent = msg.messages[0]?.message.content[0]
-    const info = getSearchOrReadFromContent(
-      firstContent
-        ? { type: 'tool_use', name: msg.toolName, input: firstContent.input }
-        : undefined,
-      tools,
-    )
-    if (info && firstContent?.type === 'tool_use') {
-      return { name: msg.toolName, input: firstContent.input, ...info }
+    const firstContent = msg.messages[0]?.message?.content?.[0]
+    if (typeof firstContent !== 'string' && firstContent?.type === 'tool_use') {
+      const info = getSearchOrReadFromContent(firstContent, tools)
+      if (info) {
+        return { name: firstContent.name, input: firstContent.input, ...info }
+      }
     }
   }
   return null
@@ -328,10 +336,10 @@ function getCollapsibleToolInfo(
 /**
  * Check if a message is assistant text that should break a group.
  */
-function isTextBreaker(msg: RenderableMessage): boolean {
+function isTextBreaker(msg: CollapseRenderableMessage): boolean {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
-    if (content?.type === 'text' && content.text.trim().length > 0) {
+    const content = msg.message?.content?.[0]
+    if (typeof content !== 'string' && content?.type === 'text' && content.text.trim().length > 0) {
       return true
     }
   }
@@ -343,12 +351,13 @@ function isTextBreaker(msg: RenderableMessage): boolean {
  * This includes tool uses like Edit, Write, etc.
  */
 function isNonCollapsibleToolUse(
-  msg: RenderableMessage,
+  msg: CollapseRenderableMessage,
   tools: Tools,
 ): boolean {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
+    const content = msg.message?.content?.[0]
     if (
+      typeof content !== 'string' &&
       content?.type === 'tool_use' &&
       !isToolSearchOrRead(content.name, content.input, tools)
     ) {
@@ -356,10 +365,11 @@ function isNonCollapsibleToolUse(
     }
   }
   if (msg.type === 'grouped_tool_use') {
-    const firstContent = msg.messages[0]?.message.content[0]
+    const firstContent = msg.messages[0]?.message?.content?.[0]
     if (
+      typeof firstContent !== 'string' &&
       firstContent?.type === 'tool_use' &&
-      !isToolSearchOrRead(msg.toolName, firstContent.input, tools)
+      !isToolSearchOrRead(firstContent.name, firstContent.input, tools)
     ) {
       return true
     }
@@ -368,11 +378,12 @@ function isNonCollapsibleToolUse(
 }
 
 function isPreToolHookSummary(
-  msg: RenderableMessage,
-): msg is SystemStopHookSummaryMessage {
+  msg: CollapseRenderableMessage,
+): boolean {
   return (
     msg.type === 'system' &&
     msg.subtype === 'stop_hook_summary' &&
+    'hookLabel' in msg &&
     msg.hookLabel === 'PreToolUse'
   )
 }
@@ -381,11 +392,11 @@ function isPreToolHookSummary(
  * Check if a message should be skipped (not break the group, just passed through).
  * This includes thinking blocks, redacted thinking, attachments, etc.
  */
-function shouldSkipMessage(msg: RenderableMessage): boolean {
+function shouldSkipMessage(msg: CollapseRenderableMessage): boolean {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
+    const content = msg.message?.content?.[0]
     // Skip thinking blocks and other non-text, non-tool content
-    if (content?.type === 'thinking' || content?.type === 'redacted_thinking') {
+    if (typeof content !== 'string' && (content?.type === 'thinking' || content?.type === 'redacted_thinking')) {
       return true
     }
   }
@@ -401,46 +412,49 @@ function shouldSkipMessage(msg: RenderableMessage): boolean {
 }
 
 /**
- * Type predicate: Check if a message is a collapsible tool use.
+ * Check if a message is a collapsible tool use.
  */
 function isCollapsibleToolUse(
-  msg: RenderableMessage,
+  msg: CollapseRenderableMessage,
   tools: Tools,
-): msg is CollapsibleMessage {
+): boolean {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
+    const content = msg.message?.content?.[0]
     return (
+      typeof content !== 'string' &&
       content?.type === 'tool_use' &&
       isToolSearchOrRead(content.name, content.input, tools)
     )
   }
   if (msg.type === 'grouped_tool_use') {
-    const firstContent = msg.messages[0]?.message.content[0]
+    const firstContent = msg.messages[0]?.message?.content?.[0]
     return (
+      typeof firstContent !== 'string' &&
       firstContent?.type === 'tool_use' &&
-      isToolSearchOrRead(msg.toolName, firstContent.input, tools)
+      isToolSearchOrRead(firstContent.name, firstContent.input, tools)
     )
   }
   return false
 }
 
 /**
- * Type predicate: Check if a message is a tool result for collapsible tools.
+ * Check if a message is a tool result for collapsible tools.
  * Returns true if ALL tool results in the message are for tracked collapsible tools.
  */
 function isCollapsibleToolResult(
-  msg: RenderableMessage,
+  msg: CollapseRenderableMessage,
   collapsibleToolUseIds: Set<string>,
-): msg is CollapsibleMessage {
-  if (msg.type === 'user') {
-    const toolResults = msg.message.content.filter(
-      (c): c is { type: 'tool_result'; tool_use_id: string } =>
-        c.type === 'tool_result',
+): boolean {
+  if (msg.type === 'user' && msg.message?.content) {
+    const content = msg.message.content
+    if (!Array.isArray(content)) return false
+    const toolResults = content.filter(
+      (c) => c.type === 'tool_result' && 'tool_use_id' in c,
     )
     // Only return true if there are tool results AND all of them are for collapsible tools
     return (
       toolResults.length > 0 &&
-      toolResults.every(r => collapsibleToolUseIds.has(r.tool_use_id))
+      toolResults.every(r => 'tool_use_id' in r && collapsibleToolUseIds.has(r.tool_use_id))
     )
   }
   return false
@@ -449,18 +463,18 @@ function isCollapsibleToolResult(
 /**
  * Get all tool use IDs from a single message (handles grouped tool uses).
  */
-function getToolUseIdsFromMessage(msg: RenderableMessage): string[] {
+function getToolUseIdsFromMessage(msg: CollapseRenderableMessage): string[] {
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
-    if (content?.type === 'tool_use') {
+    const content = msg.message?.content?.[0]
+    if (typeof content !== 'string' && content?.type === 'tool_use' && 'id' in content) {
       return [content.id]
     }
   }
   if (msg.type === 'grouped_tool_use') {
     return msg.messages
       .map(m => {
-        const content = m.message.content[0]
-        return content.type === 'tool_use' ? content.id : ''
+        const content = m.message?.content?.[0]
+        return typeof content !== 'string' && content?.type === 'tool_use' && 'id' in content ? content.id : ''
       })
       .filter(Boolean)
   }
@@ -494,23 +508,18 @@ export function hasAnyToolInProgress(
 
 /**
  * Get the underlying NormalizedMessage for display (timestamp/model).
- * Handles nested GroupedToolUseMessage within collapsed groups.
- * Returns a NormalizedAssistantMessage or NormalizedUserMessage (never GroupedToolUseMessage).
+ * Returns the displayMessage from the collapsed group.
  */
 export function getDisplayMessageFromCollapsed(
   message: CollapsedReadSearchGroup,
-): Exclude<CollapsibleMessage, { type: 'grouped_tool_use' }> {
-  const firstMsg = message.displayMessage
-  if (firstMsg.type === 'grouped_tool_use') {
-    return firstMsg.displayMessage
-  }
-  return firstMsg
+): NormalizedAssistantMessage {
+  return message.displayMessage
 }
 
 /**
  * Count the number of tool uses in a message (handles grouped tool uses).
  */
-function countToolUses(msg: RenderableMessage): number {
+function countToolUses(msg: CollapseRenderableMessage): number {
   if (msg.type === 'grouped_tool_use') {
     return msg.messages.length
   }
@@ -521,12 +530,12 @@ function countToolUses(msg: RenderableMessage): number {
  * Extract file paths from read tool inputs in a message.
  * Returns an array of file paths (may have duplicates if same file is read multiple times in one grouped message).
  */
-function getFilePathsFromReadMessage(msg: RenderableMessage): string[] {
+function getFilePathsFromReadMessage(msg: CollapseRenderableMessage): string[] {
   const paths: string[] = []
 
   if (msg.type === 'assistant') {
-    const content = msg.message.content[0]
-    if (content?.type === 'tool_use') {
+    const content = msg.message?.content?.[0]
+    if (typeof content !== 'string' && content?.type === 'tool_use') {
       const input = content.input as { file_path?: string } | undefined
       if (input?.file_path) {
         paths.push(input.file_path)
@@ -534,8 +543,8 @@ function getFilePathsFromReadMessage(msg: RenderableMessage): string[] {
     }
   } else if (msg.type === 'grouped_tool_use') {
     for (const m of msg.messages) {
-      const content = m.message.content[0]
-      if (content?.type === 'tool_use') {
+      const content = m.message?.content?.[0]
+      if (typeof content !== 'string' && content?.type === 'tool_use') {
         const input = content.input as { file_path?: string } | undefined
         if (input?.file_path) {
           paths.push(input.file_path)
@@ -553,17 +562,19 @@ function getFilePathsFromReadMessage(msg: RenderableMessage): string[] {
  * in bashCommands (non-search/read bash).
  */
 function scanBashResultForGitOps(
-  msg: CollapsibleMessage,
+  msg: CollapseRenderableMessage,
   group: GroupAccumulator,
 ): void {
   if (msg.type !== 'user') return
-  const out = msg.toolUseResult as
-    | { stdout?: string; stderr?: string }
-    | undefined
+  const out = 'toolUseResult' in msg
+    ? (msg.toolUseResult as { stdout?: string; stderr?: string } | undefined)
+    : undefined
   if (!out?.stdout && !out?.stderr) return
   // git push writes the ref update to stderr — scan both streams.
   const combined = (out.stdout ?? '') + '\n' + (out.stderr ?? '')
-  for (const c of msg.message.content) {
+  const content = msg.message?.content
+  if (!content || !Array.isArray(content)) return
+  for (const c of content) {
     if (c.type !== 'tool_result') continue
     const command = group.bashCommands?.get(c.tool_use_id)
     if (!command) continue
@@ -579,7 +590,7 @@ function scanBashResultForGitOps(
 }
 
 type GroupAccumulator = {
-  messages: CollapsibleMessage[]
+  messages: NormalizedAssistantMessage[]
   searchCount: number
   readFilePaths: Set<string>
   // Count of read operations that don't have file paths (e.g., Bash cat commands)
@@ -735,15 +746,28 @@ function createCollapsedGroup(
       result.bashCount = group.bashCount
       result.gitOpBashCount = group.gitOpBashCount
     }
-    if ((group.commits?.length ?? 0) > 0) result.commits = group.commits
-    if ((group.pushes?.length ?? 0) > 0) result.pushes = group.pushes
-    if ((group.branches?.length ?? 0) > 0) result.branches = group.branches
-    if ((group.prs?.length ?? 0) > 0) result.prs = group.prs
+    if (group.commits && group.commits.length > 0) {
+      result.commits = group.commits.map(c => ({
+        sha: c.sha,
+        message: '',
+        timestamp: 0,
+      }))
+    }
+    if (group.pushes && group.pushes.length > 0) {
+      result.pushes = group.pushes.map(p => ({
+        ref: p.branch,
+        sha: '',
+        forced: false,
+      }))
+    }
   }
   if (group.hookCount > 0) {
     result.hookTotalMs = group.hookTotalMs
     result.hookCount = group.hookCount
-    result.hookInfos = group.hookInfos
+    result.hookInfos = group.hookInfos.map(h => ({
+      command: h.command ?? '',
+      durationMs: h.durationMs,
+    }))
   }
   if (group.relevantMemories && group.relevantMemories.length > 0) {
     result.relevantMemories = group.relevantMemories
@@ -762,10 +786,10 @@ function createCollapsedGroup(
 export function collapseReadSearchGroups(
   messages: RenderableMessage[],
   tools: Tools,
-): RenderableMessage[] {
-  const result: RenderableMessage[] = []
+): CollapseRenderableMessage[] {
+  const result: CollapseRenderableMessage[] = []
   let currentGroup = createEmptyGroup()
-  let deferredSkippable: RenderableMessage[] = []
+  let deferredSkippable: CollapseRenderableMessage[] = []
 
   function flushGroup(): void {
     if (currentGroup.messages.length === 0) {
@@ -887,24 +911,31 @@ export function collapseReadSearchGroups(
         currentGroup.toolUseIds.add(id)
       }
 
-      currentGroup.messages.push(msg)
+      // For grouped_tool_use, push the displayMessage instead of the group itself
+      if ('displayMessage' in msg) {
+        currentGroup.messages.push((msg as unknown as GroupedToolUseMessage).displayMessage)
+      } else {
+        currentGroup.messages.push(msg as NormalizedAssistantMessage)
+      }
     } else if (isCollapsibleToolResult(msg, currentGroup.toolUseIds)) {
-      currentGroup.messages.push(msg)
+      // Note: don't push user messages to group.messages - it's typed as NormalizedAssistantMessage[]
       // Scan bash results for commit SHAs / PR URLs to surface in the summary
       if (isFullscreenEnvEnabled() && currentGroup.bashCommands?.size) {
         scanBashResultForGitOps(msg, currentGroup)
       }
     } else if (currentGroup.messages.length > 0 && isPreToolHookSummary(msg)) {
       // Absorb PreToolUse hook summaries into the group instead of deferring
-      currentGroup.hookCount += msg.hookCount
+      const hookMsg = msg as SystemStopHookSummaryMessage
+      const hookInfos = hookMsg.hookInfos as StopHookInfo[]
+      currentGroup.hookCount += hookMsg.hookCount
       currentGroup.hookTotalMs +=
-        msg.totalDurationMs ??
-        msg.hookInfos.reduce((sum, h) => sum + (h.durationMs ?? 0), 0)
-      currentGroup.hookInfos.push(...msg.hookInfos)
+        (hookMsg.totalDurationMs ?? hookInfos.reduce((sum, h) => sum + (h.durationMs ?? 0), 0))
+      currentGroup.hookInfos.push(...hookInfos)
     } else if (
       currentGroup.messages.length > 0 &&
       msg.type === 'attachment' &&
-      msg.attachment.type === 'relevant_memories'
+      'attachment' in msg &&
+      (msg as { attachment: { type: string } }).attachment.type === 'relevant_memories'
     ) {
       // Absorb auto-injected memory attachments so "recalled N memories"
       // renders inline with "ran N bash commands" instead of as a separate
@@ -914,7 +945,10 @@ export function collapseReadSearchGroups(
       // suppresses the fallback). createCollapsedGroup adds .length to
       // memoryReadCount after the readCount subtraction instead.
       currentGroup.relevantMemories ??= []
-      currentGroup.relevantMemories.push(...msg.attachment.memories)
+      const attachment = (msg as { attachment: { memories?: Array<{ path: string; content: string; mtimeMs: number }> } }).attachment
+      if (attachment?.memories) {
+        currentGroup.relevantMemories.push(...attachment.memories)
+      }
     } else if (shouldSkipMessage(msg)) {
       // Don't flush the group for skippable messages (thinking, attachments, system)
       // If a group is in progress, defer these messages to output after the collapsed group
@@ -922,10 +956,9 @@ export function collapseReadSearchGroups(
       // of the first tool use, not displaced by intervening skippable messages.
       // Exception: nested_memory attachments are pushed through even during a group so
       // ⎿ Loaded lines cluster tightly instead of being split by the badge's marginTop.
-      if (
-        currentGroup.messages.length > 0 &&
-        !(msg.type === 'attachment' && msg.attachment.type === 'nested_memory')
-      ) {
+      const isNestedMemory = msg.type === 'attachment' && 'attachment' in msg &&
+        (msg as { attachment: { type?: string } }).attachment?.type === 'nested_memory'
+      if (currentGroup.messages.length > 0 && !isNestedMemory) {
         deferredSkippable.push(msg)
       } else {
         result.push(msg)

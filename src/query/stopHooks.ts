@@ -9,12 +9,16 @@ import type { ToolUseContext } from '../Tool.js'
 import type { HookProgress } from '../types/hooks.js'
 import type {
   AssistantMessage,
+  AttachmentMessage,
+  HookResultMessage,
   Message,
   RequestStartEvent,
   StopHookInfo,
   StreamEvent,
+  SystemStopHookSummaryMessage,
   TombstoneMessage,
   ToolUseSummaryMessage,
+  UserMessage,
 } from '../types/message.js'
 import { createAttachmentMessage } from '../utils/attachments.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -38,12 +42,17 @@ import type { SystemPrompt } from '../utils/systemPromptType.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 
+// Type for job classifier module (used for TEMPLATES feature)
+interface JobClassifierModule {
+  classifyAndWriteState(jobDir: string, messages: unknown[]): Promise<unknown>
+}
+
 /* eslint-disable @typescript-eslint/no-require-imports */
 const extractMemoriesModule = feature('EXTRACT_MEMORIES')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-const jobClassifierModule = feature('TEMPLATES')
-  ? (require('../jobs/classifier.js') as typeof import('../jobs/classifier.js'))
+const jobClassifierModule: JobClassifierModule | null = feature('TEMPLATES')
+  ? (require('../jobs/classifier.js') as JobClassifierModule)
   : null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -58,7 +67,7 @@ import {
 } from '../utils/forkedAgent.js'
 
 type StopHookResult = {
-  blockingErrors: Message[]
+  blockingErrors: UserMessage[]
   preventContinuation: boolean
 }
 
@@ -76,7 +85,11 @@ export async function* handleStopHooks(
   | RequestStartEvent
   | Message
   | TombstoneMessage
-  | ToolUseSummaryMessage,
+  | ToolUseSummaryMessage
+  | UserMessage
+  | AttachmentMessage
+  | HookResultMessage
+  | SystemStopHookSummaryMessage,
   StopHookResult
 > {
   const hookStartTime = Date.now()
@@ -119,7 +132,7 @@ export async function* handleStopHooks(
     )
     const p = jobClassifierModule!
       .classifyAndWriteState(process.env.CLAUDE_JOB_DIR, turnAssistantMessages)
-      .catch(err => {
+      .catch((err: unknown) => {
         logForDebugging(`[job] classifier error: ${errorMessage(err)}`, {
           level: 'error',
         })
@@ -173,7 +186,7 @@ export async function* handleStopHooks(
   }
 
   try {
-    const blockingErrors = []
+    const blockingErrors: UserMessage[] = []
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
 
@@ -199,13 +212,14 @@ export async function* handleStopHooks(
 
     for await (const result of generator) {
       if (result.message) {
-        yield result.message
+        const message = result.message as Message
+        yield message
         // Track toolUseID from progress messages and count hooks
-        if (result.message.type === 'progress' && result.message.toolUseID) {
-          stopHookToolUseID = result.message.toolUseID
+        if (message.type === 'progress' && message.toolUseID) {
+          stopHookToolUseID = message.toolUseID
           hookCount++
           // Extract hook command and prompt text from progress data
-          const progressData = result.message.data as HookProgress
+          const progressData = message.data as HookProgress
           if (progressData.command) {
             hookInfos.push({
               command: progressData.command,
@@ -214,8 +228,17 @@ export async function* handleStopHooks(
           }
         }
         // Track errors and output from attachments
-        if (result.message.type === 'attachment') {
-          const attachment = result.message.attachment
+        if (message.type === 'attachment' && message.attachment) {
+          const attachment = message.attachment as {
+            type: string
+            hookEvent?: string
+            stderr?: string
+            exitCode?: number
+            content?: string
+            stdout?: string
+            durationMs?: number
+            command?: string
+          }
           if (
             'hookEvent' in attachment &&
             (attachment.hookEvent === 'Stop' ||
@@ -228,7 +251,7 @@ export async function* handleStopHooks(
               // Non-blocking errors always have output
               hasOutput = true
             } else if (attachment.type === 'hook_error_during_execution') {
-              hookErrors.push(attachment.content)
+              hookErrors.push(attachment.content || '')
               hasOutput = true
             } else if (attachment.type === 'hook_success') {
               // Check if successful hook produced any stdout/stderr
@@ -303,7 +326,7 @@ export async function* handleStopHooks(
         preventedContinuation,
         stopReason,
         hasOutput,
-        'suggestion',
+        'info',
         stopHookToolUseID,
       )
 
@@ -335,7 +358,7 @@ export async function* handleStopHooks(
     if (isTeammate()) {
       const teammateName = getAgentName() ?? ''
       const teamName = getTeamName() ?? ''
-      const teammateBlockingErrors: Message[] = []
+      const teammateBlockingErrors: UserMessage[] = []
       let teammatePreventedContinuation = false
       let teammateStopReason: string | undefined
       // Each hook executor generates its own toolUseID — capture from progress
@@ -364,13 +387,11 @@ export async function* handleStopHooks(
 
         for await (const result of taskCompletedGenerator) {
           if (result.message) {
-            if (
-              result.message.type === 'progress' &&
-              result.message.toolUseID
-            ) {
-              teammateHookToolUseID = result.message.toolUseID
+            const msg = result.message as Message
+            if (msg.type === 'progress' && msg.toolUseID) {
+              teammateHookToolUseID = msg.toolUseID
             }
-            yield result.message
+            yield msg
           }
           if (result.blockingError) {
             const userMessage = createUserMessage({
@@ -409,10 +430,11 @@ export async function* handleStopHooks(
 
       for await (const result of teammateIdleGenerator) {
         if (result.message) {
-          if (result.message.type === 'progress' && result.message.toolUseID) {
-            teammateHookToolUseID = result.message.toolUseID
+          const msg = result.message as Message
+          if (msg.type === 'progress' && msg.toolUseID) {
+            teammateHookToolUseID = msg.toolUseID
           }
-          yield result.message
+          yield msg
         }
         if (result.blockingError) {
           const userMessage = createUserMessage({
