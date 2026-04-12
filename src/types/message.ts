@@ -9,18 +9,52 @@ export type TextBlock = {
   text: string
 }
 
-export type ContentBlock = TextBlock
+export type ToolUseBlock = {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: unknown
+}
+
+export type ToolResultBlock = {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string | ContentBlock[]
+  is_error?: boolean
+}
+
+export type ImageBlock = {
+  type: 'image'
+  source: {
+    type: 'base64' | 'url'
+    media_type: string
+    data: string
+  }
+}
+
+export type ThinkingBlock = {
+  type: 'thinking'
+  thinking: string
+}
+
+export type RedactedThinkingBlock = {
+  type: 'redacted_thinking'
+  thinking: string
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ImageBlock | ThinkingBlock | RedactedThinkingBlock
 
 // Message origin type
 export type MessageOrigin = {
-  kind: 'human' | 'tool' | 'assistant' | string
+  kind: 'human' | 'tool' | 'assistant' | 'server' | string
+  server?: string
 }
 
 // Message type used in conversation transcript handling
 export interface Message {
   uuid: string
   parentUuid?: string
-  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder' | 'attachment'
+  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder' | 'attachment' | 'progress' | 'tombstone' | 'request_start' | 'stream_event' | 'tool_summary' | 'hook_result' | 'system_local_command' | 'text' | 'summary' | 'result'
   content: string
   timestamp: number | string
   isMeta?: boolean
@@ -28,17 +62,54 @@ export interface Message {
   isCompactSummary?: boolean
   isVirtual?: boolean
   origin?: MessageOrigin
+  requestId?: string
+  error?: unknown
+  isApiErrorMessage?: boolean
+  advisorModel?: string
   message?: {
     content: string | ContentBlock[]
     role?: string
     id?: string
+    context_management?: unknown
+    model?: string
   }
   subtype?: string
   attachment?: {
     type: string
     name?: string
     mimeType?: string
+    toolUseID?: string
   }
+  toolUseID?: string
+  data?: unknown
+  hookId?: string
+  outcome?: 'success' | 'blocking' | 'non_blocking_error' | 'cancelled'
+  serverName?: string
+  enabled?: boolean
+  callbackUrl?: string
+  loginWithClaudeAi?: boolean
+  task_id?: string
+  description?: string
+  persist?: boolean
+  question?: string
+  hook_name?: string
+  hooks?: unknown
+  agents?: unknown
+  systemPrompt?: string
+  appendSystemPrompt?: string
+  jsonSchema?: unknown
+  matchers?: unknown
+  canRewind?: boolean
+  filesChanged?: string[]
+  insertions?: number
+  deletions?: number
+  files?: string[]
+  imagePasteIds?: string[]
+  mcpMeta?: unknown
+  isVisibleInTranscriptOnly?: boolean
+  sourceToolUseID?: string
+  permissionMode?: string
+  summarizeMetadata?: unknown
 }
 
 // Progress message for tool execution
@@ -64,6 +135,44 @@ export interface SystemMessage {
   type: 'system'
   content: string
   subtype?: string
+  toolUseID?: string
+  level?: string
+  preventedContinuation?: boolean
+  commands?: string[]
+  url?: string
+  upgradeNudge?: string
+  durationMs?: number
+  budgetTokens?: number
+  budgetLimit?: number
+  budgetNudges?: number
+  messageCount?: number
+  ttftMs?: number
+  otps?: number
+  hookDurationMs?: number
+  turnDurationMs?: number
+  toolDurationMs?: number
+  classifierDurationMs?: number
+  toolCount?: number
+  hookCount?: number
+  classifierCount?: number
+  configWriteCount?: number
+  trigger?: string
+  preTokens?: number
+  logicalParentUuid?: string
+  compactMetadata?: unknown
+  microcompactMetadata?: unknown
+  hookInfos?: unknown[]
+  hookErrors?: string[]
+  stopReason?: string
+  hasOutput?: boolean
+  hookLabel?: string
+  totalDurationMs?: number
+  writtenPaths?: string[]
+  isP50?: boolean
+  cause?: unknown
+  retryInMs?: number
+  retryAttempt?: number
+  maxRetries?: number
 }
 
 // User message
@@ -94,8 +203,20 @@ export interface AssistantMessage {
   content: string
   message: {
     content: string | ContentBlock[]
+    role?: string
+    id?: string
+    context_management?: unknown
+    model?: string
+    stop_reason?: string
+    stop_sequence?: string
   }
   toolUses?: unknown[]
+  apiError?: unknown
+  error?: unknown
+  errorDetails?: string
+  requestId?: string
+  isApiErrorMessage?: boolean
+  advisorModel?: string
 }
 
 // System local command message
@@ -131,6 +252,7 @@ export type SDKStreamlinedToolUseSummaryMessage = {
 export type NormalizedMessageContent = {
   content: string | ContentBlock[]
   role?: string
+  context_management?: unknown
 }
 
 export type NormalizedUserMessage = {
@@ -140,6 +262,13 @@ export type NormalizedUserMessage = {
   content: string
   message: NormalizedMessageContent
   origin?: MessageOrigin
+  attachment?: RenderableAttachment
+  imagePasteIds?: string[]
+  mcpMeta?: unknown
+  isVisibleInTranscriptOnly?: boolean
+  sourceToolUseID?: string
+  permissionMode?: string
+  summarizeMetadata?: unknown
 }
 
 export type NormalizedAssistantMessage = {
@@ -149,6 +278,13 @@ export type NormalizedAssistantMessage = {
   content: string
   message: NormalizedMessageContent
   toolUses?: unknown[]
+  attachment?: RenderableAttachment
+  requestId?: string
+  error?: unknown
+  isApiErrorMessage?: boolean
+  advisorModel?: string
+  isMeta?: boolean
+  isVirtual?: boolean
 }
 
 export type NormalizedMessage = NormalizedUserMessage | NormalizedAssistantMessage
