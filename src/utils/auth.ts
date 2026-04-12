@@ -295,12 +295,7 @@ export function getAnthropicApiKeyWithSource(
     }
   }
   // Check for ANTHROPIC_API_KEY before checking the apiKeyHelper or /login-managed key
-  if (
-    apiKeyEnv &&
-    getGlobalConfig().customApiKeyResponses?.approved?.includes(
-      normalizeApiKeyForConfig(apiKeyEnv),
-    )
-  ) {
+  if (apiKeyEnv) {
     return {
       key: apiKeyEnv,
       source: 'ANTHROPIC_API_KEY',
@@ -1940,7 +1935,7 @@ export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
     source === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
 
   const profile = await getOauthProfileFromOauthToken(tokens.accessToken)
-  if (!profile) {
+  if (!profile?.organization) {
     // Fail closed — we can't verify the org
     return {
       valid: false,

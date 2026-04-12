@@ -19,6 +19,8 @@ export interface SecureStorageData {
       discoveryState?: {
         authorizationServerUrl: string
         resourceMetadataUrl?: string
+        resourceMetadata?: unknown
+        authorizationServerMetadata?: unknown
       }
       stepUpScope?: string
     }
@@ -26,6 +28,28 @@ export interface SecureStorageData {
   mcpOAuthClientConfig?: Record<string, { clientSecret: string }>
   trustedDeviceToken?: string
   pluginSecrets?: Record<string, Record<string, string>>
+  claudeAiOauth?: {
+    accessToken: string
+    refreshToken: string | null
+    expiresAt: number | null
+    scopes: string[]
+    subscriptionType: string | null
+    rateLimitTier: string | null
+    profile?: {
+      id: string
+      email: string
+      name: string
+      organization: {
+        uuid: string
+        name: string
+      }
+    }
+    tokenAccount?: {
+      uuid: string
+      emailAddress: string
+      organizationUuid: string
+    }
+  }
 }
 
 export interface SecureStorage {

@@ -54,7 +54,7 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
   // Reuse pre-fetched profile if available, otherwise fetch fresh
   const profile =
     tokens.profile ?? (await getOauthProfileFromOauthToken(tokens.accessToken))
-  if (profile) {
+  if (profile?.account && profile?.organization) {
     storeOAuthAccountInfo({
       accountUuid: profile.account.uuid,
       emailAddress: profile.account.email,
