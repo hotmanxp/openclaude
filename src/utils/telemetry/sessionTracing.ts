@@ -19,6 +19,11 @@ export function startToolSpan(): null {
   return null
 }
 export function endToolSpan(): void {}
+export function addToolContentEvent(): void {}
+export function startToolBlockedOnUserSpan(): void {}
+export function endToolBlockedOnUserSpan(): void {}
+export function startToolExecutionSpan(): void {}
+export function endToolExecutionSpan(): void {}
 export function addBetaToolSpanAttributes(): void {}
 export function startHookSpan(): null {
   return null
