@@ -17,8 +17,8 @@ declare const MACRO: {
 
 /**
  * Stub for resolveAntModel - appears to be a build-time resolved constant
+ * Note: actual function is in utils/model/antModels.ts
  */
-declare const resolveAntModel: string
 
 /**
  * PromiseWithResolvers is a ES2023 proposal type that TypeScript 5.2+ includes,

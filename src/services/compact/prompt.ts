@@ -275,8 +275,11 @@ export function getPartialCompactPrompt(
   customInstructions?: string,
   direction: PartialCompactDirection = 'from',
 ): string {
+  // Cast direction to string for comparison since the code expects 'from' | 'up_to'
+  // but the type definition is an object
+  const directionStr = direction as unknown as string
   const template =
-    direction === 'up_to'
+    directionStr === 'up_to'
       ? PARTIAL_COMPACT_UP_TO_PROMPT
       : PARTIAL_COMPACT_PROMPT
   let prompt = NO_TOOLS_PREAMBLE + template

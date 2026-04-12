@@ -1023,28 +1023,20 @@ class Project {
       const slug = getPlanSlugCache().get(sessionId)
 
       for (const message of messages) {
-        const isCompactBoundary = isCompactBoundaryMessage(message)
+        const isCompactBoundary = isCompactBoundaryMessage(message as Message)
 
         // For tool_result messages, use the assistant message UUID from the message
         // if available (set at creation time), otherwise fall back to sequential parent
-        let effectiveParentUuid = parentUuid
+        let effectiveParentUuid: UUID | null | undefined = parentUuid
         if (
           message.type === 'user' &&
           'sourceToolAssistantUUID' in message &&
           message.sourceToolAssistantUUID
         ) {
-          effectiveParentUuid = message.sourceToolAssistantUUID
+          effectiveParentUuid = message.sourceToolAssistantUUID as UUID
         }
 
         const transcriptMessage: TranscriptMessage = {
-          parentUuid: isCompactBoundary ? null : effectiveParentUuid,
-          logicalParentUuid: isCompactBoundary ? parentUuid : undefined,
-          isSidechain,
-          teamName: teamInfo?.teamName,
-          agentName: teamInfo?.agentName,
-          promptId:
-            message.type === 'user' ? (getPromptId() ?? undefined) : undefined,
-          agentId,
           ...message,
           // Session-stamp fields MUST come after the spread. On --fork-session
           // and --resume, messages arrive as SerializedMessage (carries source
@@ -1061,10 +1053,18 @@ class Project {
           version: VERSION,
           gitBranch,
           slug,
+          parentUuid: isCompactBoundary ? null : (effectiveParentUuid as UUID | null),
+          logicalParentUuid: isCompactBoundary ? (parentUuid as UUID | null) : undefined,
+          isSidechain,
+          teamName: teamInfo?.teamName,
+          agentName: teamInfo?.agentName,
+          promptId:
+            message.type === 'user' ? (getPromptId() ?? undefined) : undefined,
+          agentId,
         }
         await this.appendEntry(transcriptMessage)
         if (isChainParticipant(message)) {
-          parentUuid = message.uuid
+          parentUuid = message.uuid as UUID
         }
       }
 
@@ -1072,7 +1072,7 @@ class Project {
       // the --resume picker shows what the user was last doing.
       // Overwritten every turn by design.
       if (!isSidechain) {
-        const text = getFirstMeaningfulUserMessageTextContent(messages)
+        const text = getFirstMeaningfulUserMessageTextContent(messages as Message[])
         if (text) {
           const flat = text.replace(/\n/g, ' ').trim()
           this.currentSessionLastPrompt =
@@ -1239,7 +1239,7 @@ class Project {
         // persistence (session-ingress) uses a single Last-Uuid chain per
         // sessionId, so re-POSTing a UUID it already has 409s and eventually
         // exhausts retries → gracefulShutdownSync(1). See inc-4718.
-        const isNewUuid = !messageSet.has(entry.uuid)
+        const isNewUuid = !messageSet.has(entry.uuid as UUID)
         if (isAgentSidechain || isNewUuid) {
           // Enqueue write — appendToFile handles ENOENT by creating directories
           void this.enqueueWrite(targetFile, entry)
@@ -1253,7 +1253,7 @@ class Project {
             // and --resume's buildConversationChain terminates at the dangling ref.
             // Same constraint for remote (inc-4718 above): sidechain persisting a
             // UUID the main thread hasn't written yet → 409 when main writes it.
-            messageSet.add(entry.uuid)
+            messageSet.add(entry.uuid as UUID)
 
             if (isTranscriptMessage(entry)) {
               await this.persistToRemote(sessionId, entry)
@@ -1842,9 +1842,11 @@ function applyPreservedSegmentRelinks(
   relinkFailed: boolean
 } {
   let relinkFailed = false
-  type Seg = NonNullable<
-    SystemCompactBoundaryMessage['compactMetadata']['preservedSegment']
-  >
+  type Seg = {
+    tailUuid: UUID
+    headUuid: UUID
+    anchorUuid: UUID
+  }
 
   // Find the absolute-last boundary and the last seg-boundary (can differ:
   // manual /compact after reactive compact → seg is stale).
@@ -1857,7 +1859,7 @@ function applyPreservedSegmentRelinks(
     entryIndex.set(entry.uuid, i)
     if (isCompactBoundaryMessage(entry)) {
       absoluteLastBoundaryIdx = i
-      const seg = entry.compactMetadata?.preservedSegment
+      const seg = entry.compactMetadata?.preservedSegment as Seg | undefined
       if (seg) {
         lastSeg = seg
         lastSegBoundaryIdx = i
@@ -1878,10 +1880,10 @@ function applyPreservedSegmentRelinks(
   const preservedUuids = new Set<UUID>()
   if (segIsLive) {
     const walkSeen = new Set<UUID>()
-    const tailInTranscript = messages.has(lastSeg.tailUuid)
-    const headInTranscript = messages.has(lastSeg.headUuid)
-    const anchorInTranscript = messages.has(lastSeg.anchorUuid)
-    let cur = messages.get(lastSeg.tailUuid)
+    const tailInTranscript = messages.has(lastSeg.tailUuid as UUID)
+    const headInTranscript = messages.has(lastSeg.headUuid as UUID)
+    const anchorInTranscript = messages.has(lastSeg.anchorUuid as UUID)
+    let cur = messages.get(lastSeg.tailUuid as UUID)
     let reachedHead = false
     let failureKind:
       | 'missing_tail'
@@ -1894,13 +1896,13 @@ function applyPreservedSegmentRelinks(
     let breakParentUuid: UUID | null | undefined
 
     while (cur) {
-      if (walkSeen.has(cur.uuid)) {
+      if (walkSeen.has(cur.uuid as UUID)) {
         failureKind = 'cycle_before_head'
         break
       }
-      walkSeen.add(cur.uuid)
-      preservedUuids.add(cur.uuid)
-      lastSeenUuid = cur.uuid
+      walkSeen.add(cur.uuid as UUID)
+      preservedUuids.add(cur.uuid as UUID)
+      lastSeenUuid = cur.uuid as UUID
       lastSeenType = cur.type
       if (cur.uuid === lastSeg.headUuid) {
         reachedHead = true
@@ -1936,9 +1938,9 @@ function applyPreservedSegmentRelinks(
         anchorInTranscript,
         walkSteps: walkSeen.size,
         transcriptSize: messages.size,
-        tailIndex: entryIndex.get(lastSeg.tailUuid),
-        headIndex: entryIndex.get(lastSeg.headUuid),
-        anchorIndex: entryIndex.get(lastSeg.anchorUuid),
+        tailIndex: entryIndex.get(lastSeg.tailUuid as UUID),
+        headIndex: entryIndex.get(lastSeg.headUuid as UUID),
+        anchorIndex: entryIndex.get(lastSeg.anchorUuid as UUID),
         lastSeenType,
         breakParentInTranscript: Boolean(
           breakParentUuid && messages.has(breakParentUuid),
@@ -1979,13 +1981,22 @@ function applyPreservedSegmentRelinks(
     // dedup-skipped. Without this, resume → immediate autocompact spiral.
     for (const uuid of preservedUuids) {
       const msg = messages.get(uuid)
-      if (msg?.type !== 'assistant') continue
+      if (msg?.type !== 'assistant' || !msg.message) continue
+      type MsgWithUsage = typeof msg.message & {
+        usage?: {
+          input_tokens: number
+          output_tokens: number
+          cache_creation_input_tokens: number
+          cache_read_input_tokens: number
+        }
+      }
+      const msgWithUsage = msg.message as MsgWithUsage
       messages.set(uuid, {
         ...msg,
         message: {
           ...msg.message,
           usage: {
-            ...msg.message.usage,
+            ...msgWithUsage.usage,
             input_tokens: 0,
             output_tokens: 0,
             cache_creation_input_tokens: 0,
@@ -2371,17 +2382,17 @@ function recoverOrphanedParallelToolResults(
   chain: TranscriptMessage[],
   seen: Set<UUID>,
 ): TranscriptMessage[] {
-  type ChainAssistant = Extract<TranscriptMessage, { type: 'assistant' }>
+  type ChainAssistant = AssistantMessage & Pick<TranscriptMessage, 'parentUuid' | 'logicalParentUuid' | 'isSidechain' | 'gitBranch' | 'agentId' | 'teamName' | 'agentName' | 'agentColor' | 'promptId'>
   const chainAssistants = chain.filter(
-    (m): m is ChainAssistant => m.type === 'assistant',
-  )
+    (m) => m.type === 'assistant',
+  ) as unknown as ChainAssistant[]
   if (chainAssistants.length === 0) return chain
 
   // Anchor = last on-chain member of each sibling group. chainAssistants is
   // already in chain order, so later iterations overwrite → last wins.
   const anchorByMsgId = new Map<string, ChainAssistant>()
   for (const a of chainAssistants) {
-    if (a.message.id) anchorByMsgId.set(a.message.id, a)
+    if (a.message?.id) anchorByMsgId.set(a.message.id, a)
   }
 
   // O(n) precompute: sibling groups and TR index.
@@ -2390,16 +2401,17 @@ function recoverOrphanedParallelToolResults(
   const siblingsByMsgId = new Map<string, TranscriptMessage[]>()
   const toolResultsByAsst = new Map<UUID, TranscriptMessage[]>()
   for (const m of messages.values()) {
-    if (m.type === 'assistant' && m.message?.id) {
-      const group = siblingsByMsgId.get(m.message.id)
+    const msg = m as Message
+    if (m.type === 'assistant' && msg.message?.id) {
+      const group = siblingsByMsgId.get(msg.message.id)
       if (group) group.push(m)
-      else siblingsByMsgId.set(m.message.id, [m])
+      else siblingsByMsgId.set(msg.message.id, [m])
     } else if (
       m.type === 'user' &&
       m.parentUuid &&
-      m.message !== undefined &&
-      Array.isArray(m.message.content) &&
-      m.message.content.some(b => b.type === 'tool_result')
+      msg.message !== undefined &&
+      Array.isArray(msg.message.content) &&
+      msg.message.content.some(b => b.type === 'tool_result')
     ) {
       const group = toolResultsByAsst.get(m.parentUuid)
       if (group) group.push(m)
@@ -2477,7 +2489,7 @@ export function checkResumeConsistency(chain: Message[]): void {
   for (let i = chain.length - 1; i >= 0; i--) {
     const m = chain[i]!
     if (m.type !== 'system' || m.subtype !== 'turn_duration') continue
-    const expected = m.messageCount
+    const expected = (m as SystemMessage).messageCount
     if (expected === undefined) return
     // `i` is the 0-based index of the checkpoint in the reconstructed chain.
     // The checkpoint was appended AFTER messageCount messages, so its own

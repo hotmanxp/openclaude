@@ -7,14 +7,14 @@ import {
   buildConversationChain,
   loadTranscriptFile,
   stripPersistedToolUseResultsFromJSONLBuffer,
-} from './sessionStorage.ts'
+} from './sessionStorage.js'
 
 const tempDirs: string[] = []
 const sessionId = '00000000-0000-4000-8000-000000000999'
 const ts = '2026-04-02T00:00:00.000Z'
 
-function id(n: number): string {
-  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+function id(n: number): UUID {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}` as UUID
 }
 
 function base(uuid: string, parentUuid: string | null) {
@@ -211,7 +211,7 @@ test('stripPersistedToolUseResultsFromJSONLBuffer drops raw toolUseResult while 
         content: '<persisted-output>\nPreview text\n</persisted-output>',
       },
     ],
-  }
+  } as typeof persisted.message
   ;(persisted as typeof persisted & { toolUseResult?: unknown }).toolUseResult = {
     stdout: 'x'.repeat(200_000),
     stderr: '',
@@ -241,7 +241,7 @@ test('loadTranscriptFile omits raw toolUseResult for persisted-output transcript
         content: '<persisted-output>\nPreview text\n</persisted-output>',
       },
     ],
-  }
+  } as typeof persisted.message
   ;(persisted as typeof persisted & { toolUseResult?: unknown }).toolUseResult = {
     stdout: 'y'.repeat(200_000),
     stderr: '',

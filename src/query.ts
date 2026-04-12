@@ -186,9 +186,10 @@ function* yieldMissingToolResultBlocks(
 ) {
   for (const assistantMessage of assistantMessages) {
     // Extract all tool use blocks from this assistant message
-    const toolUseBlocks = assistantMessage.message.content.filter(
-      content => content.type === 'tool_use',
-    ) as ToolUseBlock[]
+    const content = assistantMessage.message.content
+    const toolUseBlocks = (Array.isArray(content) ? content : []).filter(
+      (c): c is ToolUseBlock => c.type === 'tool_use',
+    )
 
     // Emit an interruption message for each tool use
     for (const toolUse of toolUseBlocks) {
@@ -202,7 +203,7 @@ function* yieldMissingToolResultBlocks(
           },
         ],
         toolUseResult: errorMessage,
-        sourceToolAssistantUUID: assistantMessage.uuid,
+        sourceToolAssistantUUID: assistantMessage.uuid as `${string}-${string}-${string}-${string}-${string}`,
       })
     }
   }
@@ -235,7 +236,10 @@ const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 function isWithheldMaxOutputTokens(
   msg: Message | StreamEvent | undefined,
 ): msg is AssistantMessage {
-  return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
+  return (
+    msg?.type === 'assistant' &&
+    (msg as AssistantMessage).apiError === 'max_output_tokens'
+  )
 }
 
 export type QueryParams = {
@@ -394,7 +398,7 @@ async function* queryLoop(
       toolUseContext,
     )
 
-    yield { type: 'stream_request_start' }
+    yield { type: 'stream_request_start' } as StreamEvent
 
     queryCheckpoint('query_fn_entry')
 
@@ -467,7 +471,7 @@ async function* queryLoop(
     if (feature('HISTORY_SNIP')) {
       queryCheckpoint('query_snip_start')
       const snipResult = snipModule!.snipCompactIfNeeded(messagesForQuery)
-      messagesForQuery = snipResult.messages
+      messagesForQuery = snipResult.messages as Message[]
       snipTokensFreed = snipResult.tokensFreed
       if (snipResult.boundaryMessage) {
         yield snipResult.boundaryMessage
