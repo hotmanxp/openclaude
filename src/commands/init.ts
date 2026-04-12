@@ -27,7 +27,7 @@ Usage notes:
 This file provides guidance to Open CC (claude.ai/code) when working with code in this repository.
 \`\`\``
 
-const NEW_INIT_PROMPT = `Set up a minimal ${AGENT_INSTRUCTIONS_FILE} (and optionally skills and hooks) for this repo. ${AGENT_INSTRUCTIONS_FILE} is loaded into every Open CC session, so it must be concise — only include what Claude would get wrong without it.
+const NEW_INIT_PROMPT = `Set up a minimal ${AGENT_INSTRUCTIONS_FILE} (and optionally skills and hooks) for this repo. ${AGENT_INSTRUCTIONS_FILE} is loaded into every Open CC session, so it must be concise — only include what Open CC would get wrong without it.
 
 ## Phase 1: Ask what to set up
 
@@ -96,9 +96,9 @@ If the user chose personal ${AGENT_INSTRUCTIONS_LOCAL_FILE} or both: ask about t
 
 ## Phase 4: Write ${AGENT_INSTRUCTIONS_FILE} (if user chose project or both)
 
-Write a minimal ${AGENT_INSTRUCTIONS_FILE} at the project root. Every line must pass this test: "Would removing this cause Claude to make mistakes?" If no, cut it.
+Write a minimal ${AGENT_INSTRUCTIONS_FILE} at the project root. Every line must pass this test: "Would removing this cause Open CC to make mistakes?" If no, cut it.
 
-**Consume \`note\` entries from the Phase 3 preference queue whose target is ${AGENT_INSTRUCTIONS_FILE}** (team-level notes) — add each as a concise line in the most relevant section. These are the behaviors the user wants Claude to follow but didn't need guaranteed (e.g., "propose a plan before implementing", "explain the tradeoffs when refactoring"). Leave personal-targeted notes for Phase 5.
+**Consume \`note\` entries from the Phase 3 preference queue whose target is ${AGENT_INSTRUCTIONS_FILE}** (team-level notes) — add each as a concise line in the most relevant section. These are the behaviors the user wants Open CC to follow but didn't need guaranteed (e.g., "propose a plan before implementing", "explain the tradeoffs when refactoring"). Leave personal-targeted notes for Phase 5.
 
 Include:
 - Build/test/lint commands ${BRAND_NAME} can't guess (non-standard scripts, flags, or sequences)
@@ -134,7 +134,7 @@ If ${AGENT_INSTRUCTIONS_FILE} already exists: read it, propose specific changes 
 
 For projects with multiple concerns, suggest organizing instructions into \`.claude/rules/\` as separate focused files (e.g., \`code-style.md\`, \`testing.md\`, \`security.md\`). These are loaded automatically alongside ${AGENT_INSTRUCTIONS_FILE} and can be scoped to specific file paths using \`paths\` frontmatter.
 
-For projects with distinct subdirectories (monorepos, multi-module projects, etc.): mention that subdirectory ${AGENT_INSTRUCTIONS_FILE} files can be added for module-specific instructions (they're loaded automatically when Claude works in those directories). Offer to create them if the user wants.
+For projects with distinct subdirectories (monorepos, multi-module projects, etc.): mention that subdirectory ${AGENT_INSTRUCTIONS_FILE} files can be added for module-specific instructions (they're loaded automatically when Open CC works in those directories). Offer to create them if the user wants.
 
 ## Phase 5: Write ${AGENT_INSTRUCTIONS_LOCAL_FILE} (if user chose personal or both)
 
@@ -191,7 +191,7 @@ Check the environment and ask about each gap you find (use AskUserQuestion):
 
 - **GitHub CLI**: Run \`which gh\` (or \`where gh\` on Windows). If it's missing AND the project uses GitHub (check \`git remote -v\` for github.com), ask the user if they want to install it. Explain that the GitHub CLI lets ${BRAND_NAME} help with commits, pull requests, issues, and code review directly.
 
-- **Linting**: If Phase 2 found no lint config (no .eslintrc, ruff.toml, .golangci.yml, etc. for the project's language), ask the user if they want Claude to set up linting for this codebase. Explain that linting catches issues early and gives ${BRAND_NAME} fast feedback on its own edits.
+- **Linting**: If Phase 2 found no lint config (no .eslintrc, ruff.toml, .golangci.yml, etc. for the project's language), ask the user if they want Open CC to set up linting for this codebase. Explain that linting catches issues early and gives ${BRAND_NAME} fast feedback on its own edits.
 
 - **Proposal-sourced hooks** (if user chose "Skills + hooks" or "Hooks only"): Consume \`hook\` entries from the Phase 3 preference queue. If Phase 2 found a formatter and the queue has no formatting hook, offer format-on-edit as a fallback. If the user chose "Neither" or "Skills only" in Phase 1, skip this bullet entirely.
 

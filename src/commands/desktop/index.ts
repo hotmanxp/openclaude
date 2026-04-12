@@ -14,7 +14,7 @@ const desktop = {
   type: 'local-jsx',
   name: 'desktop',
   aliases: ['app'],
-  description: '在 Claude Desktop 中继续当前会话',
+  description: '在 Open CC Desktop 中继续当前会话',
   availability: ['claude-ai'],
   isEnabled: isSupportedPlatform,
   get isHidden() {
