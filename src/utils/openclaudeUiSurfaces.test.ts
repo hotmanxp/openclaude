@@ -44,7 +44,7 @@ describe('OpenCC settings path surfaces', () => {
 })
 
 describe('OpenCC validation tips', () => {
-  test('permissions.defaultMode invalid value keeps suggestion but no Claude docs link', () => {
+  test('permissions.defaultMode invalid value keeps suggestion but no OpenCC docs link', () => {
     const tip = getValidationTip({
       path: 'permissions.defaultMode',
       code: 'invalid_value',
