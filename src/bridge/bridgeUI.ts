@@ -35,7 +35,7 @@ const QR_OPTIONS = {
 
 /** Generate a QR code and return its lines. */
 async function generateQr(url: string): Promise<string[]> {
-  const qr = await qrToString(url, QR_OPTIONS)
+  const qr = await qrToString(url, QR_OPTIONS as any)
   return qr.split('\n').filter((line: string) => line.length > 0)
 }
 

@@ -139,3 +139,24 @@ export type NormalizedAssistantMessage = {
 }
 
 export type NormalizedMessage = NormalizedUserMessage | NormalizedAssistantMessage
+
+// Attachment with additional fields used in transcript rendering
+export type RenderableAttachment = {
+  type: string
+  name?: string
+  mimeType?: string
+  memories?: Array<{ content: string }>
+  prompt?: string | Array<{ type: 'text'; text: string }>
+  commandMode?: string
+  isMeta?: boolean
+}
+
+// RenderableMessage is a union of all message types that can be rendered in the UI
+export type RenderableMessage =
+  | NormalizedUserMessage
+  | NormalizedAssistantMessage
+  | ProgressMessage
+  | SystemMessage
+  | AttachmentMessage
+  | SystemLocalCommandMessage
+  | (Message & { attachment?: RenderableAttachment })

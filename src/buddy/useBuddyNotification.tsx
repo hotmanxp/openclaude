@@ -10,16 +10,17 @@ import { isBuddyEnabled } from './feature.js';
 // buzz instead of a single UTC-midnight spike, gentler on soul-gen load.
 // Teaser window: April 1-7, 2026 only. Command stays live forever after.
 export function isBuddyTeaserWindow(): boolean {
-  if ("external" === 'ant') return true;
   const d = new Date();
   return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7;
 }
 export function isBuddyLive(): boolean {
-  if ("external" === 'ant') return true;
   const d = new Date();
   return d.getFullYear() > 2026 || d.getFullYear() === 2026 && d.getMonth() >= 3;
 }
-function RainbowText(t0) {
+interface RainbowTextProps {
+  text: string;
+}
+function RainbowText(t0: RainbowTextProps) {
   const $ = _c(2);
   const {
     text
@@ -37,7 +38,7 @@ function RainbowText(t0) {
 
 // Rainbow /buddy teaser shown on startup when no companion hatched yet.
 // Idle presence and reactions are handled by CompanionSprite directly.
-function _temp(ch, i) {
+function _temp(ch: string, i: number) {
   return <Text key={i} color={getRainbowColor(i)}>{ch}</Text>;
 }
 export function useBuddyNotification() {

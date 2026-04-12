@@ -537,11 +537,12 @@ function buildToolNameMap(messages: Message[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const message of messages) {
     if (message.type !== 'assistant') continue
-    const content = message.message.content
-    if (!Array.isArray(content)) continue
-    for (const block of content) {
-      if (block.type === 'tool_use') {
-        map.set(block.id, block.name)
+    const msgContent = message.message?.content
+    if (!Array.isArray(msgContent)) continue
+    for (const block of msgContent) {
+      const blockAny = block as unknown as { type: string; id?: string; name?: string }
+      if (blockAny.type === 'tool_use' && blockAny.id && blockAny.name) {
+        map.set(blockAny.id, blockAny.name)
       }
     }
   }
@@ -555,18 +556,24 @@ function buildToolNameMap(messages: Message[]): Map<string, string> {
  * Returns [] for messages with no eligible blocks.
  */
 function collectCandidatesFromMessage(message: Message): ToolResultCandidate[] {
-  if (message.type !== 'user' || !Array.isArray(message.message.content)) {
-    return []
-  }
-  return message.message.content.flatMap(block => {
-    if (block.type !== 'tool_result' || !block.content) return []
-    if (isContentAlreadyCompacted(block.content)) return []
-    if (hasImageBlock(block.content)) return []
+  if (message.type !== 'user') return []
+  const msgContent = message.message?.content
+  if (!Array.isArray(msgContent)) return []
+  return msgContent.flatMap(block => {
+    const blockAny = block as unknown as {
+      type: string
+      tool_use_id?: string
+      content?: string | Array<{ type: string; text?: string }>
+    }
+    if (blockAny.type !== 'tool_result' || !blockAny.tool_use_id) return []
+    if (!blockAny.content) return []
+    if (isContentAlreadyCompacted(blockAny.content)) return []
+    if (hasImageBlock(blockAny.content)) return []
     return [
       {
-        toolUseId: block.tool_use_id,
-        content: block.content,
-        size: contentSize(block.content),
+        toolUseId: blockAny.tool_use_id,
+        content: blockAny.content,
+        size: contentSize(blockAny.content),
       },
     ]
   })
@@ -625,9 +632,10 @@ function collectCandidatesByMessage(
     if (message.type === 'user') {
       current.push(...collectCandidatesFromMessage(message))
     } else if (message.type === 'assistant') {
-      if (!seenAsstIds.has(message.message.id)) {
+      const msgId = message.message?.id
+      if (msgId && !seenAsstIds.has(msgId)) {
         flush()
-        seenAsstIds.add(message.message.id)
+        seenAsstIds.add(msgId)
       }
     }
     // progress / attachment / system are filtered or merged by
@@ -702,28 +710,38 @@ function replaceToolResultContents(
 ): Message[] {
   let changed = false
   const nextMessages = messages.map(message => {
-    if (message.type !== 'user' || !Array.isArray(message.message.content)) {
-      return message
-    }
-    const content = message.message.content
-    const needsReplace = content.some(
-      b =>
-        b.type === 'tool_result' &&
-        replacementMap.has(b.tool_use_id) &&
-        b.content !== replacementMap.get(b.tool_use_id),
-    )
+    if (message.type !== 'user') return message
+    const content = message.message?.content
+    if (!Array.isArray(content)) return message
+    const needsReplace = content.some(b => {
+      const blockAny = b as unknown as {
+        type: string
+        tool_use_id?: string
+        content?: string
+      }
+      if (blockAny.type !== 'tool_result' || !blockAny.tool_use_id) return false
+      return (
+        replacementMap.has(blockAny.tool_use_id) &&
+        blockAny.content !== replacementMap.get(blockAny.tool_use_id)
+      )
+    })
     if (!needsReplace) return message
     changed = true
     return {
       ...message,
       message: {
-        ...message.message,
-        content: content.map(block => {
-          if (block.type !== 'tool_result') return block
-          const replacement = replacementMap.get(block.tool_use_id)
-          return replacement === undefined || block.content === replacement
-            ? block
-            : { ...block, content: replacement }
+        ...(message.message ?? {}),
+        content: content.map(b => {
+          const blockAny = b as unknown as {
+            type: string
+            tool_use_id?: string
+            content?: string
+          }
+          if (blockAny.type !== 'tool_result' || !blockAny.tool_use_id) return b
+          const replacement = replacementMap.get(blockAny.tool_use_id)
+          return replacement === undefined || blockAny.content === replacement
+            ? b
+            : { ...b, content: replacement }
         }),
       },
       // Drop the original tool payload once the model-facing content has been

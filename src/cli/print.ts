@@ -358,9 +358,10 @@ import { isExtractModeActive } from '../memdir/paths.js'
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
   : null
-const proactiveModule =
+const proactiveModule: any =
   feature('PROACTIVE') || feature('KAIROS')
-    ? (require('../proactive/index.js') as typeof import('../proactive/index.js'))
+    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('../proactive/index.js')
     : null
 const cronSchedulerModule = require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js')
 const cronJitterConfigModule = require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js')
@@ -1435,9 +1436,12 @@ function runHeadlessStreaming(
         ...prev,
         mcp: {
           ...prev.mcp,
+          clients: prev.mcp.clients.map((c: MCPServerConnection) =>
+            c.name === serverName ? result.client : c,
+          ),
           tools: [
             ...prev.mcp.tools.filter(
-              t =>
+              (t: Tool) =>
                 !allSdkNames.some(name =>
                   t.name.startsWith(getMcpPrefix(name)),
                 ),
@@ -1580,7 +1584,7 @@ function runHeadlessStreaming(
             ...prev.mcp,
             tools: [
               ...prev.mcp.tools.filter(
-                t =>
+                (t: Tool) =>
                   !allSdkNames.some(name =>
                     t.name.startsWith(getMcpPrefix(name)),
                   ),
@@ -1611,8 +1615,8 @@ function runHeadlessStreaming(
       'name',
     )
     const existingNames = new Set([
-      ...currentMcpClients.map(c => c.name),
-      ...sdkClients.map(c => c.name),
+      ...currentMcpClients.map((c: MCPServerConnection) => c.name),
+      ...sdkClients.map((c: MCPServerConnection) => c.name),
     ])
     return [
       ...currentMcpClients,
@@ -3131,10 +3135,10 @@ function runHeadlessStreaming(
           // the disconnect/reconnect would have worked (gh-31339 / CC-314).
           const config =
             getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            sdkClients.find(c => c.name === serverName)?.config ??
-            dynamicMcpState.clients.find(c => c.name === serverName)?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
+            mcpClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            sdkClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            dynamicMcpState.clients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find((c: MCPServerConnection) => c.name === serverName)
               ?.config ??
             null
           if (!config) {
@@ -3202,10 +3206,10 @@ function runHeadlessStreaming(
           // mcp_reconnect above (gh-31339 / CC-314).
           const config =
             getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            sdkClients.find(c => c.name === serverName)?.config ??
-            dynamicMcpState.clients.find(c => c.name === serverName)?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
+            mcpClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            sdkClients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            dynamicMcpState.clients.find((c: MCPServerConnection) => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find((c: MCPServerConnection) => c.name === serverName)
               ?.config ??
             null
 
@@ -3388,9 +3392,9 @@ function runHeadlessStreaming(
                     ...prev,
                     mcp: {
                       ...prev.mcp,
-                      clients: prev.mcp.clients.map(c =>
-                        c.name === serverName ? result.client : c,
-                      ),
+clients: prev.mcp.clients.map((c: MCPServerConnection) =>
+                  c.name === serverName ? result.client : c,
+                ),
                       tools: [
                         ...reject(prev.mcp.tools, t =>
                           t.name?.startsWith(prefix),

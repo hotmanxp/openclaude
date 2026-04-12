@@ -83,21 +83,25 @@ function computeSearchText(msg: RenderableMessage): string {
       // relevant_memories renders full m.content in transcript mode
       // (AttachmentMessage.tsx <Ansi>{m.content}</Ansi>). Visible but
       // unsearchable without this — [ dump finds it, / doesn't.
-      if (msg.attachment.type === 'relevant_memories') {
-        raw = msg.attachment.memories.map(m => m.content).join('\n')
+      const attachment = msg.attachment
+      if (attachment?.type === 'relevant_memories') {
+        const memories = attachment.memories ?? []
+        raw = memories.map(m => m.content).join('\n')
       } else if (
         // Mid-turn prompts — queued while an agent is running. Render via
         // UserTextMessage (AttachmentMessage.tsx:~348). stickyPromptText
         // (VirtualMessageList.tsx:~103) has the same guards — mirror here.
-        msg.attachment.type === 'queued_command' &&
-        msg.attachment.commandMode !== 'task-notification' &&
-        !msg.attachment.isMeta
+        attachment?.type === 'queued_command' &&
+        attachment.commandMode !== 'task-notification' &&
+        !attachment.isMeta
       ) {
-        const p = msg.attachment.prompt
+        const p = attachment.prompt
         raw =
           typeof p === 'string'
             ? p
-            : p.flatMap(b => (b.type === 'text' ? [b.text] : [])).join('\n')
+            : (p ?? []).flatMap((b: { type: string; text?: string }) =>
+                b.type === 'text' && b.text ? [b.text] : [],
+              ).join('\n')
       }
       break
     }
@@ -105,8 +109,11 @@ function computeSearchText(msg: RenderableMessage): string {
       // relevant_memories attachments are absorbed into collapse groups
       // (collapseReadSearch.ts); their content is visible in transcript mode
       // via CollapsedReadSearchContent, so mirror it here for / search.
-      if (msg.relevantMemories) {
-        raw = msg.relevantMemories.map(m => m.content).join('\n')
+      const relevantMemories = (
+        msg as { relevantMemories?: Array<{ content: string }> }
+      ).relevantMemories
+      if (relevantMemories) {
+        raw = relevantMemories.map(m => m.content).join('\n')
       }
       break
     }
