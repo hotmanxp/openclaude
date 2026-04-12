@@ -54,7 +54,7 @@ type VersionLockInfo = {
   locksDir: string;
   staleLocksCleaned: number;
 };
-function DistTagsDisplay(t0) {
+function DistTagsDisplay(t0: { promise: Promise<NpmDistTags> }) {
   const $ = _c(8);
   const {
     promise
@@ -97,7 +97,7 @@ function DistTagsDisplay(t0) {
   }
   return t3;
 }
-export function Doctor(t0) {
+export function Doctor(t0: Props) {
   const $ = _c(84);
   const {
     onDone
@@ -116,10 +116,10 @@ export function Doctor(t0) {
     t1 = $[1];
   }
   const tools = t1;
-  const [diagnostic, setDiagnostic] = useState(null);
-  const [agentInfo, setAgentInfo] = useState(null);
-  const [contextWarnings, setContextWarnings] = useState(null);
-  const [versionLockInfo, setVersionLockInfo] = useState(null);
+  const [diagnostic, setDiagnostic] = useState<DiagnosticInfo | null>(null);
+  const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
+  const [contextWarnings, setContextWarnings] = useState<ContextWarnings | null>(null);
+  const [versionLockInfo, setVersionLockInfo] = useState<VersionLockInfo | null>(null);
   const validationErrors = useSettingsErrors();
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {

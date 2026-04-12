@@ -3,8 +3,9 @@ import type { UUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const sessionTranscriptModule = feature('KAIROS')
-  ? (require('../sessionTranscript/sessionTranscript.js') as typeof import('../sessionTranscript/sessionTranscript.js'))
+// @ts-ignore KAIROS feature not included in open build
+const sessionTranscriptModule: (typeof import('../sessionTranscript/sessionTranscript.js')) | null = feature('KAIROS')
+  ? require('../sessionTranscript/sessionTranscript.js')
   : null
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
