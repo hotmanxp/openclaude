@@ -288,6 +288,7 @@ export async function initReplBridge(
           isSyntheticMessage(msg)
         )
           continue
+        if (!msg.message) continue
         const rawContent = getContentText(msg.message.content)
         if (!rawContent) continue
         const derived = deriveTitle(rawContent)

@@ -5,16 +5,20 @@ import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
 import { jsonStringify } from './slowOperations.js'
 
 export function getTokenUsage(message: Message): Usage | undefined {
+  if (message?.type !== 'assistant') return undefined
+  const msg = message as AssistantMessage & {
+    message: { usage?: Usage; model?: string; content: string | Array<{ type: string; text?: string }> }
+  }
   if (
-    message?.type === 'assistant' &&
-    'usage' in message.message &&
+    'usage' in msg.message &&
     !(
-      message.message.content[0]?.type === 'text' &&
-      SYNTHETIC_MESSAGES.has(message.message.content[0].text)
+      msg.message.content[0]?.type === 'text' &&
+      typeof msg.message.content[0]?.text === 'string' &&
+      SYNTHETIC_MESSAGES.has(msg.message.content[0].text)
     ) &&
-    message.message.model !== SYNTHETIC_MODEL
+    msg.message.model !== SYNTHETIC_MODEL
   ) {
-    return message.message.usage
+    return msg.message.usage
   }
   return undefined
 }
@@ -26,12 +30,12 @@ export function getTokenUsage(message: Message): Usage | undefined {
  * AssistantMessage record, but they all share the same message.id.
  */
 function getAssistantMessageId(message: Message): string | undefined {
-  if (
-    message?.type === 'assistant' &&
-    'id' in message.message &&
-    message.message.model !== SYNTHETIC_MODEL
-  ) {
-    return message.message.id
+  if (message?.type !== 'assistant') return undefined
+  const msg = message as AssistantMessage & {
+    message: { id?: string; model?: string }
+  }
+  if ('id' in msg.message && msg.message.model !== SYNTHETIC_MODEL) {
+    return msg.message.id
   }
   return undefined
 }
@@ -184,15 +188,17 @@ export function getAssistantMessageContentLength(
   message: AssistantMessage,
 ): number {
   let contentLength = 0
-  for (const block of message.message.content) {
+  const content = message.message.content
+  if (typeof content === 'string') return 0
+  for (const block of content) {
     if (block.type === 'text') {
       contentLength += block.text.length
     } else if (block.type === 'thinking') {
-      contentLength += block.thinking.length
+      contentLength += (block as { thinking: string }).thinking.length
     } else if (block.type === 'redacted_thinking') {
-      contentLength += block.data.length
+      contentLength += (block as { data: string }).data.length
     } else if (block.type === 'tool_use') {
-      contentLength += jsonStringify(block.input).length
+      contentLength += jsonStringify((block as { input: unknown }).input).length
     }
   }
   return contentLength
@@ -252,10 +258,14 @@ export function tokenCountWithEstimation(messages: readonly Message[]): number {
       }
       return (
         getTokenCountFromUsage(usage) +
-        roughTokenCountEstimationForMessages(messages.slice(i + 1))
+        roughTokenCountEstimationForMessages(
+          messages.slice(i + 1) as (typeof messages)[number][],
+        )
       )
     }
     i--
   }
-  return roughTokenCountEstimationForMessages(messages)
+  return roughTokenCountEstimationForMessages(
+    messages as (typeof messages)[number][],
+  )
 }

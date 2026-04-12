@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 
-import { createUserMessage } from './messages.ts'
-import { applyToolResultReplacementsToMessages } from './toolResultStorage.ts'
+import { createUserMessage } from './messages.js'
+import { applyToolResultReplacementsToMessages } from './toolResultStorage.js'
+import type { Message } from '../types/message.js'
 
 test('applyToolResultReplacementsToMessages replaces matching tool results and preserves unrelated messages', () => {
   const unrelated = createUserMessage({ content: 'keep me' })
@@ -19,7 +20,7 @@ test('applyToolResultReplacementsToMessages replaces matching tool results and p
       stderr: '',
     },
   })
-  const messages = [unrelated, oversizedResult]
+  const messages: Message[] = [unrelated, oversizedResult]
   const replacement =
     '<persisted-output>\nOutput too large. Preview\n</persisted-output>'
 
@@ -31,9 +32,10 @@ test('applyToolResultReplacementsToMessages replaces matching tool results and p
   expect(next).not.toBe(messages)
   expect(next[0]).toBe(unrelated)
   expect(next[1]).not.toBe(oversizedResult)
-  expect((next[1]!.message.content as Array<{ content: string }>)[0]!.content).toBe(
-    replacement,
-  )
+  const replacedContent = next[1]!.message.content
+  if (Array.isArray(replacedContent)) {
+    expect((replacedContent[0] as { content?: string })?.content).toBe(replacement)
+  }
   expect(next[1]!.toolUseResult).toBeUndefined()
 })
 
@@ -48,7 +50,7 @@ test('applyToolResultReplacementsToMessages is idempotent when messages are alre
       },
     ],
   })
-  const messages = [hydrated]
+  const messages: Message[] = [hydrated]
 
   const next = applyToolResultReplacementsToMessages(
     messages,

@@ -40,7 +40,13 @@ function wrap(text: string, width: number): string[] {
   if (cur) lines.push(cur);
   return lines;
 }
-function SpeechBubble(t0) {
+interface SpeechBubbleProps {
+  text: string;
+  color: string;
+  fading: boolean;
+  tail: "right" | "down" | undefined;
+}
+function SpeechBubble(t0: SpeechBubbleProps) {
   const $ = _c(31);
   const {
     text,
@@ -67,7 +73,7 @@ function SpeechBubble(t0) {
     t5 = 34;
     let t7;
     if ($[11] !== fading) {
-      t7 = (l, i) => <Text key={i} italic={true} dimColor={!fading} color={fading ? "inactive" : undefined}>{l}</Text>;
+      t7 = (l: string, i: number) => <Text key={i} italic={true} dimColor={!fading} color={fading ? "inactive" : undefined}>{l}</Text>;
       $[11] = fading;
       $[12] = t7;
     } else {
@@ -174,9 +180,9 @@ export function companionReservedColumns(terminalColumns: number, speaking: bool
   return spriteColWidth(nameWidth) + SPRITE_PADDING_X + bubble;
 }
 export function CompanionSprite(): React.ReactNode {
-  const reaction = useAppState(s => s.companionReaction);
-  const petAt = useAppState(s => s.companionPetAt);
-  const focused = useAppState(s => s.footerSelection === 'companion');
+  const reaction = useAppState((s: AppState) => s.companionReaction);
+  const petAt = useAppState((s: AppState) => s.companionPetAt);
+  const focused = useAppState((s: AppState) => s.footerSelection === 'companion');
   const setAppState = useSetAppState();
   const {
     columns
@@ -356,15 +362,15 @@ export function CompanionFloatingBubble() {
   }
   return t5;
 }
-function _temp3(set) {
+function _temp3(set: React.Dispatch<React.SetStateAction<{tick: number; forReaction: string | undefined}>>) {
   return set(_temp2);
 }
-function _temp2(s_0) {
+function _temp2(s_0: {tick: number; forReaction: string | undefined}) {
   return {
     ...s_0,
     tick: s_0.tick + 1
   };
 }
-function _temp(s) {
+function _temp(s: AppState) {
   return s.companionReaction;
 }
