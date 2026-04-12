@@ -1,8 +1,8 @@
 /**
- * OAuth types for Claude.ai authentication
+ * OAuth types for Open CC.ai authentication
  */
 
-// Subscription types for Claude.ai plans
+// Subscription types for Open CC.ai plans
 // Using string type to match mockRateLimits.ts which uses type SubscriptionType = string
 export type SubscriptionType = string
 
