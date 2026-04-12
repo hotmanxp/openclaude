@@ -120,7 +120,7 @@ function computeSearchText(msg: RenderableMessage): string {
       break
     }
   }
-  // Strip <system-reminder> anywhere — Claude context, not user-visible.
+  // Strip <system-reminder> anywhere — Open CC context, not user-visible.
   // Mid-message on cc -c resumes (memory reminders between prompt lines).
   let t = raw
   let open = t.indexOf('<system-reminder>')
