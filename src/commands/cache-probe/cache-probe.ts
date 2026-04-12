@@ -98,7 +98,7 @@ export async function runCacheProbe(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
-    originator: 'openclaude',
+    originator: 'opencc',
   }
 
   const body = {

@@ -1,14 +1,14 @@
 ---
-name: create-openclaude-custom-command
-description: Generate custom commands for OpenClaude
+name: create-opencc-custom-command
+description: Generate custom commands for OpenCC
 allowed-tools: [Bash, Write, Read]
 user-invocable: true
 context: inline
 ---
 
-# Create OpenClaude Custom Command
+# Create OpenCC Custom Command
 
-Generate a custom command for OpenClaude based on the user's requirements and save it to `~/.claude/commands/`.
+Generate a custom command for OpenCC based on the user's requirements and save it to `~/.claude/commands/`.
 
 ## Custom Command Format
 

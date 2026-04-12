@@ -1,5 +1,5 @@
 /**
- * OpenClaude startup screen — filled-block text logo with sunset gradient.
+ * OpenCC startup screen — filled-block text logo with sunset gradient.
  * Called once at CLI startup before the Ink UI renders.
  */
 

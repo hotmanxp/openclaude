@@ -4,9 +4,9 @@ OpenCC is an open-source coding-agent CLI for cloud and local model providers.
 
 Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex, Ollama, Atomic Chat, and other supported backends while keeping one terminal-first workflow: prompts, tools, agents, MCP, slash commands, and streaming output.
 
-[![PR Checks](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml)
-[![Release](https://img.shields.io/github/v/tag/Gitlawb/openclaude?label=release&color=0ea5e9)](https://github.com/Gitlawb/openclaude/tags)
-[![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/Gitlawb/openclaude/discussions)
+[![PR Checks](https://github.com/Gitlawb/opencc/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/opencc/actions/workflows/pr-checks.yml)
+[![Release](https://img.shields.io/github/v/tag/Gitlawb/opencc?label=release&color=0ea5e9)](https://github.com/Gitlawb/opencc/tags)
+[![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/Gitlawb/opencc/discussions)
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
@@ -33,7 +33,7 @@ If the install later reports `ripgrep not found`, install ripgrep system-wide an
 ### Start
 
 ```bash
-openclaude
+opencc
 ```
 
 Inside OpenCC:
@@ -50,7 +50,7 @@ export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_API_KEY=sk-your-key-here
 export OPENAI_MODEL=gpt-4o
 
-openclaude
+opencc
 ```
 
 Windows PowerShell:
@@ -60,7 +60,7 @@ $env:CLAUDE_CODE_USE_OPENAI="1"
 $env:OPENAI_API_KEY="sk-your-key-here"
 $env:OPENAI_MODEL="gpt-4o"
 
-openclaude
+opencc
 ```
 
 ### Fastest local Ollama setup
@@ -72,7 +72,7 @@ export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_BASE_URL=http://localhost:11434/v1
 export OPENAI_MODEL=qwen2.5-coder:7b
 
-openclaude
+opencc
 ```
 
 Windows PowerShell:
@@ -82,7 +82,7 @@ $env:CLAUDE_CODE_USE_OPENAI="1"
 $env:OPENAI_BASE_URL="http://localhost:11434/v1"
 $env:OPENAI_MODEL="qwen2.5-coder:7b"
 
-openclaude
+opencc
 ```
 
 ## Setup Guides
@@ -116,7 +116,7 @@ Advanced and source-build guides:
 - **Streaming responses**: Real-time token output and tool progress
 - **Tool calling**: Multi-step tool loops with model calls, tool execution, and follow-up responses
 - **Images**: URL and base64 image inputs for providers that support vision
-- **Provider profiles**: Guided setup plus saved `.openclaude-profile.json` support
+- **Provider profiles**: Guided setup plus saved `.opencc-profile.json` support
 - **Local and remote model backends**: Cloud APIs, local servers, and Apple Silicon local inference
 
 ## Provider Notes
@@ -216,7 +216,7 @@ In a separate terminal, run:
 npm run dev:grpc:cli
 ```
 
-*Note: The gRPC definitions are located in `src/proto/openclaude.proto`. You can use this file to generate clients in Python, Go, Rust, or any other language.*
+*Note: The gRPC definitions are located in `src/proto/opencc.proto`. You can use this file to generate clients in Python, Go, Rust, or any other language.*
 
 ---
 
@@ -287,13 +287,13 @@ Coverage output is written to `coverage/lcov.info`, and OpenCC also generates a 
 - `scripts/` - build, verification, and maintenance scripts
 - `docs/` - setup, contributor, and project documentation
 - `python/` - standalone Python helpers and their tests
-- `vscode-extension/openclaude-vscode/` - VS Code extension
+- `vscode-extension/opencc-vscode/` - VS Code extension
 - `.github/` - repo automation, templates, and CI configuration
 - `bin/` - CLI launcher entrypoints
 
 ## VS Code Extension
 
-The repo includes a VS Code extension in [`vscode-extension/openclaude-vscode`](vscode-extension/openclaude-vscode) for OpenCC launch integration, provider-aware control-center UI, and theme support.
+The repo includes a VS Code extension in [`vscode-extension/opencc-vscode`](vscode-extension/opencc-vscode) for OpenCC launch integration, provider-aware control-center UI, and theme support.
 
 ## Security
 
@@ -301,8 +301,8 @@ If you believe you found a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Community
 
-- Use [GitHub Discussions](https://github.com/Gitlawb/openclaude/discussions) for Q&A, ideas, and community conversation
-- Use [GitHub Issues](https://github.com/Gitlawb/openclaude/issues) for confirmed bugs and actionable feature work
+- Use [GitHub Discussions](https://github.com/Gitlawb/opencc/discussions) for Q&A, ideas, and community conversation
+- Use [GitHub Issues](https://github.com/Gitlawb/opencc/issues) for confirmed bugs and actionable feature work
 
 ## Contributing
 

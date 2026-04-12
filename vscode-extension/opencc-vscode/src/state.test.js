@@ -76,24 +76,24 @@ test('parseProfileFile returns null when env is not an object', () => {
 
 test('resolveCommandCheckPath resolves workspace-relative executables', () => {
   assert.equal(
-    resolveCommandCheckPath('./node_modules/.bin/openclaude', '/repo'),
-    require('node:path').resolve('/repo', './node_modules/.bin/openclaude'),
+    resolveCommandCheckPath('./node_modules/.bin/opencc', '/repo'),
+    require('node:path').resolve('/repo', './node_modules/.bin/opencc'),
   );
 });
 
 test('resolveCommandCheckPath leaves bare commands alone', () => {
-  assert.equal(resolveCommandCheckPath('openclaude', '/repo'), null);
+  assert.equal(resolveCommandCheckPath('opencc', '/repo'), null);
 });
 
 test('findCommandPath treats shell-like input as a literal executable name', t => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaude-command-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencc-command-'));
   t.after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   const commandName = process.platform === 'win32'
-    ? 'openclaude & whoami'
-    : 'openclaude && whoami';
+    ? 'opencc & whoami'
+    : 'opencc && whoami';
   const executableName = process.platform === 'win32'
     ? `${commandName}.cmd`
     : commandName;
