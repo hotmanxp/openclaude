@@ -16,7 +16,7 @@ Use Bun `1.3.11` or newer for source builds on Windows. Older Bun versions can f
 
 ```bash
 git clone https://node.github.com/hotmanxp/opencc.git
-cd openclaude
+cd opencc
 
 bun install
 bun run build
@@ -27,7 +27,7 @@ npm link
 
 ```bash
 git clone https://node.github.com/hotmanxp/opencc.git
-cd openclaude
+cd opencc
 
 bun install
 bun run dev
@@ -57,7 +57,7 @@ export OPENAI_MODEL=codexplan
 # optional if you do not already have ~/.codex/auth.json
 export CODEX_API_KEY=...
 
-openclaude
+opencc
 ```
 
 ### DeepSeek
@@ -162,7 +162,7 @@ export OPENAI_MODEL=gpt-4o
 | `CODEX_API_KEY` | Codex only | Codex or ChatGPT access token override |
 | `CODEX_AUTH_JSON_PATH` | Codex only | Path to a Codex CLI `auth.json` file |
 | `CODEX_HOME` | Codex only | Alternative Codex home directory |
-| `OPENCLAUDE_DISABLE_CO_AUTHORED_BY` | No | Suppress the default `Co-Authored-By` trailer in generated git commits |
+| `OPENCC_DISABLE_CO_AUTHORED_BY` | No | Suppress the default `Co-Authored-By` trailer in generated git commits |
 
 You can also use `ANTHROPIC_MODEL` to override the model name. `OPENAI_MODEL` takes priority.
 
@@ -228,7 +228,7 @@ bun run profile:init -- --provider atomic-chat
 # codex bootstrap with a fast model alias
 bun run profile:init -- --provider codex --model codexspark
 
-# launch using persisted profile (.openclaude-profile.json)
+# launch using persisted profile (.opencc-profile.json)
 bun run dev:profile
 
 # codex profile (uses CODEX_API_KEY or ~/.codex/auth.json)

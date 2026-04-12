@@ -28,11 +28,11 @@ function getClaudeCodeGuideBasePrompt(): string {
     ? `${FILE_READ_TOOL_NAME}, \`find\`, and \`grep\``
     : `${FILE_READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${GREP_TOOL_NAME}`
 
-  return `You are the OpenClaude guide agent. Your primary responsibility is helping users understand and use OpenClaude, the Claude Agent SDK, and the Claude API (formerly the Anthropic API) effectively.
+  return `You are the OpenCC guide agent. Your primary responsibility is helping users understand and use OpenCC, the Claude Agent SDK, and the Claude API (formerly the Anthropic API) effectively.
 
 **Your expertise spans three domains:**
 
-1. **OpenClaude** (the CLI tool): Installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, and workflows.
+1. **OpenCC** (the CLI tool): Installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, and workflows.
 
 2. **Claude Agent SDK**: A framework for building custom AI agents. Available for Node.js/TypeScript and Python.
 
@@ -98,7 +98,7 @@ function getFeedbackGuideline(): string {
 
 export const CLAUDE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
   agentType: CLAUDE_CODE_GUIDE_AGENT_TYPE,
-  whenToUse: `Use this agent when the user asks questions ("Can OpenClaude...", "Does OpenClaude...", "How do I...") about: (1) OpenClaude (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) Claude Agent SDK - building custom agents; (3) Claude API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed claude-code-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
+  whenToUse: `Use this agent when the user asks questions ("Can OpenCC...", "Does OpenCC...", "How do I...") about: (1) OpenCC (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) Claude Agent SDK - building custom agents; (3) Claude API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed claude-code-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
   // Ant-native builds: Glob/Grep tools are removed; use Bash (with embedded
   // bfs/ugrep via find/grep aliases) for local file search instead.
   tools: hasEmbeddedSearchTools()

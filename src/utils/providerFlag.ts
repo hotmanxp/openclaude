@@ -5,18 +5,16 @@
  * that the rest of the codebase uses for provider detection.
  *
  * Usage:
- *   openclaude --provider openai --model gpt-4o
- *   openclaude --provider gemini --model gemini-2.0-flash
- *   openclaude --provider mistral --model ministral-3b-latest
- *   openclaude --provider ollama --model llama3.2
- *   openclaude --provider anthropic   (default, no-op)
+ *   opencc --provider openai --model gpt-4o
+ *   opencc --provider gemini --model gemini-2.0-flash
+ *   opencc --provider ollama --model llama3.2
+ *   opencc --provider anthropic   (default, no-op)
  */
 
 export const VALID_PROVIDERS = [
   'anthropic',
   'openai',
   'gemini',
-  'mistral',
   'github',
   'bedrock',
   'vertex',
@@ -79,13 +77,6 @@ export function applyProviderFlag(
     }
   }
 
-  delete process.env.CLAUDE_CODE_USE_OPENAI
-  delete process.env.CLAUDE_CODE_USE_GEMINI
-  delete process.env.CLAUDE_CODE_USE_MISTRAL
-  delete process.env.CLAUDE_CODE_USE_GITHUB
-  delete process.env.CLAUDE_CODE_USE_BEDROCK
-  delete process.env.CLAUDE_CODE_USE_VERTEX
-
   const model = parseModelFlag(args)
 
   switch (provider as ProviderFlagName) {
@@ -95,22 +86,17 @@ export function applyProviderFlag(
 
     case 'openai':
       process.env.CLAUDE_CODE_USE_OPENAI = '1'
-      if (model) process.env.OPENAI_MODEL = model
+      if (model) process.env.OPENAI_MODEL ??= model
       break
 
     case 'gemini':
       process.env.CLAUDE_CODE_USE_GEMINI = '1'
-      if (model) process.env.GEMINI_MODEL = model
-      break
-
-    case 'mistral':
-      process.env.CLAUDE_CODE_USE_MISTRAL = '1'
-      if (model) process.env.MISTRAL_MODEL = model
+      if (model) process.env.GEMINI_MODEL ??= model
       break
 
     case 'github':
       process.env.CLAUDE_CODE_USE_GITHUB = '1'
-      if (model) process.env.OPENAI_MODEL = model
+      if (model) process.env.OPENAI_MODEL ??= model
       break
 
     case 'bedrock':
@@ -123,13 +109,9 @@ export function applyProviderFlag(
 
     case 'ollama':
       process.env.CLAUDE_CODE_USE_OPENAI = '1'
-      if (!process.env.OPENAI_BASE_URL) {
-        process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-      }
-      if (!process.env.OPENAI_API_KEY) {
-        process.env.OPENAI_API_KEY = 'ollama'
-      }
-      if (model) process.env.OPENAI_MODEL = model
+      process.env.OPENAI_BASE_URL ??= 'http://localhost:11434/v1'
+      process.env.OPENAI_API_KEY ??= 'ollama'
+      if (model) process.env.OPENAI_MODEL ??= model
       break
   }
 

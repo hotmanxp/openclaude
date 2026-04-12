@@ -10,7 +10,7 @@ bun run build
 
 # Development (build + run)
 bun run dev                    # Generic dev
-bun run dev:profile           # Uses .openclaude-profile.json config
+bun run dev:profile           # Uses .opencc-profile.json config
 bun run dev:ollama            # Ollama local provider
 bun run dev:openai            # OpenAI provider
 bun run dev:gemini            # Gemini provider
@@ -90,7 +90,7 @@ The shim translates:
 
 ### Profile System
 
-Local model profiles are stored in `.openclaude-profile.json` (gitignored) and managed via:
+Local model profiles are stored in `.opencc-profile.json` (gitignored) and managed via:
 - `scripts/provider-bootstrap.ts` — Creates profile from CLI args
 - `scripts/provider-launch.ts` — Launches with profile config
 - `scripts/provider-recommend.ts` — Recommends models by goal (coding, balanced, latency)
