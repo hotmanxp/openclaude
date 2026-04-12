@@ -755,8 +755,10 @@ export function normalizeMessages(
   return messages.flatMap(message => {
     switch (message.type) {
       case 'assistant': {
-        isNewChain = isNewChain || message.message.content.length > 1
-        return message.message.content.map((_, index) => {
+        const msgMessage = message.message!
+        const content = msgMessage.content as ContentBlock[]
+        isNewChain = isNewChain || content.length > 1
+        return content.map((_, index) => {
           const uuid = isNewChain
             ? deriveUUID(message.uuid, index)
             : message.uuid
@@ -764,12 +766,12 @@ export function normalizeMessages(
             type: 'assistant' as const,
             timestamp: message.timestamp,
             message: {
-              ...message.message,
+              ...msgMessage,
               content: [_],
-              context_management: message.message.context_management ?? null,
+              context_management: msgMessage.context_management ?? null,
             },
-            isMeta: message.isMeta,
-            isVirtual: message.isVirtual,
+            isMeta: (message as NormalizedAssistantMessage).isMeta,
+            isVirtual: (message as NormalizedAssistantMessage).isVirtual,
             requestId: message.requestId,
             uuid,
             error: message.error,
@@ -778,44 +780,50 @@ export function normalizeMessages(
           } as NormalizedAssistantMessage
         })
       }
+      // @ts-expect-error - handles attachment messages passed to normalizeMessages
       case 'attachment':
-        return [message]
+        return [message as NormalizedMessage]
+      // @ts-expect-error - handles progress messages passed to normalizeMessages
       case 'progress':
-        return [message]
+        return [message as NormalizedMessage]
+      // @ts-expect-error - handles system messages passed to normalizeMessages
       case 'system':
-        return [message]
+        return [message as NormalizedMessage]
       case 'user': {
-        if (typeof message.message.content === 'string') {
+        const msgMessage = message.message!
+        if (typeof msgMessage.content === 'string') {
           const uuid = isNewChain ? deriveUUID(message.uuid, 0) : message.uuid
           return [
             {
               ...message,
               uuid,
               message: {
-                ...message.message,
-                content: [{ type: 'text', text: message.message.content }],
+                ...msgMessage,
+                content: [{ type: 'text', text: msgMessage.content }],
               },
             } as NormalizedMessage,
           ]
         }
-        isNewChain = isNewChain || message.message.content.length > 1
+        const contentBlocks = msgMessage.content as ContentBlock[]
+        isNewChain = isNewChain || contentBlocks.length > 1
         let imageIndex = 0
-        return message.message.content.map((_, index) => {
-          const isImage = _.type === 'image'
+        return contentBlocks.map((_, index) => {
+          const isImage = (_.type as string) === 'image'
           // For image content blocks, extract just the ID for this image
           const imageId =
             isImage && message.imagePasteIds
               ? message.imagePasteIds[imageIndex]
               : undefined
           if (isImage) imageIndex++
+          const normalizedMsg = message as NormalizedUserMessage
           return {
             ...createUserMessage({
               content: [_],
-              toolUseResult: message.toolUseResult,
-              mcpMeta: message.mcpMeta,
-              isMeta: message.isMeta,
-              isVisibleInTranscriptOnly: message.isVisibleInTranscriptOnly,
-              isVirtual: message.isVirtual,
+              toolUseResult: normalizedMsg.toolUseResult,
+              mcpMeta: normalizedMsg.mcpMeta,
+              isMeta: normalizedMsg.isMeta,
+              isVisibleInTranscriptOnly: normalizedMsg.isVisibleInTranscriptOnly,
+              isVirtual: normalizedMsg.isVirtual,
               timestamp: message.timestamp,
               imagePasteIds: imageId !== undefined ? [imageId] : undefined,
               origin: message.origin,
@@ -840,7 +848,7 @@ export function isToolUseRequestMessage(
     'message' in message &&
     message.message != null &&
     // Note: stop_reason === 'tool_use' is unreliable -- it's not always set correctly
-    message.message.content.some(_ => _.type === 'tool_use')
+    (message.message.content as ContentBlock[]).some(_ => _.type === 'tool_use')
   )
 }
 
@@ -849,14 +857,14 @@ type ToolUseResultMessage = NormalizedUserMessage & {
 }
 
 export function isToolUseResultMessage(
-  message: Message,
+  message: NormalizedUserMessage | Message,
 ): message is ToolUseResultMessage {
   return (
     message.type === 'user' &&
     message.message != null &&
     ((Array.isArray(message.message.content) &&
-      message.message.content[0]?.type === 'tool_result') ||
-      Boolean(message.toolUseResult))
+      (message.message.content[0] as ContentBlock)?.type === 'tool_result') ||
+      Boolean((message as NormalizedUserMessage).toolUseResult))
   )
 }
 
@@ -906,57 +914,57 @@ export function reorderMessagesInUI(
     }
 
     // Handle pre-tool-use hooks
-    if (
-      isHookAttachmentMessage(message) &&
-      message.attachment.hookEvent === 'PreToolUse'
-    ) {
-      const toolUseID = message.attachment.toolUseID
-      if (!toolUseGroups.has(toolUseID)) {
-        toolUseGroups.set(toolUseID, {
-          toolUse: null,
-          preHooks: [],
-          toolResult: null,
-          postHooks: [],
-        })
+    if (isHookAttachmentMessage(message)) {
+      const attachment = message.attachment as HookAttachment
+      if (attachment.hookEvent === 'PreToolUse') {
+        const toolUseID = attachment.toolUseID
+        if (!toolUseGroups.has(toolUseID)) {
+          toolUseGroups.set(toolUseID, {
+            toolUse: null,
+            preHooks: [],
+            toolResult: null,
+            postHooks: [],
+          })
+        }
+        toolUseGroups.get(toolUseID)!.preHooks.push(message as AttachmentMessage)
+        continue
       }
-      toolUseGroups.get(toolUseID)!.preHooks.push(message)
-      continue
     }
 
     // Handle tool results
-    if (
-      message.type === 'user' &&
-      message.message.content[0]?.type === 'tool_result'
-    ) {
-      const toolUseID = message.message.content[0].tool_use_id
-      if (!toolUseGroups.has(toolUseID)) {
-        toolUseGroups.set(toolUseID, {
-          toolUse: null,
-          preHooks: [],
-          toolResult: null,
-          postHooks: [],
-        })
+    if (message.type === 'user') {
+      const content = message.message.content as ContentBlock[]
+      if (content[0]?.type === 'tool_result') {
+        const toolUseID = content[0].tool_use_id
+        if (!toolUseGroups.has(toolUseID)) {
+          toolUseGroups.set(toolUseID, {
+            toolUse: null,
+            preHooks: [],
+            toolResult: null,
+            postHooks: [],
+          })
+        }
+        toolUseGroups.get(toolUseID)!.toolResult = message
+        continue
       }
-      toolUseGroups.get(toolUseID)!.toolResult = message
-      continue
     }
 
     // Handle post-tool-use hooks
-    if (
-      isHookAttachmentMessage(message) &&
-      message.attachment.hookEvent === 'PostToolUse'
-    ) {
-      const toolUseID = message.attachment.toolUseID
-      if (!toolUseGroups.has(toolUseID)) {
-        toolUseGroups.set(toolUseID, {
-          toolUse: null,
-          preHooks: [],
-          toolResult: null,
-          postHooks: [],
-        })
+    if (isHookAttachmentMessage(message)) {
+      const attachment = message.attachment as HookAttachment
+      if (attachment.hookEvent === 'PostToolUse') {
+        const toolUseID = attachment.toolUseID
+        if (!toolUseGroups.has(toolUseID)) {
+          toolUseGroups.set(toolUseID, {
+            toolUse: null,
+            preHooks: [],
+            toolResult: null,
+            postHooks: [],
+          })
+        }
+        toolUseGroups.get(toolUseID)!.postHooks.push(message as AttachmentMessage)
+        continue
       }
-      toolUseGroups.get(toolUseID)!.postHooks.push(message)
-      continue
     }
   }
 
@@ -1036,17 +1044,17 @@ export function reorderMessagesInUI(
 
 function isHookAttachmentMessage(
   message: Message,
-): message is AttachmentMessage<HookAttachment> {
+): message is AttachmentMessage {
   return (
     message.type === 'attachment' &&
-    (message.attachment.type === 'hook_blocking_error' ||
-      message.attachment.type === 'hook_cancelled' ||
-      message.attachment.type === 'hook_error_during_execution' ||
-      message.attachment.type === 'hook_non_blocking_error' ||
-      message.attachment.type === 'hook_success' ||
-      message.attachment.type === 'hook_system_message' ||
-      message.attachment.type === 'hook_additional_context' ||
-      message.attachment.type === 'hook_stopped_continuation')
+    ((message.attachment as HookAttachment).type === 'hook_blocking_error' ||
+      (message.attachment as HookAttachment).type === 'hook_cancelled' ||
+      (message.attachment as HookAttachment).type === 'hook_error_during_execution' ||
+      (message.attachment as HookAttachment).type === 'hook_non_blocking_error' ||
+      (message.attachment as HookAttachment).type === 'hook_success' ||
+      (message.attachment as HookAttachment).type === 'hook_system_message' ||
+      (message.attachment as HookAttachment).type === 'hook_additional_context' ||
+      (message.attachment as HookAttachment).type === 'hook_stopped_continuation')
   )
 }
 
@@ -1057,6 +1065,7 @@ function getInProgressHookCount(
 ): number {
   return count(
     messages,
+    // @ts-expect-error - NormalizedMessage doesn't include progress type but this function counts progress messages
     _ =>
       _.type === 'progress' &&
       _.data.type === 'hook_progress' &&
@@ -1066,7 +1075,7 @@ function getInProgressHookCount(
 }
 
 function getResolvedHookCount(
-  messages: NormalizedMessage[],
+  messages: (NormalizedAssistantMessage | NormalizedUserMessage | AttachmentMessage | Message)[],
   toolUseID: string,
   hookEvent: HookEvent,
 ): number {
@@ -1075,12 +1084,12 @@ function getResolvedHookCount(
   const uniqueHookNames = new Set(
     messages
       .filter(
-        (_): _ is AttachmentMessage<HookAttachmentWithName> =>
+        (_): _ is AttachmentMessage =>
           isHookAttachmentMessage(_) &&
-          _.attachment.toolUseID === toolUseID &&
-          _.attachment.hookEvent === hookEvent,
+          (_.attachment as HookAttachment).toolUseID === toolUseID &&
+          (_.attachment as HookAttachment).hookEvent === hookEvent,
       )
-      .map(_ => _.attachment.hookName),
+      .map(_ => (_.attachment as HookAttachmentWithName).hookName),
   )
   return uniqueHookNames.size
 }

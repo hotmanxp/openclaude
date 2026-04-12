@@ -1400,8 +1400,8 @@ async function prepareIfConditionMatcher(
     return undefined
   }
 
-  const toolName = normalizeLegacyToolName(hookInput.tool_name)
-  const tool = tools && findToolByName(tools, hookInput.tool_name)
+  const toolName = normalizeLegacyToolName(hookInput.tool_name!)
+  const tool = tools && findToolByName(tools, hookInput.tool_name!)
   const input = tool?.inputSchema.safeParse(hookInput.tool_input)
   const patternMatcher =
     input?.success && tool?.preparePermissionMatcher
@@ -1663,7 +1663,7 @@ export async function getMatchingHooks(
         matchQuery = hookInput.load_reason
         break
       case 'FileChanged':
-        matchQuery = basename(hookInput.file_path)
+        matchQuery = hookInput.file_path ? basename(hookInput.file_path) : undefined
         break
       default:
         break
@@ -3545,7 +3545,7 @@ export async function* executePermissionDeniedHooks<ToolInput>(
   const hookInput: PermissionDeniedHookInput = {
     ...createBaseHookInput(permissionMode, undefined, toolUseContext),
     hook_event_name: 'PermissionDenied',
-    tool_name: toolName,
+    tool: toolName,
     tool_input: toolInput,
     tool_use_id: toolUseID,
     reason,
@@ -3580,7 +3580,6 @@ export async function executeNotificationHooks(
     ...createBaseHookInput(undefined),
     hook_event_name: 'Notification',
     message,
-    title,
     notification_type: notificationType,
   }
 
@@ -3604,18 +3603,18 @@ export async function executeStopFailureHooks(
   if (!hasHookForEvent('StopFailure', appState, sessionId)) return
 
   const lastAssistantText =
-    extractTextContent(lastMessage.message.content, '\n').trim() || undefined
+    typeof lastMessage.message.content === 'string'
+      ? lastMessage.message.content.trim()
+      : extractTextContent(lastMessage.message.content, '\n').trim() || undefined
 
   // Some createAssistantAPIErrorMessage call sites omit `error` (e.g.
   // image-size at errors.ts:431). Default to 'unknown' so matcher filtering
   // at getMatchingHooks:1525 always applies.
-  const error = lastMessage.error ?? 'unknown'
+  const error = typeof lastMessage.error === 'string' ? lastMessage.error : 'unknown'
   const hookInput: StopFailureHookInput = {
     ...createBaseHookInput(undefined, undefined, toolUseContext),
     hook_event_name: 'StopFailure',
     error,
-    error_details: lastMessage.errorDetails,
-    last_assistant_message: lastAssistantText,
   }
 
   await executeHooksOutsideREPL({
@@ -3663,26 +3662,23 @@ export async function* executeStopHooks(
     ? getLastAssistantMessage(messages)
     : undefined
   const lastAssistantText = lastAssistantMessage
-    ? extractTextContent(lastAssistantMessage.message.content, '\n').trim() ||
-      undefined
+    ? typeof lastAssistantMessage.message.content === 'string'
+      ? lastAssistantMessage.message.content.trim()
+      : extractTextContent(lastAssistantMessage.message.content, '\n').trim() ||
+        undefined
     : undefined
 
-  const hookInput: StopHookInput | SubagentStopHookInput = subagentId
+  const hookInput = (subagentId
     ? {
         ...createBaseHookInput(permissionMode),
-        hook_event_name: 'SubagentStop',
-        stop_hook_active: stopHookActive,
-        agent_id: subagentId,
-        agent_transcript_path: getAgentTranscriptPath(subagentId),
-        agent_type: agentType ?? '',
-        last_assistant_message: lastAssistantText,
+        hook_event_name: 'SubagentStop' as const,
+        agent_name: subagentId,
       }
     : {
         ...createBaseHookInput(permissionMode),
-        hook_event_name: 'Stop',
-        stop_hook_active: stopHookActive,
-        last_assistant_message: lastAssistantText,
-      }
+        hook_event_name: 'Stop' as const,
+        stop_reason: 'user_stop',
+      }) as HookInput
 
   // Trust check is now centralized in executeHooks()
   yield* executeHooks({

@@ -127,6 +127,7 @@ import type {
   SDKControlResponse,
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
+  SDKControlSetPermissionModeRequest,
   StdinMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
@@ -1205,7 +1206,7 @@ function runHeadlessStreaming(
     removeInterruptedMessage(mutableMessages, turnInterruptionState.message)
     enqueue({
       mode: 'prompt',
-      value: turnInterruptionState.message.message.content,
+      value: turnInterruptionState.message.message.content as string | ContentBlockParam[],
       uuid: randomUUID(),
     })
   }
@@ -1246,7 +1247,7 @@ function runHeadlessStreaming(
       modelArg,
       modelDisplayString(resolvedModel),
     )
-    mutableMessages.push(...breadcrumbs)
+    mutableMessages.push(...(breadcrumbs as Message[]))
     for (const crumb of breadcrumbs) {
       if (
         crumb.message &&
@@ -1259,7 +1260,7 @@ function runHeadlessStreaming(
           session_id: getSessionId(),
           parent_tool_use_id: null,
           uuid: crumb.uuid,
-          timestamp: crumb.timestamp,
+          timestamp: crumb.timestamp as number | undefined,
           isReplay: true,
         })
       }
@@ -2249,10 +2250,10 @@ function runHeadlessStreaming(
                       isBackgroundTask(t),
                   )
                 ) {
-                  heldBackResult = message
+                  heldBackResult = message as unknown as StdoutMessage
                 } else {
                   heldBackResult = null
-                  output.enqueue(message)
+                  output.enqueue(message as unknown as StdoutMessage)
                 }
               } else {
                 // Flush SDK events (task_started, task_progress) so background
@@ -2260,7 +2261,7 @@ function runHeadlessStreaming(
                 for (const event of drainSdkEvents()) {
                   output.enqueue(event)
                 }
-                output.enqueue(message)
+                output.enqueue(message as unknown as StdoutMessage)
               }
             }
           }) // end runWithWorkload
@@ -2573,9 +2574,9 @@ function runHeadlessStreaming(
 
                 // Find the teammate ID by name
                 const teammates = refreshedState.teamContext?.teammates ?? {}
-                const teammateId = Object.entries(teammates).find(
-                  ([, t]) => t.name === teammateToRemove,
-                )?.[0]
+                const teammateId = Object.keys(teammates).find(
+                  id => teammates[id].name === teammateToRemove,
+                )
 
                 if (teammateId) {
                   // Remove from team file
@@ -2902,7 +2903,7 @@ function runHeadlessStreaming(
             initialized,
             output,
             commands,
-            modelInfos,
+            modelInfos as unknown as ModelInfo[],
             structuredIO,
             !!options.enableAuthStatus,
             options,
@@ -2935,11 +2936,11 @@ function runHeadlessStreaming(
             void run()
           }
         } else if (message.request.subtype === 'set_permission_mode') {
-          const m = message.request // for typescript (TODO: use readonly types to avoid this)
+          const m = message.request as SDKControlSetPermissionModeRequest
           setAppState(prev => ({
             ...prev,
             toolPermissionContext: handleSetPermissionMode(
-              m,
+              { mode: m.mode as InternalPermissionMode },
               message.request_id,
               prev.toolPermissionContext,
               output,
@@ -3089,7 +3090,7 @@ function runHeadlessStreaming(
           sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'mcp_set_servers') {
           const { response, sdkServersChanged } = await applyMcpServerChanges(
-            message.request.servers,
+            message.request.servers as unknown as Record<string, McpServerConfigForProcessTransport>,
           )
           sendControlResponseSuccess(message as SDKControlRequest, response)
 
@@ -3198,15 +3199,15 @@ function runHeadlessStreaming(
               ...prev,
               mcp: {
                 ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
+                clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   c.name === serverName ? result.client : c,
                 ),
                 tools: [
-                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...reject(prev.mcp.tools, (t: Tool) => t.name?.startsWith(prefix)),
                   ...result.tools,
                 ],
                 commands: [
-                  ...reject(prev.mcp.commands, c =>
+                  ...reject(prev.mcp.commands, (c: Command) =>
                     commandBelongsToServer(c, serverName),
                   ),
                   ...result.commands,
@@ -3286,13 +3287,13 @@ function runHeadlessStreaming(
               ...prev,
               mcp: {
                 ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
+                clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   c.name === serverName
                     ? { name: serverName, type: 'disabled' as const, config }
                     : c,
                 ),
-                tools: reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
-                commands: reject(prev.mcp.commands, c =>
+                tools: reject(prev.mcp.tools, (t: Tool) => t.name?.startsWith(prefix)),
+                commands: reject(prev.mcp.commands, (c: Command) =>
                   commandBelongsToServer(c, serverName),
                 ),
                 resources: omit(prev.mcp.resources, serverName),
@@ -3310,15 +3311,15 @@ function runHeadlessStreaming(
               ...prev,
               mcp: {
                 ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
+                clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   c.name === serverName ? result.client : c,
                 ),
                 tools: [
-                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...reject(prev.mcp.tools, (t: Tool) => t.name?.startsWith(prefix)),
                   ...result.tools,
                 ],
                 commands: [
-                  ...reject(prev.mcp.commands, c =>
+                  ...reject(prev.mcp.commands, (c: Command) =>
                     commandBelongsToServer(c, serverName),
                   ),
                   ...result.commands,
@@ -3744,15 +3745,15 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               ...prev,
               mcp: {
                 ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
+                clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   c.name === serverName ? result.client : c,
                 ),
                 tools: [
-                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...reject(prev.mcp.tools, (t: Tool) => t.name?.startsWith(prefix)),
                   ...result.tools,
                 ],
                 commands: [
-                  ...reject(prev.mcp.commands, c =>
+                  ...reject(prev.mcp.commands, (c: Command) =>
                     commandBelongsToServer(c, serverName),
                   ),
                   ...result.commands,
@@ -4423,7 +4424,13 @@ export function getCanUseToolFn(
 }
 
 async function handleInitializeRequest(
-  request: SDKControlInitializeRequest,
+  request: SDKControlInitializeRequest & {
+    systemPrompt?: string
+    appendSystemPrompt?: string
+    agents?: unknown
+    hooks?: unknown
+    jsonSchema?: unknown
+  },
   requestId: string,
   initialized: boolean,
   output: Stream<StdoutMessage>,
@@ -4613,12 +4620,13 @@ async function handleRewindFiles(
   dryRun: boolean,
 ): Promise<RewindFilesResult> {
   if (!fileHistoryEnabled()) {
-    return { canRewind: false, error: 'File rewinding is not enabled.' }
+    return { canRewind: false, error: 'File rewinding is not enabled.', files: [] }
   }
   if (!fileHistoryCanRestore(appState.fileHistory, userMessageId)) {
     return {
       canRewind: false,
       error: 'No file checkpoint found for this message.',
+      files: [],
     }
   }
 
@@ -4632,6 +4640,7 @@ async function handleRewindFiles(
       filesChanged: diffStats?.filesChanged,
       insertions: diffStats?.insertions,
       deletions: diffStats?.deletions,
+      files: [],
     }
   }
 
@@ -4648,10 +4657,11 @@ async function handleRewindFiles(
     return {
       canRewind: false,
       error: `Failed to rewind: ${errorMessage(error)}`,
+      files: [],
     }
   }
 
-  return { canRewind: true }
+  return { canRewind: true, files: [] }
 }
 
 function handleSetPermissionMode(
@@ -5178,8 +5188,8 @@ async function loadInitialMessages(
         ) {
           // Execute SessionStart hooks for startup since we're starting a new session
           return {
-            messages: await (options.sessionStartHooksPromise ??
-              processSessionStartHooks('startup')),
+            messages: (await (options.sessionStartHooksPromise ??
+              processSessionStartHooks('startup'))) as Message[],
           }
         } else {
           emitLoadError(
@@ -5280,8 +5290,8 @@ async function loadInitialMessages(
   // it wasn't kicked — e.g. --continue with no prior session falls through
   // here with sessionStartHooksPromise undefined because main.tsx guards on continue)
   return {
-    messages: await (options.sessionStartHooksPromise ??
-      processSessionStartHooks('startup')),
+    messages: (await (options.sessionStartHooksPromise ??
+      processSessionStartHooks('startup'))) as Message[],
   }
 }
 
@@ -5462,8 +5472,8 @@ export async function handleMcpSetServers(
   const processServers: Record<string, McpServerConfigForProcessTransport> = {}
 
   for (const [name, config] of Object.entries(allowedServers)) {
-    if (config.type === 'sdk') {
-      sdkServers[name] = config
+    if ((config as unknown as { type?: string }).type === 'sdk') {
+      sdkServers[name] = config as unknown as McpSdkServerConfig
     } else {
       processServers[name] = config
     }
@@ -5604,7 +5614,7 @@ export async function reconcileMcpServers(
 
     // SDK servers are managed by the SDK process, not the CLI.
     // Just track them without trying to connect.
-    if (config.type === 'sdk') {
+    if ((config as unknown as { type?: string }).type === 'sdk') {
       added.push(name)
       continue
     }
