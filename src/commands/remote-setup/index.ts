@@ -6,8 +6,7 @@ import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 const web = {
   type: 'local-jsx',
   name: 'web-setup',
-  description:
-    `Setup ${BRAND_NAME} on the web (requires connecting your GitHub account)`,
+  description: `在网页上设置 ${BRAND_NAME}（需要连接你的 GitHub 账户）`,
   availability: ['claude-ai'],
   isEnabled: () =>
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) &&

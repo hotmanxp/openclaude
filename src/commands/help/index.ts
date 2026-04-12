@@ -3,7 +3,7 @@ import type { Command } from '../../commands.js'
 const help = {
   type: 'local-jsx',
   name: 'help',
-  description: 'Show help and available commands',
+  description: '显示帮助和可用指令列表',
   load: () => import('./help.js'),
 } satisfies Command
 

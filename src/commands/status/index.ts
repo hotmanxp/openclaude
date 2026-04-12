@@ -3,8 +3,7 @@ import type { Command } from '../../commands.js'
 const status = {
   type: 'local-jsx',
   name: 'status',
-  description:
-    'Show Claude Code status including version, model, account, API connectivity, and tool statuses',
+  description: '显示 OpenCC 状态（版本、模型、账户、API 连接状态、工具状态）',
   immediate: true,
   load: () => import('./status.js'),
 } satisfies Command

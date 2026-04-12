@@ -232,8 +232,8 @@ const command = {
     return feature('NEW_INIT') &&
       (process.env.USER_TYPE === 'ant' ||
         isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT))
-      ? `Initialize new ${AGENT_INSTRUCTIONS_FILE} file(s) and optional skills/hooks with codebase documentation`
-      : `Initialize a new ${AGENT_INSTRUCTIONS_FILE} file with codebase documentation`
+      ? `设置 ${AGENT_INSTRUCTIONS_FILE} 文件和可选的技能/hooks，包含代码库文档`
+      : `设置 ${AGENT_INSTRUCTIONS_FILE} 文件，包含代码库文档`
   },
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your codebase',

@@ -2,7 +2,7 @@ import type { Command } from '../types/command.js'
 
 const command: Command = {
   name: 'auto-fix',
-  description: 'Configure auto-fix: run lint/test after AI edits',
+  description: '配置自动修复：AI 编辑后运行 lint/test',
   isEnabled: () => true,
   type: 'prompt',
   progressMessage: 'Configuring auto-fix...',

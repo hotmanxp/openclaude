@@ -12,8 +12,7 @@ const call: LocalCommandCall = async () => {
 const version = {
   type: 'local',
   name: 'version',
-  description:
-    'Print the version this session is running (not what autoupdate downloaded)',
+  description: '打印当前会话运行的版本（非自动下载的版本）',
   isEnabled: () => process.env.USER_TYPE === 'ant',
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),
