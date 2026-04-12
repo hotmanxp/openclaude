@@ -17,11 +17,18 @@ import { Select } from './CustomSelect/select.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
+import {
+  getQwenOAuthClient,
+  qwenOAuth2Events,
+  QwenOAuth2Event,
+} from '../qwen/index.js';
 export type ConsoleOAuthFlowResult = {
   type: 'oauth';
 } | {
   type: 'provider-setup';
   message: string;
+} | {
+  type: 'qwen-success';
 };
 type Props = {
   onDone(result?: ConsoleOAuthFlowResult): void;
@@ -60,7 +67,10 @@ type OAuthStatus = {
   state: 'error';
   message: string;
   toRetry?: OAuthStatus;
-};
+} | {
+  state: 'qwen_authorizing';
+  url?: string;
+} // Qwen OAuth device flow in progress
 const PASTE_HERE_MSG = 'Paste code here if prompted > ';
 export function ConsoleOAuthFlow({
   onDone,
@@ -293,6 +303,62 @@ export function ConsoleOAuthFlow({
     }
   }, [oauthStatus.state, startOAuth]);
 
+  // Qwen OAuth device flow handler
+  useEffect(() => {
+    if (oauthStatus.state !== 'qwen_authorizing') {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const handleAuthUri = (deviceAuth: { verification_uri_complete?: string }) => {
+      if (isCancelled) return;
+      setOAuthStatus({
+        state: 'qwen_authorizing',
+        url: deviceAuth.verification_uri_complete,
+      });
+    };
+
+    const handleAuthSuccess = () => {
+      if (isCancelled) return;
+      logEvent('tengu_oauth_qwen_success', {});
+      onDone({ type: 'qwen-success' });
+    };
+
+    const handleAuthProgress = (_progress: unknown) => {
+      // Authorization in progress
+    };
+
+    qwenOAuth2Events.on(QwenOAuth2Event.AuthUri, handleAuthUri);
+    qwenOAuth2Events.on(QwenOAuth2Event.AuthProgress, handleAuthProgress);
+    qwenOAuth2Events.on(QwenOAuth2Event.AuthSuccess, handleAuthSuccess);
+
+    // Start Qwen OAuth flow
+    void (async () => {
+      try {
+        await getQwenOAuthClient();
+        if (isCancelled) return;
+        // If getQwenOAuthClient returns without error, the flow was handled by events
+        // or credentials were cached. The AuthSuccess event will be emitted if needed.
+      } catch (err) {
+        if (isCancelled) return;
+        logEvent('tengu_oauth_qwen_error', { error: (err as Error).message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS });
+        setOAuthStatus({
+          state: 'error',
+          message: err instanceof Error ? err.message : 'Qwen OAuth failed',
+          toRetry: { state: 'idle' },
+        });
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+      qwenOAuth2Events.removeListener(QwenOAuth2Event.AuthUri, handleAuthUri);
+      qwenOAuth2Events.removeListener(QwenOAuth2Event.AuthProgress, handleAuthProgress);
+      qwenOAuth2Events.removeListener(QwenOAuth2Event.AuthSuccess, handleAuthSuccess);
+    };
+  }, [oauthStatus.state, onDone, setOAuthStatus]);
+
   // Auto-exit for setup-token mode
   useEffect(() => {
     if (mode === 'setup-token' && oauthStatus.state === 'success') {
@@ -346,7 +412,7 @@ export function ConsoleOAuthFlow({
             </Box>
           </Box>}
       <Box paddingLeft={1} flexDirection="column" gap={1}>
-        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithClaudeAi={setLoginWithClaudeAi} />
+        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithClaudeAi={setLoginWithClaudeAi} onDone={onDone} />
       </Box>
     </Box>;
 }
@@ -364,6 +430,7 @@ type OAuthStatusMessageProps = {
   handleSubmitCode: (value: string, url: string) => void;
   setOAuthStatus: (status: OAuthStatus) => void;
   setLoginWithClaudeAi: (value: boolean) => void;
+  onDone: (result?: ConsoleOAuthFlowResult) => void;
 };
 function OAuthStatusMessage({
   oauthStatus,
@@ -379,6 +446,7 @@ function OAuthStatusMessage({
   handleSubmitCode,
   setOAuthStatus,
   setLoginWithClaudeAi,
+  onDone,
 }: OAuthStatusMessageProps) {
   switch (oauthStatus.state) {
     case 'idle': {
@@ -410,6 +478,16 @@ function OAuthStatusMessage({
         {
           label: (
             <Text>
+              Qwen account ·{' '}
+              <Text dimColor>Qwen OAuth</Text>
+              {'\n'}
+            </Text>
+          ),
+          value: 'qwen' as const,
+        },
+        {
+          label: (
+            <Text>
               3rd-party platform ·{' '}
               <Text dimColor>OpenAI, Gemini, Bedrock, Ollama, and more</Text>
               {'\n'}
@@ -426,10 +504,17 @@ function OAuthStatusMessage({
           <Box>
             <Select
               options={loginOptions}
-              onChange={value => {
+              onChange={(value: 'claudeai' | 'console' | 'qwen' | 'platform') => {
                 if (value === 'platform') {
                   logEvent('tengu_oauth_platform_selected', {})
                   setOAuthStatus({ state: 'platform_setup' })
+                  return
+                }
+
+                if (value === 'qwen') {
+                  logEvent('tengu_oauth_qwen_selected', {})
+                  // Start Qwen OAuth flow
+                  setOAuthStatus({ state: 'qwen_authorizing' })
                   return
                 }
 
@@ -539,6 +624,25 @@ function OAuthStatusMessage({
               </Text>
             </>
           )}
+        </Box>
+      )
+
+    case 'qwen_authorizing':
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Box>
+            <Spinner />
+            <Text>Starting Qwen OAuth authorization...</Text>
+          </Box>
+          {oauthStatus.url ? (
+            <Box flexDirection="column" gap={1}>
+              <Text dimColor>Please visit this URL to authorize:</Text>
+              <Link url={oauthStatus.url}>
+                <Text dimColor>{oauthStatus.url}</Text>
+              </Link>
+              <Text dimColor>Waiting for authorization...</Text>
+            </Box>
+          ) : null}
         </Box>
       )
 

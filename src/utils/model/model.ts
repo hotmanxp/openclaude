@@ -55,6 +55,10 @@ export function getSmallFastModel(): ModelName {
   if (getAPIProvider() === 'qwen') {
     return getQwenModel()
   }
+  // For Qwen provider
+  if (getAPIProvider() === 'qwen') {
+    return getQwenModel()
+  }
   return getDefaultHaikuModel()
 }
 
@@ -244,6 +248,10 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // OpenAI provider: always use the configured OpenAI model
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o'
+  }
+  // Qwen provider: use QWEN_MODEL env var or default to coder-model
+  if (getAPIProvider() === 'qwen') {
+    return getQwenModel()
   }
   // Qwen provider: use QWEN_MODEL env var or default to coder-model
   if (getAPIProvider() === 'qwen') {

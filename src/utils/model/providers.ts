@@ -1,12 +1,37 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import { isEnvTruthy } from '../envUtils.js'
 
-export type APIProvider = 'firstParty' | 'openai'
+export type APIProvider = 'firstParty' | 'openai' | 'qwen'
+
+// Qwen credentials file path
+const QWEN_CREDS_FILE = path.join(os.homedir(), '.qwen', 'oauth_creds.json')
+
+// Memoize credentials check to avoid repeated synchronous file system calls
+let _hasQwenCredentials: boolean | null = null
+function hasQwenCredentials(): boolean {
+  if (_hasQwenCredentials !== null) {
+    return _hasQwenCredentials
+  }
+  try {
+    fs.accessSync(QWEN_CREDS_FILE)
+    _hasQwenCredentials = true
+  } catch {
+    _hasQwenCredentials = false
+  }
+  return _hasQwenCredentials
+}
 
 export function getAPIProvider(): APIProvider {
-  return isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-    ? 'openai'
-    : 'firstParty'
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
+    return 'openai'
+  }
+  if (isEnvTruthy(process.env.QWEN_LOGIN) || hasQwenCredentials()) {
+    return 'qwen'
+  }
+  return 'firstParty'
 }
 
 export function usesAnthropicAccountFlow(): boolean {
