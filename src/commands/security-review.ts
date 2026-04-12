@@ -197,8 +197,7 @@ Your final reply must contain the markdown report and nothing else.`
 
 export default createMovedToPluginCommand({
   name: 'security-review',
-  description:
-    'Complete a security review of the pending changes on the current branch',
+  description: '对待定更改进行安全审查',
   progressMessage: 'analyzing code changes for security risks',
   pluginName: 'security-review',
   pluginCommand: 'security-review',

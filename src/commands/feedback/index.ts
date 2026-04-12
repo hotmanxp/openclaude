@@ -7,7 +7,7 @@ const feedback = {
   aliases: ['bug'],
   type: 'local-jsx',
   name: 'feedback',
-  description: `Submit feedback about Claude Code`,
+  description: `提交关于 OpenCC 的反馈`,
   argumentHint: '[report]',
   isEnabled: () =>
     !(

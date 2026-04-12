@@ -7,8 +7,7 @@ import type { Command } from '../../commands.js'
 const copy = {
   type: 'local-jsx',
   name: 'copy',
-  description:
-    "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)",
+  description: "复制 Claude 的最后回复到剪贴板（/copy N 获取第 N 条消息）",
   load: () => import('./copy.js'),
 } satisfies Command
 
