@@ -1,53 +1,37 @@
 import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
-import { useLayoutEffect } from 'react';
+import { useEffect } from 'react';
 import { PassThrough } from 'stream';
 import stripAnsi from 'strip-ansi';
-import { render, useApp } from '../ink.js';
+import { render } from '../ink.js';
 
 // This is a workaround for the fact that Ink doesn't support multiple <Static>
 // components in the same render tree. Instead of using a <Static> we just render
 // the component to a string and then print it to stdout
 
 /**
- * Wrapper component that exits after rendering.
- * Uses useLayoutEffect to ensure we wait for React's commit phase to complete
- * before exiting. This is more robust than process.nextTick() for React 19's
- * async render cycle.
+ * Wrapper component that signals when rendering is complete.
+ * Uses useEffect to call onRenderComplete after the component mounts.
+ * This triggers the unmount in renderToAnsiString.
  */
-function RenderOnceAndExit(t0) {
-  const $ = _c(5);
-  const {
-    children
-  } = t0;
-  const {
-    exit
-  } = useApp();
+function RenderOnceAndExit({ children, onComplete }: { children: React.ReactNode; onComplete: () => void }) {
+  const $ = _c(2);
+
+  useEffect(() => {
+    // Signal that rendering is complete - don't unmount here, just signal
+    // The unmount will be done by the caller via instance.unmount()
+    onComplete();
+  }, []);
+
   let t1;
-  let t2;
-  if ($[0] !== exit) {
-    t1 = () => {
-      const timer = setTimeout(exit, 0);
-      return () => clearTimeout(timer);
-    };
-    t2 = [exit];
-    $[0] = exit;
+  if ($[0] !== children) {
+    t1 = <>{children}</>;
+    $[0] = children;
     $[1] = t1;
-    $[2] = t2;
   } else {
     t1 = $[1];
-    t2 = $[2];
   }
-  useLayoutEffect(t1, t2);
-  let t3;
-  if ($[3] !== children) {
-    t3 = <>{children}</>;
-    $[3] = children;
-    $[4] = t3;
-  } else {
-    t3 = $[4];
-  }
-  return t3;
+  return t1;
 }
 
 // DEC synchronized update markers used by terminals
@@ -74,6 +58,7 @@ function extractFirstFrame(output: string): string {
 export function renderToAnsiString(node: React.ReactNode, columns?: number): Promise<string> {
   return new Promise(async resolve => {
     let output = '';
+    let completed = false;
 
     // Capture all writes. Set .columns so Ink (ink.tsx:~165) picks up a
     // chosen width instead of PassThrough's undefined → 80 fallback —
@@ -81,23 +66,33 @@ export function renderToAnsiString(node: React.ReactNode, columns?: number): Pro
     // match what the user sees on screen.
     const stream = new PassThrough();
     if (columns !== undefined) {
-      ;
-      (stream as unknown as {
-        columns: number;
-      }).columns = columns;
+      (stream as unknown as { columns: number }).columns = columns;
     }
     stream.on('data', chunk => {
       output += chunk.toString();
     });
 
+    // Signal when rendering is complete - this triggers unmount
+    const onComplete = () => {
+      if (!completed) {
+        completed = true;
+        // Use setTimeout to ensure we don't unmount during render
+        setTimeout(() => unmount(), 0);
+      }
+    };
+
     // Render the component wrapped in RenderOnceAndExit
     // Non-TTY stdout (PassThrough) gives full-frame output instead of diffs
-    const instance = await render(<RenderOnceAndExit>{node}</RenderOnceAndExit>, {
+    const instance = await render(<RenderOnceAndExit onComplete={onComplete}>{node}</RenderOnceAndExit>, {
       stdout: stream as unknown as NodeJS.WriteStream,
       patchConsole: false
     });
 
-    // Wait for the component to exit naturally, with a timeout guard so
+    const unmount = () => {
+      instance.unmount();
+    };
+
+    // Wait for the component to signal completion, with a timeout guard so
     // tests never hang indefinitely if a render error prevents exit().
     await Promise.race([
       instance.waitUntilExit(),
@@ -106,7 +101,7 @@ export function renderToAnsiString(node: React.ReactNode, columns?: number): Pro
 
     // Extract only the first frame's content to avoid duplication
     // (Ink outputs multiple frames in non-TTY mode)
-    await resolve(extractFirstFrame(output));
+    resolve(extractFirstFrame(output));
   });
 }
 
