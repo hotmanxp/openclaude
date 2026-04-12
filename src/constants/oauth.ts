@@ -41,7 +41,7 @@ export const CONSOLE_OAUTH_SCOPES = [
   CLAUDE_AI_PROFILE_SCOPE,
 ] as const
 
-// Claude.ai OAuth scopes - for Claude.ai subscribers (Pro/Max/Team/Enterprise)
+// Open CC.ai OAuth scopes - for Open CC.ai subscribers (Pro/Max/Team/Enterprise)
 export const CLAUDE_AI_OAUTH_SCOPES = [
   CLAUDE_AI_PROFILE_SCOPE,
   CLAUDE_AI_INFERENCE_SCOPE,
@@ -50,8 +50,8 @@ export const CLAUDE_AI_OAUTH_SCOPES = [
   'user:file_upload',
 ] as const
 
-// All OAuth scopes - union of all scopes used in Claude CLI
-// When logging in, request all scopes in order to handle both Console -> Claude.ai redirect
+// All OAuth scopes - union of all scopes used in Open CC CLI
+// When logging in, request all scopes in order to handle both Console -> Open CC.ai redirect
 // Ensure that `OAuthConsentPage` in apps repo is kept in sync with this list.
 export const ALL_OAUTH_SCOPES = Array.from(
   new Set([...CONSOLE_OAUTH_SCOPES, ...CLAUDE_AI_OAUTH_SCOPES]),

@@ -4,7 +4,7 @@ const mobile = {
   type: 'local-jsx',
   name: 'mobile',
   aliases: ['ios', 'android'],
-  description: '显示下载 Claude 移动应用的二维码',
+  description: '显示下载 Open CC 移动应用的二维码',
   load: () => import('./mobile.js'),
 } satisfies Command
 

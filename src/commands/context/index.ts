@@ -12,7 +12,7 @@ export const context: Command = {
 
 export const contextNonInteractive: Command = {
   type: 'local',
-  name: 'context',
+  name: 'context-text',
   supportsNonInteractive: true,
   description: '显示当前上下文使用情况',
   get isHidden() {
