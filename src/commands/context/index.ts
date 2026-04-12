@@ -6,6 +6,7 @@ export const context: Command = {
   description: '将当前上下文使用情况可视化为彩色网格',
   isEnabled: () => !getIsNonInteractiveSession(),
   type: 'local-jsx',
+  immediate: true,
   load: () => import('./context.js'),
 }
 
