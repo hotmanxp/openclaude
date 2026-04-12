@@ -123,11 +123,12 @@ import type {
   SDKControlInitializeRequest,
   SDKControlInitializeResponse,
   SDKControlRequest,
+  SDKControlRequestInner,
   SDKControlResponse,
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import { cwd } from 'process'
 import { getCwd } from 'src/utils/cwd.js'
@@ -866,7 +867,7 @@ export async function runHeadless(
     structuredIO,
     appState.mcp.clients,
     [...commands, ...appState.mcp.commands],
-    filteredTools,
+    filteredTools as Tools,
     initialMessages,
     canUseTool,
     sdkMcpConfigs,
@@ -936,9 +937,9 @@ export async function runHeadless(
       switch (lastMessage.subtype) {
         case 'success':
           writeToStdout(
-            lastMessage.result.endsWith('\n')
-              ? lastMessage.result
-              : lastMessage.result + '\n',
+            (lastMessage.result as string).endsWith('\n')
+              ? (lastMessage.result as string)
+              : (lastMessage.result as string) + '\n',
           )
           break
         case 'error_during_execution':
@@ -1231,6 +1232,7 @@ function runHeadlessStreaming(
     mutableMessages.push(...breadcrumbs)
     for (const crumb of breadcrumbs) {
       if (
+        crumb.message &&
         typeof crumb.message.content === 'string' &&
         crumb.message.content.includes(`<${LOCAL_COMMAND_STDOUT_TAG}>`)
       ) {
@@ -1242,7 +1244,7 @@ function runHeadlessStreaming(
           uuid: crumb.uuid,
           timestamp: crumb.timestamp,
           isReplay: true,
-        } satisfies SDKUserMessageReplay)
+        })
       }
     }
   }
@@ -1442,9 +1444,12 @@ function runHeadlessStreaming(
         ...prev,
         mcp: {
           ...prev.mcp,
-          clients: prev.mcp.clients.map((c: MCPServerConnection) =>
-            c.name === serverName ? result.client : c,
-          ),
+          clients: [
+            ...prev.mcp.clients.filter((c: MCPServerConnection) =>
+              !allSdkNames.some(name => c.name === name),
+            ),
+            ...sdkSetup.clients,
+          ],
           tools: [
             ...prev.mcp.tools.filter(
               (t: Tool) =>
@@ -1799,19 +1804,13 @@ function runHeadlessStreaming(
       {}
     for (const [name, config] of Object.entries(newConfigs)) {
       const type = config.type
-      if (
-        type === undefined ||
-        type === 'stdio' ||
-        type === 'sse' ||
-        type === 'http' ||
-        type === 'sdk'
-      ) {
-        supportedConfigs[name] = config
+      if (type === undefined || type === 'stdio' || type === 'sse' || type === 'http' || type === 'sdk') {
+        supportedConfigs[name] = config as unknown as McpServerConfigForProcessTransport
       }
     }
     for (const [name, config] of Object.entries(sdkMcpConfigs)) {
       if (config.type === 'sdk' && !(name in supportedConfigs)) {
-        supportedConfigs[name] = config
+        supportedConfigs[name] = config as unknown as McpServerConfigForProcessTransport
       }
     }
     const { response, sdkServersChanged } =
@@ -1980,7 +1979,7 @@ function runHeadlessStreaming(
                   parent_tool_use_id: null,
                   uuid: c.uuid,
                   isReplay: true,
-                } satisfies SDKUserMessageReplay)
+                })
               }
             }
           }
@@ -2556,11 +2555,10 @@ function runHeadlessStreaming(
                 )
 
                 // Find the teammate ID by name
-                const teammateId = refreshedState.teamContext?.teammates
-                  ? Object.entries(refreshedState.teamContext.teammates).find(
-                      ([, t]) => t.name === teammateToRemove,
-                    )?.[0]
-                  : undefined
+                const teammates = refreshedState.teamContext?.teammates ?? {}
+                const teammateId = Object.entries(teammates).find(
+                  ([, t]) => t.name === teammateToRemove,
+                )?.[0]
 
                 if (teammateId) {
                   // Remove from team file
@@ -2850,7 +2848,7 @@ function runHeadlessStreaming(
           suggestionState.abortController = null
           suggestionState.lastEmitted = null
           suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'end_session') {
           logForDebugging(
             `[print.ts] end_session received, reason=${message.request.reason ?? 'unspecified'}`,
@@ -2862,7 +2860,7 @@ function runHeadlessStreaming(
           suggestionState.abortController = null
           suggestionState.lastEmitted = null
           suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
           break // exits for-await → falls through to inputClosed=true drain below
         } else if (message.request.subtype === 'initialize') {
           // SDK MCP server names from the initialize message
@@ -2945,7 +2943,7 @@ function runHeadlessStreaming(
           notifySessionMetadataChanged({ model })
           injectModelSwitchBreadcrumbs(requestedModel, model)
 
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'set_max_thinking_tokens') {
           if (message.request.max_thinking_tokens === null) {
             options.thinkingConfig = undefined
@@ -2957,9 +2955,9 @@ function runHeadlessStreaming(
               budgetTokens: message.request.max_thinking_tokens,
             }
           }
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'mcp_status') {
-          sendControlResponseSuccess(message, {
+          sendControlResponseSuccess(message as SDKControlRequest, {
             mcpServers: buildMcpServerStatuses(),
           })
         } else if (message.request.subtype === 'get_context_usage') {
@@ -2976,7 +2974,7 @@ function runHeadlessStreaming(
                 appendSystemPrompt: options.appendSystemPrompt,
               },
             })
-            sendControlResponseSuccess(message, { ...data })
+            sendControlResponseSuccess(message as SDKControlRequest, { ...data })
           } catch (error) {
             sendControlResponseError(message, errorMessage(error))
           }
@@ -2995,7 +2993,7 @@ function runHeadlessStreaming(
           ) {
             sdkClient.client.transport.onmessage(mcpRequest.message)
           }
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'rewind_files') {
           const appState = getAppState()
           const result = await handleRewindFiles(
@@ -3005,7 +3003,7 @@ function runHeadlessStreaming(
             message.request.dry_run ?? false,
           )
           if (result.canRewind || message.request.dry_run) {
-            sendControlResponseSuccess(message, result)
+            sendControlResponseSuccess(message as SDKControlRequest, result)
           } else {
             sendControlResponseError(
               message,
@@ -3015,7 +3013,7 @@ function runHeadlessStreaming(
         } else if (message.request.subtype === 'cancel_async_message') {
           const targetUuid = message.request.message_uuid
           const removed = dequeueAllMatching(cmd => cmd.uuid === targetUuid)
-          sendControlResponseSuccess(message, {
+          sendControlResponseSuccess(message as SDKControlRequest, {
             cancelled: removed.length > 0,
           })
         } else if (message.request.subtype === 'seed_read_state') {
@@ -3055,12 +3053,12 @@ function runHeadlessStreaming(
           } catch {
             // ENOENT etc — skip seeding but still succeed
           }
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'mcp_set_servers') {
           const { response, sdkServersChanged } = await applyMcpServerChanges(
             message.request.servers,
           )
-          sendControlResponseSuccess(message, response)
+          sendControlResponseSuccess(message as SDKControlRequest, response)
 
           // Connect SDK servers AFTER response to avoid deadlock
           if (sdkServersChanged) {
@@ -3114,7 +3112,7 @@ function runHeadlessStreaming(
               logError(pluginsR.reason)
             }
 
-            sendControlResponseSuccess(message, {
+            sendControlResponseSuccess(message as SDKControlRequest, {
               commands: currentCommands
                 .filter(cmd => cmd.userInvocable !== false)
                 .map(cmd => ({
@@ -3198,7 +3196,7 @@ function runHeadlessStreaming(
             if (result.client.type === 'connected') {
               registerElicitationHandlers([result.client])
               reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(message)
+              sendControlResponseSuccess(message as SDKControlRequest)
             } else {
               const errorMessage =
                 result.client.type === 'failed'
@@ -3255,7 +3253,7 @@ function runHeadlessStreaming(
                 resources: omit(prev.mcp.resources, serverName),
               },
             }))
-            sendControlResponseSuccess(message)
+            sendControlResponseSuccess(message as SDKControlRequest)
           } else {
             // Enabling: persist + reconnect
             setMcpServerEnabled(serverName, true)
@@ -3289,7 +3287,7 @@ function runHeadlessStreaming(
             if (result.client.type === 'connected') {
               registerElicitationHandlers([result.client])
               reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(message)
+              sendControlResponseSuccess(message as SDKControlRequest)
             } else {
               const errorMessage =
                 result.client.type === 'failed'
@@ -3361,12 +3359,12 @@ function runHeadlessStreaming(
               ])
 
               if (authUrl) {
-                sendControlResponseSuccess(message, {
+                sendControlResponseSuccess(message as SDKControlRequest, {
                   authUrl,
                   requiresUserAction: true,
                 })
               } else {
-                sendControlResponseSuccess(message, {
+                sendControlResponseSuccess(message as SDKControlRequest, {
                   requiresUserAction: false,
                 })
               }
@@ -3496,7 +3494,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               if (authPromise) {
                 try {
                   await authPromise
-                  sendControlResponseSuccess(message)
+                  sendControlResponseSuccess(message as SDKControlRequest)
                 } catch (error) {
                   sendControlResponseError(
                     message,
@@ -3506,7 +3504,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   )
                 }
               } else {
-                sendControlResponseSuccess(message)
+                sendControlResponseSuccess(message as SDKControlRequest)
               }
             }
           } else {
@@ -3602,7 +3600,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                 )
               }),
             ])
-            sendControlResponseSuccess(message, {
+            sendControlResponseSuccess(message as SDKControlRequest, {
               manualUrl,
               automaticUrl,
             })
@@ -3637,7 +3635,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
             void flow.then(
               () => {
                 const accountInfo = getAccountInformation()
-                sendControlResponseSuccess(message, {
+                sendControlResponseSuccess(message as SDKControlRequest, {
                   account: {
                     email: accountInfo?.email,
                     organization: accountInfo?.organization,
@@ -3698,7 +3696,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                     : omit(prev.mcp.resources, serverName),
               },
             }))
-            sendControlResponseSuccess(message, {})
+            sendControlResponseSuccess(message as SDKControlRequest, {})
           }
         } else if (message.request.subtype === 'apply_flag_settings') {
           // Snapshot the current model before applying — we need to detect
@@ -3756,7 +3754,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
             injectModelSwitchBreadcrumbs(modelArg, newModel)
           }
 
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'get_settings') {
           const currentAppState = getAppState()
           const model = getMainLoopModel()
@@ -3765,7 +3763,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
           const effort = modelSupportsEffort(model)
             ? resolveAppliedEffort(model, currentAppState.effortValue)
             : undefined
-          sendControlResponseSuccess(message, {
+          sendControlResponseSuccess(message as SDKControlRequest, {
             ...getSettingsWithSources(),
             applied: {
               model,
@@ -3780,7 +3778,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               getAppState,
               setAppState,
             })
-            sendControlResponseSuccess(message, {})
+            sendControlResponseSuccess(message as SDKControlRequest, {})
           } catch (error) {
             sendControlResponseError(message, errorMessage(error))
           }
@@ -3807,7 +3805,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   logError(e)
                 }
               }
-              sendControlResponseSuccess(message, { title })
+              sendControlResponseSuccess(message as SDKControlRequest, { title })
             } catch (e) {
               // Unreachable in practice — generateSessionTitle wraps its
               // own body and returns null, saveAiGeneratedTitle is wrapped
@@ -3871,7 +3869,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                 question,
                 cacheSafeParams,
               })
-              sendControlResponseSuccess(message, { response: result.response })
+              sendControlResponseSuccess(message as SDKControlRequest, { response: result.response })
             } catch (e) {
               sendControlResponseError(message, errorMessage(e))
             }
@@ -3892,12 +3890,12 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
           } else {
             proactiveModule!.deactivateProactive()
           }
-          sendControlResponseSuccess(message)
+          sendControlResponseSuccess(message as SDKControlRequest)
         } else if (message.request.subtype === 'remote_control') {
           if (message.request.enabled) {
             if (bridgeHandle) {
               // Already connected
-              sendControlResponseSuccess(message, {
+              sendControlResponseSuccess(message as SDKControlRequest, {
                 session_url: getRemoteSessionUrl(
                   bridgeHandle.bridgeSessionId,
                   bridgeHandle.sessionIngressUrl,
@@ -3996,7 +3994,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                   structuredIO.setOnControlRequestResolved(requestId => {
                     handle.sendControlCancelRequest(requestId)
                   })
-                  sendControlResponseSuccess(message, {
+                  sendControlResponseSuccess(message as SDKControlRequest, {
                     session_url: getRemoteSessionUrl(
                       handle.bridgeSessionId,
                       handle.sessionIngressUrl,
@@ -4020,7 +4018,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
               await bridgeHandle.teardown()
               bridgeHandle = null
             }
-            sendControlResponseSuccess(message)
+            sendControlResponseSuccess(message as SDKControlRequest)
           }
         } else {
           // Unknown control request subtype — send an error response so

@@ -96,6 +96,32 @@ type CoalescedStreamEvent = {
 }
 
 /**
+ * Discriminated union of stream event types.
+ * SDKPartialAssistantMessage.event is typed as unknown, so we need this for type narrowing.
+ */
+type StreamEvent = {
+  type: 'message_start'
+  message: { id: string }
+  index?: undefined
+  delta?: undefined
+}| {
+  type: 'content_block_delta'
+  index: number
+  delta: { type: 'text_delta'; text: string }
+  message?: undefined
+}| {
+  type: 'message_stop'
+  message?: undefined
+  index?: undefined
+  delta?: undefined
+}| {
+  type: string
+  message?: { id?: string }
+  index?: number
+  delta?: { type: string; text?: string }
+}
+
+/**
  * Accumulator state for text_delta coalescing. Keyed by API message ID so
  * lifetime is tied to the assistant message — cleared when the complete
  * SDKAssistantMessage arrives (writeEvent), which is reliable even when
@@ -148,9 +174,11 @@ export function accumulateStreamEvents(
   // rewrite the same entry instead of emitting one event per delta.
   const touched = new Map<string[], CoalescedStreamEvent>()
   for (const msg of buffer) {
-    switch (msg.event.type) {
+    // Cast event to StreamEvent since SDKPartialAssistantMessage.event is typed as unknown
+    const event = msg.event as StreamEvent
+    switch (event.type) {
       case 'message_start': {
-        const id = msg.event.message.id
+        const id = event.message.id
         const prevId = state.scopeToMessage.get(scopeKey(msg))
         if (prevId) state.byMessage.delete(prevId)
         state.scopeToMessage.set(scopeKey(msg), id)
@@ -159,7 +187,7 @@ export function accumulateStreamEvents(
         break
       }
       case 'content_block_delta': {
-        if (msg.event.delta.type !== 'text_delta') {
+        if (event.delta.type !== 'text_delta') {
           out.push(msg)
           break
         }
@@ -173,8 +201,8 @@ export function accumulateStreamEvents(
           out.push(msg)
           break
         }
-        const chunks = (blocks[msg.event.index] ??= [])
-        chunks.push(msg.event.delta.text)
+        const chunks = (blocks[event.index] ??= [])
+        chunks.push(event.delta.text)
         const existing = touched.get(chunks)
         if (existing) {
           existing.event.delta.text = chunks.join('')
@@ -187,7 +215,7 @@ export function accumulateStreamEvents(
           parent_tool_use_id: msg.parent_tool_use_id,
           event: {
             type: 'content_block_delta',
-            index: msg.event.index,
+            index: event.index,
             delta: { type: 'text_delta', text: chunks.join('') },
           },
         }

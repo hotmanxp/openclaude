@@ -137,7 +137,7 @@ export async function clearConversation({
       // Partition tasks using the same predicate computed above:
       // kill+remove foreground tasks, preserve everything else.
       const nextTasks: AppState['tasks'] = {}
-      for (const [taskId, task] of Object.entries(prev.tasks)) {
+      for (const [taskId, task] of Object.entries(prev.tasks) as [string, AppState['tasks'][string]][]) {
         if (!shouldKillTask(task)) {
           nextTasks[taskId] = task
           continue
@@ -246,6 +246,6 @@ export async function clearConversation({
 
   // Update messages with hook results
   if (hookMessages.length > 0) {
-    setMessages(() => hookMessages)
+    setMessages(() => hookMessages as unknown as Message[])
   }
 }

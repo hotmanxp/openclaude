@@ -540,6 +540,7 @@ function buildToolNameMap(messages: Message[]): Map<string, string> {
     const msgContent = message.message?.content
     if (!Array.isArray(msgContent)) continue
     for (const block of msgContent) {
+      if (typeof block === 'string') continue
       const blockAny = block as unknown as { type: string; id?: string; name?: string }
       if (blockAny.type === 'tool_use' && blockAny.id && blockAny.name) {
         map.set(blockAny.id, blockAny.name)
@@ -560,20 +561,22 @@ function collectCandidatesFromMessage(message: Message): ToolResultCandidate[] {
   const msgContent = message.message?.content
   if (!Array.isArray(msgContent)) return []
   return msgContent.flatMap(block => {
+    if (typeof block === 'string') return []
     const blockAny = block as unknown as {
       type: string
       tool_use_id?: string
-      content?: string | Array<{ type: string; text?: string }>
+      content?: ToolResultBlockParam['content']
     }
     if (blockAny.type !== 'tool_result' || !blockAny.tool_use_id) return []
     if (!blockAny.content) return []
-    if (isContentAlreadyCompacted(blockAny.content)) return []
-    if (hasImageBlock(blockAny.content)) return []
+    const content = blockAny.content
+    if (isContentAlreadyCompacted(content)) return []
+    if (hasImageBlock(content)) return []
     return [
       {
         toolUseId: blockAny.tool_use_id,
-        content: blockAny.content,
-        size: contentSize(blockAny.content),
+        content: content,
+        size: contentSize(content),
       },
     ]
   })

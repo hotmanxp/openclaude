@@ -29,3 +29,18 @@ interface PromiseWithResolvers<T> {
   resolve: (value: T | PromiseLike<T>) => void
   reject: (reason?: unknown) => void
 }
+
+declare module 'qrcode' {
+  export function toString(data: string, options?: object): Promise<string>
+}
+
+declare module '*postCommitAttribution*' {
+  export interface PostCommitAttributionModule {
+    installPrepareCommitMsgHook: (
+      worktreePath: string,
+      worktreeHooksDir?: string,
+    ) => Promise<void>
+  }
+  const m: PostCommitAttributionModule
+  export default m
+}

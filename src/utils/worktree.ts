@@ -604,7 +604,7 @@ async function performPostCreationSetup(
     const worktreeHooksDir =
       hooksPath === huskyPath ? join(worktreePath, '.husky') : undefined
     void (
-      import('./postCommitAttribution.js') as Promise<{
+      import('./postCommitAttribution.js') as unknown as Promise<{
         installPrepareCommitMsgHook: (
           worktreePath: string,
           worktreeHooksDir?: string,

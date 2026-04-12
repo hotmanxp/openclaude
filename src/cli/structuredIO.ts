@@ -9,13 +9,14 @@ import type {
   HookInput,
   HookJSONOutput,
   PermissionUpdate,
-  SDKMessage,
-  SDKUserMessage,
 } from 'src/entrypoints/agentSdkTypes.js'
 import { SDKControlElicitationResponseSchema } from 'src/entrypoints/sdk/controlSchemas.js'
 import type {
   SDKControlRequest,
   SDKControlResponse,
+  SDKMessage,
+  SDKUpdateEnvironmentVariablesMessage,
+  SDKUserMessage,
   StdinMessage,
   StdoutMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
@@ -346,12 +347,14 @@ export class StructuredIO {
         return undefined
       }
       if (message.type === 'update_environment_variables') {
+        // Cast since TypeScript can't narrow through SDKMessage's index signature
+        const envMsg = message as SDKUpdateEnvironmentVariablesMessage
         // Apply environment variable updates directly to process.env.
         // Used by bridge session runner for auth token refresh
         // (CLAUDE_CODE_SESSION_ACCESS_TOKEN) which must be readable
         // by the REPL process itself, not just child Bash commands.
-        const keys = Object.keys(message.variables)
-        for (const [key, value] of Object.entries(message.variables)) {
+        const keys = Object.keys(envMsg.variables)
+        for (const [key, value] of Object.entries(envMsg.variables)) {
           process.env[key] = value
         }
         logForDebugging(
@@ -360,18 +363,20 @@ export class StructuredIO {
         return undefined
       }
       if (message.type === 'control_response') {
+        // Cast to SDKControlResponse since TypeScript can't narrow through SDKMessage's index signature
+        const msg = message as SDKControlResponse
         // Close lifecycle for every control_response, including duplicates
         // and orphans — orphans don't yield to print.ts's main loop, so this
         // is the only path that sees them. uuid is server-injected into the
         // payload.
         const uuid =
-          'uuid' in message && typeof message.uuid === 'string'
-            ? message.uuid
+          'uuid' in msg && typeof msg.uuid === 'string'
+            ? msg.uuid
             : undefined
         if (uuid) {
           notifyCommandLifecycle(uuid, 'completed')
         }
-        const request = this.pendingRequests.get(message.response.request_id)
+        const request = this.pendingRequests.get(msg.response.request_id)
         if (!request) {
           // Check if this tool_use was already resolved through the normal
           // permission flow. Duplicate control_response deliveries (e.g. from
@@ -379,8 +384,8 @@ export class StructuredIO {
           // re-processing them would push duplicate assistant messages into
           // the conversation, causing API 400 errors.
           const responsePayload =
-            message.response.subtype === 'success'
-              ? message.response.response
+            msg.response.subtype === 'success'
+              ? msg.response.response
               : undefined
           const toolUseID = responsePayload?.toolUseID
           if (
@@ -388,31 +393,31 @@ export class StructuredIO {
             this.resolvedToolUseIds.has(toolUseID)
           ) {
             logForDebugging(
-              `Ignoring duplicate control_response for already-resolved toolUseID=${toolUseID} request_id=${message.response.request_id}`,
+              `Ignoring duplicate control_response for already-resolved toolUseID=${toolUseID} request_id=${msg.response.request_id}`,
             )
             return undefined
           }
           if (this.unexpectedResponseCallback) {
-            await this.unexpectedResponseCallback(message)
+            await this.unexpectedResponseCallback(msg)
           }
           return undefined // Ignore responses for requests we don't know about
         }
         this.trackResolvedToolUseId(request.request)
-        this.pendingRequests.delete(message.response.request_id)
+        this.pendingRequests.delete(msg.response.request_id)
         // Notify the bridge when the SDK consumer resolves a can_use_tool
         // request, so it can cancel the stale permission prompt on claude.ai.
         if (
           request.request.request.subtype === 'can_use_tool' &&
           this.onControlRequestResolved
         ) {
-          this.onControlRequestResolved(message.response.request_id)
+          this.onControlRequestResolved(msg.response.request_id)
         }
 
-        if (message.response.subtype === 'error') {
-          request.reject(new Error(message.response.error))
+        if (msg.response.subtype === 'error') {
+          request.reject(new Error(msg.response.error))
           return undefined
         }
-        const result = message.response.response
+        const result = msg.response.response
         if (request.schema) {
           try {
             request.resolve(request.schema.parse(result))
@@ -424,7 +429,7 @@ export class StructuredIO {
         }
         // Propagate control responses when replay is enabled
         if (this.replayUserMessages) {
-          return message
+          return msg
         }
         return undefined
       }
@@ -448,9 +453,15 @@ export class StructuredIO {
       if (message.type === 'assistant' || message.type === 'system') {
         return message
       }
-      if (message.message.role !== 'user') {
+      // At this point, message must be SDKUserMessage (type === 'user')
+      const userMsg = message as SDKUserMessage
+      if (
+        typeof userMsg.message !== 'object' ||
+        userMsg.message === null ||
+        (userMsg.message as Record<string, unknown>).role !== 'user'
+      ) {
         exitWithMessage(
-          `Error: Expected message role 'user', got '${message.message.role}'`,
+          `Error: Expected message role 'user', got '${(userMsg.message as Record<string, unknown>).role}'`,
         )
       }
       return message
@@ -674,7 +685,7 @@ export class StructuredIO {
               callback_id: callbackId,
               input,
               tool_use_id: toolUseID || undefined,
-            },
+            } as unknown as SDKControlRequest['request'],
             hookJSONOutputSchema(),
             abort,
           )
@@ -710,7 +721,7 @@ export class StructuredIO {
           url,
           elicitation_id: elicitationId,
           requested_schema: requestedSchema,
-        },
+        } as unknown as SDKControlRequest['request'],
         SDKControlElicitationResponseSchema(),
         signal,
       )
@@ -764,7 +775,7 @@ export class StructuredIO {
         subtype: 'mcp_message',
         server_name: serverName,
         message,
-      },
+      } as unknown as SDKControlRequest['request'],
       z.object({
         mcp_response: z.any() as z.Schema<JSONRPCMessage>,
       }),
@@ -818,11 +829,11 @@ async function executePermissionRequestHooksForSDK(
         // Apply permission updates if provided by hook ("always allow")
         const permissionUpdates = decision.updatedPermissions ?? []
         if (permissionUpdates.length > 0) {
-          persistPermissionUpdates(permissionUpdates)
+          persistPermissionUpdates(permissionUpdates as unknown as PermissionUpdate[])
           const currentAppState = toolUseContext.getAppState()
           const updatedContext = applyPermissionUpdates(
             currentAppState.toolPermissionContext,
-            permissionUpdates,
+            permissionUpdates as unknown as PermissionUpdate[],
           )
           // Update permission context via setAppState
           toolUseContext.setAppState(prev => {

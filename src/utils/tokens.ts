@@ -1,4 +1,5 @@
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { Attachment } from './attachments.js'
 import { roughTokenCountEstimationForMessages } from '../services/tokenEstimation.js'
 import type { AssistantMessage, Message } from '../types/message.js'
 import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
@@ -12,6 +13,7 @@ export function getTokenUsage(message: Message): Usage | undefined {
   if (
     'usage' in msg.message &&
     !(
+      typeof msg.message.content !== 'string' &&
       msg.message.content[0]?.type === 'text' &&
       typeof msg.message.content[0]?.text === 'string' &&
       SYNTHETIC_MESSAGES.has(msg.message.content[0].text)
@@ -191,14 +193,15 @@ export function getAssistantMessageContentLength(
   const content = message.message.content
   if (typeof content === 'string') return 0
   for (const block of content) {
+    if (typeof block === 'string') continue
     if (block.type === 'text') {
       contentLength += block.text.length
     } else if (block.type === 'thinking') {
-      contentLength += (block as { thinking: string }).thinking.length
+      contentLength += (block as unknown as { thinking: string }).thinking.length
     } else if (block.type === 'redacted_thinking') {
-      contentLength += (block as { data: string }).data.length
+      contentLength += (block as unknown as { data: string }).data.length
     } else if (block.type === 'tool_use') {
-      contentLength += jsonStringify((block as { input: unknown }).input).length
+      contentLength += jsonStringify((block as unknown as { input: unknown }).input).length
     }
   }
   return contentLength
@@ -259,13 +262,21 @@ export function tokenCountWithEstimation(messages: readonly Message[]): number {
       return (
         getTokenCountFromUsage(usage) +
         roughTokenCountEstimationForMessages(
-          messages.slice(i + 1) as (typeof messages)[number][],
+          messages.slice(i + 1) as unknown as readonly {
+            type: string
+            message?: { content?: unknown }
+            attachment?: Attachment
+          }[],
         )
       )
     }
     i--
   }
   return roughTokenCountEstimationForMessages(
-    messages as (typeof messages)[number][],
+    messages as unknown as readonly {
+      type: string
+      message?: { content?: unknown }
+      attachment?: Attachment
+    }[],
   )
 }

@@ -103,19 +103,22 @@ export class ExitPlanModeScanner {
       if (m.type === 'assistant') {
         const msgContent = m.message?.content
         if (!Array.isArray(msgContent)) continue
-        for (const block of msgContent) {
-          if (block.type !== 'tool_use') continue
-          const tu = block as ToolUseBlock
-          if (tu.name === EXIT_PLAN_MODE_V2_TOOL_NAME) {
-            this.exitPlanCalls.push(tu.id)
+        for (const block of msgContent as unknown as Array<unknown>) {
+          if (typeof block === 'string') continue
+          const b = block as { type: string; id?: string; name?: string }
+          if (b.type !== 'tool_use') continue
+          if (b.id && b.name) {
+            this.exitPlanCalls.push(b.id)
           }
         }
       } else if (m.type === 'user') {
         const content = m.message?.content
         if (!Array.isArray(content)) continue
-        for (const block of content) {
-          if (block.type === 'tool_result') {
-            this.results.set(block.tool_use_id, block)
+        for (const block of content as unknown as Array<unknown>) {
+          if (typeof block === 'string') continue
+          const b = block as { type: string; tool_use_id?: string }
+          if (b.type === 'tool_result' && b.tool_use_id) {
+            this.results.set(b.tool_use_id, block as ToolResultBlockParam)
           }
         }
       } else if (m.type === 'result' && m.subtype !== 'success') {
