@@ -30,9 +30,53 @@ import { resetUserCache } from '../../utils/user.js'
 
 type LoginCompletion =
   | ConsoleOAuthFlowResult
-  | {
-      type: 'cancel'
-    }
+  | { type: 'cancel' }
+
+/**
+ * Shared post-login refresh logic. Called after both OAuth and Qwen login
+ * to ensure consistent state across the app.
+ */
+function handlePostLoginRefresh(context: LocalJSXCommandContext): void {
+  context.onChangeAPIKey()
+  // Signature-bearing blocks (thinking, connector_text) are bound to the
+  // API key. Strip them so the new key doesn't reject stale signatures.
+  context.setMessages(stripSignatureBlocks)
+
+  // Post-login refresh logic. Keep in sync with onboarding in
+  // src/interactiveHelpers.tsx.
+  resetCostState()
+  void refreshRemoteManagedSettings()
+  void refreshPolicyLimits()
+  resetUserCache()
+  refreshGrowthBookAfterAuthChange()
+
+  // Clear any stale trusted device token from a previous account before
+  // re-enrolling to avoid sending the old token while enrollment is
+  // in flight.
+  clearTrustedDeviceToken()
+  void enrollTrustedDevice()
+
+  resetBypassPermissionsCheck()
+  const appState = context.getAppState()
+  void checkAndDisableBypassPermissionsIfNeeded(
+    appState.toolPermissionContext,
+    context.setAppState,
+  )
+
+  if (feature('TRANSCRIPT_CLASSIFIER')) {
+    resetAutoModeGateCheck()
+    void checkAndDisableAutoModeIfNeeded(
+      appState.toolPermissionContext,
+      context.setAppState,
+      appState.fastMode,
+    )
+  }
+
+  context.setAppState(prev => ({
+    ...prev,
+    authVersion: prev.authVersion + 1,
+  }))
+}
 
 export async function call(
   onDone: LocalJSXCommandOnDone,
@@ -47,50 +91,19 @@ export async function call(
         }
 
         if (result.type === 'provider-setup') {
+          // Other provider setup (not Qwen)
           onDone(result.message, { display: 'system' })
           return
         }
 
-        context.onChangeAPIKey()
-        // Signature-bearing blocks (thinking, connector_text) are bound to the
-        // API key. Strip them so the new key doesn't reject stale signatures.
-        context.setMessages(stripSignatureBlocks)
-
-        // Post-login refresh logic. Keep in sync with onboarding in
-        // src/interactiveHelpers.tsx.
-        resetCostState()
-        void refreshRemoteManagedSettings()
-        void refreshPolicyLimits()
-        resetUserCache()
-        refreshGrowthBookAfterAuthChange()
-
-        // Clear any stale trusted device token from a previous account before
-        // re-enrolling to avoid sending the old token while enrollment is
-        // in flight.
-        clearTrustedDeviceToken()
-        void enrollTrustedDevice()
-
-        resetBypassPermissionsCheck()
-        const appState = context.getAppState()
-        void checkAndDisableBypassPermissionsIfNeeded(
-          appState.toolPermissionContext,
-          context.setAppState,
-        )
-
-        if (feature('TRANSCRIPT_CLASSIFIER')) {
-          resetAutoModeGateCheck()
-          void checkAndDisableAutoModeIfNeeded(
-            appState.toolPermissionContext,
-            context.setAppState,
-            appState.fastMode,
-          )
+        if (result.type === 'qwen-success') {
+          // Qwen login success - trigger same refresh logic as other logins
+          handlePostLoginRefresh(context)
+          onDone('Qwen 登录成功')
+          return
         }
 
-        context.setAppState(prev => ({
-          ...prev,
-          authVersion: prev.authVersion + 1,
-        }))
-
+        handlePostLoginRefresh(context)
         onDone('Login successful')
       }}
     />

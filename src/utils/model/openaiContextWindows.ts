@@ -114,6 +114,9 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'llama3.2:1b':              128_000,
   'qwen3:8b':                 128_000,
   'codestral':                 32_768,
+
+  // Qwen (via QWEN_LOGIN or Qwen OAuth)
+  'coder-model':            1_048_576,
 }
 
 /**
@@ -217,6 +220,9 @@ const OPENAI_MAX_OUTPUT_TOKENS: Record<string, number> = {
   'llama3.2:1b':                4_096,
   'qwen3:8b':                   8_192,
   'codestral':                   8_192,
+
+  // Qwen (via QWEN_LOGIN or Qwen OAuth)
+  'coder-model':                8_192,
 }
 
 function lookupByModel<T>(table: Record<string, T>, model: string): T | undefined {

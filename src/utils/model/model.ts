@@ -24,6 +24,13 @@ import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider } from './providers.js'
+
+/**
+ * Returns the configured Qwen model, falling back to 'coder-model'.
+ */
+function getQwenModel(): ModelName {
+  return process.env.QWEN_MODEL || 'coder-model'
+}
 import { getAntModelOverrideConfig, resolveAntModel } from './antModels.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -47,6 +54,10 @@ export function getSmallFastModel(): ModelName {
   // For GitHub Copilot provider
   if (getAPIProvider() === 'github') {
     return process.env.OPENAI_MODEL || 'github:copilot'
+  }
+  // For Qwen provider
+  if (getAPIProvider() === 'qwen') {
+    return getQwenModel()
   }
   return getDefaultHaikuModel()
 }
@@ -88,8 +99,9 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
       (provider === 'openai' || provider === 'gemini' || provider === 'github'
         ? process.env.OPENAI_MODEL
         : undefined) ||
+      (provider === 'qwen' ? getQwenModel() : undefined) ||
       (provider === 'firstParty' ? process.env.ANTHROPIC_MODEL : undefined) ||
-      settings.model ||
+      (provider !== 'qwen' ? settings.model : undefined) ||
       undefined
   }
 
@@ -221,6 +233,11 @@ export function getRuntimeMainLoopModel(params: {
 }): ModelName {
   const { permissionMode, mainLoopModel, exceeds200kTokens = false } = params
 
+  // For Qwen provider, always use the configured Qwen model
+  if (getAPIProvider() === 'qwen') {
+    return getQwenModel()
+  }
+
   // opusplan uses Opus in plan mode without [1m] suffix.
   if (
     getUserSpecifiedModelSetting() === 'opusplan' &&
@@ -264,6 +281,10 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Codex provider: always use the configured Codex model (default gpt-5.4)
   if (getAPIProvider() === 'codex') {
     return process.env.OPENAI_MODEL || 'gpt-5.4'
+  }
+  // Qwen provider: use QWEN_MODEL env var or default to coder-model
+  if (getAPIProvider() === 'qwen') {
+    return getQwenModel()
   }
 
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
