@@ -20,7 +20,7 @@ export type MessageOrigin = {
 export interface Message {
   uuid: string
   parentUuid?: string
-  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder'
+  type: 'user' | 'assistant' | 'system' | 'function' | 'placeholder' | 'attachment'
   content: string
   timestamp: number
   isMeta?: boolean
@@ -28,10 +28,17 @@ export interface Message {
   isCompactSummary?: boolean
   isVirtual?: boolean
   origin?: MessageOrigin
-  message: {
+  message?: {
     content: string | ContentBlock[]
+    role?: string
+    id?: string
   }
   subtype?: string
+  attachment?: {
+    type: string
+    name?: string
+    mimeType?: string
+  }
 }
 
 // Progress message for tool execution
@@ -106,3 +113,29 @@ export type SDKStreamlinedToolUseSummaryMessage = {
   toolUseId: string
   content: string
 }
+
+// Normalized message content - shared by user and assistant messages
+export type NormalizedMessageContent = {
+  content: string | ContentBlock[]
+  role?: string
+}
+
+export type NormalizedUserMessage = {
+  type: 'user'
+  uuid: string
+  timestamp: number
+  content: string
+  message: NormalizedMessageContent
+  origin?: MessageOrigin
+}
+
+export type NormalizedAssistantMessage = {
+  type: 'assistant'
+  uuid: string
+  timestamp: number
+  content: string
+  message: NormalizedMessageContent
+  toolUses?: unknown[]
+}
+
+export type NormalizedMessage = NormalizedUserMessage | NormalizedAssistantMessage
