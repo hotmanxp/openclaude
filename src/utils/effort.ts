@@ -82,7 +82,7 @@ export function isOpenAIEffortLevel(value: string): value is OpenAIEffortLevel {
 
 export function modelUsesOpenAIEffort(model: string): boolean {
   const provider = getAPIProvider()
-  return provider === 'openai' || provider === 'codex'
+  return provider === 'openai'
 }
 
 export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
