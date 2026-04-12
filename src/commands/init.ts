@@ -5,7 +5,7 @@ import { AGENTS_FILENAME } from '../utils/claudemd.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 
-const OLD_INIT_PROMPT = `Please analyze this codebase and create a ${AGENT_INSTRUCTIONS_FILE} file, which will be given to future instances of Claude Code to operate in this repository.
+const OLD_INIT_PROMPT = `Please analyze this codebase and create a ${AGENT_INSTRUCTIONS_FILE} file, which will be given to future instances of Open CC to operate in this repository.
 
 What to add:
 1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
@@ -24,10 +24,10 @@ Usage notes:
 \`\`\`
 # ${AGENT_INSTRUCTIONS_FILE}
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Open CC (claude.ai/code) when working with code in this repository.
 \`\`\``
 
-const NEW_INIT_PROMPT = `Set up a minimal ${AGENT_INSTRUCTIONS_FILE} (and optionally skills and hooks) for this repo. ${AGENT_INSTRUCTIONS_FILE} is loaded into every Claude Code session, so it must be concise — only include what Claude would get wrong without it.
+const NEW_INIT_PROMPT = `Set up a minimal ${AGENT_INSTRUCTIONS_FILE} (and optionally skills and hooks) for this repo. ${AGENT_INSTRUCTIONS_FILE} is loaded into every Open CC session, so it must be concise — only include what Claude would get wrong without it.
 
 ## Phase 1: Ask what to set up
 
@@ -127,7 +127,7 @@ Prefix the file with:
 \`\`\`
 # ${AGENT_INSTRUCTIONS_FILE}
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Open CC (claude.ai/code) when working with code in this repository.
 \`\`\`
 
 If ${AGENT_INSTRUCTIONS_FILE} already exists: read it, propose specific changes as diffs, and explain why each change improves it. Do not silently overwrite.
@@ -216,13 +216,13 @@ Act on each "yes" before moving on.
 
 Recap what was set up — which files were written and the key points included in each. Remind the user these files are a starting point: they should review and tweak them, and can run \`/init\` again anytime to re-scan.
 
-Then tell the user that you'll be introducing a few more suggestions for optimizing their codebase and Claude Code setup based on what you found. Present these as a single, well-formatted to-do list where every item is relevant to this repo. Put the most impactful items first.
+Then tell the user that you'll be introducing a few more suggestions for optimizing their codebase and Open CC setup based on what you found. Present these as a single, well-formatted to-do list where every item is relevant to this repo. Put the most impactful items first.
 
 When building the list, work through these checks and include only what applies:
 - If frontend code was detected (React, Vue, Svelte, etc.): \`/plugin install frontend-design@claude-plugins-official\` gives ${BRAND_NAME} design principles and component patterns so it produces polished UI; \`/plugin install playwright@claude-plugins-official\` lets ${BRAND_NAME} launch a real browser, screenshot what it built, and fix visual bugs itself.
 - If you found gaps in Phase 7 (missing GitHub CLI, missing linting) and the user said no: list them here with a one-line reason why each helps.
 - If tests are missing or sparse: suggest setting up a test framework so ${BRAND_NAME} can verify its own changes.
-- To help you create skills and optimize existing skills using evals, Claude Code has an official skill-creator plugin you can install. Install it with \`/plugin install skill-creator@claude-plugins-official\`, then run \`/skill-creator <skill-name>\` to create new skills or refine any existing skill. (Always include this one.)
+- To help you create skills and optimize existing skills using evals, Open CC has an official skill-creator plugin you can install. Install it with \`/plugin install skill-creator@claude-plugins-official\`, then run \`/skill-creator <skill-name>\` to create new skills or refine any existing skill. (Always include this one.)
 - Browse official plugins with \`/plugin\` — these bundle skills, agents, hooks, and MCP servers that you may find helpful. You can also create your own custom plugins to share them with others. (Always include this one.)`
 
 const command = {

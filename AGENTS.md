@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Open CC (claude.ai/code) when working with code in this repository.
 
 ## Build & Run Commands
 
@@ -58,7 +58,7 @@ The codebase supports multiple LLM providers through environment variables. The 
 The key architectural insight is `src/services/api/openaiShim.ts` (and `codexShim.ts`):
 
 ```
-Claude Code Tool System
+Open CC Tool System
         |
         v
   Anthropic SDK interface (duck-typed)

@@ -135,7 +135,7 @@ def build_default_providers() -> list[Provider]:
 
 class SmartRouter:
     """
-    Intelligently routes Claude Code API requests to the best
+    Intelligently routes Open CC API requests to the best
     available LLM provider based on latency, cost, and health.
     """
 

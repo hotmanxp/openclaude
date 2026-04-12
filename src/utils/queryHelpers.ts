@@ -177,7 +177,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
       ) {
         const data = message.data as BashProgressData | PowerShellProgressData
         // Filter bash progress to send only one per minute
-        // Only emit for Claude Code Remote for now
+        // Only emit for Open CC Remote for now
         if (
           !isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
           !process.env.CLAUDE_CODE_CONTAINER_ID
