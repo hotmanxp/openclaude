@@ -312,6 +312,7 @@ export function isSyntheticMessage(message: Message): boolean {
     message.type !== 'progress' &&
     message.type !== 'attachment' &&
     message.type !== 'system' &&
+    message.message != null &&
     Array.isArray(message.message.content) &&
     message.message.content[0]?.type === 'text' &&
     SYNTHETIC_MESSAGES.has(message.message.content[0].text)
@@ -324,7 +325,7 @@ function isSyntheticApiErrorMessage(
   return (
     message.type === 'assistant' &&
     message.isApiErrorMessage === true &&
-    message.message.model === SYNTHETIC_MODEL
+    message.message?.model === SYNTHETIC_MODEL
   )
 }
 
@@ -396,7 +397,7 @@ function baseCreateAssistantMessage({
       stop_sequence: '',
       type: 'message',
       usage,
-      content,
+      content: content as ContentBlock[],
       context_management: null,
     },
     requestId: undefined,
@@ -486,7 +487,7 @@ export function createUserMessage({
   }
   uuid?: UUID | string
   timestamp?: string
-  imagePasteIds?: number[]
+  imagePasteIds?: string[]
   // For tool_result messages: the UUID of the assistant message containing the matching tool_use
   sourceToolAssistantUUID?: UUID
   // Permission mode when message was sent (for rewind restoration)
@@ -503,7 +504,7 @@ export function createUserMessage({
     type: 'user',
     message: {
       role: 'user',
-      content: content || NO_CONTENT_MESSAGE, // Make sure we don't send empty messages
+      content: (content || NO_CONTENT_MESSAGE) as string | ContentBlock[],
     },
     isMeta,
     isVisibleInTranscriptOnly,
@@ -695,6 +696,10 @@ export function isNotEmptyMessage(message: Message): boolean {
     return true
   }
 
+  if (message.message == null) {
+    return false
+  }
+
   if (typeof message.message.content === 'string') {
     return message.message.content.trim().length > 0
   }
@@ -737,8 +742,9 @@ export function normalizeMessages(
 export function normalizeMessages(
   messages: (AssistantMessage | UserMessage)[],
 ): (NormalizedAssistantMessage | NormalizedUserMessage)[]
-export function normalizeMessages(messages: Message[]): NormalizedMessage[]
-export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
+export function normalizeMessages(
+  messages: (AssistantMessage | UserMessage)[],
+): NormalizedMessage[] {
   // isNewChain tracks whether we need to generate new UUIDs for messages when normalizing.
   // When a message has multiple content blocks, we split it into multiple messages,
   // each with a single content block. When this happens, we need to generate new UUIDs
@@ -827,10 +833,12 @@ type ToolUseRequestMessage = NormalizedAssistantMessage & {
 }
 
 export function isToolUseRequestMessage(
-  message: Message,
+  message: NormalizedAssistantMessage | AttachmentMessage | SystemMessage | NormalizedUserMessage,
 ): message is ToolUseRequestMessage {
   return (
     message.type === 'assistant' &&
+    'message' in message &&
+    message.message != null &&
     // Note: stop_reason === 'tool_use' is unreliable -- it's not always set correctly
     message.message.content.some(_ => _.type === 'tool_use')
   )
@@ -845,6 +853,7 @@ export function isToolUseResultMessage(
 ): message is ToolUseResultMessage {
   return (
     message.type === 'user' &&
+    message.message != null &&
     ((Array.isArray(message.message.content) &&
       message.message.content[0]?.type === 'tool_result') ||
       Boolean(message.toolUseResult))
