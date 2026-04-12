@@ -760,7 +760,7 @@ export function normalizeMessages(
         isNewChain = isNewChain || content.length > 1
         return content.map((_, index) => {
           const uuid = isNewChain
-            ? deriveUUID(message.uuid, index)
+            ? deriveUUID(message.uuid as UUID, index)
             : message.uuid
           return {
             type: 'assistant' as const,
@@ -792,7 +792,7 @@ export function normalizeMessages(
       case 'user': {
         const msgMessage = message.message!
         if (typeof msgMessage.content === 'string') {
-          const uuid = isNewChain ? deriveUUID(message.uuid, 0) : message.uuid
+          const uuid = isNewChain ? deriveUUID(message.uuid as UUID, 0) : message.uuid
           return [
             {
               ...message,
@@ -828,7 +828,7 @@ export function normalizeMessages(
               imagePasteIds: imageId !== undefined ? [imageId] : undefined,
               origin: message.origin,
             }),
-            uuid: isNewChain ? deriveUUID(message.uuid, index) : message.uuid,
+            uuid: isNewChain ? deriveUUID(message.uuid as UUID, index) : message.uuid,
           } as NormalizedMessage
         })
       }
@@ -863,7 +863,7 @@ export function isToolUseResultMessage(
     message.type === 'user' &&
     message.message != null &&
     ((Array.isArray(message.message.content) &&
-      (message.message.content[0] as ContentBlock)?.type === 'tool_result') ||
+      'tool_use_id' in (message.message.content[0] as ContentBlock)) ||
       Boolean((message as NormalizedUserMessage).toolUseResult))
   )
 }
@@ -934,8 +934,8 @@ export function reorderMessagesInUI(
     // Handle tool results
     if (message.type === 'user') {
       const content = message.message.content as ContentBlock[]
-      if (content[0]?.type === 'tool_result') {
-        const toolUseID = content[0].tool_use_id
+      if (content[0] && 'tool_use_id' in content[0]) {
+        const toolUseID = (content[0] as { tool_use_id: string }).tool_use_id
         if (!toolUseGroups.has(toolUseID)) {
           toolUseGroups.set(toolUseID, {
             toolUse: null,
@@ -1008,7 +1008,8 @@ export function reorderMessagesInUI(
 
     if (
       message.type === 'user' &&
-      (message.message.content as ContentBlock[])[0]?.type === 'tool_result'
+      (message.message.content as ContentBlock[])[0] &&
+      'tool_use_id' in (message.message.content as ContentBlock[])[0]
     ) {
       // Skip - already handled in tool use groups
       continue
@@ -1259,14 +1260,13 @@ export function buildMessageLookups(
     }
 
     // Build tool result lookup and resolved/errored sets
-    // @ts-expect-error - NormalizedMessage type narrowing
     if (msg.type === 'user') {
       for (const content of msg.message.content as ContentBlock[]) {
-        if (content.type === 'tool_result') {
-          toolResultByToolUseID.set(content.tool_use_id, msg)
-          resolvedToolUseIDs.add(content.tool_use_id)
-          if (content.is_error) {
-            erroredToolUseIDs.add(content.tool_use_id)
+        if ('tool_use_id' in content) {
+          toolResultByToolUseID.set((content as { tool_use_id: string }).tool_use_id, msg)
+          resolvedToolUseIDs.add((content as { tool_use_id: string }).tool_use_id)
+          if ('is_error' in content && (content as { is_error?: boolean }).is_error) {
+            erroredToolUseIDs.add((content as { tool_use_id: string }).tool_use_id)
           }
         }
       }
