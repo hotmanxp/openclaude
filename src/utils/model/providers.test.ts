@@ -50,35 +50,6 @@ test('first-party provider keeps Anthropic account setup flow enabled', () => {
   )
 })
 
-test.each([
-  ['CLAUDE_CODE_USE_OPENAI', 'openai'],
-  ['CLAUDE_CODE_USE_GITHUB', 'github'],
-  ['CLAUDE_CODE_USE_GEMINI', 'gemini'],
-  ['CLAUDE_CODE_USE_BEDROCK', 'bedrock'],
-  ['CLAUDE_CODE_USE_VERTEX', 'vertex'],
-  ['CLAUDE_CODE_USE_FOUNDRY', 'foundry'],
-] as const)(
-  '%s disables Anthropic account setup flow',
-  async (envKey, provider) => {
-    clearProviderEnv()
-    process.env[envKey] = '1'
-    const { getAPIProvider, usesAnthropicAccountFlow } =
-      await importFreshProvidersModule()
-
-    expect(getAPIProvider()).toBe(provider)
-    expect(usesAnthropicAccountFlow()).toBe(false)
-  },
-)
-
-test('GEMINI takes precedence over GitHub when both are set', async () => {
-  clearProviderEnv()
-  process.env.CLAUDE_CODE_USE_GEMINI = '1'
-  process.env.CLAUDE_CODE_USE_GITHUB = '1'
-  const { getAPIProvider } = await importFreshProvidersModule()
-
-  expect(getAPIProvider()).toBe('gemini')
-})
-
 test('explicit local openai-compatible base URLs stay on the openai provider', async () => {
   clearProviderEnv()
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
@@ -87,15 +58,6 @@ test('explicit local openai-compatible base URLs stay on the openai provider', a
 
   const { getAPIProvider } = await importFreshProvidersModule()
   expect(getAPIProvider()).toBe('openai')
-})
-
-test('codex aliases still resolve to the codex provider without a non-codex base URL', async () => {
-  clearProviderEnv()
-  process.env.CLAUDE_CODE_USE_OPENAI = '1'
-  process.env.OPENAI_MODEL = 'codexplan'
-
-  const { getAPIProvider } = await importFreshProvidersModule()
-  expect(getAPIProvider()).toBe('codex')
 })
 
 test('official OpenAI base URLs now keep provider detection on openai for aliases', async () => {

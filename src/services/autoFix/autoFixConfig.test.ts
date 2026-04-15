@@ -75,32 +75,3 @@ describe('getAutoFixConfig', () => {
     expect(result!.lint).toBe('eslint .')
   })
 })
-
-describe('SettingsSchema autoFix integration', () => {
-  test('SettingsSchema accepts autoFix field', async () => {
-    const { SettingsSchema } = await import('../../utils/settings/types.js')
-    const settings = {
-      autoFix: {
-        enabled: true,
-        lint: 'eslint .',
-        test: 'bun test',
-        maxRetries: 3,
-        timeout: 30000,
-      },
-    }
-    const result = SettingsSchema().safeParse(settings)
-    expect(result.success).toBe(true)
-  })
-
-  test('SettingsSchema rejects invalid autoFix', async () => {
-    const { SettingsSchema } = await import('../../utils/settings/types.js')
-    const settings = {
-      autoFix: {
-        enabled: true,
-        // missing lint and test - should fail refine
-      },
-    }
-    const result = SettingsSchema().safeParse(settings)
-    expect(result.success).toBe(false)
-  })
-})

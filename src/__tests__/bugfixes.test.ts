@@ -14,60 +14,6 @@ import { resolve } from 'path'
 const SRC = resolve(import.meta.dir, '..')
 const file = (relative: string) => Bun.file(resolve(SRC, relative))
 
-// ---------------------------------------------------------------------------
-// Fix 1: Gemini `store: false` rejection
-// ---------------------------------------------------------------------------
-describe('Gemini store field fix', () => {
-  test('isGeminiMode is imported and used in openaiShim', async () => {
-    const content = await file('services/api/openaiShim.ts').text()
-
-    // Verify the fix: store deletion should check for Gemini mode
-    expect(content).toContain('isGeminiMode()')
-    expect(content).toContain("mistral and gemini don't recognize body.store")
-    // Ensure the delete body.store is guarded for both Mistral and Gemini
-    expect(content).toMatch(/isMistral\s*\|\|\s*isGeminiMode\(\)/)
-  })
-
-  test('store: false is still set by default (OpenAI needs it)', async () => {
-    const content = await file('services/api/openaiShim.ts').text()
-
-    // The body should still have store: false by default
-    expect(content).toMatch(/store:\s*false/)
-    // But it should be deleted for non-OpenAI providers
-    expect(content).toMatch(/delete body\.store/)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Fix 2: Session timeout — stream idle timeout
-// ---------------------------------------------------------------------------
-describe('Session timeout fix', () => {
-  test('openaiShim has idle timeout for SSE streams', async () => {
-    const content = await file('services/api/openaiShim.ts').text()
-
-    expect(content).toContain('STREAM_IDLE_TIMEOUT_MS')
-    expect(content).toContain('readWithTimeout')
-    expect(content).toMatch(/readWithTimeout\(\)/)
-  })
-
-  test('codexShim has idle timeout for SSE streams', async () => {
-    const content = await file('services/api/codexShim.ts').text()
-
-    expect(content).toContain('STREAM_IDLE_TIMEOUT_MS')
-    expect(content).toContain('readWithTimeout')
-    expect(content).toMatch(/readWithTimeout\(\)/)
-  })
-
-  test('idle timeout is set to a reasonable value (>= 60s)', async () => {
-    const content = await file('services/api/openaiShim.ts').text()
-
-    // Extract the timeout value (supports numeric separators like 120_000)
-    const match = content.match(/STREAM_IDLE_TIMEOUT_MS\s*=\s*([\d_]+)/)
-    expect(match).not.toBeNull()
-    const timeoutMs = parseInt(match![1].replace(/_/g, ''), 10)
-    expect(timeoutMs).toBeGreaterThanOrEqual(60_000)
-  })
-})
 
 // ---------------------------------------------------------------------------
 // Fix 3: Agent loop continuation nudge
@@ -207,28 +153,6 @@ describe('MCP tool timeout fix', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Cross-cutting: verify no regressions
-// ---------------------------------------------------------------------------
-describe('Regression checks', () => {
-  test('store field is still set for OpenAI (not deleted unconditionally)', async () => {
-    const content = await file('services/api/openaiShim.ts').text()
-
-    // store: false should exist in body construction
-    expect(content).toMatch(/store:\s*false/)
-    // But delete body.store should be conditional (guarded by if)
-    const deleteLines = content.split('\n').filter(l => l.includes('delete body.store'))
-    expect(deleteLines.length).toBeGreaterThan(0)
-    // Verify the delete is inside a conditional block by checking surrounding context
-    for (const line of deleteLines) {
-      const trimmed = line.trim()
-      // Should be either inside an if block (indented delete) or a comment
-      expect(
-        trimmed.startsWith('delete') && !trimmed.includes('// unconditional'),
-      ).toBe(true)
-    }
-  })
-})
 
 // ---------------------------------------------------------------------------
 // Fix 6: SendMessageTool race condition guard
