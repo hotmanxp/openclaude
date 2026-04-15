@@ -11,7 +11,8 @@ import {
   type InstallMethod,
 } from './config.js'
 import { getCwd } from './cwd.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './envUtils.js'
+import { getLocalInstallDir } from './localInstaller.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import {
@@ -491,13 +492,13 @@ async function detectConfigurationIssues(
         // Alias exists but points to invalid target
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias ${getCliBinaryName()}="~/.opencc/local/${getCliBinaryName()}"`,
+          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias ${getCliBinaryName()}="${getLocalInstallDir()}/${getCliBinaryName()}"`,
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Create alias: alias ${getCliBinaryName()}="~/.opencc/local/${getCliBinaryName()}"`,
+          fix: `Create alias: alias ${getCliBinaryName()}="${getLocalInstallDir()}/${getCliBinaryName()}"`,
         })
       }
     }
