@@ -156,10 +156,6 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     const { error } = updateSettingsForSource('userSettings', {
       env: {
         CLAUDE_CODE_USE_OPENAI: undefined as any,
-        CLAUDE_CODE_USE_GEMINI: undefined as any,
-        CLAUDE_CODE_USE_BEDROCK: undefined as any,
-        CLAUDE_CODE_USE_VERTEX: undefined as any,
-        CLAUDE_CODE_USE_FOUNDRY: undefined as any,
       },
     })
     return error ? error.message : null
@@ -457,64 +453,9 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
         description: 'OpenAI API with API key',
       },
       {
-        value: 'moonshotai',
-        label: 'Moonshot AI',
-        description: 'Kimi OpenAI-compatible endpoint',
-      },
-      {
-        value: 'deepseek',
-        label: 'DeepSeek',
-        description: 'DeepSeek OpenAI-compatible endpoint',
-      },
-      {
-        value: 'gemini',
-        label: 'Google Gemini',
-        description: 'Gemini OpenAI-compatible endpoint',
-      },
-      {
-        value: 'together',
-        label: 'Together AI',
-        description: 'Together chat/completions endpoint',
-      },
-      {
-        value: 'groq',
-        label: 'Groq',
-        description: 'Groq OpenAI-compatible endpoint',
-      },
-      {
-        value: 'mistral',
-        label: 'Mistral',
-        description: 'Mistral OpenAI-compatible endpoint',
-      },
-      {
-        value: 'azure-openai',
-        label: 'Azure OpenAI',
-        description: 'Azure OpenAI endpoint (model=deployment name)',
-      },
-      {
-        value: 'openrouter',
-        label: 'OpenRouter',
-        description: 'OpenRouter OpenAI-compatible endpoint',
-      },
-      {
-        value: 'lmstudio',
-        label: 'LM Studio',
-        description: 'Local LM Studio endpoint',
-      },
-      {
         value: 'custom',
         label: 'Custom',
         description: 'Any OpenAI-compatible provider',
-      },
-      {
-        value: 'nvidia-nim',
-        label: 'NVIDIA NIM',
-        description: 'NVIDIA NIM endpoint',
-      },
-      {
-        value: 'minimax',
-        label: 'MiniMax',
-        description: 'MiniMax API endpoint',
       },
       ...(mode === 'first-run'
         ? [

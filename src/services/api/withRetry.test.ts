@@ -162,31 +162,4 @@ describe('getRateLimitResetDelayMs - OpenAI provider', () => {
     const error = makeError({})
     expect(getRateLimitResetDelayMs(error)).toBeNull()
   })
-
-  test('works for github provider too', async () => {
-    process.env.CLAUDE_CODE_USE_GITHUB = '1'
-    const { getRateLimitResetDelayMs } =
-      await importFreshWithRetryModule('github')
-    const error = makeError({ 'x-ratelimit-reset-requests': '5s' })
-    expect(getRateLimitResetDelayMs(error)).toBe(5_000)
-  })
-})
-
-describe('getRateLimitResetDelayMs - providers without reset headers', () => {
-  test('returns null for bedrock', async () => {
-    process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-    const { getRateLimitResetDelayMs } =
-      await importFreshWithRetryModule('bedrock')
-    const error = makeError({ 'anthropic-ratelimit-unified-reset': String(Math.floor(Date.now() / 1000) + 60) })
-    // Bedrock doesn't use this header — should still return null
-    expect(getRateLimitResetDelayMs(error)).toBeNull()
-  })
-
-  test('returns null for vertex', async () => {
-    process.env.CLAUDE_CODE_USE_VERTEX = '1'
-    const { getRateLimitResetDelayMs } =
-      await importFreshWithRetryModule('vertex')
-    const error = makeError({})
-    expect(getRateLimitResetDelayMs(error)).toBeNull()
-  })
 })

@@ -24,13 +24,6 @@ import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider } from './providers.js'
-
-/**
- * Returns the configured Qwen model, falling back to 'coder-model'.
- */
-function getQwenModel(): ModelName {
-  return process.env.QWEN_MODEL || 'coder-model'
-}
 import { getAntModelOverrideConfig, resolveAntModel } from './antModels.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -43,21 +36,9 @@ export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
   if (process.env.ANTHROPIC_SMALL_FAST_MODEL) return process.env.ANTHROPIC_SMALL_FAST_MODEL
-  // For Gemini provider, use a fast model
-  if (getAPIProvider() === 'gemini') {
-    return process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite'
-  }
   // For OpenAI provider, use OPENAI_MODEL or a sensible default
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  }
-  // For Qwen provider
-  if (getAPIProvider() === 'qwen') {
-    return getQwenModel()
-  }
-  // For Qwen provider
-  if (getAPIProvider() === 'qwen') {
-    return getQwenModel()
   }
   return getDefaultHaikuModel()
 }
@@ -95,14 +76,9 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     // cross-provider leaks (e.g. ANTHROPIC_MODEL sent to the OpenAI API).
     const provider = getAPIProvider()
     specifiedModel =
-      (provider === 'gemini' ? process.env.GEMINI_MODEL : undefined) ||
-      (provider === 'openai' || provider === 'gemini'
-        ? process.env.OPENAI_MODEL
-        : undefined) ||
-      (provider === 'qwen' ? getQwenModel() : undefined) ||
+      (provider === 'openai' ? process.env.OPENAI_MODEL : undefined) ||
       (provider === 'firstParty' ? process.env.ANTHROPIC_MODEL : undefined) ||
-      (provider !== 'qwen' ? settings.model : undefined) ||
-      undefined
+      (settings.model ?? undefined)
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -142,20 +118,11 @@ export function getDefaultOpusModel(): ModelName {
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
   }
-  // Gemini provider
-  if (getAPIProvider() === 'gemini') {
-    return process.env.GEMINI_MODEL || 'gemini-2.5-pro-preview-03-25'
-  }
   // OpenAI provider: use user-specified model or default
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o'
   }
-  // 3P providers (Bedrock, Vertex, Foundry) — kept as a separate branch
-  // even when values match, since 3P availability lags firstParty and
-  // these will diverge again at the next model launch.
-  if (getAPIProvider() !== 'firstParty') {
-    return getModelStrings().opus46
-  }
+  // For first-party, use the model strings config
   return getModelStrings().opus46
 }
 
@@ -164,18 +131,11 @@ export function getDefaultSonnetModel(): ModelName {
   if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   }
-  // Gemini provider
-  if (getAPIProvider() === 'gemini') {
-    return process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-  }
   // OpenAI provider
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o'
   }
-  // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
-  if (getAPIProvider() !== 'firstParty') {
-    return getModelStrings().sonnet45
-  }
+  // Default to Sonnet 4.6 for first-party
   return getModelStrings().sonnet46
 }
 
@@ -188,12 +148,7 @@ export function getDefaultHaikuModel(): ModelName {
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o-mini'
   }
-  // Gemini provider
-  if (getAPIProvider() === 'gemini') {
-    return process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite'
-  }
-
-  // Haiku 4.5 is available on all platforms (first-party, Foundry, Bedrock, Vertex)
+  // Haiku 4.5 is available on first-party
   return getModelStrings().haiku45
 }
 
@@ -208,11 +163,6 @@ export function getRuntimeMainLoopModel(params: {
   exceeds200kTokens?: boolean
 }): ModelName {
   const { permissionMode, mainLoopModel, exceeds200kTokens = false } = params
-
-  // For Qwen provider, always use the configured Qwen model
-  if (getAPIProvider() === 'qwen') {
-    return getQwenModel()
-  }
 
   // opusplan uses Opus in plan mode without [1m] suffix.
   if (
@@ -241,21 +191,9 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Gemini provider: always use the configured Gemini model
-  if (getAPIProvider() === 'gemini') {
-    return process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-  }
   // OpenAI provider: always use the configured OpenAI model
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o'
-  }
-  // Qwen provider: use QWEN_MODEL env var or default to coder-model
-  if (getAPIProvider() === 'qwen') {
-    return getQwenModel()
-  }
-  // Qwen provider: use QWEN_MODEL env var or default to coder-model
-  if (getAPIProvider() === 'qwen') {
-    return getQwenModel()
   }
 
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
@@ -429,8 +367,8 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
-  // For OpenAI/Gemini providers, show the actual model name not a Open CC alias
-  if (getAPIProvider() === 'openai' || getAPIProvider() === 'gemini') {
+  // For OpenAI provider, show the actual model name not a Open CC alias
+  if (getAPIProvider() === 'openai') {
     // Return display names for known models
     const modelNames: Record<string, string> = {
       'gpt-4o': 'GPT-4o',
@@ -440,9 +378,6 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
       'claude-sonnet-4.6': 'Open CC Sonnet 4.6',
       'claude-sonnet-4.5': 'Open CC Sonnet 4.5',
       'claude-haiku-4.5': 'Open CC Haiku 4.5',
-      'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
-      'gemini-3-flash-preview': 'Gemini 3 Flash',
-      'gemini-2.5-pro': 'Gemini 2.5 Pro',
       'grok-code-fast-1': 'Grok Code Fast 1',
     }
     if (modelNames[model]) {

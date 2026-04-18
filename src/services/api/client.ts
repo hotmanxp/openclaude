@@ -21,9 +21,6 @@ import { getOauthConfig } from '../../constants/oauth.js'
 import { isDebugToStdErr, logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
-// Qwen DashScope version
-const QWEN_VERSION = '0.1.0'
-
 function createStderrLogger(): ClientOptions['logger'] {
   return {
     error: (msg, ...args) =>
@@ -128,74 +125,6 @@ export async function getAnthropicClient({
       defaultHeaders,
       maxRetries,
       timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
-    }) as unknown as Anthropic
-  }
-
-  // Qwen provider - uses OAuth with DashScope API
-  if (getAPIProvider() === 'qwen') {
-    const { createOpenAIShimClient } = await import('./openaiShim.js')
-    const { getQwenOAuthClient } = await import('../../qwen/index.js')
-
-    // Get Qwen OAuth client and token
-    const qwenClient = await getQwenOAuthClient()
-    const qwenCredentials = qwenClient.getCredentials()
-    const token = qwenCredentials.access_token
-
-    logForDebugging(`[Qwen] Token received: ${token ? 'present' : 'MISSING'}`)
-    logForDebugging(`[Qwen] Resource URL: ${qwenCredentials.resource_url}`)
-
-    if (!token) {
-      throw new Error('Qwen OAuth: Failed to get access token')
-    }
-
-    // Build Qwen-specific headers (DashScope format)
-    const qwenHeaders: Record<string, string> = {
-      ...defaultHeaders,
-      'User-Agent': `QwenCode/${QWEN_VERSION} (${process.platform}; ${process.arch})`,
-      'X-DashScope-CacheControl': 'enable',
-      'X-DashScope-UserAgent': `QwenCode/${QWEN_VERSION} (${process.platform}; ${process.arch})`,
-      'X-DashScope-AuthType': 'qwen-oauth',
-    }
-
-    // Strip auth-related headers from defaultHeaders before merging
-    const safeHeaders: Record<string, string> = {}
-    for (const [k, v] of Object.entries(qwenHeaders)) {
-      const lower = k.toLowerCase()
-      if (lower === 'authorization' || lower === 'x-api-key' || lower === 'api-key') continue
-      safeHeaders[k] = v
-    }
-
-    // Use resource_url from credentials if available, otherwise fall back to env/config
-    // Ensure URL has proper protocol prefix and ends with /v1
-    const normalizeUrl = (url: string): string => {
-      let base = url
-      // Add protocol if missing
-      if (!base.startsWith('http://') && !base.startsWith('https://')) {
-        base = `https://${base}`
-      }
-      // Ensure ends with /v1
-      if (!base.endsWith('/v1')) {
-        base = `${base}/v1`
-      }
-      return base
-    }
-    const qwenBaseUrl = qwenCredentials.resource_url
-      ? normalizeUrl(qwenCredentials.resource_url)
-      : process.env.QWEN_BASE_URL?.trim() || 'https://portal.qwen.ai/v1'
-    const qwenModel = process.env.QWEN_MODEL?.trim() || 'coder-model'
-
-    logForDebugging(`[Qwen] Using baseURL: ${qwenBaseUrl}`)
-    logForDebugging(`[Qwen] Using model: ${qwenModel}`)
-
-    return createOpenAIShimClient({
-      defaultHeaders: safeHeaders,
-      maxRetries,
-      timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
-      providerOverride: {
-        model: qwenModel,
-        baseURL: qwenBaseUrl,
-        apiKey: token,
-      },
     }) as unknown as Anthropic
   }
 

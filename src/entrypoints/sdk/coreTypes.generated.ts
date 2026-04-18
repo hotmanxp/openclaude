@@ -209,4 +209,4 @@ export type PermissionUpdate = {
 }
 
 // Re-export EffortLevel from runtimeTypes
-export { EffortLevel } from './runtimeTypes.js'
+export type { EffortLevel } from './runtimeTypes.js'
