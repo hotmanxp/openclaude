@@ -114,6 +114,14 @@ Local model profiles are stored in `.opencc-profile.json` (gitignored) and manag
 - Write or edit files while in plan mode
 - Mention skills without loading them via the skill system
 
+## Provider Policy
+
+**Only three providers are supported: anthropic, ollama, openai-compatible**
+
+Code, logic, and unit tests for other providers (mistral, gemini, github, bedrock, vertex, foundry, etc.) should be removed.
+
+**When merging upstream**: If a PR introduces changes related to other providers, skip or revert them. When unavoidable, clean up thoroughly before building and testing.
+
 ## Important Notes
 
 - **269 deprecated functions** across 96 files — grep for `_DEPRECATED` before modifying core files
