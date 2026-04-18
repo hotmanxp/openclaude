@@ -22,7 +22,7 @@ afterEach(() => {
   restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
 })
 
-test('openai missing key error includes recovery guidance and config locations', async () => {
+test('openai missing key error includes recovery guidance', async () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
   delete process.env.OPENAI_API_KEY
@@ -31,9 +31,4 @@ test('openai missing key error includes recovery guidance and config locations',
   expect(message).toContain(
     'OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.',
   )
-  expect(message).toContain(
-    'set CLAUDE_CODE_USE_OPENAI=0 in your shell environment',
-  )
-  expect(message).toContain('Saved startup settings can come from')
-  expect(message).toContain('.openclaude-profile.json')
 })

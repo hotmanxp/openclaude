@@ -1,4 +1,7 @@
+import { logForDebugging } from '../../utils/debug.js'
+
 const LOCALHOST_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1'])
+const warnedUndefinedEnvNames = new Set<string>()
 
 function isPrivateIpv4Address(hostname: string): boolean {
   const octets = hostname.split('.').map(part => Number.parseInt(part, 10))
@@ -97,6 +100,29 @@ function asEnvUrl(value: string | undefined): string | undefined {
   return trimmed
 }
 
+function asNamedEnvUrl(
+  value: string | undefined,
+  envName: string,
+): string | undefined {
+  if (!value) return undefined
+
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  if (trimmed === 'undefined') {
+    if (!warnedUndefinedEnvNames.has(envName)) {
+      warnedUndefinedEnvNames.add(envName)
+      logForDebugging(
+        `[provider-config] Environment variable ${envName} is the literal string "undefined"; ignoring it.`,
+        { level: 'warn' },
+      )
+    }
+    return undefined
+  }
+
+  return trimmed
+}
+
 export function resolveProviderRequest(options?: {
   model?: string
   baseUrl?: string
@@ -110,8 +136,8 @@ export function resolveProviderRequest(options?: {
 
   const rawBaseUrl =
     asEnvUrl(options?.baseUrl) ??
-    asEnvUrl(process.env.OPENAI_BASE_URL) ??
-    asEnvUrl(process.env.OPENAI_API_BASE)
+    asNamedEnvUrl(process.env.OPENAI_BASE_URL, 'OPENAI_BASE_URL') ??
+    asNamedEnvUrl(process.env.OPENAI_API_BASE, 'OPENAI_API_BASE')
 
   return {
     transport: 'chat_completions',
