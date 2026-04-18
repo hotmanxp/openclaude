@@ -11,20 +11,7 @@ export type ProviderPreset =
   | 'anthropic'
   | 'ollama'
   | 'openai'
-  | 'moonshotai'
-  | 'deepseek'
-  | 'gemini'
-  | 'together'
-  | 'groq'
-  | 'mistral'
-  | 'azure-openai'
-  | 'openrouter'
-  | 'lmstudio'
-  | 'dashscope-cn'
-  | 'dashscope-intl'
   | 'custom'
-  | 'nvidia-nim'
-  | 'minimax'
 
 export type ProviderProfileInput = {
   provider?: ProviderProfile['provider']
@@ -141,143 +128,18 @@ export function getProviderPresetDefaults(
         apiKey: '',
         requiresApiKey: true,
       }
-    case 'moonshotai':
-      return {
-        provider: 'openai',
-        name: 'Moonshot AI',
-        baseUrl: 'https://api.moonshot.ai/v1',
-        model: 'kimi-k2.5',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'deepseek':
-      return {
-        provider: 'openai',
-        name: 'DeepSeek',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-chat',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'gemini':
-      return {
-        provider: 'openai',
-        name: 'Google Gemini',
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        model: 'gemini-3-flash-preview',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'together':
-      return {
-        provider: 'openai',
-        name: 'Together AI',
-        baseUrl: 'https://api.together.xyz/v1',
-        model: 'Qwen/Qwen3.5-9B',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'groq':
-      return {
-        provider: 'openai',
-        name: 'Groq',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        model: 'llama-3.3-70b-versatile',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'mistral':
-      return {
-        provider: 'openai',
-        name: 'Mistral',
-        baseUrl: 'https://api.mistral.ai/v1',
-        model: 'mistral-large-latest',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'azure-openai':
-      return {
-        provider: 'openai',
-        name: 'Azure OpenAI',
-        baseUrl: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
-        model: 'YOUR-DEPLOYMENT-NAME',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'openrouter':
-      return {
-        provider: 'openai',
-        name: 'OpenRouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'openai/gpt-5-mini',
-        apiKey: '',
-        requiresApiKey: true,
-      }
-    case 'lmstudio':
-      return {
-        provider: 'openai',
-        name: 'LM Studio',
-        baseUrl: 'http://localhost:1234/v1',
-        model: 'local-model',
-        apiKey: '',
-        requiresApiKey: false,
-      }
-    case 'dashscope-cn':
-      return {
-        provider: 'openai',
-        name: 'Alibaba Coding Plan (China)',
-        baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
-        model: 'qwen3.6-plus',
-        apiKey: process.env.DASHSCOPE_API_KEY ?? '',
-        requiresApiKey: true,
-      }
-    case 'dashscope-intl':
-      return {
-        provider: 'openai',
-        name: 'Alibaba Coding Plan',
-        baseUrl: 'https://coding-intl.dashscope.aliyuncs.com/v1',
-        model: 'qwen3.6-plus',
-        apiKey: process.env.DASHSCOPE_API_KEY ?? '',
-        requiresApiKey: true,
-      }
+    case 'ollama':
     case 'custom':
+    default:
       return {
         provider: 'openai',
-        name: 'Custom OpenAI-compatible',
+        name: preset === 'ollama' ? 'Ollama' : 'Custom OpenAI-compatible',
         baseUrl:
           process.env.OPENAI_BASE_URL ??
           process.env.OPENAI_API_BASE ??
           DEFAULT_OLLAMA_BASE_URL,
         model: process.env.OPENAI_MODEL ?? DEFAULT_OLLAMA_MODEL,
         apiKey: process.env.OPENAI_API_KEY ?? '',
-        requiresApiKey: false,
-      }
-    case 'nvidia-nim':
-      return {
-        provider: 'openai',
-        name: 'NVIDIA NIM',
-        baseUrl: 'https://integrate.api.nvidia.com/v1',
-        model: 'nvidia/llama-3.1-nemotron-70b-instruct',
-        apiKey: process.env.NVIDIA_API_KEY ?? '',
-        requiresApiKey: true,
-      }
-    case 'minimax':
-      return {
-        provider: 'openai',
-        name: 'MiniMax',
-        baseUrl: 'https://api.minimax.io/v1',
-        model: 'MiniMax-M2.5',
-        apiKey: process.env.MINIMAX_API_KEY ?? '',
-        requiresApiKey: true,
-      }
-    case 'ollama':
-    default:
-      return {
-        provider: 'openai',
-        name: 'Ollama',
-        baseUrl: DEFAULT_OLLAMA_BASE_URL,
-        model: process.env.OPENAI_MODEL ?? DEFAULT_OLLAMA_MODEL,
-        apiKey: '',
         requiresApiKey: false,
       }
   }
@@ -380,11 +242,6 @@ export function clearProviderProfileEnvFromProcessEnv(
   delete processEnv.ANTHROPIC_API_KEY
   delete processEnv[PROFILE_ENV_APPLIED_FLAG]
   delete processEnv[PROFILE_ENV_APPLIED_ID]
-
-  // Clear provider-specific API keys
-  delete processEnv.MINIMAX_API_KEY
-  delete processEnv.NVIDIA_API_KEY
-  delete processEnv.NVIDIA_NIM
 }
 
 export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void {
@@ -415,14 +272,6 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
 
   if (profile.apiKey) {
     process.env.OPENAI_API_KEY = profile.apiKey
-    // Also set provider-specific API keys for detection
-    const baseUrl = profile.baseUrl.toLowerCase()
-    if (baseUrl.includes('minimax')) {
-      process.env.MINIMAX_API_KEY = profile.apiKey
-    }
-    if (baseUrl.includes('nvidia') || baseUrl.includes('integrate.api.nvidia')) {
-      process.env.NVIDIA_API_KEY = profile.apiKey
-    }
   } else {
     delete process.env.OPENAI_API_KEY
   }

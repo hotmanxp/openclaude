@@ -6,7 +6,6 @@
  *
  * Usage:
  *   opencc --provider openai --model gpt-4o
- *   opencc --provider gemini --model gemini-2.0-flash
  *   opencc --provider ollama --model llama3.2
  *   opencc --provider anthropic   (default, no-op)
  */
@@ -14,13 +13,7 @@
 export const VALID_PROVIDERS = [
   'anthropic',
   'openai',
-  'gemini',
-  'github',
-  'bedrock',
-  'vertex',
   'ollama',
-  'nvidia-nim',
-  'minimax',
 ] as const
 
 export type ProviderFlagName = (typeof VALID_PROVIDERS)[number]
@@ -91,44 +84,11 @@ export function applyProviderFlag(
       if (model) process.env.OPENAI_MODEL ??= model
       break
 
-    case 'gemini':
-      process.env.CLAUDE_CODE_USE_GEMINI = '1'
-      if (model) process.env.GEMINI_MODEL ??= model
-      break
-
-    case 'github':
-      process.env.CLAUDE_CODE_USE_GITHUB = '1'
-      if (model) process.env.OPENAI_MODEL ??= model
-      break
-
-    case 'bedrock':
-      process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-      break
-
-    case 'vertex':
-      process.env.CLAUDE_CODE_USE_VERTEX = '1'
-      break
-
     case 'ollama':
       process.env.CLAUDE_CODE_USE_OPENAI = '1'
       process.env.OPENAI_BASE_URL ??= 'http://localhost:11434/v1'
       process.env.OPENAI_API_KEY ??= 'ollama'
       if (model) process.env.OPENAI_MODEL ??= model
-      break
-
-    case 'nvidia-nim':
-      process.env.CLAUDE_CODE_USE_OPENAI = '1'
-      process.env.OPENAI_BASE_URL ??= 'https://integrate.api.nvidia.com/v1'
-      process.env.NVIDIA_NIM = '1'
-      process.env.OPENAI_MODEL ??= 'nvidia/llama-3.1-nemotron-70b-instruct'
-      if (model) process.env.OPENAI_MODEL = model
-      break
-
-    case 'minimax':
-      process.env.CLAUDE_CODE_USE_OPENAI = '1'
-      process.env.OPENAI_BASE_URL ??= 'https://api.minimax.io/v1'
-      process.env.OPENAI_MODEL ??= 'MiniMax-M2.5'
-      if (model) process.env.OPENAI_MODEL = model
       break
   }
 

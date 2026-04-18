@@ -1,14 +1,11 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import { isEnvTruthy } from '../envUtils.js'
 
-export type APIProvider = 'firstParty' | 'openai' | 'qwen'
+export type APIProvider = 'firstParty' | 'openai'
 
 export function getAPIProvider(): APIProvider {
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
     return 'openai'
-  }
-  if (isEnvTruthy(process.env.QWEN_LOGIN)) {
-    return 'qwen'
   }
   return 'firstParty'
 }

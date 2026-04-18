@@ -12,11 +12,6 @@ const RESTORED_KEYS = [
   'CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED',
   'CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID',
   'CLAUDE_CODE_USE_OPENAI',
-  'CLAUDE_CODE_USE_GEMINI',
-  'CLAUDE_CODE_USE_GITHUB',
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
   'OPENAI_BASE_URL',
   'OPENAI_API_BASE',
   'OPENAI_MODEL',
@@ -99,18 +94,14 @@ function buildProfile(overrides: Partial<ProviderProfile> = {}): ProviderProfile
 }
 
 describe('applyProviderProfileToProcessEnv', () => {
-  test('openai profile clears competing gemini/github flags', async () => {
+  test('openai profile sets CLAUDE_CODE_USE_OPENAI', async () => {
     const { applyProviderProfileToProcessEnv } =
       await importFreshProviderProfileModules()
-    process.env.CLAUDE_CODE_USE_GEMINI = '1'
-    process.env.CLAUDE_CODE_USE_GITHUB = '1'
 
     applyProviderProfileToProcessEnv(buildProfile())
     const { getAPIProvider: getFreshAPIProvider } =
       await importFreshProvidersModule()
 
-    expect(process.env.CLAUDE_CODE_USE_GEMINI).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_GITHUB).toBeUndefined()
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
     expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID).toBe(
       'provider_test',
@@ -118,11 +109,9 @@ describe('applyProviderProfileToProcessEnv', () => {
     expect(getFreshAPIProvider()).toBe('openai')
   })
 
-  test('anthropic profile clears competing gemini/github flags', async () => {
+  test('anthropic profile sets ANTHROPIC env vars', async () => {
     const { applyProviderProfileToProcessEnv } =
       await importFreshProviderProfileModules()
-    process.env.CLAUDE_CODE_USE_GEMINI = '1'
-    process.env.CLAUDE_CODE_USE_GITHUB = '1'
 
     applyProviderProfileToProcessEnv(
       buildProfile({
@@ -134,9 +123,8 @@ describe('applyProviderProfileToProcessEnv', () => {
     const { getAPIProvider: getFreshAPIProvider } =
       await importFreshProvidersModule()
 
-    expect(process.env.CLAUDE_CODE_USE_GEMINI).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_GITHUB).toBeUndefined()
     expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
+    expect(process.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6')
     expect(getFreshAPIProvider()).toBe('firstParty')
   })
 
@@ -148,11 +136,11 @@ describe('applyProviderProfileToProcessEnv', () => {
       buildProfile({
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
-        model: 'glm-4.7, glm-4.7-flash, glm-4.7-plus',
+        model: 'gpt-4o,gpt-4o-mini,gpt-3.5-turbo',
       }),
     )
 
-    expect(process.env.OPENAI_MODEL).toBe('glm-4.7')
+    expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
     expect(process.env.OPENAI_BASE_URL).toBe('https://api.openai.com/v1')
   })
@@ -165,7 +153,7 @@ describe('applyProviderProfileToProcessEnv', () => {
       buildProfile({
         provider: 'anthropic',
         baseUrl: 'https://api.anthropic.com',
-        model: 'claude-sonnet-4-6, claude-opus-4-6',
+        model: 'claude-sonnet-4-6,claude-opus-4-6',
       }),
     )
 
@@ -180,7 +168,7 @@ describe('applyActiveProviderProfileFromConfig', () => {
       await importFreshProviderProfileModules()
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-    process.env.OPENAI_MODEL = 'qwen2.5:3b'
+    process.env.OPENAI_MODEL = 'llama3.2'
 
     const applied = applyActiveProviderProfileFromConfig({
       providerProfiles: [
@@ -195,7 +183,7 @@ describe('applyActiveProviderProfileFromConfig', () => {
 
     expect(applied).toBeUndefined()
     expect(process.env.OPENAI_BASE_URL).toBe('http://localhost:11434/v1')
-    expect(process.env.OPENAI_MODEL).toBe('qwen2.5:3b')
+    expect(process.env.OPENAI_MODEL).toBe('llama3.2')
   })
 
   test('does not override explicit startup selection when profile marker is stale', async () => {
@@ -204,7 +192,7 @@ describe('applyActiveProviderProfileFromConfig', () => {
     process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED = '1'
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-    process.env.OPENAI_MODEL = 'qwen2.5:3b'
+    process.env.OPENAI_MODEL = 'llama3.2'
 
     const applied = applyActiveProviderProfileFromConfig({
       providerProfiles: [
@@ -220,7 +208,7 @@ describe('applyActiveProviderProfileFromConfig', () => {
     expect(applied).toBeUndefined()
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
     expect(process.env.OPENAI_BASE_URL).toBe('http://localhost:11434/v1')
-    expect(process.env.OPENAI_MODEL).toBe('qwen2.5:3b')
+    expect(process.env.OPENAI_MODEL).toBe('llama3.2')
   })
 
   test('re-applies active profile when profile-managed env drifts', async () => {
@@ -230,26 +218,26 @@ describe('applyActiveProviderProfileFromConfig', () => {
       buildProfile({
         id: 'saved_openai',
         baseUrl: 'http://192.168.33.108:11434/v1',
-        model: 'kimi-k2.5:cloud',
+        model: 'llama3.2',
       }),
     )
 
     // Simulate settings/env merge clobbering the model while profile flags remain.
-    process.env.OPENAI_MODEL = 'github:copilot'
+    process.env.OPENAI_MODEL = 'gpt-4o'
 
     const applied = applyActiveProviderProfileFromConfig({
       providerProfiles: [
         buildProfile({
           id: 'saved_openai',
           baseUrl: 'http://192.168.33.108:11434/v1',
-          model: 'kimi-k2.5:cloud',
+          model: 'llama3.2',
         }),
       ],
       activeProviderProfileId: 'saved_openai',
     } as any)
 
     expect(applied?.id).toBe('saved_openai')
-    expect(process.env.OPENAI_MODEL).toBe('kimi-k2.5:cloud')
+    expect(process.env.OPENAI_MODEL).toBe('llama3.2')
     expect(process.env.OPENAI_BASE_URL).toBe('http://192.168.33.108:11434/v1')
   })
 
@@ -260,43 +248,39 @@ describe('applyActiveProviderProfileFromConfig', () => {
       buildProfile({
         id: 'saved_openai',
         baseUrl: 'http://192.168.33.108:11434/v1',
-        model: 'kimi-k2.5:cloud',
+        model: 'llama3.2',
       }),
     )
 
-    process.env.CLAUDE_CODE_USE_GITHUB = '1'
-    process.env.OPENAI_MODEL = 'github:copilot'
+    // Explicit startup selection
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'http://custom:11434/v1'
+    process.env.OPENAI_MODEL = 'gpt-4o'
 
     const applied = applyActiveProviderProfileFromConfig({
       providerProfiles: [
         buildProfile({
           id: 'saved_openai',
           baseUrl: 'http://192.168.33.108:11434/v1',
-          model: 'kimi-k2.5:cloud',
+          model: 'llama3.2',
         }),
       ],
       activeProviderProfileId: 'saved_openai',
     } as any)
 
     expect(applied).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_GITHUB).toBe('1')
-    expect(process.env.OPENAI_MODEL).toBe('github:copilot')
+    expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
   })
 
   test('applies active profile when no explicit provider is selected', async () => {
     const { applyActiveProviderProfileFromConfig } =
       await importFreshProviderProfileModules()
     delete process.env.CLAUDE_CODE_USE_OPENAI
-    delete process.env.CLAUDE_CODE_USE_GEMINI
-    delete process.env.CLAUDE_CODE_USE_GITHUB
-    delete process.env.CLAUDE_CODE_USE_BEDROCK
-    delete process.env.CLAUDE_CODE_USE_VERTEX
-    delete process.env.CLAUDE_CODE_USE_FOUNDRY
     delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED
     delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID
 
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-    process.env.OPENAI_MODEL = 'qwen2.5:3b'
+    process.env.OPENAI_MODEL = 'llama3.2'
 
     const applied = applyActiveProviderProfileFromConfig({
       providerProfiles: [
@@ -326,7 +310,7 @@ describe('persistActiveProviderProfileModel', () => {
     const activeProfile = buildProfile({
       id: 'saved_openai',
       baseUrl: 'http://192.168.33.108:11434/v1',
-      model: 'kimi-k2.5:cloud',
+      model: 'llama3.2',
     })
 
     saveMockGlobalConfig(current => ({
@@ -336,11 +320,11 @@ describe('persistActiveProviderProfileModel', () => {
     }))
     applyProviderProfileToProcessEnv(activeProfile)
 
-    const updated = persistActiveProviderProfileModel('minimax-m2.5:cloud')
+    const updated = persistActiveProviderProfileModel('llama3.3:70b')
 
     expect(updated?.id).toBe(activeProfile.id)
-    expect(updated?.model).toBe('minimax-m2.5:cloud')
-    expect(process.env.OPENAI_MODEL).toBe('minimax-m2.5:cloud')
+    expect(updated?.model).toBe('llama3.3:70b')
+    expect(process.env.OPENAI_MODEL).toBe('llama3.3:70b')
     expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID).toBe(
       activeProfile.id,
     )
@@ -348,7 +332,7 @@ describe('persistActiveProviderProfileModel', () => {
     const saved = getProviderProfiles().find(
       (profile: ProviderProfile) => profile.id === activeProfile.id,
     )
-    expect(saved?.model).toBe('minimax-m2.5:cloud')
+    expect(saved?.model).toBe('llama3.3:70b')
   })
 
   test('does not mutate process env when session is not profile-managed', async () => {
@@ -358,7 +342,7 @@ describe('persistActiveProviderProfileModel', () => {
     } = await importFreshProviderProfileModules()
     const activeProfile = buildProfile({
       id: 'saved_openai',
-      model: 'kimi-k2.5:cloud',
+      model: 'llama3.2',
     })
 
     saveMockGlobalConfig(current => ({
@@ -372,13 +356,13 @@ describe('persistActiveProviderProfileModel', () => {
     delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED
     delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID
 
-    persistActiveProviderProfileModel('minimax-m2.5:cloud')
+    persistActiveProviderProfileModel('llama3.3:70b')
 
     expect(process.env.OPENAI_MODEL).toBe('cli-model')
     const saved = getProviderProfiles().find(
       (profile: ProviderProfile) => profile.id === activeProfile.id,
     )
-    expect(saved?.model).toBe('minimax-m2.5:cloud')
+    expect(saved?.model).toBe('llama3.3:70b')
   })
 })
 
@@ -532,8 +516,6 @@ describe('setActiveProviderProfile', () => {
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
     expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
     expect(process.env.OPENAI_BASE_URL).toBe('https://api.openai.com/v1')
-    // ANTHROPIC_MODEL is set to the profile model for all provider types
-    expect(process.env.ANTHROPIC_MODEL).toBe('gpt-4o')
     expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
     expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID).toBe(
@@ -584,19 +566,11 @@ describe('deleteProviderProfile', () => {
     expect(result.activeProfileId).toBeUndefined()
 
     expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED).toBeUndefined()
-
     expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_GEMINI).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_GITHUB).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_BEDROCK).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_VERTEX).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_FOUNDRY).toBeUndefined()
-
     expect(process.env.OPENAI_BASE_URL).toBeUndefined()
     expect(process.env.OPENAI_API_BASE).toBeUndefined()
     expect(process.env.OPENAI_MODEL).toBeUndefined()
     expect(process.env.OPENAI_API_KEY).toBeUndefined()
-
     expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(process.env.ANTHROPIC_MODEL).toBeUndefined()
     expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
@@ -606,7 +580,7 @@ describe('deleteProviderProfile', () => {
     const { deleteProviderProfile } = await importFreshProviderProfileModules()
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-    process.env.OPENAI_MODEL = 'qwen2.5:3b'
+    process.env.OPENAI_MODEL = 'llama3.2'
 
     saveMockGlobalConfig(current => ({
       ...current,
@@ -622,7 +596,7 @@ describe('deleteProviderProfile', () => {
     expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED).toBeUndefined()
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
     expect(process.env.OPENAI_BASE_URL).toBe('http://localhost:11434/v1')
-    expect(process.env.OPENAI_MODEL).toBe('qwen2.5:3b')
+    expect(process.env.OPENAI_MODEL).toBe('llama3.2')
   })
 })
 
@@ -634,14 +608,14 @@ describe('getProfileModelOptions', () => {
     const options = getProfileModelOptions(
       buildProfile({
         name: 'Test Provider',
-        model: 'glm-4.7, glm-4.7-flash, glm-4.7-plus',
+        model: 'gpt-4o,gpt-4o-mini,gpt-3.5-turbo',
       }),
     )
 
     expect(options).toEqual([
-      { value: 'glm-4.7', label: 'glm-4.7', description: 'Provider: Test Provider' },
-      { value: 'glm-4.7-flash', label: 'glm-4.7-flash', description: 'Provider: Test Provider' },
-      { value: 'glm-4.7-plus', label: 'glm-4.7-plus', description: 'Provider: Test Provider' },
+      { value: 'gpt-4o', label: 'gpt-4o', description: 'Provider: Test Provider' },
+      { value: 'gpt-4o-mini', label: 'gpt-4o-mini', description: 'Provider: Test Provider' },
+      { value: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo', description: 'Provider: Test Provider' },
     ])
   })
 
@@ -689,8 +663,8 @@ describe('setActiveProviderProfile model cache', () => {
         buildProfile({
           id: 'multi_provider',
           name: 'Multi Provider',
-          model: 'glm-4.7, glm-4.7-flash, glm-4.7-plus',
-          baseUrl: 'https://api.example.com/v1',
+          model: 'gpt-4o,gpt-4o-mini,gpt-3.5-turbo',
+          baseUrl: 'https://api.openai.com/v1',
         }),
       ],
     }
@@ -699,8 +673,8 @@ describe('setActiveProviderProfile model cache', () => {
 
     const cache = getActiveOpenAIModelOptionsCache()
     const cacheValues = cache.map(opt => opt.value)
-    expect(cacheValues).toContain('glm-4.7')
-    expect(cacheValues).toContain('glm-4.7-flash')
-    expect(cacheValues).toContain('glm-4.7-plus')
+    expect(cacheValues).toContain('gpt-4o')
+    expect(cacheValues).toContain('gpt-4o-mini')
+    expect(cacheValues).toContain('gpt-3.5-turbo')
   })
 })
