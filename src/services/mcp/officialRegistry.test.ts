@@ -50,6 +50,7 @@ describe('prefetchOfficialMcpUrls', () => {
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GITHUB
+    delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
 
     mock.module('../../utils/model/providers.js', () => ({
       getAPIProvider: () => 'firstParty',
