@@ -31,13 +31,6 @@ import {
   normalizeToolArguments,
   hasToolFieldMapping,
 } from './toolArgumentNormalization.js'
-import {
-  classifyOpenAINetworkFailure,
-  classifyOpenAIHttpFailure,
-  buildOpenAICompatibilityErrorMessage,
-} from './openaiErrorClassification.js'
-import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
-import { logForDebugging } from '../../utils/debug.js'
 
 export interface AnthropicUsage {
   input_tokens: number
@@ -106,47 +99,6 @@ function formatRetryAfterHint(response: Response): string {
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-const SENSITIVE_URL_QUERY_PARAM_NAMES = [
-  'api_key',
-  'key',
-  'token',
-  'access_token',
-  'refresh_token',
-  'signature',
-  'sig',
-  'secret',
-  'password',
-  'authorization',
-]
-
-function shouldRedactUrlQueryParam(name: string): boolean {
-  const lower = name.toLowerCase()
-  return SENSITIVE_URL_QUERY_PARAM_NAMES.some(token => lower.includes(token))
-}
-
-function redactUrlForDiagnostics(url: string): string {
-  try {
-    const parsed = new URL(url)
-    if (parsed.username) {
-      parsed.username = 'redacted'
-    }
-    if (parsed.password) {
-      parsed.password = 'redacted'
-    }
-
-    for (const key of parsed.searchParams.keys()) {
-      if (shouldRedactUrlQueryParam(key)) {
-        parsed.searchParams.set(key, 'redacted')
-      }
-    }
-
-    const serialized = parsed.toString()
-    return redactSecretValueForDisplay(serialized, process.env as SecretValueSource) ?? serialized
-  } catch {
-    return redactSecretValueForDisplay(url, process.env as SecretValueSource) ?? url
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,37 +1155,7 @@ class OpenAIShimMessages {
       signal: options?.signal,
     }
 
-    let response: Response
-    try {
-      response = await fetch(chatCompletionsUrl, fetchInit)
-    } catch (err) {
-      if (options?.signal?.aborted) {
-        throw err
-      }
-
-      const failure = classifyOpenAINetworkFailure(err, { url: chatCompletionsUrl })
-      const redactedUrl = redactUrlForDiagnostics(chatCompletionsUrl)
-      const safeMessage =
-        redactSecretValueForDisplay(
-          failure.message,
-          process.env as SecretValueSource,
-        ) || 'Request failed'
-
-      logForDebugging(
-        `[OpenAIShim] transport failure category=${failure.category} retryable=${failure.retryable} code=${failure.code ?? 'unknown'} method=POST url=${redactedUrl} model=${request.resolvedModel} message=${safeMessage}`,
-        { level: 'warn' },
-      )
-
-      throw APIError.generate(
-        503,
-        undefined,
-        buildOpenAICompatibilityErrorMessage(
-          `OpenAI API transport error: ${safeMessage}${failure.code ? ` (code=${failure.code})` : ''}`,
-          failure,
-        ),
-        new Headers(),
-      )
-    }
+    const response = await fetch(chatCompletionsUrl, fetchInit)
     if (response.ok) {
       return response
     }
@@ -1243,28 +1165,10 @@ class OpenAIShimMessages {
     const errorBody = await response.text().catch(() => 'unknown error')
     let errorResponse: object | undefined
     try { errorResponse = JSON.parse(errorBody) } catch { /* raw text */ }
-
-    const failure = classifyOpenAIHttpFailure({
-      status: response.status,
-      body: errorBody,
-    })
-    const redactedUrl = redactUrlForDiagnostics(chatCompletionsUrl)
-
-    logForDebugging(
-      `[OpenAIShim] request failed category=${failure.category} retryable=${failure.retryable} status=${response.status} method=POST url=${redactedUrl} model=${request.resolvedModel}`,
-      { level: 'warn' },
-    )
-
-    const rateHint =
-      response.status === 429 ? formatRetryAfterHint(response) : ''
-
     throw APIError.generate(
       response.status,
       errorResponse,
-      buildOpenAICompatibilityErrorMessage(
-        `OpenAI API error ${response.status}: ${errorBody}${rateHint}`,
-        failure,
-      ),
+      `OpenAI API error ${response.status}: ${errorBody}`,
       response.headers as unknown as Headers,
     )
   }
