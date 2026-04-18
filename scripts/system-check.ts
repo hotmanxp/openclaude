@@ -558,8 +558,6 @@ async function main(): Promise<void> {
   enableConfigs()
   const { applySafeConfigEnvironmentVariables } = await import('../src/utils/managedEnv.js')
   applySafeConfigEnvironmentVariables()
-  const { hydrateGithubModelsTokenFromSecureStorage } = await import('../src/utils/githubModelsCredentials.js')
-  hydrateGithubModelsTokenFromSecureStorage()
 
   results.push(checkNodeVersion())
   results.push(checkBunRuntime())

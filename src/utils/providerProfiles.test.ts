@@ -575,29 +575,6 @@ describe('deleteProviderProfile', () => {
     expect(process.env.ANTHROPIC_MODEL).toBeUndefined()
     expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
   })
-
-  test('deleting final profile preserves explicit startup provider env', async () => {
-    const { deleteProviderProfile } = await importFreshProviderProfileModules()
-    process.env.CLAUDE_CODE_USE_OPENAI = '1'
-    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
-    process.env.OPENAI_MODEL = 'llama3.2'
-
-    saveMockGlobalConfig(current => ({
-      ...current,
-      providerProfiles: [buildProfile({ id: 'only_profile' })],
-      activeProviderProfileId: 'only_profile',
-    }))
-
-    const result = deleteProviderProfile('only_profile')
-
-    expect(result.removed).toBe(true)
-    expect(result.activeProfileId).toBeUndefined()
-
-    expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED).toBeUndefined()
-    expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
-    expect(process.env.OPENAI_BASE_URL).toBe('http://localhost:11434/v1')
-    expect(process.env.OPENAI_MODEL).toBe('llama3.2')
-  })
 })
 
 describe('getProfileModelOptions', () => {

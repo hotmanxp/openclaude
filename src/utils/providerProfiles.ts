@@ -166,7 +166,28 @@ function hasConflictingProviderFlagsForProfile(
   profile: ProviderProfile,
 ): boolean {
   if (profile.provider === 'anthropic') {
+    // User prefers openai over anthropic
     return hasProviderSelectionFlags(processEnv)
+  }
+
+  if (hasProviderSelectionFlags(processEnv)) {
+    const appliedId = trimOrUndefined(processEnv[PROFILE_ENV_APPLIED_ID])
+
+    // Profile IDs don't match - user explicitly set CLAUDE_CODE_USE_OPENAI
+    // while a different profile was managing the env.
+    if (appliedId !== profile.id) {
+      return true
+    }
+
+    // Profile IDs match - check if the critical values (baseUrl, apiKey) are aligned.
+    // If only the model drifted (e.g., clobbered by settings merge), re-apply is fine.
+    // But if baseUrl itself changed, it's a user override - don't re-apply.
+    if (
+      processEnv[PROFILE_ENV_APPLIED_FLAG] === '1' &&
+      !sameOptionalEnvValue(processEnv.OPENAI_BASE_URL, profile.baseUrl)
+    ) {
+      return true
+    }
   }
 
   return false
@@ -580,11 +601,17 @@ export function deleteProviderProfile(profileId: string): {
     applyProviderProfileToProcessEnv(nextActiveProfile)
   } else if (
     deletedProfile &&
-    isProcessEnvAlignedWithProfile(process.env, deletedProfile, {
-      includeApiKey: false,
-    })
+    process.env[PROFILE_ENV_APPLIED_FLAG] === '1' &&
+    trimOrUndefined(process.env[PROFILE_ENV_APPLIED_ID]) === deletedProfile.id
   ) {
-    clearProviderProfileEnvFromProcessEnv()
+    // Only clear if the env actually matches what this profile would set.
+    // If baseUrl/model don't match, the profile was never actually applied to the env.
+    if (
+      sameOptionalEnvValue(process.env.OPENAI_BASE_URL, deletedProfile.baseUrl) ||
+      sameOptionalEnvValue(process.env.ANTHROPIC_BASE_URL, deletedProfile.baseUrl)
+    ) {
+      clearProviderProfileEnvFromProcessEnv()
+    }
   }
 
   return {
