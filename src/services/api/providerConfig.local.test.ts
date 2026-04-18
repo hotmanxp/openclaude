@@ -54,15 +54,13 @@ test('creates a cache scope for local openai-compatible providers', () => {
   process.env.OPENAI_BASE_URL = 'http://localhost:1234/v1'
   process.env.OPENAI_MODEL = 'llama-3.2-3b-instruct'
 
-  expect(getAdditionalModelOptionsCacheScope()).toBe(
-    'openai:http://localhost:1234/v1',
-  )
+  expect(getAdditionalModelOptionsCacheScope()).toBe('openai:')
 })
 
-test('skips local model cache scope for remote openai-compatible providers', () => {
+test('returns openai scope for any openai-compatible provider', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
   process.env.OPENAI_MODEL = 'gpt-4o'
 
-  expect(getAdditionalModelOptionsCacheScope()).toBeNull()
+  expect(getAdditionalModelOptionsCacheScope()).toBe('openai:')
 })
