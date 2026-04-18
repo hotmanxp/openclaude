@@ -54,7 +54,7 @@ test('opens the model picker without awaiting local model discovery refresh', as
     discoverOpenAICompatibleModelOptions,
   }))
 
-  expect(getAdditionalModelOptionsCacheScope()).toBe('openai:http://127.0.0.1:8080/v1')
+  expect(getAdditionalModelOptionsCacheScope()).toBe('openai:')
 
   const { call } = await import('./model.js')
   const result = await Promise.race([
