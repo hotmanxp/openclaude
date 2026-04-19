@@ -9,9 +9,8 @@ import { RemoteAgentTask } from './tasks/RemoteAgentTask/RemoteAgentTask.js'
 const LocalWorkflowTask: Task | null = feature('WORKFLOW_SCRIPTS')
   ? require('./tasks/LocalWorkflowTask/LocalWorkflowTask.js').LocalWorkflowTask
   : null
-const MonitorMcpTask: Task | null = feature('MONITOR_TOOL')
-  ? require('./tasks/MonitorMcpTask/MonitorMcpTask.js').MonitorMcpTask
-  : null
+const MonitorMcpTask: Task | null =
+  require('./tasks/MonitorMcpTask/MonitorMcpTask.js').MonitorMcpTask
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
