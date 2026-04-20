@@ -512,7 +512,7 @@ function ModeIndicator({
           <Byline>{parts}</Byline>
         </Text>}
       {branch && <><Text dimColor> · </Text><Text color="success">{branch}</Text></>}
-      <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text>
+      <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text><Text dimColor> · </Text>
     </Box>;
 }
 function getSpinnerHintParts(isLoading: boolean, escShortcut: string, todosShortcut: string, killAgentsShortcut: string, hasTaskItems: boolean, expandedView: 'none' | 'tasks' | 'teammates', hasTeammates: boolean, hasRunningAgentTasks: boolean, isKillAgentsConfirmShowing: boolean): React.ReactElement[] {
