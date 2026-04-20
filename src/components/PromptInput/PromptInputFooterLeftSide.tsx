@@ -32,6 +32,7 @@ import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { Byline } from '../design-system/Byline.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { useTasksV2 } from '../../hooks/useTasksV2.js';
+import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { formatDuration } from '../../utils/format.js';
 import { VoiceWarmupHint } from './VoiceIndicator.js';
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
@@ -42,6 +43,7 @@ import { useHasSelection, useSelection } from '../../ink/hooks/use-selection.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { getPlatform } from '../../utils/platform.js';
 import { PrBadge } from '../PrBadge.js';
+import { renderModelName } from '../../utils/model/model.js';
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -275,6 +277,8 @@ function ModeIndicator({
   const hasSelection = useHasSelection();
   const selGetState = useSelection().getState;
   const setAppState = useSetAppState();
+  const mainLoopModel = useMainLoopModel();
+  const modelDisplay = renderModelName(mainLoopModel);
 
   // Fetch git branch and store in AppState. Refresh periodically to detect branch switches.
   useEffect(() => {
@@ -508,6 +512,7 @@ function ModeIndicator({
           <Byline>{parts}</Byline>
         </Text>}
       {branch && <Text dimColor key="branch"> · {branch}</Text>}
+      <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text>
     </Box>;
 }
 function getSpinnerHintParts(isLoading: boolean, escShortcut: string, todosShortcut: string, killAgentsShortcut: string, hasTaskItems: boolean, expandedView: 'none' | 'tasks' | 'teammates', hasTeammates: boolean, hasRunningAgentTasks: boolean, isKillAgentsConfirmShowing: boolean): React.ReactElement[] {
