@@ -511,7 +511,7 @@ function ModeIndicator({
       {parts.length > 0 && <Text wrap="truncate">
           <Byline>{parts}</Byline>
         </Text>}
-      {branch && <Text dimColor key="branch"> · {branch}</Text>}
+      {branch && <><Text dimColor> · </Text><Text color="success">{branch}</Text></>}
       <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text>
     </Box>;
 }
