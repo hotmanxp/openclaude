@@ -1,6 +1,9 @@
 import { afterEach, expect, test } from 'bun:test'
 
-import { getProviderValidationError } from './providerValidation.ts'
+import {
+  getProviderValidationError,
+  shouldExitForStartupProviderValidationError,
+} from './providerValidation.ts'
 
 const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
@@ -31,4 +34,46 @@ test('openai missing key error includes recovery guidance', async () => {
   expect(message).toContain(
     'OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.',
   )
+})
+
+test('startup provider validation allows interactive recovery', () => {
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: [],
+      stdoutIsTTY: true,
+    }),
+  ).toBe(false)
+})
+
+test('startup provider validation stays strict for non-interactive launches', () => {
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: ['-p', 'hello'],
+      stdoutIsTTY: true,
+    }),
+  ).toBe(true)
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: ['--print', 'hello'],
+      stdoutIsTTY: true,
+    }),
+  ).toBe(true)
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: [],
+      stdoutIsTTY: false,
+    }),
+  ).toBe(true)
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: ['--sdk-url', 'ws://127.0.0.1:3000'],
+      stdoutIsTTY: true,
+    }),
+  ).toBe(true)
+  expect(
+    shouldExitForStartupProviderValidationError({
+      args: ['--sdk-url=ws://127.0.0.1:3000'],
+      stdoutIsTTY: true,
+    }),
+  ).toBe(true)
 })
