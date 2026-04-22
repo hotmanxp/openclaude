@@ -8,6 +8,8 @@ dist/
 .agent_working_dir/
 reports/
 GEMINI.md
+CLAUDE.md
 package-lock.json
 /.claude
 coverage/
+agent.log

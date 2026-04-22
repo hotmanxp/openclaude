@@ -412,10 +412,24 @@ export async function buildStartupEnvFromProfile(options?: {
   const processEnv = options?.processEnv ?? process.env
   const persisted = options?.persisted ?? loadProfileFile()
 
+const profileManagedEnv = processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED === '1'
+
+  // The legacy single-profile file (~/.openclaude-profile.json) is a
+  // first-run / fallback mechanism. The newer plural provider-profile
+  // system (`/provider` presets + activeProviderProfileId in config) is
+  // applied earlier in the bootstrap via applyActiveProviderProfileFromConfig
+  // and signals completion with CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED=1.
+  //
+  // If the plural system has already set env, trust it — do NOT overlay the
+  // legacy file. addProviderProfile() does not sync the legacy file, so a
+  // stale legacy file (e.g. OpenAI defaults from an earlier manual setup)
+  // would otherwise overwrite the correct plural env and surface as the
+  // "banner shows gpt-4o / api.openai.com even though my saved profile is
+  // Moonshot" bug.
+  //
   // Saved /provider profiles should still win over provider-manager env that was
   // auto-applied during startup. Only explicit shell/flag provider selection
   // should bypass the persisted startup profile.
-  const profileManagedEnv = processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED === '1'
   if (hasExplicitProviderSelection(processEnv) && !profileManagedEnv) {
     return processEnv
   }
@@ -423,18 +437,6 @@ export async function buildStartupEnvFromProfile(options?: {
   if (!persisted) {
     return processEnv
   }
-
-  const launchProcessEnv = profileManagedEnv
-    ? (() => {
-        const cleanedEnv = { ...processEnv }
-        for (const key of PROFILE_ENV_KEYS) {
-          delete cleanedEnv[key]
-        }
-        delete cleanedEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED
-        delete cleanedEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID
-        return cleanedEnv
-      })()
-    : processEnv
 
   return buildLaunchEnv({
     profile: persisted.profile,
