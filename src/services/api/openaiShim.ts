@@ -46,12 +46,6 @@ import {
 import { logApiCallStart, logApiCallEnd } from '../../utils/requestLogging.js'
 import { createStreamState, processStreamChunk, getStreamStats } from '../../utils/streamingOptimizer.js'
 
-// Stub for local provider retry base URLs (used for failover on local providers)
-const getLocalProviderRetryBaseUrls = (_baseUrl: string): string[] => []
-
-// Stub for shouldAttemptLocalToollessRetry - returns false for now
-const shouldAttemptLocalToollessRetry = ({ baseUrl, hasTools }: { baseUrl: string; hasTools: boolean }): boolean => false
-
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
   CODEX_API_KEY: string
