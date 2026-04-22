@@ -13,19 +13,9 @@
  *   OPENAI_API_KEY=sk-...             — API key (optional for local models)
  *   OPENAI_BASE_URL=http://...        — base URL (default: https://api.openai.com/v1)
  *   OPENAI_MODEL=gpt-4o              — default model override
- *   CODEX_API_KEY / ~/.codex/auth.json — Codex auth for codexplan/codexspark
- *
- * GitHub Copilot API (api.githubcopilot.com), OpenAI-compatible:
- *   CLAUDE_CODE_USE_GITHUB=1         — enable GitHub inference (no need for USE_OPENAI)
- *   GITHUB_TOKEN or GH_TOKEN         — Copilot API token (mapped to Bearer auth)
- *   OPENAI_MODEL                     — optional; use github:copilot or openai/gpt-4.1 style IDs
  */
 
 import { APIError } from '@anthropic-ai/sdk'
-import {
-  readCodexCredentialsAsync,
-  refreshCodexAccessTokenIfNeeded,
-} from '../../utils/codexCredentials.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
 import { resolveGeminiCredential } from '../../utils/geminiAuth.js'
@@ -35,26 +25,12 @@ import {
   createThinkTagFilter,
   stripThinkTags,
 } from './thinkTagSanitizer.js'
-import {
-  codexStreamToAnthropic,
-  collectCodexCompletedResponse,
-  convertAnthropicMessagesToResponsesInput,
-  convertCodexResponseToAnthropicMessage,
-  convertToolsToResponsesTools,
-  performCodexRequest,
-  type AnthropicStreamEvent,
-  type AnthropicUsage,
-  type ShimCreateParams,
-} from './codexShim.js'
+import { type AnthropicStreamEvent, type AnthropicUsage, type ShimCreateParams } from './codexShim.js'
 import { compressToolHistory } from './compressToolHistory.js'
 import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
-  getLocalProviderRetryBaseUrls,
-  getGithubEndpointType,
   isLocalProviderUrl,
-  resolveRuntimeCodexCredentials,
   resolveProviderRequest,
-  shouldAttemptLocalToollessRetry,
 } from './providerConfig.js'
 import {
   buildOpenAICompatibilityErrorMessage,
@@ -70,6 +46,12 @@ import {
 import { logApiCallStart, logApiCallEnd } from '../../utils/requestLogging.js'
 import { createStreamState, processStreamChunk, getStreamStats } from '../../utils/streamingOptimizer.js'
 
+// Stub for local provider retry base URLs (used for failover on local providers)
+const getLocalProviderRetryBaseUrls = (_baseUrl: string): string[] => []
+
+// Stub for shouldAttemptLocalToollessRetry - returns false for now
+const shouldAttemptLocalToollessRetry = ({ baseUrl, hasTools }: { baseUrl: string; hasTools: boolean }): boolean => false
+
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
   CODEX_API_KEY: string
@@ -79,22 +61,11 @@ type SecretValueSource = Partial<{
   MISTRAL_API_KEY: string
 }>
 
-const GITHUB_COPILOT_BASE = 'https://api.githubcopilot.com'
-const GITHUB_429_MAX_RETRIES = 3
-const GITHUB_429_BASE_DELAY_SEC = 1
-const GITHUB_429_MAX_DELAY_SEC = 32
 const GEMINI_API_HOST = 'generativelanguage.googleapis.com'
 const MOONSHOT_API_HOSTS = new Set([
   'api.moonshot.ai',
   'api.moonshot.cn',
 ])
-
-const COPILOT_HEADERS: Record<string, string> = {
-  'User-Agent': 'GitHubCopilotChat/0.26.7',
-  'Editor-Version': 'vscode/1.99.3',
-  'Editor-Plugin-Version': 'copilot-chat/0.26.7',
-  'Copilot-Integration-Id': 'vscode-chat',
-}
 
 const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'api_key',
@@ -108,10 +79,6 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'password',
   'authorization',
 ]
-
-function isGithubModelsMode(): boolean {
-  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
-}
 
 function isMistralMode(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
@@ -1301,39 +1268,9 @@ class OpenAIShimMessages {
       httpResponse = response
 
       if (params.stream) {
-        const isResponsesStream = response.url?.includes('/responses')
         return new OpenAIShimStream(
-          (request.transport === 'codex_responses' || isResponsesStream)
-            ? codexStreamToAnthropic(response, request.resolvedModel, options?.signal)
-            : openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
+          openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
         )
-      }
-
-      if (request.transport === 'codex_responses') {
-        const data = await collectCodexCompletedResponse(response, options?.signal)
-        return convertCodexResponseToAnthropicMessage(
-          data,
-          request.resolvedModel,
-        )
-      }
-
-      const isResponsesNonStream = response.url?.includes('/responses')
-      if (isResponsesNonStream || (request.transport === 'chat_completions' && isGithubModelsMode())) {
-        const contentType = response.headers.get('content-type') ?? ''
-        if (contentType.includes('application/json')) {
-          const parsed = await response.json() as Record<string, unknown>
-          if (
-            parsed &&
-            typeof parsed === 'object' &&
-            ('output' in parsed || 'incomplete_details' in parsed)
-          ) {
-            return convertCodexResponseToAnthropicMessage(
-              parsed,
-              request.resolvedModel,
-            )
-          }
-          return self._convertNonStreamingResponse(parsed, request.resolvedModel)
-        }
       }
 
       const contentType = response.headers.get('content-type') ?? ''
@@ -1370,80 +1307,6 @@ class OpenAIShimMessages {
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): Promise<Response> {
-    const githubEndpointType = getGithubEndpointType(request.baseUrl)
-    const isGithubMode = isGithubModelsMode()
-    const isGithubWithCodexTransport = isGithubMode && request.transport === 'codex_responses'
-
-    if (isGithubWithCodexTransport) {
-      const apiKey = this.providerOverride?.apiKey ?? process.env.OPENAI_API_KEY ?? ''
-      if (!apiKey) {
-        throw new Error(
-          'GitHub Copilot auth is required. Run /onboard-github to sign in.',
-        )
-      }
-
-      return performCodexRequest({
-        request,
-        credentials: {
-          apiKey,
-          source: 'env',
-        },
-        params,
-        defaultHeaders: {
-          ...this.defaultHeaders,
-          ...filterAnthropicHeaders(options?.headers),
-          ...COPILOT_HEADERS,
-        },
-        signal: options?.signal,
-      })
-    }
-
-    if (request.transport === 'codex_responses' && !isGithubMode) {
-      const refreshResult = await refreshCodexAccessTokenIfNeeded().catch(
-        async error => {
-          logForDebugging(
-            `[codex] access token refresh failed before request: ${error instanceof Error ? error.message : String(error)}`,
-            { level: 'warn' },
-          )
-          return {
-            refreshed: false,
-            credentials: await readCodexCredentialsAsync(),
-          }
-        },
-      )
-      const credentials = resolveRuntimeCodexCredentials({
-        storedCredentials: refreshResult.credentials,
-      })
-      if (!credentials.apiKey) {
-        const oauthHint = isBareMode() ? '' : ', choose Codex OAuth in /provider'
-        const authHint = credentials.authPath
-          ? `${oauthHint} or place a Codex auth.json at ${credentials.authPath}`
-          : oauthHint
-        const safeModel =
-          redactSecretValueForDisplay(request.requestedModel, process.env as SecretValueSource) ??
-          'the requested model'
-        throw new Error(
-          `Codex auth is required for ${safeModel}. Set CODEX_API_KEY${authHint}.`,
-        )
-      }
-      if (!credentials.accountId) {
-        throw new Error(
-          'Codex auth is missing chatgpt_account_id. Re-login with Codex OAuth, the Codex CLI, or set CHATGPT_ACCOUNT_ID/CODEX_ACCOUNT_ID.',
-        )
-      }
-
-      return performCodexRequest({
-        request,
-        credentials,
-        params,
-        defaultHeaders: {
-          ...this.defaultHeaders,
-          ...filterAnthropicHeaders(options?.headers),
-        },
-        signal: options?.signal,
-      })
-    }
-
     return this._doOpenAIRequest(request, params, options)
   }
 
@@ -1488,17 +1351,11 @@ class OpenAIShimMessages {
       body.stream_options = { include_usage: true }
     }
 
-    const isGithub = isGithubModelsMode()
     const isMistral = isMistralMode()
     const isLocal = isLocalProviderUrl(request.baseUrl)
-
-    const githubEndpointType = getGithubEndpointType(request.baseUrl)
-    const isGithubCopilot = isGithub && githubEndpointType === 'copilot'
-    const isGithubModels = isGithub && (githubEndpointType === 'models' || githubEndpointType === 'custom')
-
     const isMoonshot = isMoonshotBaseUrl(request.baseUrl)
 
-    if ((isGithub || isMistral || isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
+    if ((isMistral || isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
       body.max_tokens = body.max_completion_tokens
       delete body.max_completion_tokens
     }
@@ -1581,13 +1438,6 @@ class OpenAIShimMessages {
       }
     }
 
-    if (isGithubCopilot) {
-      Object.assign(headers, COPILOT_HEADERS)
-    } else if (isGithubModels) {
-      headers['Accept'] = 'application/vnd.github+json'
-      headers['X-GitHub-Api-Version'] = '2022-11-28'
-    }
-
     const buildChatCompletionsUrl = (baseUrl: string): string => {
       // Azure Cognitive Services / Azure OpenAI require a deployment-specific
       // path and an api-version query parameter.
@@ -1661,7 +1511,7 @@ class OpenAIShimMessages {
     const maxSelfHealAttempts = isLocal
       ? localRetryBaseUrls.length + 1
       : 0
-    const maxAttempts = (isGithub ? GITHUB_429_MAX_RETRIES : 1) + maxSelfHealAttempts
+    const maxAttempts = 1 + maxSelfHealAttempts
 
     const throwClassifiedTransportError = (
       error: unknown,
@@ -1794,108 +1644,10 @@ class OpenAIShimMessages {
         return response
       }
 
-      if (
-        isGithub &&
-        response.status === 429 &&
-        attempt < maxAttempts - 1
-      ) {
-        await response.text().catch(() => {})
-        const delaySec = Math.min(
-          GITHUB_429_BASE_DELAY_SEC * 2 ** attempt,
-          GITHUB_429_MAX_DELAY_SEC,
-        )
-        await sleepMs(delaySec * 1000)
-        continue
-      }
       // Read body exactly once here — Response body is a stream that can only
       // be consumed a single time.
       const errorBody = await response.text().catch(() => 'unknown error')
-      const rateHint =
-        isGithub && response.status === 429 ? formatRetryAfterHint(response) : ''
-
-      // If GitHub Copilot returns error about /chat/completions,
-      // try the /responses endpoint (needed for GPT-5+ models)
-      if (isGithub && response.status === 400) {
-        if (errorBody.includes('/chat/completions') || errorBody.includes('not accessible')) {
-          const responsesUrl = `${request.baseUrl}/responses`
-          const responsesBody: Record<string, unknown> = {
-            model: request.resolvedModel,
-            input: convertAnthropicMessagesToResponsesInput(
-              params.messages as Array<{
-                role?: string
-                message?: { role?: string; content?: unknown }
-                content?: unknown
-              }>,
-            ),
-            stream: params.stream ?? false,
-            store: false,
-          }
-
-          if (!Array.isArray(responsesBody.input) || responsesBody.input.length === 0) {
-            responsesBody.input = [
-              {
-                type: 'message',
-                role: 'user',
-                content: [{ type: 'input_text', text: '' }],
-              },
-            ]
-          }
-
-          const systemText = convertSystemPrompt(params.system)
-          if (systemText) {
-            responsesBody.instructions = systemText
-          }
-
-          if (body.max_tokens !== undefined) {
-            responsesBody.max_output_tokens = body.max_tokens
-          }
-
-          if (params.tools && params.tools.length > 0) {
-            const convertedTools = convertToolsToResponsesTools(
-              params.tools as Array<{
-                name?: string
-                description?: string
-                input_schema?: Record<string, unknown>
-              }>,
-            )
-            if (convertedTools.length > 0) {
-              responsesBody.tools = convertedTools
-            }
-          }
-
-          let responsesResponse: Response
-          try {
-            responsesResponse = await fetchWithProxyRetry(responsesUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(responsesBody),
-              signal: options?.signal,
-            })
-          } catch (error) {
-            throwClassifiedTransportError(error, responsesUrl)
-          }
-
-          if (responsesResponse.ok) {
-            return responsesResponse
-          }
-          const responsesErrorBody = await responsesResponse.text().catch(() => 'unknown error')
-          const responsesFailure = classifyOpenAIHttpFailure({
-            status: responsesResponse.status,
-            body: responsesErrorBody,
-          })
-          let responsesErrorResponse: object | undefined
-          try { responsesErrorResponse = JSON.parse(responsesErrorBody) } catch { /* raw text */ }
-          throwClassifiedHttpError(
-            responsesResponse.status,
-            responsesErrorBody,
-            responsesErrorResponse,
-            responsesResponse.headers,
-            responsesUrl,
-            '',
-            responsesFailure,
-          )
-        }
-      }
+      const rateHint = formatRetryAfterHint(response)
 
       const failure = classifyOpenAIHttpFailure({
         status: response.status,
@@ -2116,10 +1868,6 @@ export function createOpenAIShimClient(options: {
     if (process.env.MISTRAL_MODEL) {
       process.env.OPENAI_MODEL = process.env.MISTRAL_MODEL
     }
-  } else if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)) {
-    process.env.OPENAI_BASE_URL ??= GITHUB_COPILOT_BASE
-    process.env.OPENAI_API_KEY ??=
-      process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? ''
   }
 
   const beta = new OpenAIShimBeta({
