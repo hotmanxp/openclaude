@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto'
+import { isCodexBaseUrl } from '../services/api/providerConfig.js'
 import {
   getGlobalConfig,
   saveGlobalConfig,
@@ -124,7 +125,7 @@ export function getProviderPresetDefaults(
         provider: 'openai',
         name: 'OpenAI',
         baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-5.3-codex',
+        model: 'gpt-5.4',
         apiKey: '',
         requiresApiKey: true,
       }
@@ -573,6 +574,38 @@ export function getProfileModelOptions(profile: ProviderProfile): ModelOption[] 
   }))
 }
 
+function buildOpenAICompatibleStartupEnv(
+  activeProfile: ProviderProfile,
+): ProfileEnv | null {
+  if (isCodexBaseUrl(activeProfile.baseUrl)) {
+    return null
+  }
+
+  if (activeProfile.apiKey) {
+    const strictEnv = buildOpenAIProfileEnv({
+      goal: 'balanced',
+      model: activeProfile.model,
+      baseUrl: activeProfile.baseUrl,
+      apiKey: activeProfile.apiKey,
+      processEnv: {},
+    })
+    if (strictEnv) {
+      return strictEnv
+    }
+  }
+
+  const env: ProfileEnv = {
+    OPENAI_BASE_URL: activeProfile.baseUrl,
+    OPENAI_MODEL: getPrimaryModel(activeProfile.model),
+  }
+  if (activeProfile.apiKey) {
+    env.OPENAI_API_KEY = activeProfile.apiKey
+  } else {
+    delete env.OPENAI_API_KEY
+  }
+  return env
+}
+
 export function setActiveProviderProfile(
   profileId: string,
 ): ProviderProfile | null {
@@ -601,6 +634,7 @@ export function setActiveProviderProfile(
   }))
 
   applyProviderProfileToProcessEnv(activeProfile)
+
   return activeProfile
 }
 

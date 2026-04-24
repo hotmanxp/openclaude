@@ -434,6 +434,10 @@ const profileManagedEnv = processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED ==
     return processEnv
   }
 
+  if (isEnvTruthy(processEnv.CLAUDE_CODE_USE_GITHUB)) {
+    return processEnv
+  }
+
   if (!persisted) {
     return processEnv
   }
