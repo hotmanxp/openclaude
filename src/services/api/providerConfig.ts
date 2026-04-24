@@ -173,3 +173,8 @@ export function getReasoningEffortForModel(_model: string): string | undefined {
   // Reasoning effort is only supported for specific OpenAI models
   return undefined
 }
+
+export function isCodexBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false
+  return /chatgpt\.com\/backend-api\/codex/i.test(baseUrl)
+}

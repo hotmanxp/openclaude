@@ -195,13 +195,6 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   if (getAPIProvider() === 'openai') {
     return process.env.OPENAI_MODEL || 'gpt-4o'
   }
-<<<<<<< HEAD
-=======
-  // Codex provider: always use the configured Codex model (default gpt-5.5)
-  if (getAPIProvider() === 'codex') {
-    return process.env.OPENAI_MODEL || 'gpt-5.5'
-  }
->>>>>>> upstream/main
 
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
@@ -362,16 +355,6 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
   if (setting === 'opusplan') {
     return 'Opus Plan'
   }
-<<<<<<< HEAD
-=======
-  // Handle Codex models - show actual model name + resolved model
-  if (setting === 'codexplan') {
-    return 'codexplan (gpt-5.5)'
-  }
-  if (setting === 'codexspark') {
-    return 'codexspark (gpt-5.3-codex-spark)'
-  }
->>>>>>> upstream/main
   if (isModelAlias(setting)) {
     return capitalize(setting)
   }
@@ -384,27 +367,10 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
-<<<<<<< HEAD
   // For OpenAI provider, show the actual model name not a Open CC alias
   if (getAPIProvider() === 'openai') {
     // Return display names for known models
     const modelNames: Record<string, string> = {
-=======
-  // For OpenAI/Gemini/Codex/GitHub providers, show the actual model name not a Claude alias
-  if (getAPIProvider() === 'openai' || getAPIProvider() === 'gemini' || getAPIProvider() === 'codex' || getAPIProvider() === 'github') {
-    // Return display names for known GitHub Copilot models
-    const copilotModelNames: Record<string, string> = {
-      'gpt-5.5': 'GPT-5.5',
-      'gpt-5.5-mini': 'GPT-5.5 mini',
-      'gpt-5.4': 'GPT-5.4',
-      'gpt-5.4-mini': 'GPT-5.4 mini',
-      'gpt-5.3-codex': 'GPT-5.3 Codex',
-      'gpt-5.2-codex': 'GPT-5.2 Codex',
-      'gpt-5.2': 'GPT-5.2',
-      'gpt-5.1-codex': 'GPT-5.1 Codex',
-      'gpt-5.1-codex-max': 'GPT-5.1 Codex max',
-      'gpt-5.1-codex-mini': 'GPT-5.1 Codex mini',
->>>>>>> upstream/main
       'gpt-4o': 'GPT-4o',
       'gpt-4.1': 'GPT-4.1',
       'claude-opus-4.6': 'Open CC Opus 4.6',
@@ -420,15 +386,6 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
     return null
   }
   switch (model) {
-<<<<<<< HEAD
-=======
-    case 'gpt-5.5':
-      return 'GPT-5.5'
-    case 'gpt-5.4':
-      return 'GPT-5.4'
-    case 'gpt-5.3-codex-spark':
-      return 'GPT-5.3 Codex Spark'
->>>>>>> upstream/main
     case getModelStrings().opus46:
       return 'Opus 4.6'
     case getModelStrings().opus46 + '[1m]':
@@ -550,17 +507,6 @@ export function parseUserSpecifiedModel(
     }
   }
 
-<<<<<<< HEAD
-=======
-  // Handle Codex aliases - map to actual model names
-  if (modelString === 'codexplan') {
-    return 'gpt-5.5'
-  }
-  if (modelString === 'codexspark') {
-    return 'gpt-5.3-codex-spark'
-  }
-
->>>>>>> upstream/main
   // Opus 4/4.1 are no longer available on the first-party API (same as
   // Open CC.ai) — silently remap to the current Opus default. The 'opus'
   // alias already resolves to 4.6, so the only users on these explicit
