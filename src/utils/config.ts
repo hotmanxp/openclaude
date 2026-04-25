@@ -179,6 +179,9 @@ export type EditorMode = 'emacs' | (typeof EDITOR_MODES)[number]
 
 export type DiffTool = 'terminal' | 'auto'
 
+export type ShowCacheStatsMode = 'off' | 'compact' | 'full'
+export const SHOW_CACHE_STATS_MODES = ['off', 'compact', 'full'] as const satisfies readonly ShowCacheStatsMode[]
+
 export type OutputStyle = string
 
 export type Providers = typeof PROVIDERS[number]
@@ -246,6 +249,11 @@ export type GlobalConfig = {
   autoCompactEnabled: boolean // Controls whether auto-compact is enabled
   toolHistoryCompressionEnabled: boolean // Compress old tool_result content for small-context providers
   showTurnDuration: boolean // Controls whether to show turn duration message (e.g., "Cooked for 1m 6s")
+  // Controls whether to show per-query cache hit/miss stats at the end of each turn.
+  // 'off'     — no display
+  // 'compact' — one-line summary (e.g. "[Cache: 1.2k read • hit 12%]")
+  // 'full'    — breakdown (read / created / hit-rate) per query
+  showCacheStats: ShowCacheStatsMode
   /**
    * @deprecated Use settings.env instead.
    */
@@ -606,6 +614,9 @@ export type GlobalConfig = {
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
   // (avoiding 11× saveGlobalConfig lock+re-read on every startup).
   migrationVersion?: number
+
+  // Knowledge Graph configuration
+  knowledgeGraphEnabled: boolean
 }
 
 /**
@@ -614,7 +625,7 @@ export type GlobalConfig = {
  * a factory gives fresh refs at zero clone cost.
  */
 function createDefaultGlobalConfig(): GlobalConfig {
-  return {
+  const config: GlobalConfig = {
     numStartups: 0,
     installMethod: undefined,
     autoUpdates: undefined,
@@ -625,6 +636,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoCompactEnabled: true,
     toolHistoryCompressionEnabled: true,
     showTurnDuration: true,
+    showCacheStats: 'compact',
     hasSeenTasksHint: false,
     hasUsedStash: false,
     hasUsedBackgroundTask: false,
@@ -653,7 +665,9 @@ function createDefaultGlobalConfig(): GlobalConfig {
     copyFullResponse: false,
     providerProfiles: [],
     openaiAdditionalModelOptionsCacheByProfile: {},
+    knowledgeGraphEnabled: true,
   }
+  return config
 }
 
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = createDefaultGlobalConfig()
@@ -672,6 +686,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'autoCompactEnabled',
   'toolHistoryCompressionEnabled',
   'showTurnDuration',
+  'showCacheStats',
   'diffTool',
   'env',
   'tipsHistory',
@@ -699,6 +714,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'prStatusFooterEnabled',
   'remoteControlAtStartup',
   'remoteDialogSeen',
+  'knowledgeGraphEnabled',
 ] as const
 
 export type GlobalConfigKey = (typeof GLOBAL_CONFIG_KEYS)[number]
@@ -800,6 +816,7 @@ export function isPathTrusted(dir: string): boolean {
 const TEST_GLOBAL_CONFIG_FOR_TESTING: GlobalConfig = {
   ...DEFAULT_GLOBAL_CONFIG,
   autoUpdates: false,
+  knowledgeGraphEnabled: true,
 }
 const TEST_PROJECT_CONFIG_FOR_TESTING: ProjectConfig = {
   ...DEFAULT_PROJECT_CONFIG,
