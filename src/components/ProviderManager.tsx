@@ -25,8 +25,10 @@ import { Pane } from './design-system/Pane.js'
 import TextInput from './TextInput.js'
 
 export type ProviderManagerResult = {
-  action: 'saved' | 'cancelled'
+  action: 'saved' | 'cancelled' | 'activated'
   activeProfileId?: string
+  activeProviderName?: string
+  activeProviderModel?: string
   message?: string
 }
 
