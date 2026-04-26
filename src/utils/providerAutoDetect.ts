@@ -255,12 +255,8 @@ export async function detectLocalService(options?: {
 /**
  * Orchestrator: env scan first (sync, free), then local-service probes
  * (async, ~1-2s worst case) only if nothing was found in env.
- *
- * DISABLED: Provider auto-detection is disabled to ensure users are always
- * prompted to select a provider. This prevents automatic selection of
- * unsupported providers and ensures explicit user choice.
  */
-export async function detectBestProvider(_options?: {
+export async function detectBestProvider(options?: {
   env?: EnvLike
   fetchImpl?: typeof fetch
   timeoutMs?: number
@@ -269,5 +265,20 @@ export async function detectBestProvider(_options?: {
   /** Override for Codex auth-file detection. See detectProviderFromEnv. */
   hasCodexAuth?: () => boolean
 }): Promise<DetectedProvider | null> {
+  const env = options?.env ?? process.env
+  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_LOCAL_PROBE_TIMEOUT_MS
+  const skipLocal = options?.skipLocal ?? false
+  const hasCodexAuth = options?.hasCodexAuth
+
+  // Env scan first (synchronous, free)
+  const envResult = detectProviderFromEnv({ env, hasCodexAuth })
+  if (envResult) return envResult
+
+  // Local service probes (async, only if env scan found nothing)
+  if (!skipLocal) {
+    return detectLocalService({ env, fetchImpl, timeoutMs })
+  }
+
   return null
 }
