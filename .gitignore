@@ -4,7 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
-.openclaude-profile.json
+.claude-profile.json
 .agent_working_dir/
 reports/
 GEMINI.md

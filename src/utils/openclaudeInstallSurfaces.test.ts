@@ -63,13 +63,13 @@ test('cleanupNpmInstallations removes both openclaude and legacy claude local in
   }))
 
   mock.module('./envUtils.js', () => ({
-    getClaudeConfigHomeDir: () => join(homedir(), '.openclaude'),
+    getClaudeConfigHomeDir: () => join(homedir(), '.claude'),
     isEnvTruthy: (value: string | undefined) => value === '1',
   }))
 
   const { cleanupNpmInstallations } = await importFreshInstaller()
   await cleanupNpmInstallations()
 
-  expect(removedPaths).toContain(join(homedir(), '.openclaude', 'local'))
+  expect(removedPaths).toContain(join(homedir(), '.claude', 'local'))
   expect(removedPaths).toContain(join(homedir(), '.claude', 'local'))
 })

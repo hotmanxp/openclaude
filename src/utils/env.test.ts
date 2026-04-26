@@ -43,9 +43,9 @@ async function importFreshEnvModule() {
 
 // getGlobalClaudeFile — three migration branches
 
-test('getGlobalClaudeFile: new install returns .openclaude.json when neither file exists', async () => {
+test('getGlobalClaudeFile: new install returns .claude.json when neither file exists', async () => {
   const { getGlobalClaudeFile } = await importFreshEnvModule()
-  expect(getGlobalClaudeFile()).toBe(join(tempDir, '.openclaude.json'))
+  expect(getGlobalClaudeFile()).toBe(join(tempDir, '.claude.json'))
 })
 
 test('getGlobalClaudeFile: existing user keeps .claude.json when only legacy file exists', async () => {
@@ -54,9 +54,9 @@ test('getGlobalClaudeFile: existing user keeps .claude.json when only legacy fil
   expect(getGlobalClaudeFile()).toBe(join(tempDir, '.claude.json'))
 })
 
-test('getGlobalClaudeFile: migrated user uses .openclaude.json when both files exist', async () => {
+test('getGlobalClaudeFile: migrated user uses .claude.json when both files exist', async () => {
   writeFileSync(join(tempDir, '.claude.json'), '{}')
-  writeFileSync(join(tempDir, '.openclaude.json'), '{}')
+  writeFileSync(join(tempDir, '.claude.json'), '{}')
   const { getGlobalClaudeFile } = await importFreshEnvModule()
-  expect(getGlobalClaudeFile()).toBe(join(tempDir, '.openclaude.json'))
+  expect(getGlobalClaudeFile()).toBe(join(tempDir, '.claude.json'))
 })

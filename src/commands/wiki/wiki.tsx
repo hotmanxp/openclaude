@@ -12,7 +12,7 @@ import { getCwd } from '../../utils/cwd.js'
 function renderHelp(): string {
   return `Usage: /wiki [init|status|ingest <path>]
 
-Manage the OpenClaude project wiki stored in .openclaude/wiki.
+Manage the OpenClaude project wiki stored in .claude/wiki.
 
 Commands:
   /wiki init    Initialize the wiki structure in the current project

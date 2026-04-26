@@ -18,7 +18,7 @@ const { DiffContentProvider, SCHEME: DIFF_SCHEME } = require('./chat/diffControl
 
 const OPENCLAUDE_REPO_URL = 'https://github.com/Gitlawb/openclaude';
 const OPENCLAUDE_SETUP_URL = 'https://github.com/Gitlawb/openclaude/blob/main/README.md#quick-start';
-const PROFILE_FILE_NAME = '.openclaude-profile.json';
+const PROFILE_FILE_NAME = '.claude-profile.json';
 
 function escapeHtml(value) {
   return String(value)
@@ -1126,7 +1126,7 @@ function activate(context) {
   );
 
   const openUiCommand = vscode.commands.registerCommand('openclaude.openControlCenter', async () => {
-    await vscode.commands.executeCommand('workbench.view.extension.openclaude');
+    await vscode.commands.executeCommand('workbench.view.extension.claude');
   });
 
   // ── New chat commands ──

@@ -605,7 +605,7 @@ describe('setActiveProviderProfile', () => {
 
       const result = setActiveProviderProfile('ollama_prof')
       const persisted = JSON.parse(
-        readFileSync(join(tempDir, '.openclaude-profile.json'), 'utf8'),
+        readFileSync(join(tempDir, '.claude-profile.json'), 'utf8'),
       )
 
       expect(result?.id).toBe('ollama_prof')
@@ -643,7 +643,7 @@ describe('setActiveProviderProfile', () => {
 
       const result = setActiveProviderProfile('deepseek_prof')
       const persisted = JSON.parse(
-        readFileSync(join(tempDir, '.openclaude-profile.json'), 'utf8'),
+        readFileSync(join(tempDir, '.claude-profile.json'), 'utf8'),
       )
 
       expect(result?.id).toBe('deepseek_prof')

@@ -31,7 +31,7 @@ MVP runtime trigger wiring:
 
 Default config path:
 
-- `.openclaude/hook-chains.json`
+- `.claude/hook-chains.json`
 
 Override path:
 
