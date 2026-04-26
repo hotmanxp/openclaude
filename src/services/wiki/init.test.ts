@@ -26,10 +26,10 @@ test('initializeWiki creates the expected wiki scaffold', async () => {
 
   expect(result.alreadyExisted).toBe(false)
   expect(result.createdFiles).toEqual([
-    '.opencc/wiki/schema.md',
-    '.opencc/wiki/index.md',
-    '.opencc/wiki/log.md',
-    '.opencc/wiki/pages/architecture.md',
+    '.claude/wiki/schema.md',
+    '.claude/wiki/index.md',
+    '.claude/wiki/log.md',
+    '.claude/wiki/pages/architecture.md',
   ])
   expect(await readFile(paths.schemaFile, 'utf8')).toContain(
     '# OpenCC Wiki Schema',

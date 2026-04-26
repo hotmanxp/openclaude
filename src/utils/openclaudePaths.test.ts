@@ -38,7 +38,7 @@ describe('OpenCC paths', () => {
     ).toBe(join(homedir(), '.claude'))
   })
 
-  test('falls back to ~/.claude when legacy config exists and ~/.openclaude does not', async () => {
+  test('falls back to ~/.claude when legacy config exists and ~/.claude does not', async () => {
     delete process.env.CLAUDE_CONFIG_DIR
     const { resolveClaudeConfigHomeDir } = await importFreshEnvUtils()
 
@@ -64,35 +64,35 @@ describe('OpenCC paths', () => {
     ).toBe('/tmp/custom-openclaude')
   })
 
-  test('project and local settings paths use .opencc', async () => {
+  test('project and local settings paths use .claude', async () => {
     const { getRelativeSettingsFilePathForSource } = await importFreshSettings()
 
     expect(getRelativeSettingsFilePathForSource('projectSettings')).toBe(
-      '.opencc/settings.json',
+      '.claude/settings.json',
     )
     expect(getRelativeSettingsFilePathForSource('localSettings')).toBe(
-      '.opencc/settings.local.json',
+      '.claude/settings.local.json',
     )
   })
 
   test('local installer uses opencc wrapper path', async () => {
-    // Force .openclaude config home so the test doesn't fall back to
-    // ~/.claude when ~/.openclaude doesn't exist on this machine.
-    process.env.CLAUDE_CONFIG_DIR = join(homedir(), '.openclaude')
+    // Force .claude config home so the test doesn't fall back to
+    // ~/.claude when ~/.claude doesn't exist on this machine.
+    process.env.CLAUDE_CONFIG_DIR = join(homedir(), '.claude')
     const { getLocalClaudePath } = await importFreshLocalInstaller()
 
     expect(getLocalClaudePath()).toBe(
-      join(homedir(), '.openclaude', 'local', 'opencc'),
+      join(homedir(), '.claude', 'local', 'opencc'),
     )
   })
 
-  test('local installation detection matches .opencc path', async () => {
+  test('local installation detection matches .claude path', async () => {
     const { isManagedLocalInstallationPath } =
       await importFreshLocalInstaller()
 
     expect(
       isManagedLocalInstallationPath(
-        `${join(homedir(), '.opencc', 'local')}/node_modules/.bin/opencc`,
+        `${join(homedir(), '.claude', 'local')}/node_modules/.bin/opencc`,
       ),
     ).toBe(true)
   })
@@ -113,11 +113,11 @@ describe('OpenCC paths', () => {
 
     expect(
       getCandidateLocalInstallDirs({
-        configHomeDir: join(homedir(), '.openclaude'),
+        configHomeDir: join(homedir(), '.claude'),
         homeDir: homedir(),
       }),
     ).toEqual([
-      join(homedir(), '.openclaude', 'local'),
+      join(homedir(), '.claude', 'local'),
       join(homedir(), '.claude', 'local'),
     ])
   })
