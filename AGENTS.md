@@ -146,3 +146,11 @@ CLAUDE_CODE_USE_OPENAI=1
 OPENAI_BASE_URL=http://localhost:11434/v1
 # No API key needed
 ```
+
+## Testing
+
+```bash
+# Non-interactive testing (when interactive mode is hard to debug)
+node dist/cli.mjs -p "hello"
+node dist/cli.mjs -p "what model are you using"
+```
