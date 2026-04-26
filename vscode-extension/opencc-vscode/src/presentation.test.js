@@ -9,8 +9,8 @@ test('truncateMiddle keeps the profile filename visible', () => {
   const { truncateMiddle } = loadPresentation();
 
   assert.equal(
-    truncateMiddle('/Users/example/projects/opencc/workspace/.opencc-profile.json', 30),
-    '.../.opencc-profile.json',
+    truncateMiddle('/Users/example/projects/opencc/workspace/.claude-profile.json', 30),
+    '.../.claude-profile.json',
   );
 });
 
@@ -18,8 +18,8 @@ test('truncateMiddle keeps the filename visible for Windows-style paths', () => 
   const { truncateMiddle } = loadPresentation();
 
   assert.equal(
-    truncateMiddle('C:\\Users\\example\\opencc\\workspace\\.opencc-profile.json', 30),
-    '...\\.opencc-profile.json',
+    truncateMiddle('C:\\Users\\example\\opencc\\workspace\\.claude-profile.json', 30),
+    '...\\.claude-profile.json',
   );
 });
 
@@ -63,13 +63,13 @@ test('buildActionModel includes workspace-profile action when a profile exists',
 
   const model = buildActionModel({
     canLaunchInWorkspaceRoot: true,
-    workspaceProfilePath: 'C:\\Users\\example\\opencc\\workspace\\.opencc-profile.json',
+    workspaceProfilePath: 'C:\\Users\\example\\opencc\\workspace\\.claude-profile.json',
   });
 
   assert.deepEqual(model.openProfile, {
     id: 'openProfile',
     label: 'Open Workspace Profile',
-    detail: 'Inspect ...\\.opencc-profile.json',
+    detail: 'Inspect ...\\.claude-profile.json',
     tone: 'neutral',
     disabled: false,
   });
@@ -88,8 +88,8 @@ function createStatus(overrides = {}) {
     launchCwdLabel: '/workspace/opencc',
     canLaunchInWorkspaceRoot: true,
     profileStatusLabel: 'Found',
-    profileStatusHint: '/workspace/opencc/.opencc-profile.json',
-    workspaceProfilePath: '/workspace/opencc/.opencc-profile.json',
+    profileStatusHint: '/workspace/opencc/.claude-profile.json',
+    workspaceProfilePath: '/workspace/opencc/.claude-profile.json',
     providerState: {
       label: 'Codex',
       detail: 'gpt-5.4',
@@ -173,7 +173,7 @@ test('buildControlCenterViewModel uses a concise project summary before full pat
           key: 'profileStatus',
           label: 'Workspace profile',
           summary: 'Found',
-          detail: '/workspace/opencc/.opencc-profile.json',
+          detail: '/workspace/opencc/.claude-profile.json',
           tone: 'neutral',
         },
       ],

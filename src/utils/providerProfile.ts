@@ -12,7 +12,7 @@ import {
 import { getOllamaChatBaseUrl } from './providerDiscovery.ts'
 import { isEnvTruthy } from './envUtils.js'
 
-export const PROFILE_FILE_NAME = '.opencc-profile.json'
+export const PROFILE_FILE_NAME = '.claude-profile.json'
 
 const PROFILE_ENV_KEYS = [
   'CLAUDE_CODE_USE_OPENAI',

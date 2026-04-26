@@ -15,8 +15,8 @@ function createStatus(overrides = {}) {
     launchCwdLabel: '/workspace/opencc/very/long/path/example-project',
     canLaunchInWorkspaceRoot: true,
     profileStatusLabel: 'Found',
-    profileStatusHint: '/workspace/opencc/very/long/path/example-project/.opencc-profile.json',
-    workspaceProfilePath: '/workspace/opencc/very/long/path/example-project/.opencc-profile.json',
+    profileStatusHint: '/workspace/opencc/very/long/path/example-project/.claude-profile.json',
+    workspaceProfilePath: '/workspace/opencc/very/long/path/example-project/.claude-profile.json',
     providerState: {
       label: 'Codex',
       detail: 'gpt-5.4',

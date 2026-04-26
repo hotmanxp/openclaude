@@ -15,7 +15,7 @@ const { buildControlCenterViewModel } = require('./presentation');
 
 const OPENCC_REPO_URL = 'https://github.com/Gitlawb/opencc';
 const OPENCC_SETUP_URL = 'https://github.com/Gitlawb/opencc/blob/main/README.md#quick-start';
-const PROFILE_FILE_NAME = '.opencc-profile.json';
+const PROFILE_FILE_NAME = '.claude-profile.json';
 
 function escapeHtml(value) {
   return String(value)
