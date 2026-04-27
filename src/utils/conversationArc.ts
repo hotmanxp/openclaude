@@ -201,9 +201,9 @@ function extractFactsAutomatically(content: string): void {
     }
   }
 
-  // B. Detect Technical Concepts (Hyphenated-Terms, PascalCase, camelCase)
+  // B. Detect Technical Concepts (Hyphenated-Terms, PascalCase)
   // Now also capturing lowercase hyphenated terms (worker-node-49)
-  const technicalMatches = content.matchAll(/\b([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+|[A-Z][a-z]+[A-Z][\w]*|[a-z]+[A-Z][\w]*)\b/g)
+  const technicalMatches = content.matchAll(/\b([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+|[A-Z][a-z]+[A-Z][\w]*)\b/g)
   for (const match of technicalMatches) {
     const word = match[1]
     if (!['The', 'This', 'That', 'With', 'From', 'Here', 'There'].includes(word)) {
@@ -229,10 +229,6 @@ function extractFactsAutomatically(content: string): void {
       addGlobalRule(match[0].trim())
     }
     }
-
-    // E. Direct Tech detection for UI/State
-    if (content.toLowerCase().includes('redux')) addGlobalEntity('technology', 'Redux', { category: 'state_management' })
-    if (content.toLowerCase().includes('react')) addGlobalEntity('technology', 'React', { category: 'frontend' })
 
     // F. Project File Signatures
     if (content.match(/\b([\w.-]+\.(?:xml|json|yaml|yml|gradle|toml|bazel))\b/i)) {
