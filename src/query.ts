@@ -77,6 +77,7 @@ import {
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
+  getDefaultMainLoopModelSetting,
   getRuntimeMainLoopModel,
   renderModelName,
 } from './utils/model/model.js'
@@ -86,7 +87,6 @@ import {
   tokenCountWithEstimation,
 } from './utils/tokens.js'
 import { ESCALATED_MAX_TOKENS } from './utils/context.js'
-import { getGlobalConfig } from './utils/config.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
@@ -619,9 +619,13 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
+    const appStateMainLoopModel =
+      appState.mainLoopModelForSession ??
+      appState.mainLoopModel ??
+      getDefaultMainLoopModelSetting()
     let currentModel = getRuntimeMainLoopModel({
       permissionMode,
-      mainLoopModel: toolUseContext.options.mainLoopModel,
+      mainLoopModel: appStateMainLoopModel,
       exceeds200kTokens:
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
@@ -1564,9 +1568,7 @@ async function* queryLoop(
       const { addMessageToTurn, addToolCallToTurn } = await import(
         './utils/multiTurnContext.js'
       )
-      for (const msg of assistantMessages) {
-        addMessageToTurn(msg)
-      }
+      addMessageToTurn(assistantMessage)
       for (const toolUse of toolUseBlocks) {
         addToolCallToTurn({
           id: toolUse.id,
@@ -1583,7 +1585,7 @@ async function* queryLoop(
       getGlobalConfig().knowledgeGraphEnabled
     ) {
       const { updateArcPhase } = await import('./utils/conversationArc.js')
-      updateArcPhase(assistantMessages)
+      updateArcPhase([assistantMessage])
     }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
@@ -1723,7 +1725,7 @@ async function* queryLoop(
     })
 
     // Get queued commands snapshot before processing attachments.
-    // These will be sent as attachments so Open CC can respond to them in the current turn.
+    // These will be sent as attachments so Claude can respond to them in the current turn.
     //
     // Drain pending notifications. LocalShellTask completions are 'next'
     // (when MONITOR_TOOL is on) and drain without Sleep. Other task types
