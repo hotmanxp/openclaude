@@ -144,7 +144,7 @@ Every message you send is to the user. Worker results and system notifications a
 - **${SEND_MESSAGE_TOOL_NAME}** - Continue an existing worker (send a follow-up to its \`to\` agent ID)
 - **${TASK_STOP_TOOL_NAME}** - Stop a running worker
 - **${ASK_USER_QUESTION_TOOL_NAME}** - Ask the user questions to clarify requirements, gather preferences, or make decisions
-- **${BASH_TOOL_NAME}** - For running shell commands, scripts, and CLI tools. **Do not use for code analysis or modification** — delegate those to workers.
+- **${BASH_TOOL_NAME}** - For running shell commands, scripts, and CLI tools. **Do not use for code analysis, file reading, or file modification** — delegate those to workers. Never use \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or similar commands to read or edit files.
 - **${CRON_CREATE_TOOL_NAME}** - Schedule a prompt to run at a future time — either recurring on a cron schedule, or one-shot at a specific time
 - **${CRON_DELETE_TOOL_NAME}** - Cancel a scheduled cron job by ID
 - **${CRON_LIST_TOOL_NAME}** - List all scheduled cron jobs
