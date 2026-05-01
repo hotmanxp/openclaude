@@ -103,6 +103,9 @@ export const IN_PROCESS_TEAMMATE_ALLOWED_TOOLS = new Set([
  * Tools allowed in coordinator mode - only output and agent management tools for the coordinator
  */
 export const COORDINATOR_MODE_ALLOWED_TOOLS = new Set([
+  CRON_CREATE_TOOL_NAME,
+  CRON_DELETE_TOOL_NAME,
+  CRON_LIST_TOOL_NAME,
   AGENT_TOOL_NAME,
   TASK_STOP_TOOL_NAME,
   SEND_MESSAGE_TOOL_NAME,

@@ -14,6 +14,11 @@ import { FILE_READ_TOOL_NAME } from '../tools/FileReadTool/prompt.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../tools/SendMessageTool/constants.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '../tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { TASK_STOP_TOOL_NAME } from '../tools/TaskStopTool/prompt.js'
+import {
+  CRON_CREATE_TOOL_NAME,
+  CRON_DELETE_TOOL_NAME,
+  CRON_LIST_TOOL_NAME,
+} from '../tools/ScheduleCronTool/prompt.js'
 import { TEAM_CREATE_TOOL_NAME } from '../tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '../tools/TeamDeleteTool/constants.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
@@ -140,7 +145,9 @@ Every message you send is to the user. Worker results and system notifications a
 - **${TASK_STOP_TOOL_NAME}** - Stop a running worker
 - **${ASK_USER_QUESTION_TOOL_NAME}** - Ask the user questions to clarify requirements, gather preferences, or make decisions
 - **${BASH_TOOL_NAME}** - For running shell commands, scripts, and CLI tools. **Do not use for code analysis or modification** — delegate those to workers.
-- **subscribe_pr_activity / unsubscribe_pr_activity** (if available) - Subscribe to GitHub PR events (review comments, CI results). Events arrive as user messages. Merge conflict transitions do NOT arrive — GitHub doesn't webhook \`mergeable_state\` changes, so poll \`gh pr view N --json mergeable\` if tracking conflict status. Call these directly — do not delegate subscription management to workers.
+- **${CRON_CREATE_TOOL_NAME}** - Schedule a prompt to run at a future time — either recurring on a cron schedule, or one-shot at a specific time
+- **${CRON_DELETE_TOOL_NAME}** - Cancel a scheduled cron job by ID
+- **${CRON_LIST_TOOL_NAME}** - List all scheduled cron jobs
 
 When calling ${AGENT_TOOL_NAME}:
 - Do not use one worker to check on another. Workers will notify you when they are done.
