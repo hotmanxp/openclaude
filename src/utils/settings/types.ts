@@ -744,6 +744,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'When true, fast mode is enabled. When absent or false, fast mode is off.',
         ),
+      coordinatorMode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable coordinator mode for orchestrating multi-worker tasks. Equivalent to setting CLAUDE_CODE_COORDINATOR_MODE=1 environment variable.',
+        ),
       fastModePerSessionOptIn: z
         .boolean()
         .optional()
