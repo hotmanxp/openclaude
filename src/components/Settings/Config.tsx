@@ -983,6 +983,22 @@ export function Config({
       onChange() {}
     }];
   })() : []),
+  // Coordinator mode (only shown when COORDINATOR_MODE feature flag is enabled)
+  ...(feature('COORDINATOR_MODE') ? [{
+    id: 'coordinatorMode',
+    label: 'Coordinator mode',
+    value: settingsData?.coordinatorMode ?? false,
+    type: 'boolean' as const,
+    onChange(coordinatorMode: boolean) {
+      updateSettingsForSource('userSettings', {
+        coordinatorMode
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        coordinatorMode
+      }));
+    }
+  }] : []),
   // Remote at startup toggle — gated on build flag + GrowthBook + policy
   ...(feature('BRIDGE_MODE') && isBridgeEnabled() ? [{
     id: 'remoteControlAtStartup',
