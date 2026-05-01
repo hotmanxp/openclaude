@@ -5,6 +5,7 @@ const originalEnv = {
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_API_BASE: process.env.OPENAI_API_BASE,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  XAI_API_KEY: process.env.XAI_API_KEY,
 }
 
 afterEach(() => {
@@ -12,6 +13,7 @@ afterEach(() => {
   process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
   process.env.OPENAI_API_BASE = originalEnv.OPENAI_API_BASE
   process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
+  process.env.XAI_API_KEY = originalEnv.XAI_API_KEY
 })
 
 async function importFreshProvidersModule() {
@@ -23,6 +25,7 @@ function clearProviderEnv(): void {
   delete process.env.OPENAI_BASE_URL
   delete process.env.OPENAI_API_BASE
   delete process.env.OPENAI_MODEL
+  delete process.env.XAI_API_KEY
 }
 
 test('first-party provider keeps Anthropic account setup flow enabled', () => {

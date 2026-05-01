@@ -9,12 +9,22 @@ const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  OPENAI_API_FORMAT: process.env.OPENAI_API_FORMAT,
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key]
+  } else {
+    process.env[key] = value
+  }
 }
 
 afterEach(() => {
-  process.env.CLAUDE_CODE_USE_OPENAI = originalEnv.CLAUDE_CODE_USE_OPENAI
-  process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
-  process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
+  restoreEnv('CLAUDE_CODE_USE_OPENAI', originalEnv.CLAUDE_CODE_USE_OPENAI)
+  restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
+  restoreEnv('OPENAI_MODEL', originalEnv.OPENAI_MODEL)
+  restoreEnv('OPENAI_API_FORMAT', originalEnv.OPENAI_API_FORMAT)
 })
 
 test('treats localhost endpoints as local', () => {

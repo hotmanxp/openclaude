@@ -1140,14 +1140,12 @@ export async function performMCPOAuthFlow(
             return
           }
 
-          if (code) {
-            res.writeHead(200, { 'Content-Type': 'text/html' })
-            res.end(
-              `<h1>Authentication Successful</h1><p>You can close this window. Return to Open CC.</p>`,
-            )
-            cleanup()
-            resolveOnce(code)
-          }
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(
+            `<h1>Authentication Successful</h1><p>You can close this window. Return to OpenCC.</p>`,
+          )
+          cleanup()
+          resolveOnce(result.code)
         }
       })
 

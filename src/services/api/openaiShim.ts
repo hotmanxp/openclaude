@@ -11,6 +11,10 @@
  * Environment variables:
  *   CLAUDE_CODE_USE_OPENAI=1          — enable this provider
  *   OPENAI_API_KEY=sk-...             — API key (optional for local models)
+ *   OPENAI_AUTH_HEADER=api-key        — optional custom auth header name
+ *   OPENAI_AUTH_HEADER_VALUE=...      — optional custom auth header value
+ *   OPENAI_AUTH_SCHEME=bearer|raw     — auth scheme for Authorization/custom header handling
+ *   OPENAI_API_FORMAT=chat_completions|responses — request format for compatible APIs
  *   OPENAI_BASE_URL=http://...        — base URL (default: https://api.openai.com/v1)
  *   OPENAI_MODEL=gpt-4o              — default model override
  */
@@ -39,15 +43,22 @@ import {
 } from './openaiErrorClassification.js'
 import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
+import { isZaiBaseUrl } from '../../utils/zaiProvider.js'
 import {
   normalizeToolArguments,
   hasToolFieldMapping,
 } from './toolArgumentNormalization.js'
 import { logApiCallStart, logApiCallEnd } from '../../utils/requestLogging.js'
-import { createStreamState, processStreamChunk, getStreamStats } from '../../utils/streamingOptimizer.js'
+import {
+  createStreamState,
+  processStreamChunk,
+  getStreamStats,
+} from '../../utils/streamingOptimizer.js'
+import { stableStringify } from '../../utils/stableStringify.js'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
+  OPENAI_AUTH_HEADER_VALUE: string
   CODEX_API_KEY: string
   GEMINI_API_KEY: string
   GOOGLE_API_KEY: string
@@ -1424,6 +1435,72 @@ class OpenAIShimMessages {
       }
     }
 
+    let omitResponsesTools = false
+    const buildResponsesBody = (): Record<string, unknown> => {
+      const responsesBody: Record<string, unknown> = {
+        model: request.resolvedModel,
+        input: convertAnthropicMessagesToResponsesInput(
+          params.messages as Array<{
+            role?: string
+            message?: { role?: string; content?: unknown }
+            content?: unknown
+          }>,
+        ),
+        stream: params.stream ?? false,
+        store: false,
+      }
+
+      if (
+        isMistral ||
+        isGeminiMode() ||
+        hasGeminiApiHost(request.baseUrl) ||
+        isMoonshot ||
+        isDeepSeek ||
+        isZai
+      ) {
+        delete responsesBody.store
+      }
+
+      if (!Array.isArray(responsesBody.input) || responsesBody.input.length === 0) {
+        responsesBody.input = [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '' }],
+          },
+        ]
+      }
+
+      const systemText = convertSystemPrompt(params.system)
+      if (systemText) {
+        responsesBody.instructions = systemText
+      }
+
+      if (body.max_tokens !== undefined) {
+        responsesBody.max_output_tokens = body.max_tokens
+      } else if (body.max_completion_tokens !== undefined) {
+        responsesBody.max_output_tokens = body.max_completion_tokens
+      }
+
+      if (params.temperature !== undefined) responsesBody.temperature = params.temperature
+      if (params.top_p !== undefined) responsesBody.top_p = params.top_p
+
+      if (!omitResponsesTools && params.tools && params.tools.length > 0) {
+        const convertedTools = convertToolsToResponsesTools(
+          params.tools as Array<{
+            name?: string
+            description?: string
+            input_schema?: Record<string, unknown>
+          }>,
+        )
+        if (convertedTools.length > 0) {
+          responsesBody.tools = convertedTools
+        }
+      }
+
+      return responsesBody
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...this.defaultHeaders,
@@ -1436,6 +1513,15 @@ class OpenAIShimMessages {
       this.providerOverride?.apiKey ??
       process.env.OPENAI_API_KEY ??
       (isMiniMax ? process.env.MINIMAX_API_KEY : '')
+    const configuredAuthHeaderValue = process.env.OPENAI_AUTH_HEADER_VALUE?.trim()
+    const customAuthHeader = process.env.OPENAI_AUTH_HEADER?.trim()
+    const hasCustomAuthHeader = Boolean(
+      customAuthHeader &&
+      /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(customAuthHeader),
+    )
+    const authValue = hasCustomAuthHeader
+      ? configuredAuthHeaderValue || apiKey
+      : apiKey
     // Detect Azure endpoints by hostname (not raw URL) to prevent bypass via
     // path segments like https://evil.com/cognitiveservices.azure.com/
     let isAzure = false
@@ -1450,7 +1536,7 @@ class OpenAIShimMessages {
         // Azure uses api-key header instead of Bearer token
         headers['api-key'] = apiKey
       } else {
-        headers.Authorization = `Bearer ${apiKey}`
+        headers.Authorization = `Bearer ${authValue}`
       }
     } else if (isGemini) {
       const geminiCredential = await resolveGeminiCredential(process.env)
@@ -1490,8 +1576,13 @@ class OpenAIShimMessages {
       ? getLocalProviderRetryBaseUrls(request.baseUrl)
       : []
 
+    const buildRequestUrl = (baseUrl: string): string =>
+      request.transport === 'responses'
+        ? `${baseUrl}/responses`
+        : buildChatCompletionsUrl(baseUrl)
+
     let activeBaseUrl = request.baseUrl
-    let chatCompletionsUrl = buildChatCompletionsUrl(activeBaseUrl)
+    let requestUrl = buildRequestUrl(activeBaseUrl)
     const attemptedLocalBaseUrls = new Set<string>([activeBaseUrl])
     let didRetryWithoutTools = false
 
@@ -1503,13 +1594,13 @@ class OpenAIShimMessages {
           continue
         }
 
-        const previousUrl = chatCompletionsUrl
+        const previousUrl = requestUrl
         attemptedLocalBaseUrls.add(candidateBaseUrl)
         activeBaseUrl = candidateBaseUrl
-        chatCompletionsUrl = buildChatCompletionsUrl(activeBaseUrl)
+        requestUrl = buildRequestUrl(activeBaseUrl)
 
         logForDebugging(
-          `[OpenAIShim] self-heal retry reason=${reason} method=POST from=${redactUrlForDiagnostics(previousUrl)} to=${redactUrlForDiagnostics(chatCompletionsUrl)} model=${request.resolvedModel}`,
+          `[OpenAIShim] self-heal retry reason=${reason} method=POST from=${redactUrlForDiagnostics(previousUrl)} to=${redactUrlForDiagnostics(requestUrl)} model=${request.resolvedModel}`,
           { level: 'warn' },
         )
 
@@ -1519,10 +1610,19 @@ class OpenAIShimMessages {
       return false
     }
 
-    let serializedBody = JSON.stringify(body)
+    // WHY: byte-identity required for implicit prefix caching in
+    // OpenAI/Kimi/DeepSeek. stableStringify sorts object keys at every
+    // depth so spurious insertion-order differences across rebuilds of
+    // `body` (spread-merge, conditional assignments above) don't bust
+    // the provider's prefix hash.
+    let serializedBody = stableStringify(
+      request.transport === 'responses' ? buildResponsesBody() : body,
+    )
 
     const refreshSerializedBody = (): void => {
-      serializedBody = JSON.stringify(body)
+      serializedBody = stableStringify(
+        request.transport === 'responses' ? buildResponsesBody() : body,
+      )
     }
 
     const buildFetchInit = () => ({
@@ -1617,7 +1717,7 @@ class OpenAIShimMessages {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         response = await fetchWithProxyRetry(
-          chatCompletionsUrl,
+          requestUrl,
           buildFetchInit(),
         )
       } catch (error) {
@@ -1636,7 +1736,7 @@ class OpenAIShimMessages {
         }
 
         const failure = classifyOpenAINetworkFailure(error, {
-          url: chatCompletionsUrl,
+          url: requestUrl,
         })
 
         if (
@@ -1647,7 +1747,7 @@ class OpenAIShimMessages {
           continue
         }
 
-        throwClassifiedTransportError(error, chatCompletionsUrl, failure)
+        throwClassifiedTransportError(error, requestUrl, failure)
       }
 
       if (response.ok) {
@@ -1687,8 +1787,9 @@ class OpenAIShimMessages {
       }
 
       const hasToolsPayload =
-        Array.isArray(body.tools) &&
-        body.tools.length > 0
+        request.transport === 'responses'
+          ? Array.isArray(params.tools) && params.tools.length > 0
+          : Array.isArray(body.tools) && body.tools.length > 0
 
       if (
         !didRetryWithoutTools &&
@@ -1701,10 +1802,11 @@ class OpenAIShimMessages {
         didRetryWithoutTools = true
         delete body.tools
         delete body.tool_choice
+        omitResponsesTools = true
         refreshSerializedBody()
 
         logForDebugging(
-          `[OpenAIShim] self-heal retry reason=tool_call_incompatible mode=toolless method=POST url=${redactUrlForDiagnostics(chatCompletionsUrl)} model=${request.resolvedModel}`,
+          `[OpenAIShim] self-heal retry reason=tool_call_incompatible mode=toolless method=POST url=${redactUrlForDiagnostics(requestUrl)} model=${request.resolvedModel}`,
           { level: 'warn' },
         )
         continue
@@ -1717,7 +1819,7 @@ class OpenAIShimMessages {
         errorBody,
         errorResponse,
         response.headers as unknown as Headers,
-        chatCompletionsUrl,
+        requestUrl,
         rateHint,
         failure,
       )

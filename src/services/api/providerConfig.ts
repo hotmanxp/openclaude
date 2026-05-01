@@ -84,7 +84,9 @@ function isIP(hostname: string): 0 | 4 | 6 {
 
 export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 
-export type ProviderTransport = 'chat_completions'
+export type ProviderTransport = 'chat_completions' | 'responses' | 'codex_responses'
+
+export type OpenAICompatibleApiFormat = 'chat_completions' | 'responses'
 
 export type ResolvedProviderRequest = {
   transport: ProviderTransport
@@ -178,3 +180,28 @@ export function isCodexBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   return /chatgpt\.com\/backend-api\/codex/i.test(baseUrl)
 }
+
+export function parseOpenAICompatibleApiFormat(
+  value: string | undefined,
+): OpenAICompatibleApiFormat | undefined {
+  if (!value) return undefined
+  const normalized = value.trim().toLowerCase().replace(/[- ]+/g, '_')
+  if (
+    normalized === 'responses' ||
+    normalized === 'response' ||
+    normalized === 'responses_api'
+  ) {
+    return 'responses'
+  }
+  if (
+    normalized === 'chat_completions' ||
+    normalized === 'chat_completion' ||
+    normalized === 'completions' ||
+    normalized === 'completion' ||
+    normalized === 'chat'
+  ) {
+    return 'chat_completions'
+  }
+  return undefined
+}
+

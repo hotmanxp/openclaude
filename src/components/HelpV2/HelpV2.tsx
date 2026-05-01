@@ -138,13 +138,19 @@ export function HelpV2(t0) {
   const t5 = insideModal ? undefined : maxHeight;
   let t6;
   if ($[31] !== tabs) {
-    t6 = <Tabs title={false ? "/help" : undefined} color="professionalBlue" defaultTab="general">{tabs}</Tabs>;
+    t6 = <Tabs title={false ? "/help" : `OpenClaude v${MACRO.VERSION}`} color="professionalBlue" defaultTab="general">{tabs}</Tabs>;
     $[31] = tabs;
     $[32] = t6;
   } else {
     t6 = $[32];
   }
-  let t7 = null;
+  let t7;
+  if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
+    t7 = <Box marginTop={1}><Text>For more help:{" "}<Link url="https://github.com/Gitlawb/openclaude" /></Text></Box>;
+    $[33] = t7;
+  } else {
+    t7 = $[33];
+  }
   let t8;
   if ($[34] !== dismissShortcut || $[35] !== exitState.keyName || $[36] !== exitState.pending) {
     t8 = <Box marginTop={1}><Text dimColor={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Text italic={true}>{dismissShortcut} to cancel</Text>}</Text></Box>;

@@ -18,6 +18,10 @@ const PROFILE_ENV_KEYS = [
   'CLAUDE_CODE_USE_OPENAI',
   'OPENAI_BASE_URL',
   'OPENAI_MODEL',
+  'OPENAI_API_FORMAT',
+  'OPENAI_AUTH_HEADER',
+  'OPENAI_AUTH_SCHEME',
+  'OPENAI_AUTH_HEADER_VALUE',
   'OPENAI_API_KEY',
 ] as const
 
@@ -30,6 +34,10 @@ export type ProviderProfile = 'openai' | 'ollama' | 'atomic-chat'
 export type ProfileEnv = {
   OPENAI_BASE_URL?: string
   OPENAI_MODEL?: string
+  OPENAI_API_FORMAT?: 'chat_completions' | 'responses'
+  OPENAI_AUTH_HEADER?: string
+  OPENAI_AUTH_SCHEME?: 'bearer' | 'raw'
+  OPENAI_AUTH_HEADER_VALUE?: string
   OPENAI_API_KEY?: string
 }
 
@@ -186,11 +194,18 @@ export function buildOpenAIProfileEnv(options: {
   model?: string | null
   baseUrl?: string | null
   apiKey?: string | null
+  apiFormat?: 'chat_completions' | 'responses' | null
+  authHeader?: string | null
+  authScheme?: 'bearer' | 'raw' | null
+  authHeaderValue?: string | null
   processEnv?: NodeJS.ProcessEnv
 }): ProfileEnv | null {
   const processEnv = options.processEnv ?? process.env
   const key = sanitizeApiKey(options.apiKey ?? processEnv.OPENAI_API_KEY)
-  if (!key) {
+  const authHeaderValue = sanitizeApiKey(
+    options.authHeaderValue ?? processEnv.OPENAI_AUTH_HEADER_VALUE,
+  )
+  if (!key && !authHeaderValue) {
     return null
   }
 
@@ -209,8 +224,9 @@ export function buildOpenAIProfileEnv(options: {
     model: shellOpenAIModel,
     baseUrl: shellOpenAIBaseUrl,
     fallbackModel: defaultModel,
+    apiFormat: processEnv.OPENAI_API_FORMAT,
   })
-  const useShellOpenAIConfig = shellOpenAIRequest.transport === 'chat_completions'
+  const useShellOpenAIConfig = shellOpenAIRequest.transport !== 'codex_responses'
 
   return {
     OPENAI_BASE_URL:
@@ -229,7 +245,11 @@ export function buildOpenAIProfileEnv(options: {
       ) ||
       (useShellOpenAIConfig ? shellOpenAIModel : undefined) ||
       defaultModel,
-    OPENAI_API_KEY: key,
+    ...(options.apiFormat ? { OPENAI_API_FORMAT: options.apiFormat } : {}),
+    ...(options.authHeader ? { OPENAI_AUTH_HEADER: options.authHeader } : {}),
+    ...(options.authScheme ? { OPENAI_AUTH_SCHEME: options.authScheme } : {}),
+    ...(authHeaderValue ? { OPENAI_AUTH_HEADER_VALUE: authHeaderValue } : {}),
+    ...(key ? { OPENAI_API_KEY: key } : {}),
   }
 }
 
@@ -380,16 +400,18 @@ export async function buildLaunchEnv(options: {
     model: shellOpenAIModel,
     baseUrl: shellOpenAIBaseUrl,
     fallbackModel: defaultOpenAIModel,
+    apiFormat: processEnv.OPENAI_API_FORMAT,
   })
   const persistedOpenAIRequest = resolveProviderRequest({
     model: persistedOpenAIModel,
     baseUrl: persistedOpenAIBaseUrl,
     fallbackModel: defaultOpenAIModel,
+    apiFormat: persistedOpenAIApiFormat,
   })
-  const useShellOpenAIConfig = shellOpenAIRequest.transport === 'chat_completions'
+  const useShellOpenAIConfig = shellOpenAIRequest.transport !== 'codex_responses'
   const usePersistedOpenAIConfig =
     (!persistedOpenAIModel && !persistedOpenAIBaseUrl) ||
-    persistedOpenAIRequest.transport === 'chat_completions'
+    persistedOpenAIRequest.transport !== 'codex_responses'
 
   env.OPENAI_BASE_URL =
     (useShellOpenAIConfig ? shellOpenAIBaseUrl : undefined) ||
