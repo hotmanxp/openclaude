@@ -139,6 +139,7 @@ Every message you send is to the user. Worker results and system notifications a
 - **${SEND_MESSAGE_TOOL_NAME}** - Continue an existing worker (send a follow-up to its \`to\` agent ID)
 - **${TASK_STOP_TOOL_NAME}** - Stop a running worker
 - **${ASK_USER_QUESTION_TOOL_NAME}** - Ask the user questions to clarify requirements, gather preferences, or make decisions
+- **${BASH_TOOL_NAME}** - For running shell commands, scripts, and CLI tools. **Do not use for code analysis or modification** — delegate those to workers.
 - **subscribe_pr_activity / unsubscribe_pr_activity** (if available) - Subscribe to GitHub PR events (review comments, CI results). Events arrive as user messages. Merge conflict transitions do NOT arrive — GitHub doesn't webhook \`mergeable_state\` changes, so poll \`gh pr view N --json mergeable\` if tracking conflict status. Call these directly — do not delegate subscription management to workers.
 
 When calling ${AGENT_TOOL_NAME}:
