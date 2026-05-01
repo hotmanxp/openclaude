@@ -6,6 +6,7 @@ import {
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
+import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
@@ -57,13 +58,7 @@ export function buildEffectiveSystemPrompt({
     return asSystemPrompt([overrideSystemPrompt])
   }
   // Coordinator mode: use coordinator prompt instead of default
-  // Use inline env check instead of coordinatorModule to avoid circular
-  // dependency issues during test module loading.
-  if (
-    feature('COORDINATOR_MODE') &&
-    isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE) &&
-    !mainThreadAgentDefinition
-  ) {
+  if (isCoordinatorMode() && !mainThreadAgentDefinition) {
     // Lazy require to avoid circular dependency at module load time
     const { getCoordinatorSystemPrompt } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports

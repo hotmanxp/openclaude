@@ -1,4 +1,5 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
 import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
@@ -23,7 +24,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
   }
 
   // Enable worker agent via env var in opencc
-  if (isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)) {
+  if (isCoordinatorMode()) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { getCoordinatorAgents } =
       require('../../coordinator/workerAgent.js') as typeof import('../../coordinator/workerAgent.js')
