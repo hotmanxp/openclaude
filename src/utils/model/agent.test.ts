@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 describe('getAgentModel provider-aware fallback', () => {

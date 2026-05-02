@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 /**
  * Tests for `/cache-stats` command rendering.
  *

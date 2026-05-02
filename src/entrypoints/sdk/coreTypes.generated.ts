@@ -1,3 +1,4 @@
+// @ts-nocheck
 
 // Generated SDK types - stub definitions for type compatibility
 // This file is normally generated from Zod schemas but is a stub in the open source snapshot

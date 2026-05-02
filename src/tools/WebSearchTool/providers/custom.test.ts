@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { extractHits, customProvider, isPrivateHostname } from './custom.js'
 

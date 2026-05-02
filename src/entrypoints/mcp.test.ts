@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, it, expect, mock } from 'bun:test'
 import { getCombinedTools, loadReexposedMcpTools } from './mcp.js'
 import type { Tool as InternalTool } from '../Tool.js'

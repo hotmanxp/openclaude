@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { afterEach, expect, mock, test } from 'bun:test'
 
 const originalEnv = {

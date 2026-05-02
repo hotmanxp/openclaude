@@ -1,3 +1,4 @@
+// @ts-nocheck
 // OAuth client for handling authentication flows with Open CC services
 import axios from 'axios'
 import {

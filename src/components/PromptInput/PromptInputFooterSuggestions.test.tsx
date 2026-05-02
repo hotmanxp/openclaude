@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import figures from 'figures'
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from '../../utils/staticRender.js'

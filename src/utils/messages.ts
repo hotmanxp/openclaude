@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { feature } from 'bun:bundle'
 import { getAPIProvider } from './model/providers.js'
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'

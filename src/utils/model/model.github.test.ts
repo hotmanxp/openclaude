@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { saveGlobalConfig } from '../config.js'

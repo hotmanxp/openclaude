@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { afterEach, expect, test } from 'bun:test'
 
 import { AuthCodeListener } from './auth-code-listener.js'

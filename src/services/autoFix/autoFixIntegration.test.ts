@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, expect, test } from 'bun:test'
 import { getAutoFixConfig } from './autoFixConfig.js'
 import { shouldRunAutoFix, buildAutoFixContext } from './autoFixHook.js'

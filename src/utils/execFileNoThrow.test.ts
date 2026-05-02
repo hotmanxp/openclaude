@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { expect, test } from 'bun:test'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

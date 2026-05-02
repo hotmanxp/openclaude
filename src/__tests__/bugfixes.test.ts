@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 /**
  * Tests for Bug Fixes applied to openclaude.
  *

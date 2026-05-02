@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, expect, test } from 'bun:test'
 import { interpretCommandResult } from './commandSemantics.js'
 

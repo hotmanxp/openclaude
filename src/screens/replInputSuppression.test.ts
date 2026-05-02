@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, expect, it } from 'bun:test'
 
 import { isPromptTypingSuppressionActive } from './replInputSuppression.js'

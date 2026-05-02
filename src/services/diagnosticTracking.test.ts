@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { DiagnosticTrackingService } from './diagnosticTracking.js'
 import type { MCPServerConnection } from './mcp/types.js'

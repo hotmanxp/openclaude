@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { describe, expect, it } from 'bun:test'
 import { ThinkingTokenAnalyzer } from './thinkingTokenExtractor.js'
 

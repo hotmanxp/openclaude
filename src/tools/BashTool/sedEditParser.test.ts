@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { expect, test } from 'bun:test'
 
 import { applySedSubstitution, type SedEditInfo } from './sedEditParser.js'

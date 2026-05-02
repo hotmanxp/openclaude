@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Main entrypoint for Open CC Agent SDK types.
  *

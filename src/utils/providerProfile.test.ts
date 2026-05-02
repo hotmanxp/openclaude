@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

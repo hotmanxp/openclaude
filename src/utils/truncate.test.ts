@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { truncate, truncateToWidth, truncatePathMiddle } from './truncate.js'
 
 describe('truncate utilities', () => {

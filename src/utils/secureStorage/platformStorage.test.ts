@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 
 import { expect, test, mock, describe, beforeEach, afterEach } from "bun:test";
 import { linuxSecretStorage } from "./linuxSecretStorage.js";

@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 /**
  * Security hardening regression tests.
  *

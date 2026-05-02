@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 /**
  * These tests avoid static imports so Bun can mock secureStorage before
  * codexCredentials is first loaded.

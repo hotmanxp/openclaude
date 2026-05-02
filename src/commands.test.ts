@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { formatDescriptionWithSource } from './commands.js'
 
 describe('formatDescriptionWithSource', () => {

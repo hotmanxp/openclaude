@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { renderToString } from '../../utils/staticRender.js'

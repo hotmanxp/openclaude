@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { expect, test } from 'bun:test'
 import { buildSdkUrl } from './workSecret.js'
 

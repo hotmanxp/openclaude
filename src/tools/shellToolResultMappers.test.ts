@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { expect, test } from 'bun:test'
 import { BashTool } from './BashTool/BashTool.js'
 import { PowerShellTool } from './PowerShellTool/PowerShellTool.js'

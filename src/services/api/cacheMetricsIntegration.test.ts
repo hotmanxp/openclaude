@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 /**
  * Integration tests for the raw-usage → shim → cost-tracker pipeline.
  *

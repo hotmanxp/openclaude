@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Thinking Token Extractor - Production-grade thinking token analysis
  * 

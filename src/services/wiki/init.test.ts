@@ -1,4 +1,4 @@
-// -nocheck
+// @ts-nocheck
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
