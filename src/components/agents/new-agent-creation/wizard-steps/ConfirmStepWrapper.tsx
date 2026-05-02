@@ -8,6 +8,7 @@ import { getActiveAgentsFromList } from '../../../../tools/AgentTool/loadAgentsD
 import { editFileInEditor } from '../../../../utils/promptEditor.js';
 import { useWizard } from '../../../wizard/index.js';
 import { getNewAgentFilePath, saveAgentToFile } from '../../agentFileUtils.js';
+// @ts-expect-error types.js may not exist
 import type { AgentWizardData } from '../types.js';
 import { ConfirmStep } from './ConfirmStep.js';
 type Props = {

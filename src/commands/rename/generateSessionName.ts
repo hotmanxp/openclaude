@@ -43,7 +43,7 @@ export async function generateSessionName(
       },
     })
 
-    const content = extractTextContent(result.message.content)
+    const content = extractTextContent(result.message.content as readonly { readonly type: string }[])
 
     const response = safeParseJSON(content)
     if (

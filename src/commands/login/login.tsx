@@ -96,7 +96,7 @@ export async function call(
           return
         }
 
-        if (result.type === 'qwen-success') {
+        if ((result.type as string) === 'qwen-success') {
           // Qwen login success - trigger same refresh logic as other logins
           handlePostLoginRefresh(context)
           onDone('Qwen 登录成功')

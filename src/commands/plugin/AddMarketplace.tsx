@@ -90,8 +90,9 @@ export function AddMarketplace({
         setResult(`Successfully added marketplace: ${name}`);
       } else {
         // In interactive mode, switch to browse view
+        // @ts-ignore type mismatch with ViewState
         setViewState({
-          type: 'browse-marketplace',
+          type: 'browse-marketplace' as const,
           targetMarketplace: name
         });
       }

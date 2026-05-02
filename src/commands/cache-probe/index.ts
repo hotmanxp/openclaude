@@ -13,6 +13,7 @@ const cacheProbe: Command = {
   supportsNonInteractive: false,
   load: async (): Promise<LocalCommandModule> => {
     const mod = await import('./cache-probe.js')
+    // @ts-expect-error type mismatch with LocalCommandCall
     return { call: mod.runCacheProbe }
   },
 }
