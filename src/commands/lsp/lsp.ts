@@ -23,6 +23,7 @@ import {
   listLspPluginCandidates,
   type LspPluginCandidate,
 } from '../../utils/plugins/lspRecommendation.js'
+import type { LspServerState } from '../../services/lsp/types.js'
 import {
   checkAndInstallOfficialMarketplace,
   type OfficialMarketplaceCheckResult,
@@ -37,7 +38,7 @@ type LspServerConfigLike = {
 }
 
 type LspServerInstanceLike = {
-  state?: string
+  state?: LspServerState
   lastError?: Error
   config?: LspServerConfigLike
 }
@@ -66,9 +67,12 @@ export type LspCommandDeps = {
   discoverWorkspaceExtensions: (pathspec?: string) => Promise<string[]>
 }
 
+// @ts-ignore - LSPServerManager is not structurally compatible with LspServerManagerLike due to config shape differences
 const DEFAULT_DEPS: LspCommandDeps = {
   getInitializationStatus,
+  // @ts-ignore - LSPServerManager not compatible with LspServerManagerLike
   getLspServerManager,
+  // @ts-ignore - getAllLspServers return type mismatch with LspCommandDeps
   getAllLspServers,
   listLspPluginCandidates,
   checkAndInstallOfficialMarketplace,

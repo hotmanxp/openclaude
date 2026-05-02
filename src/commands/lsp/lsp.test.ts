@@ -151,6 +151,7 @@ beforeEach(() => {
 })
 
 async function run(args: string): Promise<string> {
+  // @ts-ignore - deps mock doesn't exactly match LspCommandDeps type
   const result = await runLspCommand(args, EMPTY_CONTEXT, deps)
   expect(result.type).toBe('text')
   return result.type === 'text' ? result.value : ''

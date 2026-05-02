@@ -426,7 +426,7 @@ export type ToolPermissionRulesBySource = {
  */
 export type ToolPermissionContext = {
   readonly mode: PermissionMode
-  readonly additionalWorkingDirectories: ReadonlyMap<
+  readonly additionalWorkingDirectories: Map<
     string,
     AdditionalWorkingDirectory
   >

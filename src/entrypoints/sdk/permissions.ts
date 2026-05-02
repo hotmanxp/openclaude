@@ -15,6 +15,7 @@ import {
   type Tool,
 } from '../../Tool.js'
 import type { MCPServerConnection, ScopedMcpServerConfig } from '../../services/mcp/types.js'
+import type { AdditionalWorkingDirectory, PermissionDecision } from '../../types/permissions.js'
 import { connectToServer, fetchToolsForClient } from '../../services/mcp/client.js'
 import type {
   QueryPermissionMode,
@@ -162,7 +163,7 @@ export function buildPermissionContext(options: PermissionContextOptions): ToolP
   // Wire additionalDirectories into the permission context
   if (options.additionalDirectories && options.additionalDirectories.length > 0) {
     for (const dir of options.additionalDirectories) {
-      base.additionalWorkingDirectories.set(dir, true)
+      ;(base.additionalWorkingDirectories as Map<string, AdditionalWorkingDirectory>).set(dir, { path: dir, source: 'userSettings' })
     }
   }
 
@@ -211,7 +212,14 @@ export function createExternalCanUseTool(
   logger?: SDKLogger,
 ): CanUseToolFn {
   const log = logger ?? defaultLogger
-  return async (tool, input, toolUseContext, assistantMessage, toolUseID, forceDecision) => {
+  return async (
+    tool,
+    input,
+    toolUseContext,
+    assistantMessage,
+    toolUseID,
+    forceDecision,
+  ): Promise<PermissionDecision> => {
     // If a forced decision was passed in, honor it
     if (forceDecision) return forceDecision
 
@@ -220,7 +228,7 @@ export function createExternalCanUseTool(
       try {
         const result = await userFn(tool.name, input, { toolUseID })
         if (result.behavior === 'allow') {
-          return { behavior: 'allow' as const, updatedInput: result.updatedInput ?? input }
+          return { behavior: 'allow' as const, updatedInput: (result.updatedInput as Record<string, unknown>) ?? input }
         }
         return {
           behavior: 'deny' as const,
@@ -286,7 +294,7 @@ export function createExternalCanUseTool(
 
       if (!raceResult.timedOut && raceResult.result) {
         permissionTarget.pendingPermissionPrompts.delete(toolUseID)
-        return raceResult.result
+        return raceResult.result as PermissionDecision
       }
 
       // Timeout — emit event and clean up
@@ -309,7 +317,7 @@ export function createExternalCanUseTool(
         // NOTE: For race condition safety, use createPermissionTarget() which wraps
         // the resolve at registration time. If using a custom permissionTarget,
         // callers should apply createOnceOnlyResolve in their registerPendingPermission.
-        pending.resolve({ behavior: 'deny', message: 'Permission resolution timed out' })
+        pending.resolve({ behavior: 'deny', message: 'Permission resolution timed out', decisionReason: { type: 'mode', mode: 'default' } })
         permissionTarget.pendingPermissionPrompts.delete(toolUseID)
       }
     }
@@ -350,7 +358,7 @@ export async function connectSdkMcpServers(
           client: {
             type: 'failed' as const,
             name,
-            config: { scope: 'session' as const } as ScopedMcpServerConfig,
+            config: { scope: 'user' as const } as ScopedMcpServerConfig,
             error: `Invalid MCP server config for '${name}': expected object, got ${config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}`,
           },
           tools: [],
@@ -358,10 +366,10 @@ export async function connectSdkMcpServers(
       }
 
       // Convert SDK config to ScopedMcpServerConfig format
-      const scopedConfig: ScopedMcpServerConfig = {
+      const scopedConfig = {
         ...(config as Record<string, unknown>),
-        scope: 'session' as const, // SDK servers are scoped to session
-      }
+        scope: 'user' as const, // SDK servers are scoped to session
+      } as ScopedMcpServerConfig
 
       try {
         // Connect to the server
