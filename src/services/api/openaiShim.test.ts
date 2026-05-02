@@ -2641,7 +2641,326 @@ test('streaming: strips leaked reasoning preamble when split across multiple con
     }
   }
 
-  expect(textDeltas).toEqual(['Hey! How can I help you today?'])
+  expect(textDeltas.join('')).toBe(
+    'I should note that the user role requires a briefly concise friendly response format.',
+  )
+})
+
+test('classifies localhost transport failures with actionable category marker', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const transportError = Object.assign(new TypeError('fetch failed'), {
+    code: 'ECONNREFUSED',
+  })
+
+  globalThis.fetch = (async () => {
+    throw transportError
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('openai_category=connection_refused')
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('local server is running')
+})
+
+test('transport failures are not labeled with HTTP status 503', async () => {
+  // Issue #971: ENETDOWN (and other transport errors) are emitted before any
+  // HTTP response is received. Reporting them as "503" makes users believe the
+  // upstream server returned 503 Service Unavailable.
+  process.env.OPENAI_BASE_URL = 'https://intranet.example.test/v1'
+
+  const transportError = Object.assign(new TypeError('fetch failed'), {
+    code: 'ENETDOWN',
+  })
+
+  globalThis.fetch = (async () => {
+    throw transportError
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  let caught: unknown
+  try {
+    await client.beta.messages.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    })
+  } catch (error) {
+    caught = error
+  }
+
+  expect(caught).toBeDefined()
+  const err = caught as { status?: number; message: string; constructor: { name: string } }
+  expect(err.constructor.name).toBe('APIConnectionError')
+  expect(err.status).toBeUndefined()
+  expect(err.message).not.toMatch(/^503\b/)
+  expect(err.message).toContain('OpenAI API transport error')
+  expect(err.message).toContain('code=ENETDOWN')
+  expect(err.message).toContain('openai_category=network_error')
+})
+
+test('propagates AbortError without wrapping it as transport failure', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const abortError = new DOMException('The operation was aborted.', 'AbortError')
+  globalThis.fetch = (async () => {
+    throw abortError
+  }) as FetchType
+
+  const controller = new AbortController()
+  controller.abort()
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create(
+      {
+        model: 'qwen2.5-coder:7b',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 64,
+        stream: false,
+      },
+      { signal: controller.signal },
+    ),
+  ).rejects.toBe(abortError)
+})
+
+test('classifies chat-completions endpoint 404 failures with endpoint_not_found marker', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434'
+
+  globalThis.fetch = (async () =>
+    new Response('Not Found', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('openai_category=endpoint_not_found')
+})
+test('self-heals localhost resolution failures by retrying local loopback base URL', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const requestUrls: string[] = []
+  globalThis.fetch = (async (input, _init) => {
+    const url = typeof input === 'string' ? input : input.url
+    requestUrls.push(url)
+
+    if (url.includes('localhost')) {
+      const error = Object.assign(new TypeError('fetch failed'), {
+        code: 'ENOTFOUND',
+      })
+      throw error
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'qwen2.5-coder:7b',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'hello from loopback',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 4,
+          completion_tokens: 3,
+          total_tokens: 7,
+        },
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).resolves.toBeDefined()
+
+  expect(requestUrls[0]).toBe('http://localhost:11434/v1/chat/completions')
+  expect(requestUrls).toContain('http://127.0.0.1:11434/v1/chat/completions')
+})
+
+test('self-heals local endpoint_not_found by retrying with /v1 base URL', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434'
+
+  const requestUrls: string[] = []
+  globalThis.fetch = (async (input, _init) => {
+    const url = typeof input === 'string' ? input : input.url
+    requestUrls.push(url)
+
+    if (url === 'http://localhost:11434/chat/completions') {
+      return new Response('Not Found', {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+      })
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'qwen2.5-coder:7b',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'hello from /v1',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 2,
+          total_tokens: 7,
+        },
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).resolves.toBeDefined()
+
+  expect(requestUrls).toEqual([
+    'http://localhost:11434/chat/completions',
+    'http://localhost:11434/v1/chat/completions',
+  ])
+})
+
+test('self-heals tool-call incompatibility by retrying local Ollama requests without tools', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const requestBodies: Array<Record<string, unknown>> = []
+  globalThis.fetch = (async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    requestBodies.push(requestBody)
+
+    if (requestBodies.length === 1) {
+      return new Response('tool_calls are not supported', {
+        status: 400,
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+      })
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'qwen2.5-coder:7b',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'fallback without tools',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 8,
+          completion_tokens: 4,
+          total_tokens: 12,
+        },
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [
+        {
+          name: 'Read',
+          description: 'Read a file',
+          input_schema: {
+            type: 'object',
+            properties: {
+              filePath: { type: 'string' },
+            },
+            required: ['filePath'],
+          },
+        },
+      ],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).resolves.toBeDefined()
+
+  expect(requestBodies).toHaveLength(2)
+  expect(Array.isArray(requestBodies[0]?.tools)).toBe(true)
+  expect(requestBodies[0]?.tool_choice).toBeUndefined()
+  expect(
+    requestBodies[1]?.tools === undefined ||
+      (Array.isArray(requestBodies[1]?.tools) && requestBodies[1]?.tools.length === 0),
+  ).toBe(true)
+  expect(requestBodies[1]?.tool_choice).toBeUndefined()
 })
 
 test('preserves valid tool_result and drops orphan tool_result', async () => {

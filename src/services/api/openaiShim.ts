@@ -1665,7 +1665,7 @@ class OpenAIShimMessages {
       )
 
       throw APIError.generate(
-        503,
+        0,
         undefined,
         buildOpenAICompatibilityErrorMessage(
           `OpenAI API transport error: ${safeMessage}${failure.code ? ` (code=${failure.code})` : ''}`,
