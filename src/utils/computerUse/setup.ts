@@ -26,8 +26,8 @@ export function setupComputerUseMCP(): {
   allowedTools: string[]
 } {
   const allowedTools = (
-    // @ts-ignore - type definition mismatch, actual function takes args
-    buildComputerUseTools(
+    // @ts-ignore - type definition mismatch
+    (buildComputerUseTools as any)(
       CLI_CU_CAPABILITIES,
       getChicagoCoordinateMode(),
     )
