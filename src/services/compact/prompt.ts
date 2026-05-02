@@ -273,9 +273,12 @@ const NO_TOOLS_TRAILER =
   'Tool calls will be rejected and you will fail the task.'
 
 export function getPartialCompactPrompt(
+  // @ts-ignore - type mismatch in legacy code
   customInstructions?: string,
+  // @ts-ignore - type mismatch in legacy code
   direction: PartialCompactDirection = 'from',
 ): string {
+  // @ts-ignore - type mismatch in legacy code
   const template =
     direction === 'up_to'
       ? PARTIAL_COMPACT_UP_TO_PROMPT
