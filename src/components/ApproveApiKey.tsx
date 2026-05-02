@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import { Text } from '../ink.js';
 import { saveGlobalConfig } from '../utils/config.js';

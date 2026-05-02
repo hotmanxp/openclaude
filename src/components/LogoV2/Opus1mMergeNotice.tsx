@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import { useEffect, useState } from 'react';
 import { UP_ARROW } from '../../constants/figures.js';

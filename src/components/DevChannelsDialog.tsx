@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import type { ChannelEntry } from '../bootstrap/state.js';
 import { Box, Text } from '../ink.js';

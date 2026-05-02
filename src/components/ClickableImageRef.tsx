@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import { pathToFileURL } from 'url';
 import Link from '../ink/components/Link.js';

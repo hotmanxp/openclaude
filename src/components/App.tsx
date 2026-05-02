@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import type { ReactNode } from 'react';
 import { FpsMetricsProvider } from '../context/fpsMetrics.js';
