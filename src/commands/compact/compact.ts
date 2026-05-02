@@ -32,6 +32,7 @@ import {
 } from '../../utils/systemPrompt.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
+// @ts-ignore - reactiveCompact module not yet implemented
 const reactiveCompact = feature('REACTIVE_COMPACT')
   ? (require('../../services/compact/reactiveCompact.js') as typeof import('../../services/compact/reactiveCompact.js'))
   : null

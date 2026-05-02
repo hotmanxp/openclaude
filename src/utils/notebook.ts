@@ -12,7 +12,7 @@ import type {
   NotebookCellSourceOutput,
   NotebookContent,
   NotebookOutputImage,
-} from '../types/notebook.js' // @ts-ignore - types file doesn't exist
+} from '../types/notebook.js'
 import { getFsImplementation } from './fsOperations.js'
 import { expandPath } from './path.js'
 import { jsonParse } from './slowOperations.js'

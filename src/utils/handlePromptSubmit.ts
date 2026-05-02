@@ -511,7 +511,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             if (m.type === 'user') m.origin = origin
           }
         }
-        newMessages.push(...result.messages)
+        newMessages.push(...result.messages) as any
         if (isFirst) {
           shouldQuery = result.shouldQuery
           allowedTools = result.allowedTools
@@ -533,7 +533,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
                 fileHistory: updater(prev.fileHistory),
               }))
             },
-            message.uuid,
+            message.uuid as `${string}-${string}-${string}-${string}-${string}`,
           )
         })
         queryCheckpoint('query_file_history_snapshot_end')

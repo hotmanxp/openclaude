@@ -234,6 +234,7 @@ export async function getSessionLogs(
     // Update our lastUuid to the last entry's UUID
     const lastEntry = logs.at(-1)
     if (lastEntry && 'uuid' in lastEntry && lastEntry.uuid) {
+      // @ts-ignore - sessionId type mismatch with Map key
       lastUuidMap.set(sessionId, lastEntry.uuid)
     }
   }

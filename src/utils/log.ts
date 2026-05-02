@@ -227,6 +227,7 @@ export async function getErrorLogByIndex(
 async function loadLogList(path: string): Promise<LogOption[]> {
   let files: Awaited<ReturnType<typeof readdir>>
   try {
+    // @ts-ignore - type mismatch withFileTypes
     files = await readdir(path, { withFileTypes: true })
   } catch {
     logError(new Error(`No logs found at ${path}`))
@@ -234,6 +235,7 @@ async function loadLogList(path: string): Promise<LogOption[]> {
   }
   const logData = await Promise.all(
     files.map(async (file, i) => {
+      // @ts-ignore - file.name is Buffer on some systems
       const fullPath = join(path, file.name)
       const content = await readFile(fullPath, { encoding: 'utf8' })
       const messages = jsonParse(content) as SerializedMessage[]

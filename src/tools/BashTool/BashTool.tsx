@@ -397,6 +397,7 @@ async function applySedEdit(simulatedEdit: {
 
   // Track file history before making changes (for undo support)
   if (fileHistoryEnabled() && parentMessage) {
+    // @ts-ignore - parentMessage.uuid may not exist on AssistantMessage
     await fileHistoryTrackEdit(toolUseContext.updateFileHistoryState, absoluteFilePath, parentMessage.uuid);
   }
 

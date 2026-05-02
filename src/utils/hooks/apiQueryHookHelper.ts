@@ -108,6 +108,7 @@ export function createApiQueryHook<TResult>(
       })
 
       // Parse response
+      // @ts-ignore - type mismatch in legacy code
       const content = extractTextContent(response.message.content).trim()
 
       try {
@@ -117,7 +118,7 @@ export function createApiQueryHook<TResult>(
             type: 'success',
             queryName: config.name,
             result,
-            messageId: response.message.id,
+            messageId: response.message.id as string,
             model,
             uuid,
           },

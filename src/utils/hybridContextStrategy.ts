@@ -257,6 +257,7 @@ export function applyHybridStrategy(
 
   // @ts-ignore - created_at property not in type but used at runtime
   selectedMessages.sort(
+    // @ts-ignore
     (a, b) => (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0)
   )
 

@@ -304,10 +304,10 @@ export async function refreshCodexAccessTokenIfNeeded(options?: {
     const refreshAttemptedAt = Date.now()
 
     try {
+      // @ts-ignore - URLSearchParams type mismatch
       const body = new URLSearchParams({
         client_id: getCodexOAuthClientId(),
         grant_type: 'refresh_token',
-        // @ts-ignore
         refresh_token: current.refreshToken,
       })
 

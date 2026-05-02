@@ -62,7 +62,9 @@ export function renderToolUseMessage({
   const displayName = command?.loadedFrom === 'commands_DEPRECATED' ? `/${skill}` : skill;
   return displayName;
 }
-export function renderToolUseProgressMessage(progressMessages: ProgressMessage<Progress>[], {
+export function renderToolUseProgressMessage(
+  // @ts-ignore - ProgressMessage is not generic in this codebase
+  progressMessages: ProgressMessage<Progress>[], {
   tools,
   verbose
 }: {

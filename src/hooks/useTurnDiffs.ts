@@ -126,6 +126,7 @@ export function useTurnDiffs(messages: Message[]): TurnDiff[] {
       const isToolResult =
         message.toolUseResult ||
         // @ts-ignore - message.message may not exist
+        // @ts-ignore - message.message.content access
         (Array.isArray(message.message.content) &&
           message.message.content[0]?.type === 'tool_result')
 

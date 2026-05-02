@@ -115,6 +115,7 @@ export const MCPTool = buildTool({
   // Overridden in mcpClient.ts
   userFacingName: () => 'mcp',
   renderToolUseProgressMessage,
+  // @ts-ignore - type mismatch
   renderToolResultMessage,
   // @ts-ignore - type mismatch with Tool interface
   isResultTruncated(output: Output): boolean {

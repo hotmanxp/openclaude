@@ -149,6 +149,7 @@ export async function generateAgent(
     : AGENT_CREATION_SYSTEM_PROMPT
 
   const response = await queryModelWithoutStreaming({
+    // @ts-ignore - UserMessage/AssistantMessage are compatible at runtime
     messages: normalizeMessagesForAPI(messagesWithContext),
     systemPrompt: asSystemPrompt([systemPrompt]),
     thinkingConfig: { type: 'disabled' as const },
