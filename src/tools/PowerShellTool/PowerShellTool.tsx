@@ -263,6 +263,7 @@ const outputSchema = lazySchema(() => z.object({
 }));
 type OutputSchema = ReturnType<typeof outputSchema>;
 export type Out = z.infer<OutputSchema>;
+// @ts-ignore - PowerShellProgress not in types/tools.js
 import type { PowerShellProgress } from '../../types/tools.js';
 export type { PowerShellProgress } from '../../types/tools.js';
 const COMMON_BACKGROUND_COMMANDS = ['npm', 'yarn', 'pnpm', 'node', 'python', 'python3', 'go', 'cargo', 'make', 'docker', 'terraform', 'webpack', 'vite', 'jest', 'pytest', 'curl', 'Invoke-WebRequest', 'build', 'test', 'serve', 'watch', 'dev'] as const;
