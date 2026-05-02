@@ -748,7 +748,7 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe(
-          'Enable coordinator mode for orchestrating multi-worker tasks. Equivalent to setting CLAUDE_CODE_COORDINATOR_MODE=1 environment variable.',
+          'Enable coordinator mode for orchestrating multi-worker tasks.',
         ),
       fastModePerSessionOptIn: z
         .boolean()

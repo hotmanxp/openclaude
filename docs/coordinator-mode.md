@@ -9,20 +9,14 @@ Coordinator mode transforms Open CC into an **orchestrator of multi-worker softw
 
 ## Enabling Coordinator Mode
 
-### Configuration Methods (in order of priority)
+### Configuration Methods
 
-1. **Environment Variable** (highest priority):
-   ```bash
-   CLAUDE_CODE_COORDINATOR_MODE=1   # Enable
-   CLAUDE_CODE_COORDINATOR_MODE=0   # Disable
-   ```
-
-2. **Settings.json** (`coordinatorMode` boolean field):
+1. **Settings.json** (`coordinatorMode` boolean field):
    ```json
    { "coordinatorMode": true }
    ```
 
-3. **Feature Flag Gate** — `COORDINATOR_MODE` feature flag must be enabled
+2. **Feature Flag Gate** — `COORDINATOR_MODE` feature flag must be enabled
 
 ### Detection Logic
 
@@ -32,11 +26,6 @@ export function isCoordinatorMode(): boolean {
   if (!feature('COORDINATOR_MODE')) {
     return false
   }
-  // Env var takes priority over settings.json
-  if (process.env.CLAUDE_CODE_COORDINATOR_MODE !== undefined) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
-  }
-  // Fall back to settings.json
   const settings = getSettingsForSource('userSettings')
   return settings?.coordinatorMode === true
 }
@@ -158,7 +147,7 @@ Examples:
 Coordinator mode state is saved to session storage and restored on resume:
 
 - Mode saved as `'coordinator'` or `'normal'`
-- `matchSessionMode()` can automatically switch mode to match previous session
+- `matchSessionMode()` can automatically switch mode to match previous session by updating settings.json
 - Session resume UI shows mode matching option
 
 ## Key Files
