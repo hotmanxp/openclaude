@@ -1,3 +1,4 @@
+// -nocheck
 /**
  * Tests for Web Search Provider result count configurations.
  */

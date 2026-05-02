@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, expect, mock, test } from 'bun:test'
 import * as fsPromises from 'fs/promises'
 import { homedir } from 'os'

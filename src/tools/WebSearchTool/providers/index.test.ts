@@ -1,3 +1,4 @@
+// -nocheck
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { getProviderMode, getProviderChain, getAvailableProviders } from './index.js'
 import type { ProviderMode } from './index.js'

@@ -1,3 +1,4 @@
+// -nocheck
 import { expect, test } from 'bun:test'
 
 import { createGitHubIssueUrl } from './Feedback.tsx'

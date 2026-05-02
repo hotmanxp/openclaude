@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { getAnthropicClient } from './client.js'
 

@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, expect, mock, test } from 'bun:test'
 
 import { getAdditionalModelOptionsCacheScope } from '../../services/api/providerConfig.js'

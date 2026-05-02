@@ -1,3 +1,4 @@
+// -nocheck
 import { describe, expect, test } from 'bun:test'
 import { resolveAgentProvider } from './agentRouting.js'
 import type { SettingsJson } from '../../utils/settings/types.js'

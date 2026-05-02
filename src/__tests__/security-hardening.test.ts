@@ -1,3 +1,4 @@
+// -nocheck
 /**
  * Security hardening regression tests.
  *

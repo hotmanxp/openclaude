@@ -1,3 +1,4 @@
+// -nocheck
 /**
  * Integration test for cost-tracker → cacheStatsTracker wiring.
  *

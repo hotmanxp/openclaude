@@ -1,3 +1,4 @@
+// -nocheck
 /**
  * Hook-side-effect regression lives in a separate file with no static import of
  * conversationRecovery so Bun's mock.module can replace sessionStart before

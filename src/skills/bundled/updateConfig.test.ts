@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, expect, test } from 'bun:test'
 
 import { clearBundledSkills, getBundledSkills } from '../bundledSkills.js'

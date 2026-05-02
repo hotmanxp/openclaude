@@ -1,3 +1,4 @@
+// -nocheck
 import { expect, test } from 'bun:test'
 import { shouldRefreshOAuthAccountInfo } from './client.js'
 

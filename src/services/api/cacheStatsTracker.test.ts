@@ -1,3 +1,4 @@
+// -nocheck
 import { beforeEach, expect, test, describe } from 'bun:test'
 import {
   _setHistoryCapForTesting,

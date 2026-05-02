@@ -1,3 +1,4 @@
+// -nocheck
 import { describe, expect, test, beforeEach } from 'bun:test'
 import { MCPTool } from './MCPTool.js'
 

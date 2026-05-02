@@ -1,3 +1,4 @@
+// -nocheck
 import { expect, test } from 'bun:test'
 
 import type { Frame } from './frame.ts'

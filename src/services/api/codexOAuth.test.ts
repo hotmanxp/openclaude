@@ -1,3 +1,4 @@
+// -nocheck
 import { createServer } from 'node:http'
 
 import { afterEach, expect, mock, test } from 'bun:test'

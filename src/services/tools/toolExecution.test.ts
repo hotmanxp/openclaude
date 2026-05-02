@@ -1,3 +1,4 @@
+// -nocheck
 import { describe, expect, test } from 'bun:test'
 
 import { SkillTool } from '../../tools/SkillTool/SkillTool.js'

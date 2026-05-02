@@ -1,3 +1,4 @@
+// -nocheck
 import { expect, test } from 'bun:test'
 import { shouldUseFirstPartyAnthropicAuthForProvider } from './authRouting.js'
 

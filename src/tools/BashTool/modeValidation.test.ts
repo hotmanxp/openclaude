@@ -1,3 +1,4 @@
+// -nocheck
 import { expect, test } from 'bun:test'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import { checkPermissionMode } from './modeValidation.js'

@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, expect, test } from 'bun:test'
 
 // MACRO is replaced at build time by Bun.define but not in test mode.

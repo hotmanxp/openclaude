@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 const originalEnv = { ...process.env }

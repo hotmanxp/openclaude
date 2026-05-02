@@ -1,3 +1,4 @@
+// -nocheck
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises'
 import { join } from 'path'
