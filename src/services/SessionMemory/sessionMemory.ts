@@ -121,6 +121,7 @@ function countToolCallsSince(
     }
 
     if (message.type === 'assistant') {
+      // @ts-ignore - message.message may be undefined
       const content = message.message.content
       if (Array.isArray(content)) {
         toolCallCount += count(content, block => block.type === 'tool_use')
@@ -317,6 +318,7 @@ const extractSessionMemory = sequential(async function (
   // Pass setupContext.readFileState so the forked agent can edit the memory file
   // @ts-ignore - UserMessage is assignable to Message for runForkedAgent
   await runForkedAgent({
+    // @ts-ignore - UserMessage is assignable to Message
     promptMessages: [createUserMessage({ content: userPrompt })],
     cacheSafeParams: createCacheSafeParams(context),
     canUseTool: createMemoryFileCanUseTool(memoryPath),
@@ -420,6 +422,7 @@ export async function manuallyExtractSessionMemory(
     // Run session memory extraction using runForkedAgent
     // @ts-ignore - UserMessage is assignable to Message for runForkedAgent
     await runForkedAgent({
+      // @ts-ignore - UserMessage is assignable to Message
       promptMessages: [createUserMessage({ content: userPrompt })],
       cacheSafeParams: {
         systemPrompt,

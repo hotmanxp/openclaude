@@ -280,6 +280,7 @@ export function getPartialCompactPrompt(
 ): string {
   // @ts-ignore - type mismatch in legacy code
   const template =
+    // @ts-ignore
     direction === 'up_to'
       ? PARTIAL_COMPACT_UP_TO_PROMPT
       : PARTIAL_COMPACT_PROMPT

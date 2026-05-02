@@ -169,8 +169,8 @@ export async function resumeAgentBackground({
     agentDefinition: selectedAgent,
     // @ts-ignore - type mismatch Message | UserMessage vs Message
     promptMessages: [
-      ...resumedMessages,
-      createUserMessage({ content: prompt }),
+      ...resumedMessages as any,
+      createUserMessage({ content: prompt }) as any,
     ],
     toolUseContext,
     canUseTool,

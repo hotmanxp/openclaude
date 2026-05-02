@@ -515,9 +515,7 @@ export function extractAgentMcpServers(
     if (isStdioConfig(config)) {
       result.push({
         name,
-        // @ts-expect-error - sourceAgents not in type
         sourceAgents,
-        // @ts-expect-error - stdio not in transport type
         transport: 'stdio',
         command: config.command,
         needsAuth: false,
@@ -543,9 +541,7 @@ export function extractAgentMcpServers(
     } else if (isWebSocketConfig(config)) {
       result.push({
         name,
-        // @ts-expect-error - sourceAgents not in type
         sourceAgents,
-        // @ts-expect-error - ws not in transport type
         transport: 'ws',
         url: config.url,
         needsAuth: false,

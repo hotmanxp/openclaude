@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { getSettingsForSource } from '../utils/settings/settings.js'
+import { getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js'
 import { ASYNC_AGENT_ALLOWED_TOOLS } from '../constants/tools.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
@@ -21,7 +21,6 @@ import {
 } from '../tools/ScheduleCronTool/prompt.js'
 import { TEAM_CREATE_TOOL_NAME } from '../tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '../tools/TeamDeleteTool/constants.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
 
 // Checks the same gate as isScratchpadEnabled() in
 // utils/permissions/filesystem.ts. Duplicated here because importing
@@ -44,18 +43,13 @@ export function isCoordinatorMode(): boolean {
   if (!feature('COORDINATOR_MODE')) {
     return false
   }
-  // Env var takes priority over settings.json
-  if (process.env.CLAUDE_CODE_COORDINATOR_MODE !== undefined) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
-  }
-  // Fall back to settings.json
   const settings = getSettingsForSource('userSettings')
   return settings?.coordinatorMode === true
 }
 
 /**
  * Checks if the current coordinator mode matches the session's stored mode.
- * If mismatched, flips the environment variable so isCoordinatorMode() returns
+ * If mismatched, writes to settings.json so isCoordinatorMode() returns
  * the correct value for the resumed session. Returns a warning message if
  * the mode was switched, or undefined if no switch was needed.
  */
@@ -74,12 +68,10 @@ export function matchSessionMode(
     return undefined
   }
 
-  // Flip the env var — isCoordinatorMode() reads it live, no caching
-  if (sessionIsCoordinator) {
-    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
-  } else {
-    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
-  }
+  // Flip the settings — isCoordinatorMode() reads settings.json
+  updateSettingsForSource('userSettings', {
+    coordinatorMode: sessionIsCoordinator ? true : undefined,
+  })
 
   logEvent('tengu_coordinator_mode_switched', {
     to: sessionMode as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

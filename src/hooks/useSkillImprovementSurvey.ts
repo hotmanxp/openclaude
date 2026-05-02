@@ -75,9 +75,12 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
           () => {
             // @ts-ignore - type mismatch for setMessages and createSystemMessage
             setMessages(prev => [
+              // @ts-ignore - type mismatch
               ...prev,
+              // @ts-ignore - type mismatch
               createSystemMessage(
                 `Skill "${current.skillName}" updated with improvements.`,
+                // @ts-ignore - type mismatch
                 'suggestion',
               ),
             ])
