@@ -10,7 +10,7 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, A
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
-OpenClaude is also mirrored to GitLawb:
+OpenCC is also mirrored to GitLawb:
 [gitlawb.com/node/repos/z6MkqDnb/openclaude](https://gitlawb.com/node/repos/z6MkqDnb/openclaude)
 
 [Quick Start](#quick-start) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Sponsors](#sponsors) | [Community](#community)
@@ -143,7 +143,7 @@ Advanced and source-build guides:
 | Gemini | `/provider` or env vars | Supports API key, access token, or local ADC workflow on current `main` |
 | GitHub Models | `/onboard-github` | Interactive onboarding with saved credentials |
 | Codex OAuth | `/provider` | Opens ChatGPT sign-in in your browser and stores Codex credentials securely |
-| Codex | `/provider` | Uses existing Codex CLI auth, OpenClaude secure storage, or env credentials |
+| Codex | `/provider` | Uses existing Codex CLI auth, OpenCC secure storage, or env credentials |
 | Ollama | `/provider`, env vars, or `ollama launch` | Local inference with no API key |
 | Atomic Chat | `/provider`, env vars, or `bun run dev:atomic-chat` | Local Model Provider; auto-detects loaded models |
 | Bedrock / Vertex / Foundry | env vars | Additional provider integrations for supported environments |

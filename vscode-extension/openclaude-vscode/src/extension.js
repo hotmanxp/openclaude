@@ -12,7 +12,7 @@ const {
   resolveCommandCheckPath,
 } = require('./state');
 const { buildControlCenterViewModel } = require('./presentation');
-const { ChatController, OpenClaudeChatViewProvider, OpenClaudeChatPanelManager } = require('./chat/chatProvider');
+const { ChatController, OpenCCChatViewProvider, OpenCCChatPanelManager } = require('./chat/chatProvider');
 const { SessionManager } = require('./chat/sessionManager');
 const { DiffContentProvider, SCHEME: DIFF_SCHEME } = require('./chat/diffController');
 
@@ -206,7 +206,7 @@ function readWorkspaceProfile(profilePath) {
 async function collectControlCenterState() {
   const configured = vscode.workspace.getConfiguration('openclaude');
   const launchCommand = configured.get('launchCommand', 'openclaude');
-  const terminalName = configured.get('terminalName', 'OpenClaude');
+  const terminalName = configured.get('terminalName', 'OpenCC');
   const shimEnabled = configured.get('useOpenAIShim', false);
   const executable = getExecutableFromCommand(launchCommand);
   const launchWorkspace = resolveLaunchWorkspace();
@@ -262,11 +262,11 @@ async function collectControlCenterState() {
   };
 }
 
-async function launchOpenClaude(options = {}) {
+async function launchOpenCC(options = {}) {
   const { requireWorkspace = false } = options;
   const configured = vscode.workspace.getConfiguration('openclaude');
   const launchCommand = configured.get('launchCommand', 'openclaude');
-  const terminalName = configured.get('terminalName', 'OpenClaude');
+  const terminalName = configured.get('terminalName', 'OpenCC');
   const shimEnabled = configured.get('useOpenAIShim', false);
   const executable = getExecutableFromCommand(launchCommand);
   const launchWorkspace = resolveLaunchWorkspace();
@@ -291,7 +291,7 @@ async function launchOpenClaude(options = {}) {
 
   if (!installed) {
     const action = await vscode.window.showErrorMessage(
-      `OpenClaude command not found: ${executable}. Install it with: npm install -g @gitlawb/openclaude`,
+      `OpenCC command not found: ${executable}. Install it with: npm install -g @gitlawb/openclaude`,
       'Open Setup Guide',
       'Open Repository',
     );
@@ -423,7 +423,7 @@ function getWorkspaceRootActionDetail(status, fallbackDetail) {
   }
 
   if (status.launchActionsShareTargetReason === 'relative-launch-command') {
-    return `Same workspace-root target as Launch OpenClaude because the relative command resolves from the workspace root · ${status.workspaceRootCwdLabel}`;
+    return `Same workspace-root target as Launch OpenCC because the relative command resolves from the workspace root · ${status.workspaceRootCwdLabel}`;
   }
 
   return `Always starts at the workspace root · ${status.workspaceRootCwdLabel}`;
@@ -841,7 +841,7 @@ function renderControlCenterHtml(status, options = {}) {
         <div class="hero-top">
           <div class="brand">
             <div class="eyebrow">${escapeHtml(viewModel.header.eyebrow)}</div>
-            <div class="wordmark" aria-label="OpenClaude wordmark">Open<span class="wordmark-accent">Claude</span></div>
+            <div class="wordmark" aria-label="OpenCC wordmark">Open<span class="wordmark-accent">Claude</span></div>
             <div class="headline">
               <h1 class="headline-title" id="control-center-title">${escapeHtml(viewModel.header.title)}</h1>
               <p class="headline-subtitle">${escapeHtml(viewModel.header.subtitle)}</p>
@@ -881,11 +881,11 @@ function renderControlCenterHtml(status, options = {}) {
             </button>
             <button class="support-link" id="repo" type="button">
               <span class="support-link-label">Open Repository</span>
-              <span class="summary-detail">Browse the upstream OpenClaude project.</span>
+              <span class="summary-detail">Browse the upstream OpenCC project.</span>
             </button>
             <button class="support-link" id="commands" type="button">
               <span class="support-link-label">Open Command Palette</span>
-              <span class="summary-detail">Access VS Code and OpenClaude commands quickly.</span>
+              <span class="summary-detail">Access VS Code and OpenCC commands quickly.</span>
             </button>
           </div>
         </section>
@@ -915,7 +915,7 @@ function renderControlCenterHtml(status, options = {}) {
 </html>`;
 }
 
-class OpenClaudeControlCenterProvider {
+class OpenCCControlCenterProvider {
   constructor() {
     this.webviewView = null;
   }
@@ -933,10 +933,10 @@ class OpenClaudeControlCenterProvider {
     webviewView.webview.onDidReceiveMessage(async message => {
       switch (message?.type) {
         case 'launch':
-          await launchOpenClaude();
+          await launchOpenCC();
           break;
         case 'launchRoot':
-          await launchOpenClaude({ requireWorkspace: true });
+          await launchOpenCC({ requireWorkspace: true });
           break;
         case 'openProfile':
           await openWorkspaceProfile();
@@ -1045,7 +1045,7 @@ class OpenClaudeControlCenterProvider {
  */
 function activate(context) {
   // ── Control Center (existing) ──
-  const provider = new OpenClaudeControlCenterProvider();
+  const provider = new OpenCCControlCenterProvider();
   const refreshProvider = () => {
     void provider.refresh();
   };
@@ -1058,8 +1058,8 @@ function activate(context) {
   }
 
   const chatController = new ChatController(sessionManager);
-  const chatViewProvider = new OpenClaudeChatViewProvider(chatController);
-  const chatPanelManager = new OpenClaudeChatPanelManager(chatController);
+  const chatViewProvider = new OpenCCChatViewProvider(chatController);
+  const chatPanelManager = new OpenCCChatPanelManager(chatController);
 
   // ── Diff content provider ──
   const diffProvider = new DiffContentProvider();
@@ -1073,37 +1073,37 @@ function activate(context) {
     vscode.StatusBarAlignment.Right,
     100,
   );
-  statusBarItem.text = '$(comment-discussion) OpenClaude';
-  statusBarItem.tooltip = 'Open OpenClaude Chat';
+  statusBarItem.text = '$(comment-discussion) OpenCC';
+  statusBarItem.tooltip = 'Open OpenCC Chat';
   statusBarItem.command = 'openclaude.openChat';
   statusBarItem.show();
 
   chatController.onDidChangeState((state) => {
     switch (state) {
       case 'streaming':
-        statusBarItem.text = '$(sync~spin) OpenClaude';
-        statusBarItem.tooltip = 'OpenClaude is generating...';
+        statusBarItem.text = '$(sync~spin) OpenCC';
+        statusBarItem.tooltip = 'OpenCC is generating...';
         break;
       case 'connected':
-        statusBarItem.text = '$(comment-discussion) OpenClaude';
-        statusBarItem.tooltip = 'OpenClaude connected';
+        statusBarItem.text = '$(comment-discussion) OpenCC';
+        statusBarItem.tooltip = 'OpenCC connected';
         break;
       default:
-        statusBarItem.text = '$(comment-discussion) OpenClaude';
-        statusBarItem.tooltip = 'Open OpenClaude Chat';
+        statusBarItem.text = '$(comment-discussion) OpenCC';
+        statusBarItem.tooltip = 'Open OpenCC Chat';
         break;
     }
   });
 
   // ── Existing commands ──
   const startCommand = vscode.commands.registerCommand('openclaude.start', async () => {
-    await launchOpenClaude();
+    await launchOpenCC();
   });
 
   const startInWorkspaceRootCommand = vscode.commands.registerCommand(
     'openclaude.startInWorkspaceRoot',
     async () => {
-      await launchOpenClaude({ requireWorkspace: true });
+      await launchOpenCC({ requireWorkspace: true });
     },
   );
 
@@ -1226,10 +1226,10 @@ function deactivate() {}
 module.exports = {
   activate,
   deactivate,
-  OpenClaudeControlCenterProvider,
+  OpenCCControlCenterProvider,
   renderControlCenterHtml,
   resolveLaunchTargets,
   ChatController,
-  OpenClaudeChatViewProvider,
-  OpenClaudeChatPanelManager,
+  OpenCCChatViewProvider,
+  OpenCCChatPanelManager,
 };

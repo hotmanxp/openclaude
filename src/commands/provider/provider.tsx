@@ -294,7 +294,7 @@ export function buildProfileSaveMessage(
   }
 
   lines.push(`Profile: ${filePath}`)
-  lines.push('Restart OpenClaude to use it.')
+  lines.push('Restart OpenCC to use it.')
 
   return lines.join('\n')
 }
@@ -311,7 +311,7 @@ function buildUsageText(): string {
     `Current endpoint: ${summary.endpointLabel}`,
     `Saved profile: ${summary.savedProfileLabel}`,
     '',
-    'Choose Auto, Ollama, or OpenAI-compatible, then save a profile for the next OpenClaude restart.',
+    'Choose Auto, Ollama, or OpenAI-compatible, then save a profile for the next OpenCC restart.',
   ].join('\n')
 }
 
@@ -445,7 +445,7 @@ function ProviderChooser({
     >
       <Box flexDirection="column" gap={1}>
         <Text>
-          Save a provider profile for the next OpenClaude restart without
+          Save a provider profile for the next OpenCC restart without
           editing environment variables first.
         </Text>
         <Box flexDirection="column">
@@ -817,7 +817,7 @@ export function ProviderWizard({
               })
             } else if (value === 'clear') {
               const filePath = deleteProfileFile()
-              onDone(`Removed saved provider profile at ${filePath}. Restart OpenClaude to go back to normal startup.`, {
+              onDone(`Removed saved provider profile at ${filePath}. Restart OpenCC to go back to normal startup.`, {
                 display: 'system',
               })
             }

@@ -44,7 +44,7 @@ export function createWhatsNewFeed(releaseNotes: string[]): FeedConfig {
   const emptyMessage = "external" === 'ant' ? 'Unable to fetch latest claude-cli-internal commits' : 'Check /release-notes for recent updates';
   return {
     // @ts-ignore - runtime check
-    title: "external" === 'ant' ? "OpenClaude Updates [internal-only: Latest CC commits]" : "OpenClaude Updates",
+    title: "external" === 'ant' ? "OpenCC Updates [internal-only: Latest CC commits]" : "OpenCC Updates",
     lines,
     footer: lines.length > 0 ? '/release-notes for more' : undefined,
     emptyMessage
@@ -76,7 +76,7 @@ export function createProjectOnboardingFeed(steps: Step[]): FeedConfig {
 }
 export function createGuestPassesFeed(): FeedConfig {
   const reward = getCachedReferrerReward();
-  const subtitle = reward ? `Share OpenClaude and earn ${formatCreditAmount(reward)} of extra usage` : 'Share OpenClaude with friends';
+  const subtitle = reward ? `Share OpenCC and earn ${formatCreditAmount(reward)} of extra usage` : 'Share OpenCC with friends';
   return {
     title: '3 guest passes',
     lines: [],

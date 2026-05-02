@@ -732,7 +732,7 @@ export function buildPlanApprovalOptions({
   });
   if (showUltraplan) {
     options.push({
-      label: 'No, refine with Ultraplan on OpenClaude on the web',
+      label: 'No, refine with Ultraplan on OpenCC on the web',
       value: 'ultraplan'
     });
   }

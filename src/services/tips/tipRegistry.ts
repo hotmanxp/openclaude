@@ -553,7 +553,7 @@ const externalTips: Tip[] = [
       >('tengu_tern_alloy', 'off')
       return variant === 'copy_b'
         ? `For big tasks, tell OpenCC to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
-        : `Say ${blue('"fan out subagents"')} and OpenClaude sends a team. Each one digs deep so nothing gets missed.`
+        : `Say ${blue('"fan out subagents"')} and OpenCC sends a team. Each one digs deep so nothing gets missed.`
     },
     cooldownSessions: 3,
     isRelevant: async () => {

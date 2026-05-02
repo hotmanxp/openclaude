@@ -9,7 +9,7 @@ import {
   validateProviderEnvOrExit,
 } from '../utils/providerValidation.js'
 
-// OpenClaude: polyfill globalThis.File for Node < 20.
+// OpenCC: polyfill globalThis.File for Node < 20.
 // undici v7 references `File` at module evaluation time (webidl type
 // assertions). Node 18 lacks the global, causing a ReferenceError inside
 // the bundled __commonJS require chain which deadlocks the process when a
@@ -37,7 +37,7 @@ if (typeof globalThis.File === 'undefined') {
   }
 }
 
-// OpenClaude: disable experimental API betas by default.
+// OpenCC: disable experimental API betas by default.
 // Tool search (defer_loading), global cache scope, and context management
 // require internal API support not available to external accounts → 500.
 // Users can opt-in with CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=false.

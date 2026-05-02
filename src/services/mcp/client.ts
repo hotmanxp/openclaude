@@ -1008,7 +1008,7 @@ export const connectToServer = memoize(
           name: 'claude-code',
           title: 'Open Open CC',
           version: MACRO.VERSION ?? 'unknown',
-          description: 'OpenClaude — coding-agent CLI for any LLM provider',
+          description: 'OpenCC — coding-agent CLI for any LLM provider',
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -3345,7 +3345,7 @@ export async function setupSdkMcpClients(
           name: 'claude-code',
           title: 'Open Open CC',
           version: MACRO.VERSION ?? 'unknown',
-          description: 'OpenClaude — coding-agent CLI for any LLM provider',
+          description: 'OpenCC — coding-agent CLI for any LLM provider',
           websiteUrl: PRODUCT_URL,
         },
         {

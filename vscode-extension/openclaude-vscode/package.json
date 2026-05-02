@@ -1,7 +1,7 @@
 {
   "name": "openclaude-vscode",
-  "displayName": "OpenClaude",
-  "description": "Practical VS Code companion for OpenClaude with project-aware launch behavior and a real Control Center.",
+  "displayName": "OpenCC",
+  "description": "Practical VS Code companion for OpenCC with project-aware launch behavior and a real Control Center.",
   "version": "0.2.0",
   "publisher": "devnull-bootloader",
   "engines": {
@@ -40,60 +40,60 @@
     "commands": [
       {
         "command": "openclaude.start",
-        "title": "OpenClaude: Launch in Terminal",
-        "category": "OpenClaude"
+        "title": "OpenCC: Launch in Terminal",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.startInWorkspaceRoot",
-        "title": "OpenClaude: Launch in Workspace Root",
-        "category": "OpenClaude"
+        "title": "OpenCC: Launch in Workspace Root",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.openDocs",
-        "title": "OpenClaude: Open Repository",
-        "category": "OpenClaude"
+        "title": "OpenCC: Open Repository",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.openSetupDocs",
-        "title": "OpenClaude: Open Setup Guide",
-        "category": "OpenClaude"
+        "title": "OpenCC: Open Setup Guide",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.openWorkspaceProfile",
-        "title": "OpenClaude: Open Workspace Profile",
-        "category": "OpenClaude"
+        "title": "OpenCC: Open Workspace Profile",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.openControlCenter",
-        "title": "OpenClaude: Open Control Center",
-        "category": "OpenClaude"
+        "title": "OpenCC: Open Control Center",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.newChat",
-        "title": "OpenClaude: New Chat",
-        "category": "OpenClaude"
+        "title": "OpenCC: New Chat",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.openChat",
-        "title": "OpenClaude: Open Chat Panel",
-        "category": "OpenClaude"
+        "title": "OpenCC: Open Chat Panel",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.resumeSession",
-        "title": "OpenClaude: Resume Session",
-        "category": "OpenClaude"
+        "title": "OpenCC: Resume Session",
+        "category": "OpenCC"
       },
       {
         "command": "openclaude.abortChat",
-        "title": "OpenClaude: Abort Generation",
-        "category": "OpenClaude"
+        "title": "OpenCC: Abort Generation",
+        "category": "OpenCC"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "openclaude",
-          "title": "OpenClaude",
+          "title": "OpenCC",
           "icon": "media/openclaude.svg"
         }
       ]
@@ -120,22 +120,22 @@
       }
     ],
     "configuration": {
-      "title": "OpenClaude",
+      "title": "OpenCC",
       "properties": {
         "openclaude.launchCommand": {
           "type": "string",
           "default": "openclaude",
-          "description": "Command run in the integrated terminal when launching OpenClaude."
+          "description": "Command run in the integrated terminal when launching OpenCC."
         },
         "openclaude.terminalName": {
           "type": "string",
-          "default": "OpenClaude",
-          "description": "Integrated terminal tab name for OpenClaude sessions."
+          "default": "OpenCC",
+          "description": "Integrated terminal tab name for OpenCC sessions."
         },
         "openclaude.useOpenAIShim": {
           "type": "boolean",
           "default": false,
-          "description": "Optionally set CLAUDE_CODE_USE_OPENAI=1 in launched OpenClaude terminals."
+          "description": "Optionally set CLAUDE_CODE_USE_OPENAI=1 in launched OpenCC terminals."
         },
         "openclaude.permissionMode": {
           "type": "string",
@@ -153,9 +153,9 @@
     },
     "themes": [
       {
-        "label": "OpenClaude Terminal Black",
+        "label": "OpenCC Terminal Black",
         "uiTheme": "vs-dark",
-        "path": "./themes/OpenClaude-Terminal-Black.json"
+        "path": "./themes/OpenCC-Terminal-Black.json"
       }
     ]
   },
