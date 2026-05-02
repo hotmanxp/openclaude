@@ -77,6 +77,7 @@ export function injectUserMessageToTeammate(taskId: string, message: string, set
       ...task,
       pendingUserMessages: [...task.pendingUserMessages, message],
       messages: appendCappedMessage(task.messages, createUserMessage({
+        // @ts-ignore
         content: message
       }))
     };

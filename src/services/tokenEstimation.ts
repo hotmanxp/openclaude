@@ -140,6 +140,7 @@ export async function countMessagesTokensWithAPI(
 
       const anthropic = await getAnthropicClient({
         maxRetries: 1,
+        // @ts-ignore - model not in type but accepted
         model,
         source: 'count_tokens',
       })
@@ -378,6 +379,7 @@ export async function countTokensViaHaikuFallback(
   const model = getSmallFastModel()
   const anthropic = await getAnthropicClient({
     maxRetries: 1,
+    // @ts-ignore - model not in type but accepted
     model,
     source: 'count_tokens',
   })
@@ -455,6 +457,7 @@ export function roughTokenCountEstimationForMessage(message: {
     const userMessages = normalizeAttachmentForAPI(message.attachment)
     let total = 0
     for (const userMsg of userMessages) {
+      // @ts-ignore - type mismatch
       total += roughTokenCountEstimationForContent(userMsg.message.content)
     }
     return total
@@ -506,6 +509,7 @@ function roughTokenCountEstimationForBlock(
     return 2000
   }
   if (block.type === 'tool_result') {
+    // @ts-ignore - type mismatch
     return roughTokenCountEstimationForContent(block.content)
   }
   if (block.type === 'tool_use') {
