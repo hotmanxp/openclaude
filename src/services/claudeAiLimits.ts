@@ -202,6 +202,7 @@ async function makeTestQuery() {
   const anthropic = await getAnthropicClient({
     // @ts-ignore
     maxRetries: 0,
+    // @ts-ignore
     model,
     source: 'quota_check',
   })

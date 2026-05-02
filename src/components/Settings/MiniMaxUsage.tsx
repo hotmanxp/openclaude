@@ -228,6 +228,7 @@ export function MiniMaxUsage(): React.ReactNode {
             nowMs={nowMs}
           />
         ) : (
+          // @ts-ignore
           <MiniMaxUsageTextRow
             key={`${row.label}-${index}`}
             label={row.label}

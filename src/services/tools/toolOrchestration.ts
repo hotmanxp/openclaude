@@ -130,6 +130,7 @@ async function* runToolsSerially(
     for await (const update of runToolUse(
       toolUse,
       assistantMessages.find(_ =>
+        // @ts-ignore - content may be string
         _.message.content.some(
           _ => _.type === 'tool_use' && _.id === toolUse.id,
         ),

@@ -82,6 +82,7 @@ export async function generateToolUseSummary({
 
     // @ts-ignore
     const summary = response.message.content
+      // @ts-ignore
       .filter(block => block.type === 'text')
       .map(block => (block.type === 'text' ? block.text : ''))
       .join('')

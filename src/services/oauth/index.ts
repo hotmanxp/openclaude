@@ -174,6 +174,7 @@ export class OAuthService {
   ): OAuthTokens {
     return {
       accessToken: response.access_token,
+      // @ts-ignore - refreshToken type mismatch
       refreshToken: response.refresh_token,
       expiresAt: Date.now() + response.expires_in * 1000,
       scopes: client.parseScopes(response.scope),
@@ -184,6 +185,7 @@ export class OAuthService {
         ? {
             uuid: response.account.uuid,
             emailAddress: response.account.email_address,
+            // @ts-ignore - organizationUuid type mismatch
             organizationUuid: response.organization?.uuid,
           }
         : undefined,

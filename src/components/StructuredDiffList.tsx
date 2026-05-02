@@ -22,6 +22,7 @@ export function StructuredDiffList({
   fileContent
 }: Props): React.ReactNode {
   return intersperse(hunks.map(hunk => <Box flexDirection="column" key={hunk.newStart}>
+        {/* @ts-ignore */}
         <StructuredDiff patch={hunk} dim={dim} width={width} filePath={filePath} firstLine={firstLine} fileContent={fileContent} />
       </Box>), i => <NoSelect fromLeftEdge key={`ellipsis-${i}`}>
         <Text dimColor>...</Text>

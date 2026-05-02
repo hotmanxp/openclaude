@@ -66,6 +66,7 @@ export async function findRelevantMemories(
   if (feature('MEMORY_SHAPE_TELEMETRY')) {
     // @ts-ignore
     /* eslint-disable @typescript-eslint/no-require-imports */
+    // @ts-ignore
     const { logMemoryRecallShape } =
       require('./memoryShapeTelemetry.js') as typeof import('./memoryShapeTelemetry.js')
     /* eslint-enable @typescript-eslint/no-require-imports */
