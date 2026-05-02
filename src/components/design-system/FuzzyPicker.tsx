@@ -66,9 +66,18 @@ const DEFAULT_VISIBLE = 8;
 // rows) + hints. matchLabel adds +1 when present, accounted for separately.
 const CHROME_ROWS = 10;
 const MIN_VISIBLE = 2;
+// Translation map for byline action hints
+const ACTION_TRANSLATIONS: Record<string, string> = {
+  navigate: '导航',
+  nav: '导航',
+  cancel: '取消',
+  select: '选择',
+  use: '使用',
+  confirm: '确认',
+};
 export function FuzzyPicker<T>({
   title,
-  placeholder = 'Type to search…',
+  placeholder = '输入搜索…',
   initialQuery,
   items,
   getKey,
@@ -83,7 +92,7 @@ export function FuzzyPicker<T>({
   onShiftTab,
   onFocus,
   onCancel,
-  emptyMessage = 'No results',
+  emptyMessage = '无结果',
   matchLabel,
   selectAction = 'select',
   extraHints
@@ -205,11 +214,11 @@ export function FuzzyPicker<T>({
         {!inputAbove && searchBox}
         <Text dimColor>
           <Byline>
-            <KeyboardShortcutHint shortcut="↑/↓" action={compact ? 'nav' : 'navigate'} />
-            <KeyboardShortcutHint shortcut="Enter" action={compact ? firstWord(selectAction) : selectAction} />
+            <KeyboardShortcutHint shortcut="↑/↓" action={compact ? ACTION_TRANSLATIONS['nav'] : ACTION_TRANSLATIONS['navigate']} />
+            <KeyboardShortcutHint shortcut="Enter" action={ACTION_TRANSLATIONS[compact ? firstWord(selectAction) : selectAction] ?? (compact ? firstWord(selectAction) : selectAction)} />
             {onTab && <KeyboardShortcutHint shortcut="Tab" action={onTab.action} />}
             {onShiftTab && !compact && <KeyboardShortcutHint shortcut="shift+tab" action={onShiftTab.action} />}
-            <KeyboardShortcutHint shortcut="Esc" action="cancel" />
+            <KeyboardShortcutHint shortcut="Esc" action={ACTION_TRANSLATIONS['cancel']} />
             {extraHints}
           </Byline>
         </Text>

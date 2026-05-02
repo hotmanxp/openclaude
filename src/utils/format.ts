@@ -168,8 +168,8 @@ export function formatRelativeTime(
       // For short style, use custom format
       if (style === 'narrow') {
         return diffInSeconds < 0
-          ? `${Math.abs(value)}${shortUnit} ago`
-          : `in ${value}${shortUnit}`
+          ? `${Math.abs(value)}${shortUnit} 前`
+          : `${value}${shortUnit} 后`
       }
       // For days and longer, use long style regardless of the style parameter
       return getRelativeTimeFormat('long', numeric).format(value, unit)
@@ -178,7 +178,7 @@ export function formatRelativeTime(
 
   // For values less than 1 second
   if (style === 'narrow') {
-    return diffInSeconds <= 0 ? '0s ago' : 'in 0s'
+    return diffInSeconds <= 0 ? '0秒 前' : '0秒 后'
   }
   return getRelativeTimeFormat(style, numeric).format(0, 'second')
 }
