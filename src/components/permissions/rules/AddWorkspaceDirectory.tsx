@@ -29,19 +29,19 @@ const REMEMBER_DIRECTORY_OPTIONS: Array<{
   label: string;
 }> = [{
   value: 'yes-session',
-  label: 'Yes, for this session'
+  label: '是，仅本次会话'
 }, {
   value: 'yes-remember',
-  label: 'Yes, and remember this directory'
+  label: '是，并记住此目录'
 }, {
   value: 'no',
-  label: 'No'
+  label: '否'
 }];
 function PermissionDescription() {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t0 = <Text dimColor={true}>OpenCC will be able to read files in this directory and make edits when auto-accept edits is on.</Text>;
+    t0 = <Text dimColor={true}>OpenCC 将能够读取此目录中的文件，并在自动接受编辑开启时进行编辑。</Text>;
     $[0] = t0;
   } else {
     t0 = $[0];
@@ -90,14 +90,14 @@ function DirectoryInput(t0) {
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text>Enter the path to the directory:</Text>;
+    t1 = <Text>输入目录路径：</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];
   }
   let t2;
   if ($[1] !== onChange || $[2] !== onSubmit || $[3] !== value) {
-    t2 = <Box borderDimColor={true} borderStyle="round" marginY={1} paddingLeft={1}><TextInput showCursor={true} placeholder={`Directory path${figures.ellipsis}`} value={value} onChange={onChange} onSubmit={onSubmit} columns={80} cursorOffset={value.length} onChangeCursorOffset={_temp} /></Box>;
+    t2 = <Box borderDimColor={true} borderStyle="round" marginY={1} paddingLeft={1}><TextInput showCursor={true} placeholder={`目录路径${figures.ellipsis}`} value={value} onChange={onChange} onSubmit={onSubmit} columns={80} cursorOffset={value.length} onChangeCursorOffset={_temp} /></Box>;
     $[1] = onChange;
     $[2] = onSubmit;
     $[3] = value;
@@ -316,7 +316,7 @@ export function AddWorkspaceDirectory(t0) {
   }
   let t12;
   if ($[27] !== onCancel || $[28] !== t10 || $[29] !== t11) {
-    t12 = <Dialog title="Add directory to workspace" onCancel={onCancel} color="permission" isCancelActive={false} inputGuide={t10}>{t11}</Dialog>;
+    t12 = <Dialog title="添加目录到工作区" onCancel={onCancel} color="permission" isCancelActive={false} inputGuide={t10}>{t11}</Dialog>;
     $[27] = onCancel;
     $[28] = t10;
     $[29] = t11;
@@ -336,5 +336,5 @@ export function AddWorkspaceDirectory(t0) {
   return t13;
 }
 function _temp2(exitState) {
-  return exitState.pending ? <Text>Press {exitState.keyName} again to exit</Text> : <Byline><KeyboardShortcutHint shortcut="Tab" action="complete" /><KeyboardShortcutHint shortcut="Enter" action="add" /><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" /></Byline>;
+  return exitState.pending ? <Text>按 {exitState.keyName} 再次退出</Text> : <Byline><KeyboardShortcutHint shortcut="Tab" action="补全" /><KeyboardShortcutHint shortcut="Enter" action="添加" /><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="取消" /></Byline>;
 }
