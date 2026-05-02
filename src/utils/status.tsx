@@ -34,8 +34,8 @@ export function buildSandboxProperties(): Property[] {
   }
   const isSandboxed = SandboxManager.isSandboxingEnabled();
   return [{
-    label: 'Bash Sandbox',
-    value: isSandboxed ? 'Enabled' : 'Disabled'
+    label: 'Bash 沙箱',
+    value: isSandboxed ? '已启用' : '已禁用'
   }];
 }
 export function buildIDEProperties(mcpClients: MCPServerConnection[], ideInstallationStatus: IDEExtensionInstallationStatus | null = null, theme: ThemeName): Property[] {
@@ -112,7 +112,7 @@ export function buildMcpProperties(clients: MCPServerConnection[] = [], theme: T
   if (byState.pending) parts.push(color('inactive', theme)(`${byState.pending} pending`));
   if (byState.failed) parts.push(color('error', theme)(`${byState.failed} failed`));
   return [{
-    label: 'MCP servers',
+    label: 'MCP 服务器',
     value: `${parts.join(', ')} ${color('inactive', theme)('· /mcp')}`
   }];
 }
@@ -171,7 +171,7 @@ export function buildSettingSourcesProperties(): Property[] {
     return getSettingSourceDisplayNameCapitalized(source);
   }).filter((name): name is string => name !== null);
   return [{
-    label: 'Setting sources',
+    label: '设置来源',
     value: sourceNames
   }];
 }

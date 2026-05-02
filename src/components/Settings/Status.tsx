@@ -22,16 +22,16 @@ function buildPrimarySection(): Property[] {
   const customTitle = getCurrentSessionTitle(sessionId);
   const nameValue = customTitle ?? <Text dimColor>/rename to add a name</Text>;
   return [{
-    label: 'Version',
+    label: '版本',
     value: MACRO.DISPLAY_VERSION ?? MACRO.VERSION
   }, {
-    label: 'Session name',
+    label: '会话名称',
     value: nameValue
   }, {
-    label: 'Session ID',
+    label: '会话 ID',
     value: sessionId
   }, {
-    label: 'cwd',
+    label: '当前目录',
     value: getCwd()
   }, ...buildAccountProperties(), ...buildAPIProviderProperties()];
 }
@@ -48,7 +48,7 @@ function buildSecondarySection({
 }): Property[] {
   const modelLabel = getModelDisplayLabel(mainLoopModel);
   return [{
-    label: 'Model',
+    label: '模型',
     value: modelLabel
   }, ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildSettingSourcesProperties()];
 }
@@ -170,7 +170,7 @@ export function Status(t0) {
   }
   let t7;
   if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text dimColor={true}><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" /></Text>;
+    t7 = <Text dimColor={true}><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="取消" preposition="" /></Text>;
     $[16] = t7;
   } else {
     t7 = $[16];
@@ -213,7 +213,7 @@ function Diagnostics(t0) {
   }
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text bold={true}>System Diagnostics</Text>;
+    t1 = <Text bold={true}>系统诊断</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];

@@ -1729,7 +1729,7 @@ export function Config({
         minimum_version_set: choice === 'stay'
       });
     }} /> : <Box flexDirection="column" gap={1} marginY={insideModal ? undefined : 1}>
-          <SearchBox query={searchQuery} isFocused={isSearchMode && !headerFocused} isTerminalFocused={isTerminalFocused} cursorOffset={searchCursorOffset} placeholder="Search settings…" />
+          <SearchBox query={searchQuery} isFocused={isSearchMode && !headerFocused} isTerminalFocused={isTerminalFocused} cursorOffset={searchCursorOffset} placeholder="搜索设置…" />
           <Box flexDirection="column">
             {filteredSettingsItems.length === 0 ? <Text dimColor italic>
                 No settings match &quot;{searchQuery}&quot;
@@ -1790,23 +1790,23 @@ export function Config({
           </Box>
           {headerFocused ? <Text dimColor>
               <Byline>
-                <KeyboardShortcutHint shortcut="←/→ tab" action="switch" />
-                <KeyboardShortcutHint shortcut="↓" action="return" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="close" />
+                <KeyboardShortcutHint shortcut="←/→ tab" action="切换" preposition="" />
+                <KeyboardShortcutHint shortcut="↓" action="返回" preposition="" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="关闭" />
               </Byline>
             </Text> : isSearchMode ? <Text dimColor>
               <Byline>
-                <Text>Type to filter</Text>
-                <KeyboardShortcutHint shortcut="Enter/↓" action="select" />
-                <KeyboardShortcutHint shortcut="↑" action="tabs" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="clear" />
+                <Text>输入以筛选</Text>
+                <KeyboardShortcutHint shortcut="Enter/↓" action="选择" preposition="" />
+                <KeyboardShortcutHint shortcut="↑" action="标签" preposition="" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="清除" />
               </Byline>
             </Text> : <Text dimColor>
               <Byline>
-                <ConfigurableShortcutHint action="select:accept" context="Settings" fallback="Space" description="change" />
-                <ConfigurableShortcutHint action="settings:close" context="Settings" fallback="Enter" description="save" />
-                <ConfigurableShortcutHint action="settings:search" context="Settings" fallback="/" description="search" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+                <ConfigurableShortcutHint action="select:accept" context="Settings" fallback="Space" description="修改" preposition="" />
+                <ConfigurableShortcutHint action="settings:close" context="Settings" fallback="Enter" description="保存" preposition="" />
+                <ConfigurableShortcutHint action="settings:search" context="Settings" fallback="/" description="搜索" preposition="" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="取消" preposition="" />
               </Byline>
             </Text>}
         </Box>}
