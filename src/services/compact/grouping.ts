@@ -52,7 +52,7 @@ export function groupMessagesByApiRound(messages: Message[]): Message[][] {
       current.push(msg)
     }
     if (msg.type === 'assistant') {
-      lastAssistantId = msg.message.id
+      lastAssistantId = msg.message?.id
     }
   }
 

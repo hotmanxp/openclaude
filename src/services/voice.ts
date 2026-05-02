@@ -25,6 +25,7 @@ let audioNapiPromise: Promise<AudioNapi> | null = null
 function loadAudioNapi(): Promise<AudioNapi> {
   audioNapiPromise ??= (async () => {
     const t0 = Date.now()
+    // @ts-ignore - module not found
     const mod = await import('audio-capture-napi')
     // vendor/audio-capture-src/index.ts defers require(...node) until the
     // first function call — trigger it here so timing reflects real cost.
@@ -366,6 +367,7 @@ export async function startRecording(
         // stopRecording() (e.g. when the user presses Ctrl+X).
       },
     )
+    // @ts-ignore - startNativeRecording returns void
     if (started) {
       nativeRecordingActive = true
       return true

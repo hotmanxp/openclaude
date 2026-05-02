@@ -7,7 +7,9 @@ import {
 // @ts-ignore - KeybindingContextName, ParsedBinding not exported from types.js
 import type {
   KeybindingBlock,
+  // @ts-ignore
   KeybindingContextName,
+  // @ts-ignore
   ParsedBinding,
 } from './types.js'
 

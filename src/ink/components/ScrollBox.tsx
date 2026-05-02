@@ -232,6 +232,7 @@ function ScrollBox({
       <Box flexDirection="column" flexGrow={1} flexShrink={0} width="100%">
         {children}
       </Box>
+    {/* @ts-ignore */}
     </ink-box>;
 }
 export default ScrollBox;

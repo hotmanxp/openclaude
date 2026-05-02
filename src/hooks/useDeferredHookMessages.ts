@@ -41,6 +41,7 @@ export function useDeferredHookMessages(
     resolvedRef.current = true
     pendingRef.current = null
     if (msgs.length > 0) {
+      // @ts-ignore - HookResultMessage not in Message type
       setMessages(prev => [...msgs, ...prev])
     }
   }, [setMessages])

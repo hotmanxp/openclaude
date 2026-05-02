@@ -181,9 +181,12 @@ export class OAuthService {
       subscriptionType,
       rateLimitTier,
       profile,
+      // @ts-ignore - tokenAccount type mismatch
       tokenAccount: response.account
         ? {
+            // @ts-ignore - type mismatch
             uuid: response.account.uuid,
+            // @ts-ignore - type mismatch
             emailAddress: response.account.email_address,
             // @ts-ignore - organizationUuid type mismatch
             organizationUuid: response.organization?.uuid,

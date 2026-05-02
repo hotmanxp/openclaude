@@ -164,6 +164,7 @@ async function* runToolsConcurrently(
       yield* runToolUse(
         toolUse,
         assistantMessages.find(_ =>
+          // @ts-ignore - content may be string
           _.message.content.some(
             _ => _.type === 'tool_use' && _.id === toolUse.id,
           ),

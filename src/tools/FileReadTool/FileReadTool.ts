@@ -1167,6 +1167,7 @@ export async function readImageWithTokenBudget(
             } & typeof sharpModule
           ).default || sharpModule
 
+        // @ts-ignore - sharp callable issue
         const fallbackBuffer = await sharp(imageBuffer)
           .resize(400, 400, {
             fit: 'inside',

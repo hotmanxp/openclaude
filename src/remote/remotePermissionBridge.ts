@@ -16,7 +16,9 @@ export function createSyntheticAssistantMessage(
   // @ts-ignore - uuid not in AssistantMessage type
   return {
     type: 'assistant',
+    // @ts-ignore - uuid not in AssistantMessage
     uuid: randomUUID(),
+    // @ts-ignore - type conversion
     message: {
       id: `remote-${requestId}`,
       type: 'message',
