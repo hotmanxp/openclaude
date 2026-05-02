@@ -64,6 +64,12 @@ const TabsContext = createContext<TabsContextValue>({
   blurHeader: () => {},
   registerOptIn: () => () => {}
 });
+
+// Context to pass outer tabs focus functions to Stats component
+const OuterTabsFocusContext = createContext<{ focusHeader: () => void; blurHeader: () => void } | null>(null);
+export function useOuterTabsFocus() {
+  return useContext(OuterTabsFocusContext);
+}
 export function Tabs(t0) {
   const $ = _c(25);
   const {
@@ -232,14 +238,16 @@ export function Tabs(t0) {
   } else {
     t18 = $[24];
   }
-  return <TabsContext.Provider value={{
+  // Render outer tabs focus context provider so Stats can access it
+  const outerTabsValue = { focusHeader, blurHeader };
+  return <OuterTabsFocusContext.Provider value={outerTabsValue}><TabsContext.Provider value={{
     selectedTab: tabs[selectedTabIndex][0],
     width: contentWidth,
     headerFocused,
     focusHeader,
     blurHeader,
     registerOptIn
-  }}>{t18}</TabsContext.Provider>;
+  }}>{t18}</TabsContext.Provider></OuterTabsFocusContext.Provider>;
 }
 function _temp4(sum, t0) {
   const [, tabTitle] = t0;

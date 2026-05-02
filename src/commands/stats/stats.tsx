@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { Stats } from '../../components/Stats.js';
-import type { LocalJSXCommandCall } from '../../types/command.js';
-export const call: LocalJSXCommandCall = async onDone => {
-  return <Stats onClose={onDone} />;
-};
+import type { LocalJSXCommandContext } from '../../commands.js';
+import { Settings } from '../../components/Settings/Settings.js';
+import type { LocalJSXCommandOnDone } from '../../types/command.js';
+
+export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
+  return <Settings onClose={onDone} context={context} defaultTab="Stats" />;
+}

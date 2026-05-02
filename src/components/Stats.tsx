@@ -23,7 +23,7 @@ import { aggregateClaudeCodeStatsForRange, type ClaudeCodeStats, type DailyModel
 import { resolveThemeSetting } from '../utils/systemTheme.js';
 import { getTheme, themeColorToAnsi } from '../utils/theme.js';
 import { Pane } from './design-system/Pane.js';
-import { Tab, Tabs, useTabHeaderFocus } from './design-system/Tabs.js';
+import { Tab, Tabs, useTabHeaderFocus, useOuterTabsFocus } from './design-system/Tabs.js';
 import { Spinner } from './Spinner.js';
 function formatPeakDay(dateStr: string): string {
   const date = new Date(dateStr);
@@ -179,6 +179,11 @@ function StatsContent(t0) {
   useEffect(t2, t3);
   const displayStats = dateRange === "all" ? allTimeResult.type === "success" ? allTimeResult.data : null : statsCache[dateRange] ?? (allTimeResult.type === "success" ? allTimeResult.data : null);
   const allTimeStats = allTimeResult.type === "success" ? allTimeResult.data : null;
+  const { headerFocused, focusHeader, blurHeader } = useTabHeaderFocus();
+  const outerTabsFocus = useOuterTabsFocus();
+  useEffect(() => {
+    blurHeader();
+  }, [blurHeader]);
   let t4;
   if ($[5] !== onClose) {
     t4 = () => {
@@ -212,6 +217,11 @@ function StatsContent(t0) {
       }
       if (key.tab) {
         setActiveTab(_temp);
+      }
+      if (key.upArrow) {
+        if (outerTabsFocus) {
+          outerTabsFocus.focusHeader();
+        }
       }
       if (input === "r" && !key.ctrl && !key.meta) {
         setDateRange(getNextDateRange(dateRange));
@@ -283,7 +293,7 @@ function StatsContent(t0) {
   }
   let t9;
   if ($[26] !== t7 || $[27] !== t8) {
-    t9 = <Box flexDirection="row" gap={1} marginBottom={1}><Tabs title="" color="claude" defaultTab="Overview">{t7}{t8}</Tabs></Box>;
+    t9 = <Box flexDirection="row" gap={1}><Tabs title="" color="claude" defaultTab="Overview">{t7}{t8}</Tabs></Box>;
     $[26] = t7;
     $[27] = t8;
     $[28] = t9;
@@ -293,7 +303,7 @@ function StatsContent(t0) {
   const t10 = copyStatus ? ` · ${copyStatus}` : "";
   let t11;
   if ($[29] !== t10) {
-    t11 = <Box paddingLeft={2}><Text dimColor={true}>Esc to cancel · r to cycle dates · ctrl+s to copy{t10}</Text></Box>;
+    t11 = <Box paddingLeft={2}><Text dimColor={true}>Esc to cancel · ↑ tabs · r to cycle dates · ctrl+s to copy{t10}</Text></Box>;
     $[29] = t10;
     $[30] = t11;
   } else {
@@ -301,7 +311,7 @@ function StatsContent(t0) {
   }
   let t12;
   if ($[31] !== t11 || $[32] !== t9) {
-    t12 = <Pane color="claude">{t9}{t11}</Pane>;
+    t12 = <Box flexDirection="column" paddingX={2}>{t9}{t11}</Box>;
     $[31] = t11;
     $[32] = t9;
     $[33] = t12;
