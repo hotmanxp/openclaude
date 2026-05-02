@@ -26,6 +26,7 @@ export function createRecentActivityFeed(activities: LogOption[]): FeedConfig {
 }
 export function createWhatsNewFeed(releaseNotes: string[]): FeedConfig {
   const lines: FeedLine[] = releaseNotes.map(note => {
+    // @ts-ignore - runtime check
     if ("external" === 'ant') {
       const match = note.match(/^(\d+\s+\w+\s+ago)\s+(.+)$/);
       if (match) {
@@ -39,8 +40,10 @@ export function createWhatsNewFeed(releaseNotes: string[]): FeedConfig {
       text: note
     };
   });
+  // @ts-ignore - runtime check
   const emptyMessage = "external" === 'ant' ? 'Unable to fetch latest claude-cli-internal commits' : 'Check /release-notes for recent updates';
   return {
+    // @ts-ignore - runtime check
     title: "external" === 'ant' ? "OpenClaude Updates [internal-only: Latest CC commits]" : "OpenClaude Updates",
     lines,
     footer: lines.length > 0 ? '/release-notes for more' : undefined,

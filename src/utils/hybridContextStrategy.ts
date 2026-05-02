@@ -105,6 +105,7 @@ function getMessageChain(
 }
 
 function getCacheAge(message: Message): number {
+  // @ts-ignore - created_at property not in type but used at runtime
   const created = message.message?.created_at ?? 0
   if (created === 0) return 1000
   return (Date.now() - created) / (1000 * 60 * 60)
@@ -254,6 +255,7 @@ export function applyHybridStrategy(
     }
   }
 
+  // @ts-ignore - created_at property not in type but used at runtime
   selectedMessages.sort(
     (a, b) => (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0)
   )

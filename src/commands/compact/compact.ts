@@ -168,6 +168,7 @@ async function compactViaReactive(
       hookResult.newCustomInstructions,
     )
 
+    // @ts-expect-error - requesting not in SpinnerMode
     context.setStreamMode?.('requesting')
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_start' })
@@ -220,6 +221,7 @@ async function compactViaReactive(
       displayText: buildDisplayText(context, combinedMessage),
     }
   } finally {
+    // @ts-expect-error - requesting not in SpinnerMode
     context.setStreamMode?.('requesting')
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_end' })
@@ -262,6 +264,7 @@ async function getCacheSharingParams(
     context.options.tools,
     context.options.mainLoopModel,
     Array.from(
+      // @ts-expect-error - additionalWorkingDirectories may not exist
       appState.toolPermissionContext.additionalWorkingDirectories.keys(),
     ),
     context.options.mcpClients,

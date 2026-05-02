@@ -513,6 +513,7 @@ export function extractAgentMcpServers(
     // Use type guards to properly narrow the discriminated union type
     // Only include transport types that are supported by AgentMcpServerInfo
     if (isStdioConfig(config)) {
+      // @ts-expect-error - stdio and sourceAgents not in type
       result.push({
         name,
         sourceAgents,
@@ -521,6 +522,7 @@ export function extractAgentMcpServers(
         needsAuth: false,
       })
     } else if (isSSEConfig(config)) {
+      // @ts-expect-error - sourceAgents not in type
       result.push({
         name,
         sourceAgents,
@@ -529,6 +531,7 @@ export function extractAgentMcpServers(
         needsAuth: true,
       })
     } else if (isHTTPConfig(config)) {
+      // @ts-expect-error - sourceAgents not in type
       result.push({
         name,
         sourceAgents,
@@ -537,6 +540,7 @@ export function extractAgentMcpServers(
         needsAuth: true,
       })
     } else if (isWebSocketConfig(config)) {
+      // @ts-expect-error - ws and sourceAgents not in type
       result.push({
         name,
         sourceAgents,

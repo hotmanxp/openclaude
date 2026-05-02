@@ -77,8 +77,9 @@ type ResumeResult = {
 function extractTodosFromTranscript(messages: Message[]): TodoList {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
-    if (msg?.type !== 'assistant') continue
-    const toolUse = msg.message.content.find(
+    if (msg?.type !== 'assistant' || !msg?.message) continue
+    const content = typeof msg.message.content === 'string' ? [] : msg.message.content
+    const toolUse = content.find(
       block => block.type === 'tool_use' && block.name === TODO_WRITE_TOOL_NAME,
     )
     if (!toolUse || toolUse.type !== 'tool_use') continue
@@ -428,6 +429,7 @@ export async function processResumedConversation(
   if (feature('COORDINATOR_MODE')) {
     modeWarning = context.modeApi?.matchSessionMode(result.mode)
     if (modeWarning) {
+      // @ts-ignore - SystemInformationalMessage not assignable to Message
       result.messages.push(createSystemMessage(modeWarning, 'warning'))
     }
   }

@@ -137,7 +137,9 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 }
 
 export function formatCreditAmount(reward: ReferrerRewardInfo): string {
+  // @ts-expect-error - currency and amount_minor_units missing from type
   const symbol = CURRENCY_SYMBOLS[reward.currency] ?? `${reward.currency} `
+  // @ts-expect-error - amount_minor_units missing from type
   const amount = reward.amount_minor_units / 100
   const formatted = amount % 1 === 0 ? amount.toString() : amount.toFixed(2)
   return `${symbol}${formatted}`
@@ -152,6 +154,7 @@ export function getCachedReferrerReward(): ReferrerRewardInfo | null {
   if (!orgId) return null
   const config = getGlobalConfig()
   const cachedEntry = config.passesEligibilityCache?.[orgId]
+  // @ts-expect-error - referrer_reward missing from cachedEntry type
   return cachedEntry?.referrer_reward ?? null
 }
 

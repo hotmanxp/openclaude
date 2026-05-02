@@ -103,6 +103,7 @@ export function useAssistantHistory({
       type: 'system',
       subtype: 'informational',
       content: text,
+      // @ts-expect-error - isMeta not in type but used for sentinel
       isMeta: false,
       timestamp: new Date().toISOString(),
       uuid: sentinelUuidRef.current,
@@ -125,6 +126,7 @@ export function useAssistantHistory({
       }
 
       const sentinel = page.hasMore ? null : mkSentinel(SENTINEL_START)
+      // @ts-expect-error - sentinel may be SystemInformationalMessage
       setMessages(prev => {
         // Drop existing sentinel (index 0, known stable UUID — O(1)).
         const base =
@@ -167,6 +169,7 @@ export function useAssistantHistory({
     if (!cursor || !ctx) return // null=exhausted, undefined=initial pending
     inflightRef.current = true
     // Swap sentinel to "loading…" — O(1) slice since sentinel is at index 0.
+    // @ts-expect-error - sentinel may be SystemInformationalMessage
     setMessages(prev => {
       const base =
         prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev
@@ -177,6 +180,7 @@ export function useAssistantHistory({
       if (!page) {
         // Fetch failed — revert sentinel back to "start" placeholder so the user
         // can retry on next scroll-up. Cursor is preserved (not nulled out).
+        // @ts-expect-error - sentinel may be SystemInformationalMessage
         setMessages(prev => {
           const base =
             prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev

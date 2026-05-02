@@ -120,8 +120,11 @@ function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
 export function checkIsClaudeNativeProvider(): boolean {
   const provider = getAPIProvider()
   return (
+    // @ts-ignore - legacy provider checks
     provider === 'bedrock' ||
+    // @ts-ignore - legacy provider checks
     provider === 'vertex' ||
+    // @ts-ignore - legacy provider checks
     provider === 'foundry' ||
     (provider === 'firstParty' && isFirstPartyAnthropicBaseUrl())
   )

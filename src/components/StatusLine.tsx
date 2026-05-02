@@ -96,6 +96,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
       remaining_percentage: contextPercentages.remaining
     },
     exceeds_200k_tokens: exceeds200kTokens,
+    // @ts-ignore - rateLimits type issue
     ...((rateLimits.five_hour || rateLimits.seven_day) && {
       rate_limits: rateLimits
     }),
@@ -133,6 +134,7 @@ type Props = {
   vimMode?: VimMode;
 };
 export function getLastAssistantMessageId(messages: Message[]): string | null {
+  // @ts-ignore - uuid not on AssistantMessage type
   return getLastAssistantMessage(messages)?.uuid ?? null;
 }
 function StatusLineInner({

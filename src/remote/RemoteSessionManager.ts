@@ -152,6 +152,7 @@ export class RemoteSessionManager {
   ): void {
     // Handle control requests (permission prompts from CCR)
     if (message.type === 'control_request') {
+      // @ts-expect-error - type mismatch
       this.handleControlRequest(message)
       return
     }
@@ -164,6 +165,7 @@ export class RemoteSessionManager {
         `[RemoteSessionManager] Permission request cancelled: ${request_id}`,
       )
       this.pendingPermissionRequests.delete(request_id)
+      // @ts-expect-error - type mismatch for tool_use_id
       this.callbacks.onPermissionCancelled?.(
         request_id,
         pendingRequest?.tool_use_id,

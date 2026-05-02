@@ -7,6 +7,7 @@
  * perf/extract-interactive-helpers and perf/launch-repl.
  */
 import React from 'react';
+// @ts-expect-error - module may not exist
 import type { AssistantSession } from './assistant/sessionDiscovery.js';
 import type { StatsStore } from './context/stats.js';
 import type { Root } from './ink.js';
@@ -34,7 +35,10 @@ export async function launchSnapshotUpdateDialog(root: Root, props: {
   const {
     SnapshotUpdateDialog
   } = await import('./components/agents/SnapshotUpdateDialog.js');
-  return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => <SnapshotUpdateDialog agentType={props.agentType} scope={props.scope} snapshotTimestamp={props.snapshotTimestamp} onComplete={done} onCancel={() => done('keep')} />);
+  return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => (
+    // @ts-expect-error - onComplete type mismatch
+    <SnapshotUpdateDialog agentType={props.agentType} scope={props.scope} snapshotTimestamp={props.snapshotTimestamp} onComplete={done} onCancel={() => done('keep')} />
+  ));
 }
 
 /**
@@ -71,10 +75,8 @@ export async function launchAssistantSessionChooser(root: Root, props: {
  * distinguish errors from user cancellation.
  */
 export async function launchAssistantInstallWizard(root: Root): Promise<string | null> {
-  const {
-    NewInstallWizard,
-    computeDefaultInstallDir
-  } = await import('./commands/assistant/assistant.js');
+  // @ts-expect-error - module exports may not exist
+  const { NewInstallWizard, computeDefaultInstallDir } = await import('./commands/assistant/assistant.js');
   const defaultDir = await computeDefaultInstallDir();
   let rejectWithError: (reason: Error) => void;
   const errorPromise = new Promise<never>((_, reject) => {

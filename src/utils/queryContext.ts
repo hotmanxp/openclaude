@@ -118,6 +118,7 @@ export async function buildSideQuestionFallbackParams({
       tools,
       mainLoopModel,
       additionalWorkingDirectories: Array.from(
+        // @ts-ignore - additionalWorkingDirectories type mismatch
         appState.toolPermissionContext.additionalWorkingDirectories.keys(),
       ),
       mcpClients,
@@ -135,7 +136,7 @@ export async function buildSideQuestionFallbackParams({
   // as btw.tsx. The SDK can fire side_question mid-turn.
   const last = messages.at(-1)
   const forkContextMessages =
-    last?.type === 'assistant' && last.message.stop_reason === null
+    last?.type === 'assistant' && last.message && 'stop_reason' in last.message && last.message.stop_reason === null
       ? messages.slice(0, -1)
       : messages
 

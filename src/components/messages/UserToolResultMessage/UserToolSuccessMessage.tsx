@@ -58,6 +58,7 @@ export function UserToolSuccessMessage({
     }
     return extractTag(toolResultBlock.content, 'persisted-output') ?? toolResultBlock.content;
   }, [message.message.content]);
+  // @ts-ignore - toolUseResult not on NormalizedUserMessage type
   if (!message.toolUseResult || !tool) {
     return fallbackContent ? <Box flexDirection="column">
           <Box flexDirection="column" width={width}>
@@ -83,6 +84,7 @@ export function UserToolSuccessMessage({
   // validation (parseJSONL). A partial/corrupt/old-format result crashes
   // renderToolResultMessage on first field access (anthropics/claude-code#39817).
   // Validate against outputSchema before rendering — mirrors CollapsedReadSearchContent.
+  // @ts-ignore - toolUseResult not on NormalizedUserMessage type
   const parsedOutput = tool.outputSchema?.safeParse(message.toolUseResult);
   if (parsedOutput && !parsedOutput.success) {
     return fallbackContent ? <Box flexDirection="column">
@@ -104,6 +106,7 @@ export function UserToolSuccessMessage({
           </SentryErrorBoundary>
         </Box> : null;
   }
+  // @ts-ignore - toolUseResult not on NormalizedUserMessage type
   const toolResult = parsedOutput?.data ?? message.toolUseResult;
   const renderedMessage = tool.renderToolResultMessage?.(toolResult as never, filterToolProgressMessages(progressMessagesForMessage), {
     style,

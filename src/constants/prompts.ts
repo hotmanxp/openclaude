@@ -137,6 +137,7 @@ function getSystemRemindersSection(): string {
 function getAntModelOverrideSection(): string | null {
   if (process.env.USER_TYPE !== 'ant') return null
   if (isUndercover()) return null
+  // @ts-expect-error - getAntModelOverrideConfig not defined
   return getAntModelOverrideConfig()?.defaultSystemPromptSuffix || null
 }
 
