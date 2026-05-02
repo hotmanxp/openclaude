@@ -516,6 +516,7 @@ export function extractAgentMcpServers(
       result.push({
         name,
         sourceAgents,
+        // @ts-ignore - transport type mismatch
         transport: 'stdio',
         command: config.command,
         needsAuth: false,
@@ -542,6 +543,7 @@ export function extractAgentMcpServers(
       result.push({
         name,
         sourceAgents,
+        // @ts-ignore - transport type mismatch
         transport: 'ws',
         url: config.url,
         needsAuth: false,
