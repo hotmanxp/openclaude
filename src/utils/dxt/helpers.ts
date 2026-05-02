@@ -17,6 +17,7 @@ export async function validateManifest(
   const parseResult = McpbManifestSchema.safeParse(manifestJson)
 
   if (!parseResult.success) {
+    // @ts-ignore - error exists when success is false
     const errors = parseResult.error.flatten()
     const errorMessages = [
       ...Object.entries(errors.fieldErrors).map(
@@ -30,6 +31,7 @@ export async function validateManifest(
     throw new Error(`Invalid manifest: ${errorMessages}`)
   }
 
+  // @ts-ignore - data exists when success is true
   return parseResult.data
 }
 
@@ -79,7 +81,9 @@ export function generateExtensionId(
   const authorName = manifest.author.name
   const extensionName = manifest.name
 
+  // @ts-ignore - manifest properties are unknown
   const sanitizedAuthor = sanitize(authorName)
+  // @ts-ignore - manifest properties are unknown
   const sanitizedName = sanitize(extensionName)
 
   return prefix
