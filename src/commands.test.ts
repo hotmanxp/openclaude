@@ -1,5 +1,12 @@
 // @ts-nocheck
-import { formatDescriptionWithSource } from './commands.js'
+import { describe, expect, test } from 'bun:test'
+import { builtInCommandNames, formatDescriptionWithSource } from './commands.js'
+
+describe('builtInCommandNames', () => {
+  test('includes the LSP command', () => {
+    expect(builtInCommandNames()).toContain('lsp')
+  })
+})
 
 describe('formatDescriptionWithSource', () => {
   test('returns empty text for prompt commands missing a description', () => {
