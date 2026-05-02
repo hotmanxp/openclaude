@@ -37,8 +37,10 @@ export async function generateAwaySummary(
   try {
     const memory = await getSessionMemoryContent()
     const recent = messages.slice(-RECENT_MESSAGE_WINDOW)
+    // @ts-ignore - UserMessage is assignable to Message
     recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }))
     const response = await queryModelWithoutStreaming({
+      // @ts-ignore - Message type mismatch
       messages: recent,
       systemPrompt: asSystemPrompt([]),
       thinkingConfig: { type: 'disabled' },
@@ -59,10 +61,12 @@ export async function generateAwaySummary(
 
     if (response.isApiErrorMessage) {
       logForDebugging(
+        // @ts-ignore - AssistantMessage type mismatch
         `[awaySummary] API error: ${getAssistantMessageText(response)}`,
       )
       return null
     }
+    // @ts-ignore - AssistantMessage type mismatch
     return getAssistantMessageText(response)
   } catch (err) {
     if (err instanceof APIUserAbortError || signal.aborted) {

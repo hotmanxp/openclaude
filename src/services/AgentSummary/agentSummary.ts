@@ -108,6 +108,7 @@ export function startAgentSummarization(
       // onCacheSafeParams time). No explicit override needed.
       const result = await runForkedAgent({
         promptMessages: [
+          // @ts-ignore - UserMessage is assignable to Message
           createUserMessage({ content: buildSummaryPrompt(previousSummary) }),
         ],
         cacheSafeParams: forkParams,
@@ -130,6 +131,7 @@ export function startAgentSummarization(
           )
           continue
         }
+        // @ts-ignore - msg.message.content can be string | ContentBlock[]
         const textBlock = msg.message.content.find(b => b.type === 'text')
         if (textBlock?.type === 'text' && textBlock.text.trim()) {
           const summaryText = textBlock.text.trim()

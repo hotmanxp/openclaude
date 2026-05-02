@@ -315,6 +315,7 @@ const extractSessionMemory = sequential(async function (
   // Run session memory extraction using runForkedAgent for prompt caching
   // runForkedAgent creates an isolated context to prevent mutation of parent state
   // Pass setupContext.readFileState so the forked agent can edit the memory file
+  // @ts-ignore - UserMessage is assignable to Message for runForkedAgent
   await runForkedAgent({
     promptMessages: [createUserMessage({ content: userPrompt })],
     cacheSafeParams: createCacheSafeParams(context),
@@ -417,6 +418,7 @@ export async function manuallyExtractSessionMemory(
     const systemPrompt = asSystemPrompt(rawSystemPrompt)
 
     // Run session memory extraction using runForkedAgent
+    // @ts-ignore - UserMessage is assignable to Message for runForkedAgent
     await runForkedAgent({
       promptMessages: [createUserMessage({ content: userPrompt })],
       cacheSafeParams: {

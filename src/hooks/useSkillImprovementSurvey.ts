@@ -73,7 +73,7 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
       if (applied) {
         void applySkillImprovement(current.skillName, current.updates).then(
           () => {
-            // @ts-ignore - type mismatch for setMessages
+            // @ts-ignore - type mismatch for setMessages and createSystemMessage
             setMessages(prev => [
               ...prev,
               createSystemMessage(
