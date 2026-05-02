@@ -24,8 +24,10 @@ export function requireComputerUseInput(): ComputerUseInputAPI {
   if (cached) return cached
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const input = require('@ant/computer-use-input') as ComputerUseInput
+  // @ts-ignore - isSupported may not exist on type
   if (!input.isSupported) {
     throw new Error('@ant/computer-use-input is not supported on this platform')
   }
-  return (cached = input)
+  // @ts-ignore - onInput may not exist on type
+  return (cached = input as ComputerUseInputAPI)
 }

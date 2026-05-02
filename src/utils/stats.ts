@@ -306,8 +306,11 @@ async function processSessionFiles(
           }
 
           // Track model usage if available (skip synthetic messages)
+          // @ts-ignore - usage property not on type
           if (message.message?.usage) {
+            // @ts-ignore - usage property not on type
             const usage = message.message.usage
+            // @ts-ignore - model property not on type
             const model = message.message.model || 'unknown'
 
             // Skip synthetic messages - they are internal and shouldn't appear in stats

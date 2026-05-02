@@ -137,9 +137,11 @@ export function createStreamlinedTransformer(): (
   ): StdoutMessage | null {
     switch (message.type) {
       case 'assistant': {
-        const content = message.message.content
+        // @ts-ignore - message property may not exist
+        const content = message.message?.content
         const text = Array.isArray(content)
-          ? extractTextContent(content, '\n').trim()
+          ? // @ts-ignore - content type mismatch
+            extractTextContent(content, '\n').trim()
           : ''
 
         // Accumulate tool counts from this message

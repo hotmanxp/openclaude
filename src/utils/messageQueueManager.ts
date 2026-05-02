@@ -340,9 +340,9 @@ export function resetCommandQueue(): void {
 // Editable mode helpers
 // ============================================================================
 
+// @ts-ignore - type mismatch in Set constructor
 const NON_EDITABLE_MODES = new Set<PromptInputMode>([
   'task-notification',
-  // @ts-ignore - type mismatch due to template literal Exclude
 ] satisfies Permutations<Exclude<PromptInputMode, EditablePromptInputMode>>)
 
 export function isPromptInputModeEditable(

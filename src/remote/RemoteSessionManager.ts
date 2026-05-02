@@ -169,7 +169,7 @@ export class RemoteSessionManager {
       this.pendingPermissionRequests.delete(request_id)
       // @ts-ignore - type mismatch for request_id
       this.callbacks.onPermissionCancelled?.(
-        request_id,
+        request_id as string,
         pendingRequest?.tool_use_id,
       )
       return

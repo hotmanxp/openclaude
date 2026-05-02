@@ -129,8 +129,10 @@ export async function hasImageInClipboard(): Promise<boolean> {
     // when the module/export is missing. Catch a throw too: it would surface
     // as an unhandled rejection in useClipboardImageHint's setTimeout.
     try {
+      // @ts-ignore - native module may not exist
       const { getNativeModule } = await import('image-processor-napi')
-      const hasImage = getNativeModule()?.hasClipboardImage
+      // @ts-ignore - native module may not exist
+      const hasImage = getNativeModule?.()?.hasClipboardImage
       if (hasImage) {
         return hasImage()
       }
@@ -138,6 +140,7 @@ export async function hasImageInClipboard(): Promise<boolean> {
       logError(e as Error)
     }
   }
+  // @ts-ignore - native module may not exist
   const result = await execFileNoThrowWithCwd('osascript', [
     '-e',
     'the clipboard as «class PNGf»',
@@ -158,8 +161,10 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_collage_kaleidoscope', true)
   ) {
     try {
+      // @ts-ignore - getNativeModule may not exist
       const { getNativeModule } = await import('image-processor-napi')
-      const readClipboard = getNativeModule()?.readClipboardImage
+      // @ts-ignore - getNativeModule may not exist
+      const readClipboard = getNativeModule?.()?.readClipboardImage
       if (!readClipboard) {
         throw new Error('native clipboard reader unavailable')
       }

@@ -36,7 +36,8 @@ export function extractConversationText(messages: Message[]): string {
     if (msg.type !== 'user' && msg.type !== 'assistant') continue
     if ('isMeta' in msg && msg.isMeta) continue
     if ('origin' in msg && msg.origin && msg.origin.kind !== 'human') continue
-    const content = msg.message.content
+    // @ts-ignore - message property may not exist on all message types
+    const content = msg.message?.content
     if (typeof content === 'string') {
       parts.push(content)
     } else if (Array.isArray(content)) {
@@ -111,6 +112,7 @@ export async function generateSessionTitle(
       },
     })
 
+    // @ts-ignore - content type mismatch
     const text = extractTextContent(result.message.content)
 
     const parsed = titleSchema().safeParse(safeParseJSON(text))

@@ -66,13 +66,13 @@ export function getCurrentTurn(): TurnContext | null {
 export function addMessageToTurn(message: Message): void {
   const turn = currentTurn || startNewTurn()
   turn.messages.push(message)
-  
+
   // Update token estimate
   // @ts-ignore - message.message may be undefined
-  const content = typeof message.message.content === 'string'
-    ? message.message.content
-    : JSON.stringify(message.message.content)
-  turn.tokens += roughTokenCountEstimation(content)
+  const content = typeof message.message?.content === 'string'
+    ? message.message?.content
+    : JSON.stringify(message.message?.content)
+  turn.tokens += roughTokenCountEstimation(content ?? '')
 }
 
 export function addToolCallToTurn(call: TurnContext['toolCalls'][0]): void {

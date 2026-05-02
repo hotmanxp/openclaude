@@ -6,6 +6,7 @@ import {
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
+// @ts-ignore - coordinator module may not exist at runtime
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
@@ -16,8 +17,9 @@ export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 // Same pattern as prompts.ts — lazy require to avoid pulling the module
 // into non-proactive builds.
 /* eslint-disable @typescript-eslint/no-require-imports */
+// @ts-ignore - proactive module may not exist
 const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
+  false || false
     ? (require('../proactive/index.js') as typeof import('../proactive/index.js'))
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */

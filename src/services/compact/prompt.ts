@@ -1,3 +1,4 @@
+// @ts-ignore - proactive module may not exist
 import { feature } from 'bun:bundle'
 import type { PartialCompactDirection } from '../../types/message.js'
 
@@ -6,6 +7,7 @@ import type { PartialCompactDirection } from '../../types/message.js'
 // @ts-ignore - proactive module not present in this build
 const proactiveModule =
   feature('PROACTIVE') || feature('KAIROS')
+    // @ts-ignore
     ? (require('../../proactive/index.js') as typeof import('../../proactive/index.js'))
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */

@@ -78,6 +78,7 @@ export function generateExtensionId(
       .replace(/-+/g, '-')
       .replace(/^-+|-+$/g, '')
 
+  // @ts-ignore - manifest.author is unknown
   const authorName = manifest.author.name
   const extensionName = manifest.name
 

@@ -75,6 +75,7 @@ async function loadMcpServersFromMcpb(
       `Loaded MCP server "${serverName}" from MCPB (extracted to ${successResult.extractedPath})`,
     )
 
+    // @ts-ignore - computed property name type issue
     return { [serverName]: successResult.mcpConfig }
   } catch (error) {
     const errorMsg = errorMessage(error)

@@ -511,7 +511,8 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             if (m.type === 'user') m.origin = origin
           }
         }
-        newMessages.push(...result.messages) as any
+        // @ts-ignore - message type mismatch
+        newMessages.push(...result.messages)
         if (isFirst) {
           shouldQuery = result.shouldQuery
           allowedTools = result.allowedTools

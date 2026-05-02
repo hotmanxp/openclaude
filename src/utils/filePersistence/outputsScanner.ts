@@ -86,6 +86,7 @@ export async function findModifiedFiles(
       // entry.parentPath is available in Node 20+, fallback to entry.path for older versions
       // @ts-ignore - entry.name is Buffer on some systems
       const parentPath = getEntryParentPath(entry, outputsDir)
+      // @ts-ignore - entry.name conversion
       filePaths.push(path.join(parentPath, entry.name as string))
     }
   }

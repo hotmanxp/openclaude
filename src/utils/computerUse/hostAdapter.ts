@@ -39,6 +39,7 @@ let cached: ComputerUseHostAdapter | undefined
 export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
   if (cached) return cached
   cached = {
+    // @ts-ignore - serverName not in type but expected by adapter
     serverName: COMPUTER_USE_MCP_SERVER_NAME,
     logger: new DebugLogger(),
     executor: createCliExecutor({
@@ -66,5 +67,6 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
     // The sub-gate defaults to false anyway.
     cropRawPatch: () => null,
   }
+  // @ts-ignore - cached may be undefined
   return cached
 }

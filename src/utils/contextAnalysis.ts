@@ -71,7 +71,7 @@ export function analyzeContext(messages: Message[]): TokenStats {
       content.forEach(block =>
         // @ts-ignore - type mismatch in legacy code
         processBlock(
-          block,
+          block as Parameters<typeof processBlock>[0],
           msg,
           stats,
           toolIdsToToolNames,
