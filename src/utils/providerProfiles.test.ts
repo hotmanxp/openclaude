@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ProviderProfile } from './config.js'
 
@@ -58,6 +58,12 @@ function saveMockGlobalConfig(
 ): void {
   mockConfigState = updater(mockConfigState)
 }
+
+beforeEach(() => {
+  for (const key of RESTORED_KEYS) {
+    delete process.env[key]
+  }
+})
 
 afterEach(() => {
   for (const key of RESTORED_KEYS) {
