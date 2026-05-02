@@ -378,7 +378,7 @@ const externalTips: Tip[] = [
   {
     id: 'continue',
     content: async () =>
-      'Run openclaude --continue or openclaude --resume to resume a conversation',
+      'Run opencc --continue or opencc --resume to resume a conversation',
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
