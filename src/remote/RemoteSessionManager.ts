@@ -159,14 +159,15 @@ export class RemoteSessionManager {
 
     // Handle control cancel requests (server cancelling a pending permission prompt)
     if (message.type === 'control_cancel_request') {
+      // @ts-expect-error - request_id type from destructuring
       const { request_id } = message
       const pendingRequest = this.pendingPermissionRequests.get(request_id)
       logForDebugging(
         `[RemoteSessionManager] Permission request cancelled: ${request_id}`,
       )
       this.pendingPermissionRequests.delete(request_id)
-      // @ts-expect-error - type mismatch for tool_use_id
       this.callbacks.onPermissionCancelled?.(
+        // @ts-expect-error - type mismatch for request_id and tool_use_id
         request_id,
         pendingRequest?.tool_use_id,
       )
