@@ -2,8 +2,9 @@ import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
 import { existsSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
-import { homedir } from 'os'
+import { homedir, platform, arch } from 'os'
 import * as path from 'path'
+import { fileURLToPath } from 'url'
 import { logEvent } from 'src/services/analytics/index.js'
 import { isInBundledMode } from './bundledMode.js'
 import { logForDebugging } from './debug.js'
@@ -28,23 +29,28 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 }
 
 /**
- * Returns the ripgrep binary path provided by the @vscode/ripgrep package.
- * The package downloads a platform/arch-specific binary at npm install time
- * (cached under the package's bin/ directory). Returns null when the package
- * cannot be resolved — for example when running as a Bun-compiled standalone
- * executable that doesn't ship node_modules.
+ * Returns the ripgrep binary path from the bundled vendor directory.
+ * Binaries are downloaded via `bun run download:ripgrep` and stored in
+ * vendor/ripgrep/. Returns null when the binary cannot be found.
  */
 function resolveBuiltinRgPath(): string | null {
-  try {
-    // Lazy require so the resolution failure path stays graceful at import
-    // time. The package only exports `rgPath`, so we do not need the rest.
-    const mod = require('@vscode/ripgrep') as { rgPath?: string }
-    if (mod.rgPath && existsSync(mod.rgPath)) {
-      return mod.rgPath
-    }
-  } catch {
-    // Falls through to null — caller decides the fallback.
+  const currentPlatform = platform()
+  const currentArch = arch()
+  const binName = `rg-${currentPlatform}-${currentArch}${currentPlatform === 'win32' ? '.exe' : ''}`
+
+  // Use import.meta.url to get the runtime location of the bundled cli.mjs.
+  // This works because Bun preserves import.meta.url in bundled code,
+  // unlike __dirname which is hardcoded at build time.
+  // The cli.mjs is in dist/ and vendor/ripgrep/ is at the same level.
+  // So from dist/cli.mjs, we go up one level (..) to reach vendor/ripgrep.
+  const currentFile = fileURLToPath(import.meta.url)
+  const currentDir = path.dirname(currentFile)
+  const vendorPath = path.join(currentDir, '..', 'vendor', 'ripgrep', binName)
+
+  if (existsSync(vendorPath)) {
+    return vendorPath
   }
+
   return null
 }
 
