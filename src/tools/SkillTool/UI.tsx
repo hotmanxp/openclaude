@@ -101,6 +101,7 @@ export function renderToolUseRejectedMessage(_input: Input, {
   tools,
   verbose
 }: {
+  // @ts-ignore - ProgressMessage is not generic
   progressMessagesForMessage: ProgressMessage<Progress>[];
   tools: Tools;
   verbose: boolean;
@@ -118,6 +119,7 @@ export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'
   tools,
   verbose
 }: {
+  // @ts-ignore - ProgressMessage is not generic
   progressMessagesForMessage: ProgressMessage<Progress>[];
   tools: Tools;
   verbose: boolean;
