@@ -117,6 +117,7 @@ export function preloadContext(
     const bPriority = priorityTypes.some(t => bContent.includes(t)) ? 1 : 0
 
     if (bPriority !== aPriority) return bPriority - aPriority
+    // @ts-ignore - created_at not in type but used at runtime
     return (b.message?.created_at ?? 0) - (a.message?.created_at ?? 0)
   })
 

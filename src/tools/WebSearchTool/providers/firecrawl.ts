@@ -25,8 +25,6 @@ export const firecrawlProvider: SearchProvider = {
 
     const hits = applyDomainFilters(
       (data.web ?? []).map((r: { url: string; title?: string; description?: string }) => ({
-        // @ts-ignore
-        title: r.title ?? r.url,
         title: r.title ?? r.url,
         url: r.url,
         description: r.description,
