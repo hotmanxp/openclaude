@@ -620,7 +620,7 @@ describe('Codex request translation', () => {
             sources: [
               {
                 title: 'OpenCC repo',
-                url: 'https://github.com/example/openclaude',
+                url: 'https://github.com/hotmanxp/opencc',
               },
             ],
           },
@@ -634,7 +634,7 @@ describe('Codex request translation', () => {
                 sources: [
                   {
                     title: 'Docs',
-                    url: 'https://docs.example.com/openclaude',
+                    url: 'https://docs.example.com/opencc',
                   },
                 ],
               },
@@ -653,11 +653,11 @@ describe('Codex request translation', () => {
         content: [
           {
             title: 'OpenCC repo',
-            url: 'https://github.com/example/openclaude',
+            url: 'https://github.com/hotmanxp/opencc',
           },
           {
             title: 'Docs',
-            url: 'https://docs.example.com/openclaude',
+            url: 'https://docs.example.com/opencc',
           },
         ],
       },
@@ -746,7 +746,7 @@ describe('Codex request translation', () => {
                 type: 'output_text',
                 text: 'Partial results below.',
                 sources: [
-                  { title: 'Docs', url: 'https://docs.example.com/openclaude' },
+                  { title: 'Docs', url: 'https://docs.example.com/opencc' },
                 ],
               },
             ],
@@ -763,7 +763,7 @@ describe('Codex request translation', () => {
       {
         tool_use_id: 'codex-web-search',
         content: [
-          { title: 'Docs', url: 'https://docs.example.com/openclaude' },
+          { title: 'Docs', url: 'https://docs.example.com/opencc' },
         ],
       },
     ])
