@@ -176,7 +176,7 @@ export function AgentsMenu(t0) {
             }
           };
         });
-        setChanges(prev_0 => [...prev_0, `Deleted agent: ${chalk.bold(agent.agentType)}`]);
+        setChanges(prev_0 => [...prev_0, `已删除 agent：${chalk.bold(agent.agentType)}`]);
         setModeState({
           mode: "list-agents",
           source: "all"
@@ -220,7 +220,7 @@ export function AgentsMenu(t0) {
         if ($[34] !== changes || $[35] !== onExit) {
           t15 = () => {
             const exitMessage = changes.length > 0 ? `Agent changes:\n${changes.join("\n")}` : undefined;
-            onExit(exitMessage ?? "Agents dialog dismissed", {
+            onExit(exitMessage ?? "Agents 对话框已关闭", {
               display: changes.length === 0 ? "system" : undefined
             });
           };
@@ -330,7 +330,7 @@ export function AgentsMenu(t0) {
         let t14;
         if ($[60] === Symbol.for("react.memo_cache_sentinel")) {
           t14 = {
-            label: "View agent",
+            label: "查看 agent",
             value: "view"
           };
           $[60] = t14;
@@ -340,10 +340,10 @@ export function AgentsMenu(t0) {
         let t15;
         if ($[61] !== isEditable) {
           t15 = isEditable ? [{
-            label: "Edit agent",
+            label: "编辑 agent",
             value: "edit"
           }, {
-            label: "Delete agent",
+            label: "删除 agent",
             value: "delete"
           }] : [];
           $[61] = isEditable;
@@ -354,7 +354,7 @@ export function AgentsMenu(t0) {
         let t16;
         if ($[63] === Symbol.for("react.memo_cache_sentinel")) {
           t16 = {
-            label: "Back",
+            label: "返回",
             value: "back"
           };
           $[63] = t16;
@@ -554,7 +554,7 @@ export function AgentsMenu(t0) {
         }
         let t18;
         if ($[109] === Symbol.for("react.memo_cache_sentinel")) {
-          t18 = <AgentNavigationFooter instructions="Press Enter or Esc to go back" />;
+          t18 = <AgentNavigationFooter instructions="按 Enter 或 Esc 返回" />;
           $[109] = t18;
         } else {
           t18 = $[109];
@@ -574,10 +574,10 @@ export function AgentsMenu(t0) {
         let t13;
         if ($[112] === Symbol.for("react.memo_cache_sentinel")) {
           t13 = [{
-            label: "Yes, delete",
+            label: "是，删除",
             value: "yes"
           }, {
-            label: "No, cancel",
+            label: "否，取消",
             value: "no"
           }];
           $[112] = t13;
@@ -599,7 +599,7 @@ export function AgentsMenu(t0) {
         }
         let t15;
         if ($[115] !== modeState.agent.agentType) {
-          t15 = <Text>Are you sure you want to delete the agent{" "}<Text bold={true}>{modeState.agent.agentType}</Text>?</Text>;
+          t15 = <Text>确定要删除 agent <Text bold={true}>{modeState.agent.agentType}</Text> 吗？</Text>;
           $[115] = modeState.agent.agentType;
           $[116] = t15;
         } else {
@@ -607,7 +607,7 @@ export function AgentsMenu(t0) {
         }
         let t16;
         if ($[117] !== modeState.agent.source) {
-          t16 = <Box marginTop={1}><Text dimColor={true}>Source: {modeState.agent.source}</Text></Box>;
+          t16 = <Box marginTop={1}><Text dimColor={true}>来源：{modeState.agent.source}</Text></Box>;
           $[117] = modeState.agent.source;
           $[118] = t16;
         } else {
@@ -653,7 +653,7 @@ export function AgentsMenu(t0) {
         }
         let t20;
         if ($[127] !== t14 || $[128] !== t15 || $[129] !== t16 || $[130] !== t19) {
-          t20 = <Dialog title="Delete agent" onCancel={t14} color="error">{t15}{t16}{t19}</Dialog>;
+          t20 = <Dialog title="删除 agent" onCancel={t14} color="error">{t15}{t16}{t19}</Dialog>;
           $[127] = t14;
           $[128] = t15;
           $[129] = t16;
@@ -664,7 +664,7 @@ export function AgentsMenu(t0) {
         }
         let t21;
         if ($[132] === Symbol.for("react.memo_cache_sentinel")) {
-          t21 = <AgentNavigationFooter instructions={"Press \u2191\u2193 to navigate, Enter to select, Esc to cancel"} />;
+          t21 = <AgentNavigationFooter instructions={"按 ↑↓ 浏览，Enter 选择，Esc 取消"} />;
           $[132] = t21;
         } else {
           t21 = $[132];
@@ -700,7 +700,7 @@ export function AgentsMenu(t0) {
         }
         const freshAgent = t13;
         const agentToEdit = freshAgent || modeState.agent;
-        const t14 = `Edit agent: ${agentToEdit.agentType}`;
+        const t14 = `编辑 agent：${agentToEdit.agentType}`;
         let t15;
         if ($[140] !== modeState.previousMode) {
           t15 = () => setModeState(modeState.previousMode);

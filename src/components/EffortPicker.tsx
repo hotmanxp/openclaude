@@ -43,9 +43,9 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
   const modelReasoningEffort = usesOpenAIEffort ? getReasoningEffortForModel(model) : undefined
   const options: EffortOption[] = [
     {
-      label: <EffortOptionLabel level="auto" text="Auto" isCurrent={false} />,
+      label: <EffortOptionLabel level="auto" text="自动" isCurrent={false} />,
       value: 'auto',
-      description: 'Use the default effort level for your model',
+      description: '使用模型的默认投入度',
       isAvailable: true,
     },
     ...availableLevels.map(level => {
@@ -99,13 +99,13 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
   return (
     <Box flexDirection="column">
       <Box marginBottom={1} flexDirection="column">
-        <Text color="remember" bold={true}>Set effort level</Text>
+        <Text color="remember" bold={true}>设置投入度</Text>
         <Text dimColor={true}>
             {supportsEffort && usesOpenAIEffort
-              ? `OpenAI/Codex provider (${provider})`
+              ? `OpenAI/Codex 提供商（${provider}）`
               : supportsEffort
-              ? `Claude model · ${provider} provider`
-              : `Effort not supported for this model`
+              ? `Claude 模型 · ${provider} 提供商`
+              : `此模型不支持投入度`
           }
         </Text>
       </Box>
@@ -124,8 +124,8 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
       <Box marginBottom={1}>
         <Text dimColor={true} italic={true}>
           <Byline>
-            <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-            <KeyboardShortcutHint shortcut="Esc" action="cancel" />
+            <KeyboardShortcutHint shortcut="Enter" action="确认" />
+            <KeyboardShortcutHint shortcut="Esc" action="取消" />
           </Byline>
         </Text>
       </Box>
@@ -141,7 +141,7 @@ function EffortOptionLabel({ level, text, isCurrent }: { level: EffortLevel | 'a
     <>
       <Text color={color}>{symbol} </Text>
       <Text bold={isCurrent}>{text}</Text>
-      {isCurrent && <Text dimColor={true}> (current)</Text>}
+      {isCurrent && <Text dimColor={true}>（当前）</Text>}
     </>
   )
 }

@@ -44,7 +44,7 @@ export function AgentsList(t0) {
   const getOverrideInfo = _temp;
   let t2;
   if ($[2] !== isCreateNewSelected) {
-    t2 = () => <Box><Text color={isCreateNewSelected ? "suggestion" : undefined}>{isCreateNewSelected ? `${figures.pointer} ` : "  "}</Text><Text color={isCreateNewSelected ? "suggestion" : undefined}>Create new agent</Text></Box>;
+    t2 = () => <Box><Text color={isCreateNewSelected ? "suggestion" : undefined}>{isCreateNewSelected ? `${figures.pointer} ` : "  "}</Text><Text color={isCreateNewSelected ? "suggestion" : undefined}>创建新 agent</Text></Box>;
     $[2] = isCreateNewSelected;
     $[3] = t2;
   } else {
@@ -63,7 +63,7 @@ export function AgentsList(t0) {
       const dimmed = isBuiltIn || isOverridden;
       const textColor = !isBuiltIn && isSelected ? "suggestion" : undefined;
       const resolvedModel = resolveAgentModelDisplay(agent_0);
-      return <Box key={`${agent_0.agentType}-${agent_0.source}`}><Text dimColor={dimmed && !isSelected} color={textColor}>{isBuiltIn ? "" : isSelected ? `${figures.pointer} ` : "  "}</Text><Text dimColor={dimmed && !isSelected} color={textColor}>{agent_0.agentType}</Text>{resolvedModel && <Text dimColor={true} color={textColor}>{" \xB7 "}{resolvedModel}</Text>}{agent_0.memory && <Text dimColor={true} color={textColor}>{" \xB7 "}{agent_0.memory} memory</Text>}{overriddenBy && <Text dimColor={!isSelected} color={isSelected ? "warning" : undefined}>{" "}{figures.warning} shadowed by {getOverrideSourceLabel(overriddenBy)}</Text>}</Box>;
+      return <Box key={`${agent_0.agentType}-${agent_0.source}`}><Text dimColor={dimmed && !isSelected} color={textColor}>{isBuiltIn ? "" : isSelected ? `${figures.pointer} ` : "  "}</Text><Text dimColor={dimmed && !isSelected} color={textColor}>{agent_0.agentType}</Text>{resolvedModel && <Text dimColor={true} color={textColor}>{" \xB7 "}{resolvedModel}</Text>}{agent_0.memory && <Text dimColor={true} color={textColor}>{" \xB7 "}{agent_0.memory} 内存</Text>}{overriddenBy && <Text dimColor={!isSelected} color={isSelected ? "warning" : undefined}>{" "}{figures.warning} 被 {getOverrideSourceLabel(overriddenBy)} 遮蔽</Text>}</Box>;
     };
     $[4] = isCreateNewSelected;
     $[5] = selectedAgent?.agentType;
@@ -175,7 +175,7 @@ export function AgentsList(t0) {
   let t8;
   if ($[23] !== renderAgent || $[24] !== sortedAgents) {
     t8 = t9 => {
-      const title = t9 === undefined ? "Built-in (always available):" : t9;
+      const title = t9 === undefined ? "内置（始终可用）：" : t9;
       const builtInAgents = sortedAgents.filter(_temp4);
       return <Box flexDirection="column" marginBottom={1} paddingLeft={2}><Text bold={true} dimColor={true}>{title}</Text>{builtInAgents.map(renderAgent)}</Box>;
     };
@@ -243,9 +243,9 @@ export function AgentsList(t0) {
         let t25;
         let t26;
         if ($[58] === Symbol.for("react.memo_cache_sentinel")) {
-          t24 = <Text dimColor={true}>No agents found. Create specialized subagents that Claude can delegate to.</Text>;
-          t25 = <Text dimColor={true}>Each subagent has its own context window, custom system prompt, and specific tools.</Text>;
-          t26 = <Text dimColor={true}>Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.</Text>;
+          t24 = <Text dimColor={true}>未找到 agents。创建可委托给 Claude 的专业子 agent。</Text>;
+          t25 = <Text dimColor={true}>每个子 agent 都有独立的上下文窗口、自定义系统提示词和特定工具。</Text>;
+          t26 = <Text dimColor={true}>可以尝试创建：代码审查员、代码简化员、安全审查员、技术负责人或 UX 审查员。</Text>;
           $[58] = t24;
           $[59] = t25;
           $[60] = t26;
@@ -276,7 +276,7 @@ export function AgentsList(t0) {
         }
         let t29;
         if ($[69] !== onBack || $[70] !== sourceTitle || $[71] !== t28) {
-          t29 = <Dialog title={sourceTitle} subtitle="No agents found" onCancel={onBack} hideInputGuide={true}>{t28}</Dialog>;
+          t29 = <Dialog title={sourceTitle} subtitle="未找到 agents" onCancel={onBack} hideInputGuide={true}>{t28}</Dialog>;
           $[69] = onBack;
           $[70] = sourceTitle;
           $[71] = t28;
@@ -297,7 +297,7 @@ export function AgentsList(t0) {
       } else {
         t23 = $[74];
       }
-      t18 = `${t23} agents`;
+      t18 = `${t23} 个 agents`;
       t19 = onBack;
       t20 = true;
       if ($[75] !== changes) {
@@ -326,7 +326,7 @@ export function AgentsList(t0) {
             source: groupSource_0
           } = t24;
           return <React.Fragment key={groupSource_0}>{renderAgentGroup(label, sortedAgents.filter(a_7 => a_7.source === groupSource_0))}</React.Fragment>;
-        })}{builtInAgents_0.length > 0 && <Box flexDirection="column" marginBottom={1} paddingLeft={2}><Text dimColor={true}><Text bold={true}>Built-in agents</Text> (always available)</Text>{builtInAgents_0.map(renderAgent)}</Box>}</> : source === "built-in" ? <><Text dimColor={true} italic={true}>Built-in agents are provided by default and cannot be modified.</Text><Box marginTop={1} flexDirection="column">{sortedAgents.map(agent_2 => renderAgent(agent_2))}</Box></> : <>{sortedAgents.filter(_temp0).map(agent_3 => renderAgent(agent_3))}{sortedAgents.some(_temp1) && <><Divider />{renderBuiltInAgentsSection()}</>}</>;
+        })}{builtInAgents_0.length > 0 && <Box flexDirection="column" marginBottom={1} paddingLeft={2}><Text dimColor={true}><Text bold={true}>内置 agents</Text>（始终可用）</Text>{builtInAgents_0.map(renderAgent)}</Box>}</> : source === "built-in" ? <><Text dimColor={true} italic={true}>内置 agents 为默认提供，无法修改。</Text><Box marginTop={1} flexDirection="column">{sortedAgents.map(agent_2 => renderAgent(agent_2))}</Box></> : <>{sortedAgents.filter(_temp0).map(agent_3 => renderAgent(agent_3))}{sortedAgents.some(_temp1) && <><Divider />{renderBuiltInAgentsSection()}</>}</>;
     }
     $[30] = changes;
     $[31] = handleKeyDown;

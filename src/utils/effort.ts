@@ -98,8 +98,8 @@ export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIE
 }
 
 export function getEffortLevelLabel(level: EffortLevel | OpenAIEffortLevel): string {
-  if (level === 'xhigh') return 'Extra High'
-  if (level === 'max') return 'Max'
+  if (level === 'xhigh') return '极高'
+  if (level === 'max') return '最高'
   return capitalize(level)
 }
 
@@ -273,15 +273,15 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
 export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel): string {
   switch (level) {
     case 'low':
-      return 'Quick, straightforward implementation with minimal overhead'
+      return '快速、直接的实现，开销最小'
     case 'medium':
-      return 'Balanced approach with standard implementation and testing'
+      return '平衡的方法，标准实现和测试'
     case 'high':
-      return 'Comprehensive implementation with extensive testing and documentation'
+      return '全面的实现，广泛测试和文档'
     case 'max':
-      return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
+      return '最大能力，最深层推理（仅 Opus 4.6）'
     case 'xhigh':
-      return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
+      return '复杂任务极高推理投入（OpenAI/Codex）'
   }
 }
 
