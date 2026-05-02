@@ -8,6 +8,8 @@ import {
   saveGlobalConfig,
   type ProviderProfile,
 } from './config.js'
+import type { ProfileEnv } from './providerProfile.js'
+import { buildOpenAIProfileEnv } from './providerProfile.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { getPrimaryModel, parseModelList } from './providerModels.js'
 

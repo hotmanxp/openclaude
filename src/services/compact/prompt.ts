@@ -3,6 +3,7 @@ import type { PartialCompactDirection } from '../../types/message.js'
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
+// @ts-ignore - proactive module not present in this build
 const proactiveModule =
   feature('PROACTIVE') || feature('KAIROS')
     ? (require('../../proactive/index.js') as typeof import('../../proactive/index.js'))

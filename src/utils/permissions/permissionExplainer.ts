@@ -105,6 +105,7 @@ function extractConversationContext(
 ): string {
   // Get recent assistant messages (they contain Open CC's reasoning)
   const assistantMessages = messages
+    // @ts-ignore - type predicate issue
     .filter((m): m is AssistantMessage => m.type === 'assistant')
     .slice(-3) // Last 3 assistant messages
 
@@ -113,7 +114,8 @@ function extractConversationContext(
 
   for (const msg of assistantMessages.reverse()) {
     // Extract text content from assistant message
-    const textBlocks = msg.message.content
+    const msgContent = typeof msg.message?.content === 'string' ? [] : (msg.message?.content ?? [])
+    const textBlocks = msgContent
       .filter(c => c.type === 'text')
       .map(c => ('text' in c ? c.text : ''))
       .join(' ')

@@ -73,9 +73,9 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
       if (applied) {
         void applySkillImprovement(current.skillName, current.updates).then(
           () => {
+            // @ts-ignore - type mismatch for setMessages
             setMessages(prev => [
               ...prev,
-              // @ts-expect-error - suggestion not in SystemMessageLevel
               createSystemMessage(
                 `Skill "${current.skillName}" updated with improvements.`,
                 'suggestion',

@@ -317,8 +317,8 @@ export async function generateSuggestion(
   //   - skipTranscript (client-side only)
   //   - skipCacheWrite (controls cache_control markers, not the cache key)
   //   - canUseTool (client-side permission check)
-  // @ts-expect-error - type mismatch with Message
   const result = await runForkedAgent({
+    // @ts-expect-error - type mismatch with Message
     promptMessages: [createUserMessage({ content: prompt })],
     cacheSafeParams, // Don't override tools/thinking settings - busts cache
     canUseTool,

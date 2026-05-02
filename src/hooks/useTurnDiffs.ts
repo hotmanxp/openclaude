@@ -123,11 +123,10 @@ export function useTurnDiffs(messages: Message[]): TurnDiff[] {
       if (!message || message.type !== 'user') continue
 
       // Check if this is a user prompt (not a tool result)
-      // @ts-expect-error - message.message may not exist
       const isToolResult =
         message.toolUseResult ||
+        // @ts-ignore - message.message may not exist
         (Array.isArray(message.message.content) &&
-          // @ts-expect-error - message.message may not exist
           message.message.content[0]?.type === 'tool_result')
 
       if (!isToolResult && !message.isMeta) {
