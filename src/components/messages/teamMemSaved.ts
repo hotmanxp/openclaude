@@ -10,6 +10,7 @@ import type { SystemMemorySavedMessage } from '../../types/message.js'
 export function teamMemSavedPart(
   message: SystemMemorySavedMessage,
 ): { segment: string; count: number } | null {
+  // @ts-ignore
   const count = message.teamCount ?? 0
   if (count === 0) return null
   return {

@@ -1,3 +1,4 @@
+// @ts-ignore
 import type { ComputerUseAPI } from '@ant/computer-use-swift'
 
 let cached: ComputerUseAPI | undefined

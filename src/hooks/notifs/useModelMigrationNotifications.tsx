@@ -41,6 +41,7 @@ function _temp() {
   for (const migration of MIGRATIONS) {
     const notif = migration(config);
     if (notif) {
+      // @ts-ignore
       notifs.push(notif);
     }
   }

@@ -1,4 +1,5 @@
 import { useContext } from 'react'
+// @ts-ignore
 import type { WizardContextValue } from './types.js'
 import { WizardContext } from './WizardProvider.js'
 

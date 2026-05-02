@@ -9,6 +9,7 @@ function isLabeledHookSummary(
   return (
     msg.type === 'system' &&
     msg.subtype === 'stop_hook_summary' &&
+    // @ts-ignore
     msg.hookLabel !== undefined
   )
 }

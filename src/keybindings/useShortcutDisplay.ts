@@ -4,6 +4,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import { useOptionalKeybindingContext } from './KeybindingContext.js'
+// @ts-ignore
 import type { KeybindingContextName } from './types.js'
 
 // TODO(keybindings-migration): Remove fallback parameter after migration is complete

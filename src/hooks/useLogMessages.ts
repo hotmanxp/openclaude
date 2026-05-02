@@ -110,7 +110,7 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
       const last = cleanMessagesForLogging(slice, messages).findLast(
         isChainParticipant,
       )
-      if (last) lastParentUuidRef.current = last.uuid as UUID
+      if (last) lastParentUuidRef.current = last.uuid as UUID // @ts-ignore
     }
 
     lastRecordedLengthRef.current = messages.length

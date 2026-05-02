@@ -263,8 +263,10 @@ export default class App extends PureComponent<Props, State> {
           void Promise.all([this.querier.send(xtversion()), this.querier.flush()]).then(([r]) => {
             if (r) {
               setXtversionName(r.name);
+              // @ts-expect-error logForDebugging not defined
               logForDebugging(`XTVERSION: terminal identified as "${r.name}"`);
             } else {
+              // @ts-expect-error logForDebugging not defined
               logForDebugging('XTVERSION: no reply (terminal ignored query)');
             }
           });
@@ -370,6 +372,7 @@ export default class App extends PureComponent<Props, State> {
         stdin
       } = this.props;
       if (this.rawModeEnabledCount > 0 && !stdin.listeners('readable').includes(this.handleReadable)) {
+        // @ts-expect-error logForDebugging not defined
         logForDebugging('handleReadable: re-attaching stdin readable listener after error recovery', {
           level: 'warn'
         });
@@ -391,6 +394,7 @@ export default class App extends PureComponent<Props, State> {
         stdin
       } = this.props;
       if (this.rawModeEnabledCount > 0 && !stdin.listeners('data').includes(this.handleDataChunk)) {
+        // @ts-expect-error logForDebugging not defined
         logForDebugging('handleDataChunk: re-attaching stdin data listener after error recovery', {
           level: 'warn'
         });

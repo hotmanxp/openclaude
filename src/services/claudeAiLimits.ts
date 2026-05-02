@@ -200,6 +200,7 @@ export function emitStatusChange(limits: ClaudeAILimits) {
 async function makeTestQuery() {
   const model = getSmallFastModel()
   const anthropic = await getAnthropicClient({
+    // @ts-ignore
     maxRetries: 0,
     model,
     source: 'quota_check',

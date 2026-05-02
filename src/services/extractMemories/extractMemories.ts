@@ -413,6 +413,7 @@ export function initExtractMemories(): void {
             )
 
       const result = await runForkedAgent({
+        // @ts-ignore - UserMessage vs Message type mismatch
         promptMessages: [createUserMessage({ content: userPrompt })],
         cacheSafeParams,
         canUseTool,
@@ -490,6 +491,7 @@ export function initExtractMemories(): void {
       if (memoryPaths.length > 0) {
         const msg = createMemorySavedMessage(memoryPaths)
         if (feature('TEAMMEM')) {
+          // @ts-ignore - teamCount not on SystemMemorySavedMessage type
           msg.teamCount = teamCount
         }
         appendSystemMessage?.(msg)

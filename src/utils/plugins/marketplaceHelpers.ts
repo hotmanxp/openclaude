@@ -93,6 +93,7 @@ export async function loadMarketplacesWithGracefulDegradation(
 
     let data = null
     try {
+      // @ts-ignore
       data = await getMarketplace(name)
     } catch (err) {
       // Track individual marketplace failures but continue loading others

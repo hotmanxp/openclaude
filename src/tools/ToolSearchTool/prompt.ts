@@ -14,6 +14,7 @@ const BRIEF_TOOL_NAME: string | null =
     : null
 const SEND_USER_FILE_TOOL_NAME: string | null = feature('KAIROS')
   ? (
+      // @ts-ignore
       require('../SendUserFileTool/prompt.js') as typeof import('../SendUserFileTool/prompt.js')
     ).SEND_USER_FILE_TOOL_NAME
   : null

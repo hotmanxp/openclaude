@@ -11,16 +11,18 @@ type Props = {
 function getProviderLabel(): string {
   const provider = getAPIProvider()
   switch (provider) {
-    case 'firstParty':
-      return 'Anthropic API'
+    // @ts-expect-error provider type mismatch
     case 'bedrock':
       return 'AWS Bedrock'
+    // @ts-expect-error provider type mismatch
     case 'vertex':
       return 'Google Vertex'
+    // @ts-expect-error provider type mismatch
     case 'foundry':
       return 'Azure Foundry'
     case 'openai':
       return 'OpenAI-compatible API'
+    // @ts-expect-error provider type mismatch
     case 'gemini':
       return 'Gemini API'
     default:

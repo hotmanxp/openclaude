@@ -304,6 +304,7 @@ async function doInitializeTelemetry(): Promise<void> {
 
 async function setMeterState(): Promise<void> {
   // Lazy-load instrumentation to defer ~400KB of OpenTelemetry + protobuf
+  // @ts-ignore
   const { initializeTelemetry } = await import(
     '../utils/telemetry/instrumentation.js'
   )

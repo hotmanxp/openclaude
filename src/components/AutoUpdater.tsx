@@ -49,6 +49,7 @@ export function AutoUpdater({
     if (isUpdatingRef.current) {
       return;
     }
+    // @ts-ignore - build-time constant check
     if ("production" === 'test' || "production" === 'development') {
       logForDebugging('AutoUpdater: Skipping update check in test/dev environment');
       return;

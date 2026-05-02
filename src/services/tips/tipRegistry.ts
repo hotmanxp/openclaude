@@ -55,6 +55,7 @@ import {
 } from '../api/referral.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
 import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
+// @ts-ignore
 import type { Tip, TipContext } from './types.js'
 
 let _isOfficialMarketplaceInstalledCache: boolean | undefined

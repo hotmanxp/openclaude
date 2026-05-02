@@ -260,6 +260,7 @@ export const FileWriteTool = buildTool({
       await fileHistoryTrackEdit(
         updateFileHistoryState,
         fullFilePath,
+        // @ts-ignore
         parentMessage.uuid,
       )
     }

@@ -4,6 +4,7 @@ import type { LocalJSXCommandCall } from '../../types/command.js';
 import { createPermissionRetryMessage } from '../../utils/messages.js';
 export const call: LocalJSXCommandCall = async (onDone, context) => {
   return <PermissionRuleList onExit={onDone} onRetryDenials={commands => {
+    // @ts-ignore - type mismatch between SystemPermissionRetryMessage and Message
     context.setMessages(prev => [...prev, createPermissionRetryMessage(commands)]);
   }} />;
 };

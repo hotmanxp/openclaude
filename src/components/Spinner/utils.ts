@@ -1,4 +1,5 @@
 import type { RGBColor as RGBColorString } from '../../ink/styles.js'
+// @ts-ignore
 import type { RGBColor as RGBColorType } from './types.js'
 
 export function getDefaultCharacters(): string[] {

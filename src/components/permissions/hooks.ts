@@ -201,6 +201,7 @@ export function usePermissionRequestLogging(
       event: 'response',
       metadata: {
         language_name: unaryEvent.language_name,
+        // @ts-ignore
         message_id: toolUseConfirm.assistantMessage.message.id,
         platform: env.platform,
       },

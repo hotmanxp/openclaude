@@ -77,6 +77,7 @@ export function useAwaySummary(
         controller.signal,
       )
       if (controller.signal.aborted || text === null) return
+      // @ts-ignore - type mismatch with SystemAwaySummaryMessage
       setMessages(prev => [...prev, createAwaySummaryMessage(text)])
     }
 

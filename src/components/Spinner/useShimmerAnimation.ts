@@ -8,6 +8,7 @@ export function useShimmerAnimation(
   message: string,
   isStalled: boolean,
 ): [ref: (element: DOMElement | null) => void, glimmerIndex: number] {
+  // @ts-ignore - SpinnerMode may not include 'requesting'
   const glimmerSpeed = mode === 'requesting' ? 50 : 200
   // Pass null when stalled to unsubscribe from the clock — otherwise the
   // setInterval keeps firing at 20fps even when the shimmer isn't visible.
@@ -24,6 +25,7 @@ export function useShimmerAnimation(
   const cyclePosition = Math.floor(time / glimmerSpeed)
   const cycleLength = messageWidth + 20
 
+  // @ts-ignore - SpinnerMode may not include 'requesting'
   if (mode === 'requesting') {
     return [ref, (cyclePosition % cycleLength) - 10]
   }

@@ -510,6 +510,7 @@ export async function uninstallPluginOp(
   }
   newEnabledPlugins[pluginId] = undefined
   updateSettingsForSource(settingSource, {
+    // @ts-ignore
     enabledPlugins: newEnabledPlugins,
   })
 

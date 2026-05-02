@@ -4,6 +4,7 @@ import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { useStartupNotification } from './useStartupNotification.js';
 const NPM_DEPRECATION_MESSAGE = 'OpenClaude has switched from npm to the native installer. Run `openclaude install` or see https://github.com/Gitlawb/openclaude#quick-start for more options.';
 export function useNpmDeprecationNotification() {
+  // @ts-ignore
   useStartupNotification(_temp);
 }
 async function _temp() {

@@ -92,7 +92,9 @@ export async function handleUrlSchemeLaunch(): Promise<number | null> {
   }
 
   try {
+    // @ts-ignore
     const { waitForUrlEvent } = await import('url-handler-napi')
+    // @ts-ignore
     const url = waitForUrlEvent(5000)
     if (!url) {
       return null

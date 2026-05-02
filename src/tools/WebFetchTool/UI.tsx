@@ -36,7 +36,8 @@ export function renderToolResultMessage({
   code,
   codeText,
   result
-}: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], {
+}: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], {
   verbose
 }: {
   verbose: boolean;

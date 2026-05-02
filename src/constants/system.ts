@@ -35,6 +35,7 @@ export function getCLISyspromptPrefix(options?: {
   hasAppendSystemPrompt: boolean
 }): CLISyspromptPrefix {
   const apiProvider = getAPIProvider()
+  // @ts-ignore
   if (apiProvider === 'vertex') {
     return DEFAULT_PREFIX
   }

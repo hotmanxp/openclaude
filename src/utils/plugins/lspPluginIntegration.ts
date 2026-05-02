@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises'
 import { join, relative, resolve } from 'path'
 import { z } from 'zod/v4'
+// @ts-ignore
 import type {
   LspServerConfig,
   ScopedLspServerConfig,

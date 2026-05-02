@@ -48,6 +48,7 @@ export async function getAnthropicClient({
   maxRetries: number
   fetchOverride?: ClientOptions['fetch']
   source?: string
+  // @ts-ignore
   providerOverride?: ProviderOverride
 }): Promise<Anthropic> {
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID

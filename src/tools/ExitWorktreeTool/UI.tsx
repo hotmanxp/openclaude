@@ -7,7 +7,8 @@ import type { Output } from './ExitWorktreeTool.js';
 export function renderToolUseMessage(): React.ReactNode {
   return 'Exiting worktree…';
 }
-export function renderToolResultMessage(output: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], _options: {
+export function renderToolResultMessage(output: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], _options: {
   theme: ThemeName;
 }): React.ReactNode {
   const actionLabel = output.action === 'keep' ? 'Kept worktree' : 'Removed worktree';

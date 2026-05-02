@@ -52,7 +52,8 @@ export function renderToolUseMessage({
   }
   return message;
 }
-export function renderToolUseProgressMessage(progressMessages: ProgressMessage<WebSearchProgress>[]): React.ReactNode {
+export function renderToolUseProgressMessage(progressMessages: // @ts-ignore
+ProgressMessage<WebSearchProgress>[]): React.ReactNode {
   if (progressMessages.length === 0) {
     return null;
   }

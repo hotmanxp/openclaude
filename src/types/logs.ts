@@ -3,6 +3,7 @@ import type { FileHistorySnapshot } from 'src/utils/fileHistory.js'
 import type { ContentReplacementRecord } from 'src/utils/toolResultStorage.js'
 import type { AgentId } from './ids.js'
 import type { Message } from './message.js'
+// @ts-ignore
 import type { QueueOperationMessage } from './messageQueueTypes.js'
 
 export type SerializedMessage = Message & {

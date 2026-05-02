@@ -7,6 +7,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { sleep } from '../../utils/sleep.js'
 import type { createLSPClient as createLSPClientType } from './LSPClient.js'
+// @ts-ignore
 import type { LspServerState, ScopedLspServerConfig } from './types.js'
 
 /**

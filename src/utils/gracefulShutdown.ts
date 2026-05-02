@@ -480,6 +480,7 @@ export async function gracefulShutdown(
   // overall execution via a single budget (CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS,
   // default 1.5s). hook.timeout in settings is respected up to this cap.
   try {
+    // @ts-ignore
     await executeSessionEndHooks(reason, {
       ...options,
       signal: AbortSignal.timeout(sessionEndTimeoutMs),

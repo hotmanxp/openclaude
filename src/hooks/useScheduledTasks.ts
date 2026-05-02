@@ -110,6 +110,7 @@ export function useScheduledTasks({
         const msg = createScheduledTaskFireMessage(
           `Running scheduled task (${formatCronFireTime(new Date())})`,
         )
+        // @ts-ignore
         setMessages(prev => [...prev, msg])
         enqueueForLead(task.prompt)
       },

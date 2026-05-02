@@ -99,6 +99,7 @@ export async function startMCPServer(
     ListToolsRequestSchema,
     async (): Promise<ListToolsResult> => {
       const toolPermissionContext = getEmptyToolPermissionContext()
+      // @ts-ignore - Tools vs Tool[] type mismatch
       const tools = getCombinedTools(getTools(toolPermissionContext), mcpTools)
       return {
         tools: await Promise.all(
@@ -138,6 +139,7 @@ export async function startMCPServer(
     CallToolRequestSchema,
     async ({ params: { name, arguments: args } }): Promise<CallToolResult> => {
       const toolPermissionContext = getEmptyToolPermissionContext()
+      // @ts-ignore - Tools vs Tool[] type mismatch
       const tools = getCombinedTools(getTools(toolPermissionContext), mcpTools)
       const tool = findToolByName(tools, name)
       if (!tool) {

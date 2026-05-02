@@ -35,6 +35,7 @@ export function processTextPrompt(
     typeof input === 'string'
       ? input
       : input.find(block => block.type === 'text')?.text || ''
+  // @ts-ignore
   startInteractionSpan(userPromptText)
 
   // Emit user_prompt OTEL event for both string (CLI) and array (SDK/VS Code)

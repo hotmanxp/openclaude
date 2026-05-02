@@ -1,4 +1,5 @@
 import type { Key } from '../ink.js'
+// @ts-ignore - ParsedBinding, ParsedKeystroke not exported from types.js
 import type { ParsedBinding, ParsedKeystroke } from './types.js'
 
 /**

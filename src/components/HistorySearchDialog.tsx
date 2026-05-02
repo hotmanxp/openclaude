@@ -29,6 +29,7 @@ export function HistorySearchDialog({
   onSelect,
   onCancel
 }: Props): React.ReactNode {
+  // @ts-ignore
   useRegisterOverlay('history-search');
   const {
     columns

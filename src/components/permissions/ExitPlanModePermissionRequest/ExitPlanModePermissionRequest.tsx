@@ -92,6 +92,7 @@ export function autoNameSessionFromPlan(plan: string, setAppState: (updater: (pr
   // generateSessionName tail-slices to the last 1000 chars (correct for
   // conversations, where recency matters). Plans front-load the goal and
   // end with testing steps — head-slice so Haiku sees the summary.
+  // @ts-ignore - type mismatch
   [createUserMessage({
     content: plan.slice(0, 1000)
   })], new AbortController().signal).then(async name => {
@@ -142,6 +143,7 @@ export function ExitPlanModePermissionRequest({
   // launchUltraplan can notice the session exists and return "already polling".
   // feature() must sit directly in an if/ternary (bun:bundle DCE constraint).
   const showUltraplan = feature('ULTRAPLAN') ? !ultraplanSessionUrl && !ultraplanLaunching : false;
+  // @ts-ignore - usage property missing from type
   const usage = toolUseConfirm.assistantMessage.message.usage;
   const {
     mode,

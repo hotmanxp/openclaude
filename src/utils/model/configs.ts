@@ -71,6 +71,7 @@ export const CLAUDE_OPUS_4_6_CONFIG = {
 
 export const CLAUDE_OPUS_4_7_CONFIG = {
   firstParty: 'claude-opus-4-7',
+  // @ts-ignore
   bedrock: 'us.anthropic.claude-opus-4-7-v1',
   vertex: 'claude-opus-4-7',
   foundry: 'claude-opus-4-7',

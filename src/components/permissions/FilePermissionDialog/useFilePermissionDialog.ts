@@ -89,6 +89,7 @@ export function useFilePermissionDialog<T extends ToolInput>({
   const onChange = useCallback(
     (option: PermissionOption, input: T, feedback?: string) => {
       const params: PermissionHandlerParams = {
+        // @ts-ignore
         messageId: toolUseConfirm.assistantMessage.message.id,
         path: filePath,
         toolUseConfirm,

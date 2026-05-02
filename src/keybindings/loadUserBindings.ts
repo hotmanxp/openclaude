@@ -23,6 +23,7 @@ import { createSignal } from '../utils/signal.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import { DEFAULT_BINDINGS } from './defaultBindings.js'
 import { parseBindings } from './parser.js'
+// @ts-ignore
 import type { KeybindingBlock, ParsedBinding } from './types.js'
 import {
   checkDuplicateKeysInJson,

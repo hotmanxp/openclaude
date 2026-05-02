@@ -4,6 +4,7 @@ import {
 } from '../services/analytics/index.js'
 import { loadKeybindingsSync } from './loadUserBindings.js'
 import { getBindingDisplayText } from './resolver.js'
+// @ts-ignore
 import type { KeybindingContextName } from './types.js'
 
 // TODO(keybindings-migration): Remove fallback parameter after migration is

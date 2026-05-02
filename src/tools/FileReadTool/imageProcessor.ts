@@ -54,6 +54,7 @@ export async function getImageProcessor(): Promise<SharpFunction> {
     // Try to load the native image processor first
     try {
       // Use the native image processor module
+      // @ts-ignore
       const imageProcessor = await import('image-processor-napi')
       if ((imageProcessor as { __stub?: boolean }).__stub) {
         throw new ImageProcessorUnavailableError()

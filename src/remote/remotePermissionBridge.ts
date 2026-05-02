@@ -13,6 +13,7 @@ export function createSyntheticAssistantMessage(
   request: SDKControlPermissionRequest,
   requestId: string,
 ): AssistantMessage {
+  // @ts-ignore - uuid not in AssistantMessage type
   return {
     type: 'assistant',
     uuid: randomUUID(),

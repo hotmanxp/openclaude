@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import type { InputEvent } from '../ink/events/input-event.js'
 import { type Key, useInput } from '../ink.js'
 import { useOptionalKeybindingContext } from './KeybindingContext.js'
+// @ts-ignore
 import type { KeybindingContextName } from './types.js'
 
 type Options = {

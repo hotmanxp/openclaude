@@ -171,7 +171,7 @@ export function isInProtectedNamespace(): boolean {
     /* eslint-disable @typescript-eslint/no-require-imports */
     return (
       require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
-    ).checkProtectedNamespace()
+    ).isProtectedNamespace()
     /* eslint-enable @typescript-eslint/no-require-imports */
   }
   return false

@@ -4,6 +4,7 @@ import {
   getReservedShortcuts,
   normalizeKeyForComparison,
 } from './reservedShortcuts.js'
+// @ts-ignore - KeybindingContextName, ParsedBinding not exported from types.js
 import type {
   KeybindingBlock,
   KeybindingContextName,

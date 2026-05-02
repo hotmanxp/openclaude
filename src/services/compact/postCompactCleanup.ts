@@ -69,6 +69,7 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
   // cacheUtils resets. See compactConversation() for full rationale.
   clearBetaTracingState()
   if (feature('COMMIT_ATTRIBUTION')) {
+    // @ts-ignore
     void import('../../utils/attributionHooks.js').then(m =>
       m.sweepFileContentCache(),
     )

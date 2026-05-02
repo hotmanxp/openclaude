@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import useApp from '../ink/hooks/use-app.js'
+// @ts-ignore
 import type { KeybindingContextName } from '../keybindings/types.js'
 import { useDoublePress } from './useDoublePress.js'
 

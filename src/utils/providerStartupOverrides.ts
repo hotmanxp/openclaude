@@ -66,6 +66,7 @@ export function clearStartupProviderOverrides(options?: {
 
   let globalConfigError: string | null = null
   try {
+    // @ts-ignore
     saveConfig((current: GlobalConfigWithEnv) => {
       const currentEnv = current.env ?? {}
       let changed = false

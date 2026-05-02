@@ -11,7 +11,8 @@ export function renderToolUseMessage(input: Partial<{
 }>): React.ReactNode {
   return input.server ? `List MCP resources from server "${input.server}"` : `List all MCP resources`;
 }
-export function renderToolResultMessage(output: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], {
+export function renderToolResultMessage(output: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], {
   verbose
 }: {
   verbose: boolean;

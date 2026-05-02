@@ -266,6 +266,7 @@ export async function* withRetry<T>(
         `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof APIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
         { level: 'error' },
       )
+        // @ts-ignore
         if (isQuotaExhausted(error) && getAPIProvider() !== 'qwen') {
           throw new CannotRetryError(
             new Error(

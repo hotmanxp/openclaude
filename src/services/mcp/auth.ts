@@ -1145,6 +1145,7 @@ export async function performMCPOAuthFlow(
             `<h1>Authentication Successful</h1><p>You can close this window. Return to OpenCC.</p>`,
           )
           cleanup()
+          // @ts-ignore
           resolveOnce(result.code)
         }
       })

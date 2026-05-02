@@ -14,7 +14,8 @@ import type { Output } from './ExitPlanModeV2Tool.js';
 export function renderToolUseMessage(): React.ReactNode {
   return null;
 }
-export function renderToolResultMessage(output: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], {
+export function renderToolResultMessage(output: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], {
   theme: _theme
 }: {
   theme: ThemeName;

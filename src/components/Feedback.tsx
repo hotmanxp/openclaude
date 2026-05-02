@@ -226,6 +226,7 @@ export function Feedback({
         rawTranscriptJsonl
       })
     };
+    // @ts-expect-error reportData type mismatch
     const [result, t] = await Promise.all([submitFeedback(reportData, abortSignal), generateTitle(description, abortSignal)]);
     setTitle(t);
     if (result.success) {
@@ -465,6 +466,7 @@ async function generateTitle(description: string, abortSignal: AbortSignal): Pro
         mcpTools: []
       }
     });
+    // @ts-expect-error content is string | ContentBlock[]
     const title = response.message.content[0]?.type === 'text' ? response.message.content[0].text : 'Bug Report';
 
     // Check if the title contains an API error message

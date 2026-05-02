@@ -619,6 +619,7 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isClaudeAiAuth: isClaudeAISubscriber(),
     version: MACRO.VERSION,
     versionBase: getVersionBase(),
+    // @ts-ignore
     buildTime: MACRO.BUILD_TIME,
     deploymentEnvironment: env.detectDeploymentEnvironment(),
     ...(isEnvTruthy(process.env.GITHUB_ACTIONS) && {

@@ -16,7 +16,8 @@ export function renderToolUseMessage(input: Partial<z.infer<ReturnType<typeof in
 export function userFacingName(): string {
   return 'readMcpResource';
 }
-export function renderToolResultMessage(output: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], {
+export function renderToolResultMessage(output: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], {
   verbose
 }: {
   verbose: boolean;

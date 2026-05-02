@@ -122,6 +122,7 @@ function createPermissionContext(
           tool,
           input: opts?.input ?? input,
           toolUseContext,
+          // @ts-ignore - messageId may be undefined
           messageId,
           toolUseID,
         },
@@ -200,6 +201,7 @@ function createPermissionContext(
               }
             }
             logPermissionDecision(
+              // @ts-ignore - messageId may be undefined
               { tool, input, toolUseContext, messageId, toolUseID },
               { decision: 'accept', source: { type: 'classifier' } },
               undefined,

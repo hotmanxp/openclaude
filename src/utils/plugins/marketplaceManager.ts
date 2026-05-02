@@ -2009,6 +2009,7 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
 
       for (const pluginId in updatedPlugins) {
         if (pluginId.endsWith(marketplaceSuffix)) {
+          // @ts-ignore
           updatedPlugins[pluginId] = undefined
           removedPlugins = true
         }

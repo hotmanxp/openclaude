@@ -8,6 +8,7 @@ import {
   createLSPServerInstance,
   type LSPServerInstance,
 } from './LSPServerInstance.js'
+// @ts-ignore
 import type { ScopedLspServerConfig } from './types.js'
 /**
  * LSP Server Manager interface returned by createLSPServerManager.

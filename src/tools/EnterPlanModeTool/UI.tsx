@@ -9,7 +9,8 @@ import type { Output } from './EnterPlanModeTool.js';
 export function renderToolUseMessage(): React.ReactNode {
   return null;
 }
-export function renderToolResultMessage(_output: Output, _progressMessagesForMessage: ProgressMessage<ToolProgressData>[], _options: {
+export function renderToolResultMessage(_output: Output, _progressMessagesForMessage: // @ts-ignore
+ProgressMessage<ToolProgressData>[], _options: {
   theme: ThemeName;
 }): React.ReactNode {
   return <Box flexDirection="column" marginTop={1}>

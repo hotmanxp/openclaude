@@ -13,6 +13,7 @@ import { logOTelEvent } from '../../utils/telemetry/events.js';
 import { submitTranscriptShare, type TranscriptShareTrigger } from './submitTranscriptShare.js';
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';
 import { useSurveyState } from './useSurveyState.js';
+// @ts-ignore - missing type definitions
 import type { FeedbackSurveyResponse, FeedbackSurveyType } from './utils.js';
 type FeedbackSurveyConfig = {
   minTimeBeforeFeedbackMs: number;

@@ -111,6 +111,7 @@ export function useDirectConnect({
           tool,
           description:
             request.description ?? `${request.tool_name} requires permission`,
+          // @ts-ignore
           input: request.input,
           toolUseContext: {} as ToolUseConfirm['toolUseContext'],
           toolUseID: request.tool_use_id,

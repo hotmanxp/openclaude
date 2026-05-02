@@ -43,7 +43,7 @@ export function groupMessagesByApiRound(messages: Message[]): Message[][] {
   for (const msg of messages) {
     if (
       msg.type === 'assistant' &&
-      msg.message.id !== lastAssistantId &&
+      msg.message?.id !== lastAssistantId &&
       current.length > 0
     ) {
       groups.push(current)

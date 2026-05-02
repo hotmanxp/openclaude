@@ -508,6 +508,7 @@ export function prependUserContext(
   }
 
   return [
+    // @ts-ignore
     createUserMessage({
       content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${Object.entries(
         context,

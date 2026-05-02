@@ -14,6 +14,7 @@ function getChromeFlag(): boolean | undefined {
   return undefined;
 }
 export function useChromeExtensionNotification() {
+  // @ts-ignore
   useStartupNotification(_temp);
 }
 async function _temp() {

@@ -1,6 +1,7 @@
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
+// @ts-ignore
 import type { SdkWorkflowProgress } from '../types/tools.js'
 
 type TaskStartedEvent = {

@@ -25,6 +25,7 @@ export function renderToolResultMessage(output: Output, _progressMessagesForMess
 }: {
   verbose: boolean;
 }): React.ReactNode {
+  // @ts-ignore
   if ("external" === 'ant') {
     return null;
   }

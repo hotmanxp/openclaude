@@ -1868,6 +1868,7 @@ function mergeHooksSettings(
       // Merge matchers for this event
       merged[event as keyof HooksSettings] = [
         ...(merged[event as keyof HooksSettings] || []),
+        // @ts-ignore
         ...matchers,
       ]
     }

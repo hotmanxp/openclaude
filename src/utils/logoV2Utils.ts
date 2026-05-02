@@ -165,6 +165,7 @@ export function truncatePath(path: string, maxLength: number): string {
   for (let i = parts.length - 2; i > 0; i--) {
     const part = parts[i]
     if (part && stringWidth(part) + separatorWidth <= available) {
+      // @ts-ignore
       middleParts.unshift(part)
       available -= stringWidth(part) + separatorWidth
     } else {

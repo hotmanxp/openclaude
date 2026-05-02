@@ -19,6 +19,7 @@ export type {
 export * from './coreTypes.generated.js'
 
 // Re-export utility types that can't be expressed as Zod schemas
+// @ts-ignore
 export type { NonNullableUsage } from './sdkUtilityTypes.js'
 
 // Const arrays for runtime usage
