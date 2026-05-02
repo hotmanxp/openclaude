@@ -1,3 +1,4 @@
+// @ts-ignore - SdkWorkflowProgress not exported from tools.js
 import type { SdkWorkflowProgress } from '../../types/tools.js'
 import { enqueueSdkEvent } from '../sdkEventQueue.js'
 

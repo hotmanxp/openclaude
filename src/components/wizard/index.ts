@@ -1,8 +1,8 @@
-// @ts-ignore
 export type {
   WizardContextValue,
   WizardProviderProps,
   WizardStepComponent,
+// @ts-ignore
 } from './types.js'
 export { useWizard } from './useWizard.js'
 export { WizardDialogLayout } from './WizardDialogLayout.js'

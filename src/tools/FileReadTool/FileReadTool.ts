@@ -1161,6 +1161,7 @@ export async function readImageWithTokenBudget(
         const sharpModule = await import('sharp')
         const sharp =
           (
+            // @ts-ignore - type conversion issue
             sharpModule as {
               default?: typeof sharpModule
             } & typeof sharpModule

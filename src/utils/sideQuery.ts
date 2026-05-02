@@ -123,6 +123,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
 
   const client = await getAnthropicClient({
     maxRetries,
+    // @ts-ignore - model not in getAnthropicClient options
     model,
     source: 'side_query',
   })

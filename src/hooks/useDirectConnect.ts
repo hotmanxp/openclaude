@@ -102,6 +102,7 @@ export function useDirectConnect({
           behavior: 'ask',
           message:
             request.description ?? `${request.tool_name} requires permission`,
+          // @ts-ignore
           suggestions: request.permission_suggestions,
           blockedPath: request.blocked_path,
         }
