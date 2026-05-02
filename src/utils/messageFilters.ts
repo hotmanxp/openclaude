@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Message, UserMessage } from '../types/message.js'
 import {

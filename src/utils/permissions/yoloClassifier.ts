@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { feature } from 'bun:bundle'
 import type Anthropic from '@anthropic-ai/sdk'

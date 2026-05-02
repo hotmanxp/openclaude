@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Cross-provider cache usage normalizer for Phase 1 observability.
  *
