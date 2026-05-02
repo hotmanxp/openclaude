@@ -76,48 +76,48 @@ const FORM_STEPS: Array<{
 }> = [
   {
     key: 'name',
-    label: 'Provider name',
-    placeholder: 'e.g. Ollama Home, OpenAI Work',
-    helpText: 'A short label shown in /provider and startup setup.',
+    label: '提供商名称',
+    placeholder: '例如：Ollama Home, OpenAI Work',
+    helpText: '在 /provider 和启动设置中显示的简短标签。',
   },
   {
     key: 'baseUrl',
-    label: 'Base URL',
-    placeholder: 'e.g. http://localhost:11434/v1',
-    helpText: 'API base URL used for this provider profile.',
+    label: '基础 URL',
+    placeholder: '例如：http://localhost:11434/v1',
+    helpText: '此提供商配置文件的 API 基础 URL。',
   },
   {
     key: 'model',
-    label: 'Default model',
-    placeholder: 'e.g. llama3.1:8b',
-    helpText: 'Model name to use when this provider is active.',
+    label: '默认模型',
+    placeholder: '例如：llama3.1:8b',
+    helpText: '此提供商处于激活状态时使用的模型名称。',
   },
   {
     key: 'apiFormat',
-    label: 'API mode',
+    label: 'API 模式',
     placeholder: 'chat_completions',
-    helpText: 'Choose the OpenAI-compatible API surface for this provider.',
+    helpText: '为此提供商选择 OpenAI 兼容的 API 接口。',
     optional: true,
   },
   {
     key: 'authHeader',
-    label: 'Auth header',
-    placeholder: 'e.g. api-key or X-API-Key',
-    helpText: 'Optional. Header name used for a custom provider key.',
+    label: '认证请求头',
+    placeholder: '例如：api-key 或 X-API-Key',
+    helpText: '可选。自定义提供商密钥使用的请求头名称。',
     optional: true,
   },
   {
     key: 'authHeaderValue',
-    label: 'Auth header value',
-    placeholder: 'Leave empty to use the API key value',
-    helpText: 'Optional. Value sent in the custom auth header.',
+    label: '认证请求头值',
+    placeholder: '留空则使用 API 密钥值',
+    helpText: '可选。自定义认证请求头中发送的值。',
     optional: true,
   },
   {
     key: 'apiKey',
-    label: 'API key',
-    placeholder: 'Leave empty if your provider does not require one',
-    helpText: 'Optional. Press Enter with empty value to skip.',
+    label: 'API 密钥',
+    placeholder: '如果提供商不需要密钥则留空',
+    helpText: '可选。留空按 Enter 跳过。',
     optional: true,
   },
 ]
@@ -148,8 +148,8 @@ function presetToDraft(preset: ProviderPreset): ProviderDraft {
 }
 
 function profileSummary(profile: ProviderProfile, isActive: boolean): string {
-  const activeSuffix = isActive ? ' (active)' : ''
-  const keyInfo = profile.apiKey ? 'key set' : 'no key'
+  const activeSuffix = isActive ? '（已激活）' : ''
+  const keyInfo = profile.apiKey ? '密钥已设置' : '无密钥'
   const providerKind =
     profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'
   return `${providerKind} · ${profile.baseUrl} · ${profile.model} · ${keyInfo}${activeSuffix}`
@@ -227,7 +227,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
           setOllamaSelection({
             state: 'unavailable',
             message:
-              'Could not reach Ollama. Start Ollama first, or enter the endpoint manually.',
+              '无法连接 Ollama。请先启动 Ollama，或手动输入端点。',
           })
         }
         return
@@ -239,7 +239,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
           setOllamaSelection({
             state: 'unavailable',
             message:
-              'Ollama is running, but no installed models were found. Pull a chat model such as qwen2.5-coder:7b or llama3.1:8b first, or enter details manually.',
+              'Ollama 正在运行，但未找到已安装的模型。请先拉取聊天模型（如 qwen2.5-coder:7b 或 llama3.1:8b），或手动输入详细信息。',
           })
         }
         return
@@ -338,7 +338,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       : addProviderProfile(payload, { makeActive: true })
 
     if (!saved) {
-      setErrorMessage('Could not save provider. Fill all required fields.')
+      setErrorMessage('无法保存提供商。请填写所有必填项。')
       return
     }
 
@@ -350,11 +350,11 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     refreshProfiles()
     const successMessage =
       editingProfileId
-        ? `Updated provider: ${saved.name}`
-        : `Added provider: ${saved.name} (now active)`
+        ? `已更新提供商：${saved.name}`
+        : `已添加提供商：${saved.name}（现已激活）`
     setStatusMessage(
       settingsOverrideError
-        ? `${successMessage}. Warning: could not clear startup provider override (${settingsOverrideError}).`
+        ? `${successMessage}。警告：无法清除启动提供商覆盖（${settingsOverrideError}）。`
         : successMessage,
     )
 
@@ -362,7 +362,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       onDone({
         action: 'saved',
         activeProfileId: saved.id,
-        message: `Provider configured: ${saved.name}`,
+        message: `提供商已配置：${saved.name}`,
       })
       return
     }
@@ -378,9 +378,9 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       return (
         <Box flexDirection="column" gap={1}>
           <Text color="remember" bold>
-            Checking Ollama
+            正在检查 Ollama
           </Text>
-          <Text dimColor>Looking for installed Ollama models...</Text>
+          <Text dimColor>正在查找已安装的 Ollama 模型...</Text>
         </Box>
       )
     }
@@ -389,20 +389,20 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       return (
         <Box flexDirection="column" gap={1}>
           <Text color="remember" bold>
-            Ollama setup
+            Ollama 设置
           </Text>
           <Text dimColor>{ollamaSelection.message}</Text>
           <Select
             options={[
               {
                 value: 'manual',
-                label: 'Enter manually',
-                description: 'Fill in the base URL and model yourself',
+                label: '手动输入',
+                description: '自行填写基础 URL 和模型',
               },
               {
                 value: 'back',
-                label: 'Back',
-                description: 'Choose another provider preset',
+                label: '返回',
+                description: '选择其他提供商预设',
               },
             ]}
             onChange={value => {
@@ -424,11 +424,10 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="remember" bold>
-          Choose an Ollama model
+          选择 Ollama 模型
         </Text>
         <Text dimColor>
-          Pick one of the installed Ollama models to save into a local provider
-          profile.
+          选择一个已安装的 Ollama 模型，保存到本地提供商配置文件中。
         </Text>
         <Select
           options={ollamaSelection.options}
@@ -454,7 +453,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     const trimmed = value.trim()
 
     if (!currentStep.optional && trimmed.length === 0) {
-      setErrorMessage(`${currentStep.label} is required.`)
+      setErrorMessage(`${currentStep.label} 是必填项。`)
       return
     }
 
@@ -506,29 +505,29 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       {
         value: 'anthropic',
         label: 'Anthropic',
-        description: 'Native Claude API (x-api-key auth)',
+        description: '原生 Claude API（x-api-key 认证）',
       },
       {
         value: 'ollama',
         label: 'Ollama',
-        description: 'Local or remote Ollama endpoint',
+        description: '本地或远程 Ollama 端点',
       },
       {
         value: 'openai',
         label: 'OpenAI',
-        description: 'OpenAI API with API key',
+        description: '使用 API 密钥的 OpenAI API',
       },
       {
         value: 'custom',
-        label: 'Custom',
-        description: 'Any OpenAI-compatible provider',
+        label: '自定义',
+        description: '任意 OpenAI 兼容提供商',
       },
       ...(mode === 'first-run'
         ? [
             {
               value: 'skip',
-              label: 'Skip for now',
-              description: 'Continue with current defaults',
+              label: '暂时跳过',
+              description: '使用当前默认配置继续',
             },
           ]
         : []),
@@ -537,23 +536,23 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="remember" bold>
-          {mode === 'first-run' ? 'Set up provider' : 'Choose provider preset'}
+          {mode === 'first-run' ? '设置提供商' : '选择提供商预设'}
         </Text>
         <Text dimColor>
-          Pick a preset, then confirm base URL, model, and API key.
+          选择一个预设，然后确认基础 URL、模型和 API 密钥。
         </Text>
         <Select
           options={options}
           onChange={value => {
             if (value === 'skip') {
-              closeWithCancelled('Provider setup skipped')
+              closeWithCancelled('提供商设置已跳过')
               return
             }
             startCreateFromPreset(value as ProviderPreset)
           }}
           onCancel={() => {
             if (mode === 'first-run') {
-              closeWithCancelled('Provider setup skipped')
+              closeWithCancelled('提供商设置已跳过')
               return
             }
             setScreen('menu')
@@ -568,17 +567,17 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="remember" bold>
-          {editingProfileId ? 'Edit provider profile' : 'Create provider profile'}
+          {editingProfileId ? '编辑提供商配置文件' : '创建提供商配置文件'}
         </Text>
         <Text dimColor>{currentStep.helpText}</Text>
         <Text dimColor>
-          Provider type:{' '}
+          提供商类型：{' '}
           {draftProvider === 'anthropic'
-            ? 'Anthropic native API'
-            : 'OpenAI-compatible API'}
+            ? 'Anthropic 原生 API'
+            : 'OpenAI 兼容 API'}
         </Text>
         <Text dimColor>
-          Step {formStepIndex + 1} of {formSteps.length}: {currentStep.label}
+          第 {formStepIndex + 1} 步，共 {formSteps.length} 步：{currentStep.label}
         </Text>
         {currentStepKey === 'apiFormat' ? (
           <Select
@@ -634,7 +633,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
         )}
         {errorMessage && <Text color="error">{errorMessage}</Text>}
         <Text dimColor>
-          Press Enter to continue. Press Esc to go back.
+          按 Enter 继续。按 Esc 返回。
         </Text>
       </Box>
     )
@@ -647,46 +646,46 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
     const options = [
       {
         value: 'add',
-        label: 'Add provider',
-        description: 'Create a new provider profile',
+        label: '添加提供商',
+        description: '创建新的提供商配置文件',
       },
       {
         value: 'activate',
-        label: 'Set active provider',
-        description: 'Switch the active provider profile',
+        label: '设置激活提供商',
+        description: '切换激活的提供商配置文件',
         disabled: !hasSelectableProviders,
       },
       {
         value: 'edit',
-        label: 'Edit provider',
-        description: 'Update URL, model, or key',
+        label: '编辑提供商',
+        description: '更新 URL、模型或密钥',
         disabled: !hasProfiles,
       },
       {
         value: 'delete',
-        label: 'Delete provider',
-        description: 'Remove a provider profile',
+        label: '删除提供商',
+        description: '移除提供商配置文件',
         disabled: !hasSelectableProviders,
       },
       {
         value: 'done',
-        label: 'Done',
-        description: 'Return to chat',
+        label: '完成',
+        description: '返回聊天',
       },
     ]
 
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="remember" bold>
-          Provider manager
+          提供商管理器
         </Text>
         <Text dimColor>
-          Active profile controls base URL, model, and API key used by this session.
+          激活配置文件控制此会话使用的基础 URL、模型和 API 密钥。
         </Text>
         {statusMessage && <Text>{statusMessage}</Text>}
         <Box flexDirection="column">
           {profiles.length === 0 ? (
-            <Text dimColor>No provider profiles configured yet.</Text>
+            <Text dimColor>尚未配置提供商配置文件。</Text>
           ) : (
             <>
               {profiles.map(profile => (
@@ -721,7 +720,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
                 }
                 break
               default:
-                closeWithCancelled('Provider manager closed')
+                closeWithCancelled('提供商管理器已关闭')
                 break
             }
           }}
@@ -741,7 +740,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       value: profile.id,
       label:
         profile.id === activeProfileId
-          ? `${profile.name} (active)`
+          ? `${profile.name}（已激活）`
           : profile.name,
       description: `${profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'} · ${profile.baseUrl} · ${profile.model}`,
     }))
@@ -757,8 +756,8 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
             options={[
               {
                 value: 'back',
-                label: 'Back',
-                description: 'Return to provider manager',
+                label: '返回',
+                description: '返回提供商管理器',
               },
             ]}
             onChange={() => setScreen('menu')}
@@ -798,12 +797,12 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
         break
     case 'select-active':
       content = renderProfileSelection(
-        'Set active provider',
-        'No providers available. Add one first.',
+        '设置激活提供商',
+        '没有可用的提供商。请先添加一个。',
         profileId => {
           const active = setActiveProviderProfile(profileId)
           if (!active) {
-            setErrorMessage('Could not change active provider.')
+            setErrorMessage('无法更改激活提供商。')
             setScreen('menu')
             return
           }
@@ -812,8 +811,8 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
           refreshProfiles()
           setStatusMessage(
             settingsOverrideError
-              ? `Active provider: ${active.name}. Warning: could not clear startup provider override (${settingsOverrideError}).`
-              : `Active provider: ${active.name}`,
+              ? `激活提供商：${active.name}。警告：无法清除启动提供商覆盖（${settingsOverrideError}）。`
+              : `激活提供商：${active.name}`,
           )
           setScreen('menu')
         },
@@ -821,8 +820,8 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       break
     case 'select-edit':
       content = renderProfileSelection(
-        'Edit provider',
-        'No providers available. Add one first.',
+        '编辑提供商',
+        '没有可用的提供商。请先添加一个。',
         profileId => {
           startEditProfile(profileId)
         },
@@ -830,12 +829,12 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       break
     case 'select-delete':
       content = renderProfileSelection(
-        'Delete provider',
-        'No providers available. Add one first.',
+        '删除提供商',
+        '没有可用的提供商。请先添加一个。',
         profileId => {
           const result = deleteProviderProfile(profileId)
           if (!result.removed) {
-            setErrorMessage('Could not delete provider.')
+            setErrorMessage('无法删除提供商。')
           } else {
             const settingsOverrideError = result.activeProfileId
               ? clearStartupProviderOverrideFromUserSettings()
@@ -843,8 +842,8 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
             refreshProfiles()
             setStatusMessage(
               settingsOverrideError
-                ? `Provider deleted. Warning: could not clear startup provider override (${settingsOverrideError}).`
-                : 'Provider deleted',
+                ? `提供商已删除。警告：无法清除启动提供商覆盖（${settingsOverrideError}）。`
+                : '提供商已删除',
             )
           }
           setScreen('menu')
