@@ -147,7 +147,7 @@ export function HelpV2(t0) {
   }
   let t7;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Box marginTop={1}><Text>更多帮助：{" "}<Link url="https://github.com/Gitlawb/openclaude" /></Text></Box>;
+    t7 = <Box marginTop={1}><Text>更多帮助：{" "}<Link url="https://github.com/hotmanxp/opencc" /></Text></Box>;
     $[33] = t7;
   } else {
     t7 = $[33];
