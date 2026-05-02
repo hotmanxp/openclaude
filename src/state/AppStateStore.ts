@@ -229,6 +229,7 @@ export type AppState = DeepImmutable<{
     queue: ElicitationRequestEvent[]
   }
   thinkingEnabled: boolean | undefined
+  thinkingBudgetTokens?: number
   promptSuggestionEnabled: boolean
   sessionHooks: SessionHooksState
   tungstenActiveSession?: {
