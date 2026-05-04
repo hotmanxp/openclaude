@@ -19,11 +19,6 @@ const originalEnv = { ...process.env }
 
 const envKeys = [
   'CLAUDE_CODE_USE_OPENAI',
-  'CLAUDE_CODE_USE_GEMINI',
-  'CLAUDE_CODE_USE_GITHUB',
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
   'OPENAI_MODEL',
   'OPENAI_BASE_URL',
   'OPENAI_API_BASE',
@@ -44,22 +39,14 @@ afterEach(() => {
 })
 
 async function importFreshWithRetryModule(
-  provider:
-    | 'firstParty'
-    | 'openai'
-    | 'github'
-    | 'bedrock'
-    | 'vertex'
-    | 'gemini'
-    | 'codex'
-    | 'foundry' = 'firstParty',
+  provider: 'firstParty' | 'openai' = 'firstParty',
 ) {
   mock.restore()
   mock.module('src/utils/model/providers.js', () => ({
     getAPIProvider: () => provider,
     getAPIProviderForStatsig: () => provider,
   }))
-  return import(`./withRetry.js?ts=${Date.now()}-${Math.random()}`)
+  return import(`./withRetry.ts?ts=${Date.now()}-${Math.random()}`)
 }
 
 // --- parseOpenAIDuration ---

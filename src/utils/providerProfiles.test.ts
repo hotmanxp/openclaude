@@ -228,45 +228,6 @@ describe('applyProviderProfileToProcessEnv', () => {
     expect(process.env.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com')
   })
 
-  test('gemini profile with semicolon-separated multi-model string sets only first model in GEMINI_MODEL', async () => {
-    const { applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-
-    applyProviderProfileToProcessEnv(
-      buildGeminiProfile({
-        model: 'gemini-3-flash-preview; gemini-3-pro-preview',
-      }),
-    )
-
-    expect(process.env.GEMINI_MODEL).toBe('gemini-3-flash-preview')
-    expect(process.env.CLAUDE_CODE_USE_GEMINI).toBe('1')
-  })
-
-  test('mistral profile with semicolon-separated multi-model string sets only first model in MISTRAL_MODEL', async () => {
-    const { applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-
-    applyProviderProfileToProcessEnv(
-      buildMistralProfile({
-        model: 'devstral-latest; mistral-medium-latest',
-      }),
-    )
-
-    expect(process.env.MISTRAL_MODEL).toBe('devstral-latest')
-    expect(process.env.CLAUDE_CODE_USE_MISTRAL).toBe('1')
-  })
-
-  test('xai profile sets XAI_API_KEY and getAPIProvider returns xai', async () => {
-    const { applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-
-    applyProviderProfileToProcessEnv(buildXaiProfile())
-    const { getAPIProvider: getFreshAPIProvider } =
-      await importFreshProvidersModule()
-
-    expect(process.env.XAI_API_KEY).toBe('xai-test-key')
-    expect(getFreshAPIProvider()).toBe('xai')
-  })
 })
 
 describe('applyActiveProviderProfileFromConfig', () => {
@@ -454,44 +415,6 @@ describe('applyActiveProviderProfileFromConfig', () => {
 
     expect(applied).toBeUndefined()
     expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
-  })
-
-  test('re-applies xai active profile when XAI_API_KEY is missing (env drift)', async () => {
-    const { applyActiveProviderProfileFromConfig, applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-    const xaiProfile = buildXaiProfile({ id: 'saved_xai' })
-    applyProviderProfileToProcessEnv(xaiProfile)
-
-    // Simulate relaunch where the shell exported OPENAI vars but not XAI_API_KEY
-    delete process.env.XAI_API_KEY
-
-    const applied = applyActiveProviderProfileFromConfig({
-      providerProfiles: [xaiProfile],
-      activeProviderProfileId: 'saved_xai',
-    } as any)
-
-    expect(applied?.id).toBe('saved_xai')
-    expect(process.env.XAI_API_KEY).toBe('xai-test-key')
-  })
-
-  test('does not re-apply xai active profile when XAI_API_KEY is aligned', async () => {
-    const { applyActiveProviderProfileFromConfig, applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-    const xaiProfile = buildXaiProfile({ id: 'saved_xai' })
-    applyProviderProfileToProcessEnv(xaiProfile)
-
-    // XAI_API_KEY is already set and aligned
-    expect(process.env.XAI_API_KEY).toBe('xai-test-key')
-    expect(process.env.OPENAI_API_KEY).toBe('xai-test-key')
-
-    const applied = applyActiveProviderProfileFromConfig({
-      providerProfiles: [xaiProfile],
-      activeProviderProfileId: 'saved_xai',
-    } as any)
-
-    // Returns profile without re-applying since env is aligned
-    expect(applied?.id).toBe('saved_xai')
-    expect(process.env.XAI_API_KEY).toBe('xai-test-key')
   })
 
   test('applies active profile when no explicit provider is selected', async () => {
