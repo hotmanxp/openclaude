@@ -262,7 +262,7 @@ function SpinnerWithVerbInner({
 
   // Budget text (internal-only) — shown above the tip line
   let budgetText: string | null = null;
-  if (feature('TOKEN_BUDGET')) {
+  if (true) {
     const budget = getCurrentTurnTokenBudget();
     if (budget !== null && budget > 0) {
       const tokens = getTurnOutputTokens();

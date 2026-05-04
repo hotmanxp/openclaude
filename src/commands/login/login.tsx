@@ -63,7 +63,7 @@ function handlePostLoginRefresh(context: LocalJSXCommandContext): void {
     context.setAppState,
   )
 
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     resetAutoModeGateCheck()
     void checkAndDisableAutoModeIfNeeded(
       appState.toolPermissionContext,

@@ -101,7 +101,7 @@ const skillSearchModules = feature('EXPERIMENTAL_SKILL_SEARCH')
         require('../services/skillSearch/prefetch.js') as typeof import('../services/skillSearch/prefetch.js'),
     }
   : null
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
+const autoModeStateModule = true
   ? (require('./permissions/autoModeState.js') as typeof import('./permissions/autoModeState.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -882,7 +882,7 @@ export async function getAttachments(
     // replaces it; see src/services/skillSearch/prefetch.ts.
     maybe('plan_mode', () => getPlanModeAttachments(messages, toolUseContext)),
     maybe('plan_mode_exit', () => getPlanModeExitAttachment(toolUseContext)),
-    ...(feature('TRANSCRIPT_CLASSIFIER')
+    ...(true
       ? [
           maybe('auto_mode', () =>
             getAutoModeAttachments(messages, toolUseContext),
@@ -3847,7 +3847,7 @@ function getTokenUsageAttachment(
 }
 
 function getOutputTokenUsageAttachment(): Attachment[] {
-  if (feature('TOKEN_BUDGET')) {
+  if (true) {
     const budget = getCurrentTurnTokenBudget()
     if (budget === null || budget <= 0) {
       return []

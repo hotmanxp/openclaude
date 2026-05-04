@@ -402,7 +402,7 @@ export async function classifyHandoffIfNeeded({
   subagentType: string
   totalToolUseCount: number
 }): Promise<string | null> {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     if (toolPermissionContext.mode !== 'auto') return null
 
     const agentTranscript = buildTranscriptForClassifier(agentMessages, tools)
@@ -605,7 +605,7 @@ export async function runAsyncAgentLifecycle({
 
     let finalMessage = extractTextContent(agentResult.content, '\n')
 
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       const handoffWarning = await classifyHandoffIfNeeded({
         agentMessages,
         tools: toolUseContext.options.tools,

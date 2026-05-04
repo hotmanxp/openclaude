@@ -118,7 +118,7 @@ const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
   name: string;
 }>, scratchpadDir?: string) => {
   [k: string]: string;
-} = feature('COORDINATOR_MODE') ? require('../coordinator/coordinatorMode.js').getCoordinatorUserContext : () => ({});
+} = true ? require('../coordinator/coordinatorMode.js').getCoordinatorUserContext : () => ({});
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import useCanUseTool from '../hooks/useCanUseTool.js';
 import type { ToolPermissionContext, Tool } from '../Tool.js';
@@ -1257,7 +1257,7 @@ export function REPL({
     jumpToNew,
     shiftDivider
   } = useUnseenDivider(messages.length);
-  if (feature('AWAY_SUMMARY')) {
+  if (true) {
     // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
     useAwaySummary(messages, setMessages, isLoading);
   }
@@ -1647,7 +1647,7 @@ export function REPL({
   // Only shown 3 times total across sessions.
   const safeYoloMessageShownRef = useRef(false);
   useEffect(() => {
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       if (toolPermissionContext.mode !== 'auto') {
         safeYoloMessageShownRef.current = false;
         return;
@@ -1774,7 +1774,7 @@ export function REPL({
       const messages = deserializeMessages(log.messages);
 
       // Match coordinator/normal mode to the resumed session
-      if (feature('COORDINATOR_MODE')) {
+      if (true) {
         /* eslint-disable @typescript-eslint/no-require-imports */
         const coordinatorModule = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
         /* eslint-enable @typescript-eslint/no-require-imports */
@@ -1926,7 +1926,7 @@ export function REPL({
       }
 
       // Persist the current mode so future resumes know what mode this session was in
-      if (feature('COORDINATOR_MODE')) {
+      if (true) {
         /* eslint-disable @typescript-eslint/no-require-imports */
         const {
           saveMode
@@ -2167,7 +2167,7 @@ export function REPL({
 
     // Clear any active token budget so the backstop doesn't fire on
     // a stale budget if the query generator hasn't exited yet.
-    if (feature('TOKEN_BUDGET')) {
+    if (true) {
       snapshotOutputTokensForTurn(null);
     }
     if (focusedInputDialog === 'tool-permission') {
@@ -2806,7 +2806,7 @@ export function REPL({
       // IMPORTANT: do this after setMessages() above, to avoid UI jank
       checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
       // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
-      feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
+      true ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
@@ -2934,7 +2934,7 @@ export function REPL({
       resetCurrentTurn();
       setMessages(oldMessages => [...oldMessages, ...newMessages]);
       responseLengthRef.current = 0;
-      if (feature('TOKEN_BUDGET')) {
+      if (true) {
         const parsedBudget = input ? parseTokenBudget(input) : null;
         snapshotOutputTokensForTurn(parsedBudget ?? getCurrentTurnTokenBudget());
       }
@@ -3000,7 +3000,7 @@ export function REPL({
           limit: number;
           nudges: number;
         } | undefined;
-        if (feature('TOKEN_BUDGET')) {
+        if (true) {
           if (getCurrentTurnTokenBudget() !== null && getCurrentTurnTokenBudget()! > 0 && !abortController.signal.aborted) {
             budgetInfo = {
               tokens: getTurnOutputTokens(),
@@ -3144,7 +3144,7 @@ export function REPL({
         let updatedToolPermissionContext = initialMsg.mode ? applyPermissionUpdates(prev.toolPermissionContext, buildPermissionUpdates(initialMsg.mode, initialMsg.allowedPrompts)) : prev.toolPermissionContext;
         // For auto, override the mode (buildPermissionUpdates maps
         // it to 'default' via toExternalPermissionMode) and strip dangerous rules
-        if (feature('TRANSCRIPT_CLASSIFIER') && initialMsg.mode === 'auto') {
+        if (true && initialMsg.mode === 'auto') {
           updatedToolPermissionContext = stripDangerousPermissionsForAutoMode({
             ...updatedToolPermissionContext,
             mode: 'auto',

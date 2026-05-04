@@ -28,7 +28,7 @@ import { ListItem } from '../design-system/ListItem.js';
 import { getProjectMemoryPathForSelector } from './memoryFileSelectorPaths.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM') ? require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js') : null;
+const teamMemPaths = true ? require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 interface ExtendedMemoryFileInfo extends MemoryFileInfo {

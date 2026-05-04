@@ -544,7 +544,7 @@ function PromptInput({
       return hasCommand(commandName, commands);
     });
   }, [displayedValue, commands]);
-  const tokenBudgetTriggers = useMemo(() => feature('TOKEN_BUDGET') ? findTokenBudgetPositions(displayedValue) : [], [displayedValue]);
+  const tokenBudgetTriggers = useMemo(() => true ? findTokenBudgetPositions(displayedValue) : [], [displayedValue]);
   const knownChannelsVersion = useSyncExternalStore(subscribeKnownChannels, getKnownChannelsVersion);
   const slackChannelTriggers = useMemo(() => hasSlackMcpServer(store.getState().mcp.clients) ? findSlackChannelPositions(displayedValue) : [],
   // eslint-disable-next-line react-hooks/exhaustive-deps -- store is a stable ref
@@ -1493,10 +1493,10 @@ function PromptInput({
     // the warning dialog once — the CLI flag should grant carousel access,
     // not bypass the safety text.
     let isEnteringAutoModeFirstTime = false;
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       isEnteringAutoModeFirstTime = nextMode === 'auto' && toolPermissionContext.mode !== 'auto' && !hasAutoModeOptIn() && !viewingAgentTaskId; // Only show for primary agent, not subagents
     }
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       if (isEnteringAutoModeFirstTime) {
         // Store previous mode so we can revert if user declines
         setPreviousModeBeforeAuto(toolPermissionContext.mode);
@@ -1535,7 +1535,7 @@ function PromptInput({
     // carousel", not "decline". Reverting causes a ping-pong loop: auto reverts to
     // the prior mode, whose next mode is auto again, forever.
     // The dialog's own decline button (handleAutoModeOptInDecline) handles revert.
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       if (showAutoModeOptIn || autoModeOptInTimeoutRef.current) {
         if (showAutoModeOptIn) {
           logEvent('tengu_auto_mode_opt_in_dialog_decline', {});
@@ -1595,7 +1595,7 @@ function PromptInput({
 
   // Handler for auto mode opt-in dialog acceptance
   const handleAutoModeOptInAccept = useCallback(() => {
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       setShowAutoModeOptIn(false);
       setPreviousModeBeforeAuto(null);
 
@@ -1624,7 +1624,7 @@ function PromptInput({
 
   // Handler for auto mode opt-in dialog decline
   const handleAutoModeOptInDecline = useCallback(() => {
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       logForDebugging(`[auto-mode] handleAutoModeOptInDecline: reverting to ${previousModeBeforeAuto}, setting isAutoModeAvailable=false`);
       setShowAutoModeOptIn(false);
       if (autoModeOptInTimeoutRef.current) {
@@ -1756,13 +1756,13 @@ function PromptInput({
     isActive: quickSearchActive
   });
   useKeybinding('history:search', () => {
-    if (feature('HISTORY_PICKER')) {
+    if (true) {
       setShowHistoryPicker(true);
       setHelpOpen(false);
     }
   }, {
     context: 'Global',
-    isActive: feature('HISTORY_PICKER') ? !isModalOverlayActive : false
+    isActive: true ? !isModalOverlayActive : false
   });
 
   // Handle Ctrl+C to abort speculation when idle (not loading)
@@ -2156,7 +2156,7 @@ function PromptInput({
   // slot's overflowY:hidden clip (same pattern as SuggestionsOverlay).
   // Must be called before early returns below to satisfy rules-of-hooks.
   // Memoized so the portal useEffect doesn't churn on every PromptInput render.
-  const autoModeOptInDialog = useMemo(() => feature('TRANSCRIPT_CLASSIFIER') && showAutoModeOptIn ? <AutoModeOptInDialog onAccept={handleAutoModeOptInAccept} onDecline={handleAutoModeOptInDecline} /> : null, [showAutoModeOptIn, handleAutoModeOptInAccept, handleAutoModeOptInDecline]);
+  const autoModeOptInDialog = useMemo(() => true && showAutoModeOptIn ? <AutoModeOptInDialog onAccept={handleAutoModeOptInAccept} onDecline={handleAutoModeOptInDecline} /> : null, [showAutoModeOptIn, handleAutoModeOptInAccept, handleAutoModeOptInDecline]);
   useSetPromptOverlayDialog(isFullscreenEnvEnabled() ? autoModeOptInDialog : null);
   if (showBashesDialog) {
     return <BackgroundTasksDialog onDone={() => setShowBashesDialog(false)} toolUseContext={getToolUseContext(messages, [], new AbortController(), mainLoopModel)} initialDetailTaskId={typeof showBashesDialog === 'string' ? showBashesDialog : undefined} />;
@@ -2178,7 +2178,7 @@ function PromptInput({
       return <GlobalSearchDialog onDone={() => setShowGlobalSearch(false)} onInsert={insertWithSpacing} />;
     }
   }
-  if (feature('HISTORY_PICKER') && showHistoryPicker) {
+  if (true && showHistoryPicker) {
     return <HistorySearchDialog initialQuery={input} onSelect={entry => {
       const entryMode = getModeFromInput(entry.display);
       const value = getValueFromInput(entry.display);

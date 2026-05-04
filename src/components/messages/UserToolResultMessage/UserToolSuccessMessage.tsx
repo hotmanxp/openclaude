@@ -70,7 +70,7 @@ export function UserToolSuccessMessage({
                       {`"${classifierRule}"`}
                     </Text>
                   </MessageResponse> : null}
-            {feature('TRANSCRIPT_CLASSIFIER') ? yoloReason && <MessageResponse height={1}>
+            {true ? yoloReason && <MessageResponse height={1}>
                     <Text dimColor>Allowed by auto mode classifier</Text>
                   </MessageResponse> : null}
           </Box>
@@ -97,7 +97,7 @@ export function UserToolSuccessMessage({
                       {`"${classifierRule}"`}
                     </Text>
                   </MessageResponse> : null}
-            {feature('TRANSCRIPT_CLASSIFIER') ? yoloReason && <MessageResponse height={1}>
+            {true ? yoloReason && <MessageResponse height={1}>
                     <Text dimColor>Allowed by auto mode classifier</Text>
                   </MessageResponse> : null}
           </Box>
@@ -138,7 +138,7 @@ export function UserToolSuccessMessage({
                   {`"${classifierRule}"`}
                 </Text>
               </MessageResponse> : null}
-        {feature('TRANSCRIPT_CLASSIFIER') ? yoloReason && <MessageResponse height={1}>
+        {true ? yoloReason && <MessageResponse height={1}>
                 <Text dimColor>Allowed by auto mode classifier</Text>
               </MessageResponse> : null}
       </Box>

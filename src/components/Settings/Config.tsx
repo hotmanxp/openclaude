@@ -126,7 +126,7 @@ export function Config({
   // Show auto in the default-mode dropdown when the user has opted in OR the
   // config is fully 'enabled' — even if currently circuit-broken ('disabled'),
   // an opted-in user should still see it in settings (it's a temporary state).
-  const showAutoInDefaultModePicker = feature('TRANSCRIPT_CLASSIFIER') ? hasAutoModeOptInAnySource() || getAutoModeEnabledState() === 'enabled' : false;
+  const showAutoInDefaultModePicker = true ? hasAutoModeOptInAnySource() || getAutoModeEnabledState() === 'enabled' : false;
   // Chat/Transcript view picker is visible to entitled users (pass the GB
   // gate) even if they haven't opted in this session — it IS the persistent
   // opt-in. 'chat' written here is read at next startup by main.tsx which
@@ -536,9 +536,9 @@ export function Config({
     value: settingsData?.permissions?.defaultMode || 'default',
     options: (() => {
       const priorityOrder: PermissionMode[] = ['default', 'plan'];
-      const allModes: readonly PermissionMode[] = feature('TRANSCRIPT_CLASSIFIER') ? PERMISSION_MODES : EXTERNAL_PERMISSION_MODES;
+      const allModes: readonly PermissionMode[] = true ? PERMISSION_MODES : EXTERNAL_PERMISSION_MODES;
       const excluded: PermissionMode[] = [];
-      if (feature('TRANSCRIPT_CLASSIFIER') && !showAutoInDefaultModePicker) {
+      if (true && !showAutoInDefaultModePicker) {
         excluded.push('auto');
       }
       return [...priorityOrder, ...allModes.filter(m => !priorityOrder.includes(m) && !excluded.includes(m))];
@@ -580,7 +580,7 @@ export function Config({
         value: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
-  }, ...(feature('TRANSCRIPT_CLASSIFIER') && showAutoInDefaultModePicker ? [{
+  }, ...(true && showAutoInDefaultModePicker ? [{
     id: 'useAutoModeDuringPlan',
     label: '计划期间使用自动模式',
     value: (settingsData as {
@@ -985,7 +985,7 @@ export function Config({
     }];
   })() : []),
   // Coordinator mode (only shown when COORDINATOR_MODE feature flag is enabled)
-  ...(feature('COORDINATOR_MODE') ? [{
+  ...(true ? [{
     id: 'coordinatorMode',
     label: '多任务协调',
     value: settingsData?.coordinatorMode ?? false,
@@ -1281,7 +1281,7 @@ export function Config({
       autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
       language: iu?.language,
-      ...(feature('TRANSCRIPT_CLASSIFIER') ? {
+      ...(true ? {
         useAutoModeDuringPlan: (iu as {
           useAutoModeDuringPlan?: boolean;
         } | undefined)?.useAutoModeDuringPlan

@@ -76,7 +76,7 @@ const getTeammateModeSnapshot = () => require('./utils/swarm/backends/teammateMo
 /* eslint-enable @typescript-eslint/no-require-imports */
 // Dead code elimination: conditional import for COORDINATOR_MODE
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
+const coordinatorModeModule = true ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 // Dead code elimination: conditional import for KAIROS (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -172,7 +172,7 @@ import { plural } from 'src/utils/stringUtils.js';
 import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getSdkBetas, getSessionId, getUserMsgOptIn, setAllowedChannels, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setKairosActive, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
+const autoModeStateModule = true ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
 
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
 import { migrateAutoUpdatesToSettings } from './migrations/migrateAutoUpdatesToSettings.js';
@@ -338,7 +338,7 @@ function runMigrations(): void {
     migrateSonnet45ToSonnet46();
     migrateOpusToOpus1m();
     migrateReplBridgeEnabledToRemoteControlAtStartup();
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       resetAutoModeOptInForDefaultOffer();
     }
     if ("external" === 'ant') {
@@ -1394,7 +1394,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Store session bypass permissions mode for trust dialog check
     setSessionBypassPermissionsMode(permissionMode === 'bypassPermissions');
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       // autoModeFlagCli is the "did the user intend auto this session" signal.
       // Set when: --enable-auto-mode, --permission-mode auto, resolved mode
       // is auto, OR settings defaultMode is auto but the gate denied it
@@ -1764,7 +1764,7 @@ async function run(): Promise<CommanderCommand> {
       }
       toolPermissionContext = removeDangerousPermissions(toolPermissionContext, overlyBroadBashPermissions);
     }
-    if (feature('TRANSCRIPT_CLASSIFIER') && dangerousPermissions.length > 0) {
+    if (true && dangerousPermissions.length > 0) {
       toolPermissionContext = stripDangerousPermissionsForAutoMode(toolPermissionContext);
     }
 
@@ -2653,7 +2653,7 @@ async function run(): Promise<CommanderCommand> {
 
       // Async check of auto mode gate — corrects state and disables auto if needed.
       // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so GrowthBook kill switch runs for external builds too.
-      if (feature('TRANSCRIPT_CLASSIFIER')) {
+      if (true) {
         void verifyAutoModeGateAccess(toolPermissionContext, headlessStore.getState().fastMode).then(({
           updateContext
         }) => {
@@ -3755,7 +3755,7 @@ async function run(): Promise<CommanderCommand> {
       maybeActivateProactive(options);
       maybeActivateBrief(options);
       // Persist the current mode for fresh sessions so future resumes know what mode was used
-      if (feature('COORDINATOR_MODE')) {
+      if (true) {
         saveMode(coordinatorModeModule?.isCoordinatorMode() ? 'coordinator' : 'normal');
       }
 
@@ -3814,7 +3814,7 @@ async function run(): Promise<CommanderCommand> {
     program.addOption(new Option('--tasks [id]', '[internal-only] Tasks mode: watch for tasks and auto-process them. Optional id is used as both the task list ID and agent ID (defaults to "tasklist").').argParser(String).hideHelp());
     program.option('--agent-teams', '[internal-only] Force Open CC to use multi-agent mode for solving problems', () => true);
   }
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     program.addOption(new Option('--enable-auto-mode', 'Opt in to auto mode').hideHelp());
   }
   if (feature('PROACTIVE') || feature('KAIROS')) {
@@ -4271,7 +4271,7 @@ async function run(): Promise<CommanderCommand> {
     await agentsHandler();
     process.exit(0);
   });
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).
     // Reads from disk cache — GrowthBook isn't initialized at registration time.
     if (getAutoModeEnabledStateIfCached() !== 'disabled') {
@@ -4579,7 +4579,7 @@ async function logTenguInit({
         appendSystemPromptFlag: appendSystemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),
       is_simple: isBareMode() || undefined,
-      is_coordinator: feature('COORDINATOR_MODE') && coordinatorModeModule?.isCoordinatorMode() ? true : undefined,
+      is_coordinator: true && coordinatorModeModule?.isCoordinatorMode() ? true : undefined,
       ...(assistantActivationPath && {
         assistantActivationPath: assistantActivationPath as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),

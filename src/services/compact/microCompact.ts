@@ -56,7 +56,7 @@ export function isCompactableTool(name: string): boolean {
   return COMPACTABLE_TOOLS.has(name) || name.startsWith(MCP_TOOL_PREFIX)
 }
 
-// --- Cached microcompact state (gated by feature('CACHED_MICROCOMPACT')) ---
+// --- Cached microcompact state (gated by true) ---
 
 // Lazy-initialized cached MC module and state to avoid importing in external builds.
 // The imports and state live inside feature() checks for dead code elimination.

@@ -19,7 +19,7 @@ export function isPrActivitySubscriptionTool(name: string): boolean {
 
 // Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = feature('COORDINATOR_MODE')
+const coordinatorModeModule = true
   ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -69,7 +69,7 @@ export function mergeAndFilterTools(
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   const tools = [...builtIn.sort(byName), ...mcp.sort(byName)]
 
-  if (feature('COORDINATOR_MODE') && coordinatorModeModule) {
+  if (true && coordinatorModeModule) {
     if (coordinatorModeModule.isCoordinatorMode()) {
       return applyCoordinatorToolFilter(tools)
     }

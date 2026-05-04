@@ -65,7 +65,7 @@ import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 // Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
 // @ts-ignore - generated during build
-const getCachedMCConfigForFRC = feature('CACHED_MICROCOMPACT')
+const getCachedMCConfigForFRC = true
   ? (
       // @ts-ignore - generated during build
       require('../services/compact/cachedMCConfig.js') as typeof import('../services/compact/cachedMCConfig.js')
@@ -542,7 +542,7 @@ ${CYBER_RISK_INSTRUCTION}`,
           ),
         ]
       : []),
-    ...(feature('TOKEN_BUDGET')
+    ...(true
       ? [
           // Cached unconditionally — the "When the user specifies..." phrasing
           // makes it a no-op with no budget active. Was DANGEROUS_uncached
@@ -826,7 +826,7 @@ The scratchpad directory is session-specific, isolated from the user's project, 
 }
 
 function getFunctionResultClearingSection(model: string): string | null {
-  if (!feature('CACHED_MICROCOMPACT') || !getCachedMCConfigForFRC) {
+  if (!true || !getCachedMCConfigForFRC) {
     return null
   }
   const config = getCachedMCConfigForFRC()

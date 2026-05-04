@@ -438,7 +438,7 @@ export async function* runAgent({
       state.toolPermissionContext.mode !== 'bypassPermissions' &&
       state.toolPermissionContext.mode !== 'acceptEdits' &&
       !(
-        feature('TRANSCRIPT_CLASSIFIER') &&
+        true &&
         state.toolPermissionContext.mode === 'auto'
       )
     ) {
@@ -837,7 +837,7 @@ export async function* runAgent({
       clearSessionHooks(rootSetAppState, agentId)
     }
     // Clean up prompt cache tracking state for this agent
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       cleanupAgentTracking(agentId)
     }
     // Release cloned file state cache memory
