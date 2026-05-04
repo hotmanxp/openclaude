@@ -763,7 +763,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             addr.target,
             input.message,
           )
-          const preview = input.summary || truncate(input.message, 50)
+          const preview = input.summary || truncate(String(input.message), 50)
           return {
             data: {
               success: result.ok,
@@ -781,7 +781,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           /* eslint-enable @typescript-eslint/no-require-imports */
           try {
             await sendToUdsSocket(addr.target, input.message)
-            const preview = input.summary || truncate(input.message, 50)
+            const preview = input.summary || truncate(String(input.message), 50)
             return {
               data: {
                 success: true,

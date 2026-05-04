@@ -188,7 +188,7 @@ export function UserTextMessage(t0) {
     }
     return t1;
   }
-  if (feature("FORK_SUBAGENT")) {
+  if (true) {
     if (param.text.includes("<fork-boilerplate>")) {
       let t1;
       if ($[32] === Symbol.for("react.memo_cache_sentinel")) {

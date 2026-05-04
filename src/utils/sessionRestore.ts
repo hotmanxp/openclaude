@@ -112,9 +112,9 @@ export function restoreSessionStateFromLog(
   if (
     feature('COMMIT_ATTRIBUTION') &&
     result.attributionSnapshots &&
-    result.attributionSnapshots.length > 0
+    (result.attributionSnapshots as []).length > 0
   ) {
-    attributionRestoreStateFromLog(result.attributionSnapshots, newState => {
+    attributionRestoreStateFromLog(result.attributionSnapshots!, newState => {
       setAppState(prev => ({ ...prev, attribution: newState }))
     })
   }
@@ -161,9 +161,9 @@ export function computeRestoredAttributionState(
   if (
     feature('COMMIT_ATTRIBUTION') &&
     result.attributionSnapshots &&
-    result.attributionSnapshots.length > 0
+    (result.attributionSnapshots as []).length > 0
   ) {
-    return restoreAttributionStateFromSnapshots(result.attributionSnapshots)
+    return restoreAttributionStateFromSnapshots(result.attributionSnapshots!)
   }
   return undefined
 }

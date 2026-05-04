@@ -95,8 +95,8 @@ function formatContextAsMarkdownTable(data: ContextData): string {
 
       if (h.totalErrors > 0) {
         output += `**Collapse errors:** ${h.totalErrors}/${h.totalSpawns} spawns failed`;
-        if (h.lastError) {
-          output += ` (last: ${h.lastError.slice(0, 80)})`;
+        if (h.lastError != null) {
+          output += ` (last: ${h.lastError!.slice(0, 80)})`;
         }
         output += '\n';
       } else if (h.emptySpawnWarningEmitted) {

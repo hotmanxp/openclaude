@@ -31,7 +31,7 @@ function getSessionsDir(): string {
 function envSessionKind(): SessionKind | undefined {
   if (feature('BG_SESSIONS')) {
     const k = process.env.CLAUDE_CODE_SESSION_KIND
-    if (k === 'bg' || k === 'daemon' || k === 'daemon-worker') return k
+    if (k === 'bg' || k === 'daemon' || k === 'daemon-worker') return k as SessionKind
   }
   return undefined
 }

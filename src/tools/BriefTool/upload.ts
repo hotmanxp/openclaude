@@ -158,13 +158,13 @@ export async function uploadBriefAttachment(
       const parsed = uploadResponseSchema().safeParse(response.data)
       if (!parsed.success) {
         debug(
-          `unexpected response shape for ${fullPath}: ${parsed.error.message}`,
+          `unexpected response shape for ${fullPath}: ${parsed.error!.message}`,
         )
         return undefined
       }
 
-      debug(`uploaded ${fullPath} → ${parsed.data.file_uuid} (${size} bytes)`)
-      return parsed.data.file_uuid
+      debug(`uploaded ${fullPath} → ${parsed.data!.file_uuid} (${size} bytes)`)
+      return parsed.data!.file_uuid
     } catch (e) {
       debug(`upload threw for ${fullPath}: ${e}`)
       return undefined

@@ -105,7 +105,7 @@ export function buildEffectiveSystemPrompt({
     return asSystemPrompt([
       ...defaultSystemPrompt,
       `\n# Custom Agent Instructions\n${agentSystemPrompt}`,
-      ...(appendSystemPrompt ? [appendSystemPrompt] : []),
+      ...(appendSystemPrompt ? [appendSystemPrompt as string] : []),
     ])
   }
 

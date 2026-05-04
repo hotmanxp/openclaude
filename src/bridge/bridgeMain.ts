@@ -1520,10 +1520,10 @@ export async function runBridgeLoop(
   // Skip when the loop exited fatally (env expired, auth failed, give-up) —
   // resume is impossible in those cases and the message would contradict the
   // error already printed.
-  // feature('KAIROS') gate: --session-id is internal-only; without the gate,
+  // false gate: --session-id is internal-only; without the gate,
   // revert to the pre-PR behavior (archive + deregister on every shutdown).
   if (
-    feature('KAIROS') &&
+    false &&
     config.spawnMode === 'single-session' &&
     initialSessionId &&
     !fatalExit
@@ -1776,7 +1776,7 @@ export function parseArgs(args: string[]): ParsedArgs {
     } else if (arg.startsWith('--name=')) {
       name = arg.slice('--name='.length)
     } else if (
-      feature('KAIROS') &&
+      false &&
       arg === '--session-id' &&
       i + 1 < args.length
     ) {
@@ -1784,12 +1784,12 @@ export function parseArgs(args: string[]): ParsedArgs {
       if (!sessionId) {
         return makeError('--session-id requires a value')
       }
-    } else if (feature('KAIROS') && arg.startsWith('--session-id=')) {
+    } else if (false && arg.startsWith('--session-id=')) {
       sessionId = arg.slice('--session-id='.length)
       if (!sessionId) {
         return makeError('--session-id requires a value')
       }
-    } else if (feature('KAIROS') && (arg === '--continue' || arg === '-c')) {
+    } else if (false && (arg === '--continue' || arg === '-c')) {
       continueSession = true
     } else if (arg === '--spawn' || arg.startsWith('--spawn=')) {
       if (spawnMode !== undefined) {
@@ -1925,7 +1925,7 @@ USAGE
 OPTIONS
   --name <name>                    Name for the session (shown in claude.ai/code)
 ${
-  feature('KAIROS')
+  false
     ? `  -c, --continue                   Resume the last session in this directory
   --session-id <id>                Resume a specific session by ID (cannot be
                                    used with spawn flags or --continue)
@@ -2146,7 +2146,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
   // point at a worktree while the user's shell is at the repo root.
   // KAIROS-gated at parseArgs — continueSession is always false in external
   // builds, so this block tree-shakes.
-  if (feature('KAIROS') && continueSession) {
+  if (false && continueSession) {
     const { readBridgePointerAcrossWorktrees } = await import(
       './bridgePointer.js'
     )
@@ -2159,7 +2159,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
     }
-    const { pointer, dir: pointerDir } = found
+    const { pointer, dir: pointerDir } = found!
     const ageMin = Math.round(pointer.ageMs / 60_000)
     const ageStr = ageMin < 60 ? `${ageMin}m` : `${Math.round(ageMin / 60)}h`
     const fromWt = pointerDir !== dir ? ` from worktree ${pointerDir}` : ''
@@ -2352,13 +2352,13 @@ export async function bridgeMain(args: string[]): Promise<void> {
   // environment_id and reuse that for registration (idempotent on the
   // backend). Left undefined otherwise — the backend rejects
   // client-generated UUIDs and will allocate a fresh environment.
-  // feature('KAIROS') gate: --session-id is internal-only; parseArgs already
+  // false gate: --session-id is internal-only; parseArgs already
   // rejects the flag when the gate is off, so resumeSessionId is always
   // undefined here in external builds — this guard is for tree-shaking.
   let reuseEnvironmentId: string | undefined
-  if (feature('KAIROS') && resumeSessionId) {
+  if (false && resumeSessionId) {
     try {
-      validateBridgeId(resumeSessionId, 'sessionId')
+      validateBridgeId(resumeSessionId!, 'sessionId')
     } catch {
       // biome-ignore lint/suspicious/noConsole: intentional error output
       console.error(
@@ -2373,7 +2373,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     await checkAndRefreshOAuthTokenIfNeeded()
     clearOAuthTokenCache()
     const { getBridgeSession } = await import('./createSession.js')
-    const session = await getBridgeSession(resumeSessionId, {
+    const session = await getBridgeSession(resumeSessionId!, {
       baseUrl,
       getAccessToken: getBridgeAccessToken,
     })
@@ -2384,28 +2384,28 @@ export async function bridgeMain(args: string[]): Promise<void> {
       // resumePointerDir may be a worktree sibling — clear THAT file.
       if (resumePointerDir) {
         const { clearBridgePointer } = await import('./bridgePointer.js')
-        await clearBridgePointer(resumePointerDir)
+        await clearBridgePointer(resumePointerDir!)
       }
       // biome-ignore lint/suspicious/noConsole: intentional error output
       console.error(
-        `Error: Session ${resumeSessionId} not found. It may have been archived or expired, or your login may have lapsed (run \`claude /login\`).`,
+        `Error: Session ${resumeSessionId!} not found. It may have been archived or expired, or your login may have lapsed (run \`claude /login\`).`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
     }
-    if (!session.environment_id) {
+    if (!session!.environment_id) {
       if (resumePointerDir) {
         const { clearBridgePointer } = await import('./bridgePointer.js')
-        await clearBridgePointer(resumePointerDir)
+        await clearBridgePointer(resumePointerDir!)
       }
       // biome-ignore lint/suspicious/noConsole: intentional error output
       console.error(
-        `Error: Session ${resumeSessionId} has no environment_id. It may never have been attached to a bridge.`,
+        `Error: Session ${resumeSessionId!} has no environment_id. It may never have been attached to a bridge.`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
     }
-    reuseEnvironmentId = session.environment_id
+    reuseEnvironmentId = session!.environment_id
     logForDebugging(
       `[bridge:init] Resuming session ${resumeSessionId} on environment ${reuseEnvironmentId}`,
     )
@@ -2466,7 +2466,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
   // Used below to skip fresh session creation and seed initialSessionId.
   // Cleared on env mismatch so we gracefully fall back to a new session.
   let effectiveResumeSessionId: string | undefined
-  if (feature('KAIROS') && resumeSessionId) {
+  if (false && resumeSessionId) {
     if (reuseEnvironmentId && environmentId !== reuseEnvironmentId) {
       // Backend returned a different environment_id — the original env
       // expired or was reaped. Reconnect won't work against the new env
@@ -2491,7 +2491,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
       // The pointer stores a session_* ID but /bridge/reconnect looks
       // sessions up by their infra tag (cse_*) when ccr_v2_compat_enabled
       // is on. Try both; the conversion is a no-op if already cse_*.
-      const infraResumeId = toInfraSessionId(resumeSessionId)
+      const infraResumeId = toInfraSessionId(resumeSessionId!)
       const reconnectCandidates =
         infraResumeId === resumeSessionId
           ? [resumeSessionId]
@@ -2500,7 +2500,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
       let lastReconnectErr: unknown
       for (const candidateId of reconnectCandidates) {
         try {
-          await api.reconnectSession(environmentId, candidateId)
+          await api.reconnectSession(environmentId, candidateId!)
           logForDebugging(
             `[bridge:init] Session ${candidateId} re-queued via bridge/reconnect`,
           )
@@ -2526,13 +2526,13 @@ export async function bridgeMain(args: string[]): Promise<void> {
         // next launch re-prompts — that IS the retry mechanism.
         if (resumePointerDir && isFatal) {
           const { clearBridgePointer } = await import('./bridgePointer.js')
-          await clearBridgePointer(resumePointerDir)
+          await clearBridgePointer(resumePointerDir!)
         }
         // biome-ignore lint/suspicious/noConsole: intentional error output
         console.error(
           isFatal
             ? `Error: ${errorMessage(err)}`
-            : `Error: Failed to reconnect session ${resumeSessionId}: ${errorMessage(err)}\nThe session may still be resumable — try running the same command again.`,
+            : `Error: Failed to reconnect session ${resumeSessionId!}: ${errorMessage(err)}\nThe session may still be resumable — try running the same command again.`,
         )
         // eslint-disable-next-line custom-rules/no-process-exit
         process.exit(1)
@@ -2664,10 +2664,10 @@ export async function bridgeMain(args: string[]): Promise<void> {
   // is undefined, so we fall through to fresh session creation (honoring the
   // "Creating a fresh session instead" warning printed above).
   let initialSessionId: string | null =
-    feature('KAIROS') && effectiveResumeSessionId
-      ? effectiveResumeSessionId
+    false && effectiveResumeSessionId
+      ? effectiveResumeSessionId!
       : null
-  if (preCreateSession && !(feature('KAIROS') && effectiveResumeSessionId)) {
+  if (preCreateSession && !(false && effectiveResumeSessionId)) {
     const { createBridgeSession } = await import('./createSession.js')
     try {
       initialSessionId = await createBridgeSession({

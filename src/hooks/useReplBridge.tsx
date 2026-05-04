@@ -705,7 +705,7 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
       }
       lastWrittenIndexRef.current = messages.length;
       if (newMessages.length > 0) {
-        handle_1.writeMessages(newMessages);
+        handle_1?.writeMessages(newMessages);
       }
     }
   }, [messages, replBridgeConnected]);
