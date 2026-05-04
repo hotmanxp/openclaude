@@ -699,7 +699,7 @@ export async function compactConversation(
     })
 
     // Reset cache read baseline so the post-compact drop isn't flagged as a break
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
@@ -1048,7 +1048,7 @@ export async function partialCompactConversation(
       }),
     ]
 
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
