@@ -102,14 +102,6 @@ export function buildExtractCombinedPrompt(
   existingMemories: string,
   skipIndex = false,
 ): string {
-  if (!true) {
-    return buildExtractAutoOnlyPrompt(
-      newMessageCount,
-      existingMemories,
-      skipIndex,
-    )
-  }
-
   const howToSave = skipIndex
     ? [
         '## How to save memories',

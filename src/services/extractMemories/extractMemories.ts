@@ -61,9 +61,7 @@ import {
 } from './prompts.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = true
-  ? (require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js'))
-  : null
+const teamMemPaths = require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js')
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // ============================================================================
@@ -358,9 +356,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    const teamMemoryEnabled = true
-      ? teamMemPaths!.isTeamMemoryEnabled()
-      : false
+    const teamMemoryEnabled = teamMemPaths.isTeamMemoryEnabled()
 
     const skipIndex = getFeatureValue_CACHED_MAY_BE_STALE(
       'tengu_moth_copse',
@@ -399,7 +395,7 @@ export function initExtractMemories(): void {
       )
 
       const userPrompt =
-        true && teamMemoryEnabled
+        teamMemoryEnabled
           ? buildExtractCombinedPrompt(
               newMessageCount,
               existingMemories,
@@ -465,9 +461,7 @@ export function initExtractMemories(): void {
       const memoryPaths = writtenPaths.filter(
         p => basename(p) !== ENTRYPOINT_NAME,
       )
-      const teamCount = true
-        ? count(memoryPaths, teamMemPaths!.isTeamMemPath)
-        : 0
+      const teamCount = count(memoryPaths, teamMemPaths.isTeamMemPath)
 
       // Log extraction event with usage from the forked agent
       logEvent('tengu_extract_memories_extraction', {
@@ -489,10 +483,8 @@ export function initExtractMemories(): void {
       )
       if (memoryPaths.length > 0) {
         const msg = createMemorySavedMessage(memoryPaths)
-        if (true) {
-          // @ts-ignore - teamCount not on SystemMemorySavedMessage type
-          msg.teamCount = teamCount
-        }
+        // @ts-ignore - teamCount not on SystemMemorySavedMessage type
+        msg.teamCount = teamCount
         appendSystemMessage?.(msg)
       }
     } catch (error) {
