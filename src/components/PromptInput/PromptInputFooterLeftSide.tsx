@@ -23,6 +23,7 @@ import { count } from '../../utils/array.js';
 import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getBranch } from '../../utils/git.js';
+import { getCwd } from '../../utils/cwd.js';
 import { TeamStatus } from '../teams/TeamStatus.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
 import { useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
@@ -43,6 +44,7 @@ import { isXtermJs } from '../../ink/terminal.js';
 import { useHasSelection, useSelection } from '../../ink/hooks/use-selection.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { getPlatform } from '../../utils/platform.js';
+import path from 'node:path';
 import { PrBadge } from '../PrBadge.js';
 import { renderModelName } from '../../utils/model/model.js';
 
@@ -280,6 +282,7 @@ function ModeIndicator({
   const setAppState = useSetAppState();
   const mainLoopModel = useMainLoopModel();
   const modelDisplay = renderModelName(mainLoopModel);
+  const project = path.basename(getCwd());
 
   // Fetch git branch and store in AppState. Refresh periodically to detect branch switches.
   useEffect(() => {
@@ -513,6 +516,7 @@ function ModeIndicator({
           <Byline>{parts}</Byline>
         </Text>}
       {branch && <><Text dimColor> · </Text><Text color="success">{branch}</Text></>}
+      {project && <><Text dimColor> · </Text><Text color="warning">{project}</Text></>}
       <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text><Text dimColor> · </Text>
     </Box>;
 }
