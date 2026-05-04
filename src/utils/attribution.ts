@@ -39,6 +39,64 @@ export type AttributionTexts = {
   pr: string
 }
 
+function sanitizeCoAuthorNamePart(value: string): string {
+  return value
+    .replace(/[\r\n<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .trim()
+}
+
+function formatClaudeCoAuthorName(model: string): string {
+  const publicName = getPublicModelDisplayName(model)
+  if (!publicName) {
+    return sanitizeCoAuthorNamePart(getPublicModelName(model))
+  }
+  const coAuthorName = publicName.startsWith('Claude ')
+    ? publicName
+    : `Claude ${publicName}`
+  return sanitizeCoAuthorNamePart(coAuthorName)
+}
+
+export function getDefaultCommitCoAuthorName({
+  model,
+  apiProvider,
+  isInternalRepo,
+}: {
+  model: string
+  apiProvider: string
+  isInternalRepo: boolean
+}): string {
+  const isKnownPublicModel = getPublicModelDisplayName(model) !== null
+  const normalizedModel = model.toLowerCase()
+  const isClaudeProvider =
+    apiProvider === 'firstParty' ||
+    apiProvider === 'bedrock' ||
+    apiProvider === 'vertex' ||
+    apiProvider === 'foundry' ||
+    normalizedModel.includes('claude')
+
+  if (isClaudeProvider && (isInternalRepo || isKnownPublicModel)) {
+    return formatClaudeCoAuthorName(model)
+  }
+
+  // Unknown first-party models may be unreleased Claude codenames, so keep the
+  // historical public fallback. OpenAI-compatible providers should identify the
+  // actual configured model instead of claiming Claude Opus.
+  if (apiProvider === 'firstParty') {
+    // @[MODEL LAUNCH]: Update this fallback when the default public Claude model changes.
+    return 'Claude Opus 4.6'
+  }
+
+  const sanitizedModel = sanitizeCoAuthorNamePart(model)
+  return sanitizedModel ? `OpenClaude (${sanitizedModel})` : 'OpenClaude'
+}
+
+export function getDefaultCommitCoAuthorEmail(_apiProvider: string): string {
+  return 'openclaude@gitlawb.com'
+}
+
 /**
  * Returns attribution text for commits and PRs based on user settings.
  * Handles:
@@ -78,11 +136,12 @@ export function getAttributionTexts(): AttributionTexts {
     '🤖 Generated with [OpenCC](https://github.com/Gitlawb/opencc)'
   const coAuthorDomain =
     getAPIProvider() === 'firstParty' ? 'anthropic.com' : 'opencc.dev'
+  const coAuthorEmail = `noreply@${coAuthorDomain}`
   const defaultCommit = isEnvTruthy(
     process.env.OPENCC_DISABLE_CO_AUTHORED_BY,
   )
     ? ''
-    : `Co-Authored-By: ${modelName} <noreply@${coAuthorDomain}>`
+    : `Co-Authored-By: ${modelName} <${coAuthorEmail}>`
 
   const settings = getInitialSettings()
 
