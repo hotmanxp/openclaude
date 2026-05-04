@@ -90,7 +90,7 @@ export function getDefaultCommitCoAuthorName({
   }
 
   const sanitizedModel = sanitizeCoAuthorNamePart(model)
-  return sanitizedModel ? `OpenClaude (${sanitizedModel})` : 'OpenClaude'
+  return sanitizedModel ? `OpenCC (${sanitizedModel})` : 'OpenCC'
 }
 
 export function getDefaultCommitCoAuthorEmail(_apiProvider: string): string {
@@ -123,20 +123,18 @@ export function getAttributionTexts(): AttributionTexts {
     return { commit: '', pr: '' }
   }
 
-  // @[MODEL LAUNCH]: Update the hardcoded fallback model name below (guards against codename leaks).
-  // For internal repos, use the real model name. For external repos,
-  // fall back to "Open CC Opus 4.6" for unrecognized models to avoid leaking codenames.
+  // First-party unknown models may be unreleased Claude codenames. Other
+  // providers can safely use the configured public model string.
   const model = getMainLoopModel()
-  const isKnownPublicModel = getPublicModelDisplayName(model) !== null
-  const modelName =
-    isInternalModelRepoCached() || isKnownPublicModel
-      ? getPublicModelName(model)
-      : 'Open CC Opus 4.6'
+  const apiProvider = getAPIProvider()
+  const modelName = getDefaultCommitCoAuthorName({
+    model,
+    apiProvider,
+    isInternalRepo: isInternalModelRepoCached(),
+  })
   const defaultAttribution =
     '🤖 Generated with [OpenCC](https://github.com/Gitlawb/opencc)'
-  const coAuthorDomain =
-    getAPIProvider() === 'firstParty' ? 'anthropic.com' : 'opencc.dev'
-  const coAuthorEmail = `noreply@${coAuthorDomain}`
+  const coAuthorEmail = getDefaultCommitCoAuthorEmail(apiProvider)
   const defaultCommit = isEnvTruthy(
     process.env.OPENCC_DISABLE_CO_AUTHORED_BY,
   )
@@ -346,12 +344,12 @@ async function getTranscriptStats(): Promise<{
 }
 
 /**
- * Get enhanced PR attribution text with Open CC contribution stats.
+ * Get enhanced PR attribution text with Claude contribution stats.
  *
- * Format: "🤖 Generated with Open CC (93% 3-shotted by claude-opus-4-5)"
+ * Format: "🤖 Generated with Claude Code (93% 3-shotted by claude-opus-4-5)"
  *
  * Rules:
- * - Shows Open CC contribution percentage from commit attribution
+ * - Shows Claude contribution percentage from commit attribution
  * - Shows N-shotted where N is the prompt count (1-shotted, 2-shotted, etc.)
  * - Shows short model name (e.g., claude-opus-4-5)
  * - Returns default attribution if stats can't be computed
@@ -390,7 +388,7 @@ export async function getEnhancedPRAttribution(
   }
 
   const defaultAttribution =
-    '🤖 Generated with [OpenCC](https://github.com/Gitlawb/opencc)'
+    '🤖 Generated with [OpenClaude](https://github.com/Gitlawb/openclaude)'
 
   // Get AppState first
   const appState = getAppState()
@@ -431,12 +429,12 @@ export async function getEnhancedPRAttribution(
     return defaultAttribution
   }
 
-  // Build the enhanced attribution: "🤖 Generated with Open CC (93% 3-shotted by claude-opus-4-5, 2 memories recalled)"
+  // Build the enhanced attribution: "🤖 Generated with Claude Code (93% 3-shotted by claude-opus-4-5, 2 memories recalled)"
   const memSuffix =
     memoryAccessCount > 0
       ? `, ${memoryAccessCount} ${memoryAccessCount === 1 ? 'memory' : 'memories'} recalled`
       : ''
-  const summary = `🤖 Generated with [OpenCC](https://github.com/Gitlawb/opencc) (${claudePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
+  const summary = `🤖 Generated with [OpenClaude](https://github.com/Gitlawb/openclaude) (${claudePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
 
   // Append trailer lines for squash-merge survival. Only for allowlisted repos
   // (INTERNAL_MODEL_REPOS) and only in builds with COMMIT_ATTRIBUTION enabled —
@@ -446,7 +444,6 @@ export async function getEnhancedPRAttribution(
   // squash commit body verbatim — trailer lines at the end become proper git
   // trailers on the squash commit.
   if (feature('COMMIT_ATTRIBUTION') && isInternal && attributionData) {
-    // @ts-ignore
     const { buildPRTrailers } = await import('./attributionTrailer.js')
     const trailers = buildPRTrailers(attributionData, appState.attribution)
     const result = `${summary}\n\n${trailers.join('\n')}`
