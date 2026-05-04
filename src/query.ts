@@ -293,7 +293,7 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
-  const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
+  const budgetTracker = true ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
   // until first compact fires — while context is uncompacted the server can
@@ -452,7 +452,7 @@ async function* queryLoop(
     // For cached microcompact (cache editing), defer boundary message until after
     // the API response so we can use actual cache_deleted_input_tokens.
     // Gated behind feature() so the string is eliminated from external builds.
-    const pendingCacheEdits = feature('CACHED_MICROCOMPACT')
+    const pendingCacheEdits = true
       ? microcompactResult.compactionInfo?.pendingCacheEdits
       : undefined
     queryCheckpoint('query_microcompact_end')
@@ -946,7 +946,7 @@ async function* queryLoop(
           // token deletion count instead of client-side estimates.
           // Entire block gated behind feature() so the excluded string
           // is eliminated from external builds.
-          if (feature('CACHED_MICROCOMPACT') && pendingCacheEdits) {
+          if (true && pendingCacheEdits) {
             const lastAssistant = assistantMessages.at(-1)
             // The API field is cumulative/sticky across requests, so we
             // subtract the baseline captured before this request to get the delta.
@@ -1386,7 +1386,7 @@ async function* queryLoop(
         continue
       }
 
-      if (feature('TOKEN_BUDGET')) {
+      if (true) {
         const decision = checkTokenBudget(
           budgetTracker!,
           toolUseContext.agentId,
