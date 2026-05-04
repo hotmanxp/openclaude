@@ -70,12 +70,9 @@ describe('relevancePruning', () => {
       const result = pruneByRelevance(messages, { targetTokens: 200, preserveRecent: 1 })
 
       const round1Msgs = result.filter(m => m.message?.id === 'api-round-1')
-      const toolResultForTu1 = result.filter(m => {
-        const content = m.message?.content
-        if (!Array.isArray(content)) return false
-        const block = content[0] as any
-        return block?.type === 'tool_result' && block?.tool_use_id === 'tu1'
-      })
+      const toolResultForTu1 = result.filter(m => 
+        m.message?.content?.[0]?.type === 'tool_result' && m.message.content[0].tool_use_id === 'tu1'
+      )
 
       // Both tool_use and its tool_result should be kept together or neither
       if (round1Msgs.length > 0) {

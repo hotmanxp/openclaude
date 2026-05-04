@@ -128,10 +128,7 @@ export function getAllMessages(context: PartitionedContext): Message[] {
     if (zoneName === 'system') continue
     messages.push(...zoneMessages)
   }
-  return messages.sort((a, b) =>
-    // @ts-ignore - created_at not in type but used at runtime
-    (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0)
-  )
+  return messages.sort((a, b) => (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0))
 }
 
 export function getAvailableSpace(context: PartitionedContext, contextWindow: number): number {
