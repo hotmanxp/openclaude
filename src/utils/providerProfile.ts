@@ -466,13 +466,13 @@ const profileManagedEnv = processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED ==
     return processEnv
   }
 
-  return buildLaunchEnv({
+  return await buildLaunchEnv({
     profile: persisted.profile,
     persisted,
     goal:
       options?.goal ??
       normalizeRecommendationGoal(processEnv.OPENCC_PROFILE_GOAL),
-    processEnv: launchProcessEnv,
+    processEnv,
     getOllamaChatBaseUrl:
       options?.getOllamaChatBaseUrl ?? getOllamaChatBaseUrl,
     resolveOllamaDefaultModel: options?.resolveOllamaDefaultModel,

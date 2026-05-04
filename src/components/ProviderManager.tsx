@@ -596,7 +596,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
             defaultValue={
               currentValue === 'responses' ? 'responses' : 'chat_completions'
             }
-            onSubmit={handleFormSubmit}
+            onChange={handleFormSubmit}
             focus={true}
             showCursor={true}
             placeholder={`${currentStep.placeholder}${figures.ellipsis}`}
