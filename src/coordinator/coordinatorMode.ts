@@ -41,7 +41,7 @@ const INTERNAL_WORKER_TOOLS = new Set([
 ])
 
 export function isCoordinatorMode(): boolean {
-  if (!feature('COORDINATOR_MODE')) {
+  if (false) {
     return false
   }
   const settings = getSettingsForSource('userSettings')
