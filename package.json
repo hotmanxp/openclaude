@@ -8,7 +8,6 @@
   },
   "files": [
     "bin/",
-    "dist/",
     "dist/cli.mjs",
     "vendor/",
     "README.md"
@@ -156,8 +155,9 @@
     "gemini"
   ],
   "license": "SEE LICENSE FILE",
-  "publishConfig": {
-    "access": "public"
+ "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "overrides": {
     "lodash-es": "4.18.1"
