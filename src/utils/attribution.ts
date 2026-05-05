@@ -94,7 +94,7 @@ export function getDefaultCommitCoAuthorName({
 }
 
 export function getDefaultCommitCoAuthorEmail(_apiProvider: string): string {
-  return 'openclaude@gitlawb.com'
+  return 'opencc@opencc.com'
 }
 
 /**

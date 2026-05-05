@@ -50,11 +50,11 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
   })
 
   it('deduplicates entities and updates attributes', () => {
-    addGlobalEntity('tool', 'openclaude', { status: 'alpha' })
-    addGlobalEntity('tool', 'openclaude', { status: 'beta', version: '0.6.0' })
+    addGlobalEntity('tool', 'opencc', { status: 'alpha' })
+    addGlobalEntity('tool', 'opencc', { status: 'beta', version: '0.6.0' })
     
     const graph = loadProjectGraph(cwd)
-    const entities = Object.values(graph.entities).filter(e => e.name === 'openclaude')
+    const entities = Object.values(graph.entities).filter(e => e.name === 'opencc')
     expect(entities.length).toBe(1)
     expect(entities[0].attributes.status).toBe('beta')
     expect(entities[0].attributes.version).toBe('0.6.0')

@@ -19,7 +19,7 @@ let tempDir: string
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), 'openclaude-agents-test-'))
-  process.env.CLAUDE_CONFIG_DIR = join(tempDir, '.openclaude')
+  process.env.CLAUDE_CONFIG_DIR = join(tempDir, '.claude')
   process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH = '1'
   delete process.env.CLAUDE_CODE_SIMPLE
   clearAgentDefinitionsCache()
@@ -80,10 +80,10 @@ describe('agent definition loading', () => {
     )
   })
 
-  test('loads project agents from .openclaude/agents', async () => {
+  test('loads project agents from .claude/agents', async () => {
     const projectDir = join(tempDir, 'project')
     await writeAgent(
-      join(projectDir, '.openclaude', 'agents', 'project-agent.md'),
+      join(projectDir, '.claude', 'agents', 'project-agent.md'),
       'project-agent',
     )
 
@@ -94,7 +94,7 @@ describe('agent definition loading', () => {
     ).toBe(true)
   })
 
-  test('prefers .openclaude project agents over legacy .claude agents', async () => {
+  test('prefers .claude project agents over legacy .claude agents', async () => {
     const projectDir = join(tempDir, 'project')
     await writeAgent(
       join(projectDir, '.claude', 'agents', 'shared-agent.md'),
@@ -102,14 +102,14 @@ describe('agent definition loading', () => {
       'legacy prompt',
     )
     await writeAgent(
-      join(projectDir, '.openclaude', 'agents', 'shared-agent.md'),
+      join(projectDir, '.claude', 'agents', 'shared-agent.md'),
       'shared-agent',
-      'openclaude prompt',
+      'claude prompt',
     )
 
     const { activeAgents } = await getAgentDefinitionsWithOverrides(projectDir)
     const agent = activeAgents.find(agent => agent.agentType === 'shared-agent')
 
-    expect(agent?.getSystemPrompt()).toBe('openclaude prompt')
+    expect((agent as any)?.getSystemPrompt()).toBe('claude prompt')
   })
 })
