@@ -1,6 +1,7 @@
 // @ts-nocheck
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { feature } from 'bun:bundle'
+import { isCoordinatorMode, matchSessionMode } from '../coordinator/coordinatorMode.js'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
 import {
@@ -357,9 +358,6 @@ import { isExtractModeActive } from '../memdir/paths.js'
 
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = true
-  ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
-  : null
 const proactiveModule: any =
   feature('PROACTIVE') || feature('KAIROS')
     ? // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -4908,8 +4906,8 @@ async function loadInitialMessages(
       )
       if (result) {
         // Match coordinator mode to the resumed session's mode
-        if (true && coordinatorModeModule) {
-          const warning = coordinatorModeModule.matchSessionMode(result.mode)
+        if (true) {
+          const warning = matchSessionMode(result.mode)
           if (warning) {
             process.stderr.write(warning + '\n')
             // Refresh agent definitions to reflect the mode switch
@@ -4957,9 +4955,9 @@ async function loadInitialMessages(
         )
 
         // Write mode entry for the resumed session
-        if (true && coordinatorModeModule) {
+        if (true) {
           saveMode(
-            coordinatorModeModule.isCoordinatorMode()
+            isCoordinatorMode()
               ? 'coordinator'
               : 'normal',
           )
@@ -5113,8 +5111,8 @@ async function loadInitialMessages(
       }
 
       // Match coordinator mode to the resumed session's mode
-      if (true && coordinatorModeModule) {
-        const warning = coordinatorModeModule.matchSessionMode(result.mode)
+      if (true) {
+        const warning = matchSessionMode(result.mode)
         if (warning) {
           process.stderr.write(warning + '\n')
           // Refresh agent definitions to reflect the mode switch
@@ -5157,9 +5155,9 @@ async function loadInitialMessages(
       )
 
       // Write mode entry for the resumed session
-      if (true && coordinatorModeModule) {
+      if (true) {
         saveMode(
-          coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal',
+          isCoordinatorMode() ? 'coordinator' : 'normal',
         )
       }
 

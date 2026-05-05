@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { isCoordinatorMode } from '../coordinator/coordinatorMode.js'
 import partition from 'lodash-es/partition.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { COORDINATOR_MODE_ALLOWED_TOOLS } from '../constants/tools.js'
@@ -17,12 +18,6 @@ export function isPrActivitySubscriptionTool(name: string): boolean {
   return PR_ACTIVITY_TOOL_SUFFIXES.some(suffix => name.endsWith(suffix))
 }
 
-// Dead code elimination: conditional imports for feature-gated modules
-/* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = true
-  ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
  * Filters a tool array to the set allowed in coordinator mode.
@@ -69,8 +64,8 @@ export function mergeAndFilterTools(
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   const tools = [...builtIn.sort(byName), ...mcp.sort(byName)]
 
-  if (true && coordinatorModeModule) {
-    if (coordinatorModeModule.isCoordinatorMode()) {
+  if (true) {
+    if (isCoordinatorMode()) {
       return applyCoordinatorToolFilter(tools)
     }
   }

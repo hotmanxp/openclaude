@@ -67,17 +67,14 @@ import { jsonParse, writeFileSync_DEPRECATED } from './utils/slowOperations.js';
 import { computeInitialTeamContext } from './utils/swarm/reconnection.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
+import * as coordinatorModeModule from './coordinator/coordinatorMode.js';
 
 // Lazy require to avoid circular dependency: teammate.ts -> AppState.tsx -> ... -> main.tsx
 /* eslint-disable @typescript-eslint/no-require-imports */
 const getTeammateUtils = () => require('./utils/teammate.js') as typeof import('./utils/teammate.js');
 const getTeammatePromptAddendum = () => require('./utils/swarm/teammatePromptAddendum.js') as typeof import('./utils/swarm/teammatePromptAddendum.js');
 const getTeammateModeSnapshot = () => require('./utils/swarm/backends/teammateModeSnapshot.js') as typeof import('./utils/swarm/backends/teammateModeSnapshot.js');
-/* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for COORDINATOR_MODE
-/* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = true ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
+
 // Dead code elimination: conditional import for KAIROS (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assistantModule = feature('KAIROS') ? require('./assistant/index.js') as typeof import('./assistant/index.js') : null;
@@ -2194,7 +2191,7 @@ async function run(): Promise<CommanderCommand> {
     // access and conflict with delegation instructions.
     if ((feature('PROACTIVE') || feature('KAIROS')) && ((options as {
       proactive?: boolean;
-    }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) && !coordinatorModeModule?.isCoordinatorMode()) {
+    }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) && !coordinatorModeModule.isCoordinatorMode()) {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const briefVisibility = feature('KAIROS') || feature('KAIROS_BRIEF') ? (require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js')).isBriefEnabled() ? 'Call SendUserMessage at checkpoints to mark where things stand.' : 'The user will see any text you output.' : 'The user will see any text you output.';
       /* eslint-enable @typescript-eslint/no-require-imports */
@@ -3756,7 +3753,7 @@ async function run(): Promise<CommanderCommand> {
       maybeActivateBrief(options);
       // Persist the current mode for fresh sessions so future resumes know what mode was used
       if (true) {
-        saveMode(coordinatorModeModule?.isCoordinatorMode() ? 'coordinator' : 'normal');
+        saveMode(coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal');
       }
 
       // If launched via a deep link, show a provenance banner so the user
@@ -4579,7 +4576,7 @@ async function logTenguInit({
         appendSystemPromptFlag: appendSystemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),
       is_simple: isBareMode() || undefined,
-      is_coordinator: true && coordinatorModeModule?.isCoordinatorMode() ? true : undefined,
+      is_coordinator: true && coordinatorModeModule.isCoordinatorMode() ? true : undefined,
       ...(assistantActivationPath && {
         assistantActivationPath: assistantActivationPath as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),

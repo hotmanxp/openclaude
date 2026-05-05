@@ -105,9 +105,7 @@ const TerminalCaptureTool = feature('TERMINAL_PANEL')
 const WebBrowserTool = feature('WEB_BROWSER_TOOL')
   ? require('./tools/WebBrowserTool/WebBrowserTool.js').WebBrowserTool
   : null
-const coordinatorModeModule = true
-  ? (require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js'))
-  : null
+import { isCoordinatorMode } from './coordinator/coordinatorMode.js'
 const SnipTool = feature('HISTORY_SNIP')
   ? require('./tools/SnipTool/SnipTool.js').SnipTool
   : null
@@ -266,7 +264,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
       const replSimple: Tool[] = [REPLTool]
       if (
         true &&
-        coordinatorModeModule?.isCoordinatorMode()
+        isCoordinatorMode()
       ) {
         const sendMessageTool = getSendMessageTool()
         if (sendMessageTool) replSimple.push(TaskStopTool, sendMessageTool)
@@ -279,7 +277,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
     // workers get Bash/Read/Edit (via filterToolsForAgent filtering).
     if (
       true &&
-      coordinatorModeModule?.isCoordinatorMode()
+      isCoordinatorMode()
     ) {
       simpleTools.push(AgentTool, TaskStopTool)
       const sendMessageTool = getSendMessageTool()

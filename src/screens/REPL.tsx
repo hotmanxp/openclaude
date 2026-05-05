@@ -2,6 +2,7 @@
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { feature } from 'bun:bundle';
+import { getCoordinatorUserContext, isCoordinatorMode, matchSessionMode } from '../coordinator/coordinatorMode.js';
 import { spawnSync } from 'child_process';
 import { snapshotOutputTokensForTurn, getCurrentTurnTokenBudget, getTurnOutputTokens, getBudgetContinuationCount, getTotalInputTokens } from '../bootstrap/state.js';
 import { parseTokenBudget } from '../utils/tokenBudget.js';
@@ -113,13 +114,6 @@ const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFr
 // Ant-only org warning. Conditional require so the org UUID list is
 // eliminated from external builds (one UUID is on excluded-strings).
 const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification = "external" === 'ant' ? require('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification : () => { };
-// Dead code elimination: conditional import for coordinator mode
-const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
-  name: string;
-}>, scratchpadDir?: string) => {
-  [k: string]: string;
-} = true ? require('../coordinator/coordinatorMode.js').getCoordinatorUserContext : () => ({});
-/* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import useCanUseTool from '../hooks/useCanUseTool.js';
 import type { ToolPermissionContext, Tool } from '../Tool.js';
 import { applyPermissionUpdate, applyPermissionUpdates, persistPermissionUpdate } from '../utils/permissions/PermissionUpdate.js';
@@ -1775,10 +1769,7 @@ export function REPL({
 
       // Match coordinator/normal mode to the resumed session
       if (true) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const coordinatorModule = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        const warning = coordinatorModule.matchSessionMode(log.mode);
+        const warning = matchSessionMode(log.mode);
         if (warning) {
           // Re-derive agent definitions after mode switch so built-in agents
           // reflect the new coordinator/normal mode
@@ -1931,10 +1922,6 @@ export function REPL({
         const {
           saveMode
         } = require('../utils/sessionStorage.js');
-        const {
-          isCoordinatorMode
-        } = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
         saveMode(isCoordinatorMode() ? 'coordinator' : 'normal');
       }
 

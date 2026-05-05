@@ -7,7 +7,7 @@ import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
 // @ts-ignore - coordinator module may not exist at runtime
-import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
+import { isCoordinatorMode, getCoordinatorSystemPrompt } from '../../coordinator/coordinatorMode.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
@@ -61,10 +61,6 @@ export function buildEffectiveSystemPrompt({
   }
   // Coordinator mode: use coordinator prompt instead of default
   if (isCoordinatorMode() && !mainThreadAgentDefinition) {
-    // Lazy require to avoid circular dependency at module load time
-    const { getCoordinatorSystemPrompt } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
     return asSystemPrompt([
       getCoordinatorSystemPrompt(),
       ...(appendSystemPrompt ? [appendSystemPrompt] : []),

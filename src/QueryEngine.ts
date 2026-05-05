@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { feature } from 'bun:bundle'
+import { getCoordinatorUserContext } from './coordinator/coordinatorMode.js'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
 import last from 'lodash-es/last.js'
@@ -107,14 +108,6 @@ import {
 } from './utils/queryHelpers.js'
 
 // Dead code elimination: conditional import for coordinator mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const getCoordinatorUserContext: (
-  mcpClients: ReadonlyArray<{ name: string }>,
-  scratchpadDir?: string,
-) => { [k: string]: string } = true
-  ? require('./coordinator/coordinatorMode.js').getCoordinatorUserContext
-  : () => ({})
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 // Dead code elimination: conditional import for snip compaction
 /* eslint-disable @typescript-eslint/no-require-imports */

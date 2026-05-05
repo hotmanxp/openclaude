@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import { feature } from 'bun:bundle';
+import { isCoordinatorMode, matchSessionMode } from '../coordinator/coordinatorMode.js';
 import { dirname } from 'path';
 import React from 'react';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
@@ -197,10 +198,7 @@ export function ResumeConversation({
         throw new Error('Failed to load conversation');
       }
       if (true) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const coordinatorModule = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        const warning = coordinatorModule.matchSessionMode(result_3.mode);
+        const warning = matchSessionMode(result_3.mode);
         if (warning) {
           /* eslint-disable @typescript-eslint/no-require-imports */
           const {
@@ -241,10 +239,6 @@ export function ResumeConversation({
         const {
           saveMode
         } = require('../utils/sessionStorage.js');
-        const {
-          isCoordinatorMode
-        } = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
         saveMode(isCoordinatorMode() ? 'coordinator' : 'normal');
       }
       const standaloneAgentContext = computeStandaloneAgentContext(result_3.agentName, result_3.agentColor);
