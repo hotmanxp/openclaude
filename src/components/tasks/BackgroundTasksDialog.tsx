@@ -18,7 +18,7 @@ import type { LocalShellTaskState } from 'src/tasks/LocalShellTask/guards.js';
 import { LocalShellTask } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 // Type import is erased at build time — safe even though module is ant-gated.
 import type { LocalWorkflowTaskState } from 'src/tasks/LocalWorkflowTask/LocalWorkflowTask.js';
-import type { MonitorMcpTaskState } from 'src/tasks/MonitorMcpTask/MonitorMcpTask.js';
+import { MonitorMcpTask, type MonitorMcpTaskState } from 'src/tasks/MonitorMcpTask/MonitorMcpTask.js';
 import { RemoteAgentTask, type RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { type BackgroundTaskState, isBackgroundTask, type TaskState } from 'src/tasks/types.js';
 import type { DeepImmutable } from 'src/types/utils.js';
@@ -116,9 +116,7 @@ const retryWorkflowAgent = workflowTaskModule?.retryWorkflowAgent ?? null;
 // Relative path, not `src/...` path-mapping — Bun's DCE can statically
 // resolve + eliminate `./` requires, but path-mapped strings stay opaque
 // and survive as dead literals in the bundle. Matches tasks.ts pattern.
-const monitorMcpModule = feature('MONITOR_TOOL') ? require('../../tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('../../tasks/MonitorMcpTask/MonitorMcpTask.js') : null;
-const killMonitorMcp = monitorMcpModule?.killMonitorMcp ?? null;
-const MonitorMcpDetailDialog = feature('MONITOR_TOOL') ? (require('./MonitorMcpDetailDialog.js') as typeof import('./MonitorMcpDetailDialog.js')).MonitorMcpDetailDialog : null;
+import { MonitorMcpDetailDialog } from './MonitorMcpDetailDialog.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
@@ -277,8 +275,8 @@ export function BackgroundTasksDialog({
         void killTeammateTask(currentSelection_0.id);
       } else if (currentSelection_0.type === 'local_workflow' && currentSelection_0.status === 'running' && killWorkflowTask) {
         killWorkflowTask(currentSelection_0.id, setAppState);
-      } else if (currentSelection_0.type === 'monitor_mcp' && currentSelection_0.status === 'running' && killMonitorMcp) {
-        killMonitorMcp(currentSelection_0.id, setAppState);
+      } else if (currentSelection_0.type === 'monitor_mcp' && currentSelection_0.status === 'running') {
+        MonitorMcpTask.kill(currentSelection_0.id, setAppState);
       } else if (currentSelection_0.type === 'dream' && currentSelection_0.status === 'running') {
         void killDreamTask(currentSelection_0.id);
       } else if (currentSelection_0.type === 'remote_agent' && currentSelection_0.status === 'running') {
@@ -393,7 +391,7 @@ export function BackgroundTasksDialog({
         return <WorkflowDetailDialog workflow={task_0} onDone={onDone} onKill={task_0.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task_0.id, setAppState) : undefined} onSkipAgent={task_0.status === 'running' && skipWorkflowAgent ? agentId => skipWorkflowAgent(task_0.id, agentId, setAppState) : undefined} onRetryAgent={task_0.status === 'running' && retryWorkflowAgent ? agentId_0 => retryWorkflowAgent(task_0.id, agentId_0, setAppState) : undefined} onBack={goBackToList} key={`workflow-${task_0.id}`} />;
       case 'monitor_mcp':
         if (!MonitorMcpDetailDialog) return null;
-        return <MonitorMcpDetailDialog task={task_0} onKill={task_0.status === 'running' && killMonitorMcp ? () => killMonitorMcp(task_0.id, setAppState) : undefined} onBack={goBackToList} key={`monitor-mcp-${task_0.id}`} />;
+        return <MonitorMcpDetailDialog task={task_0} onKill={task_0.status === 'running' ? () => MonitorMcpTask.kill(task_0.id, setAppState) : undefined} onBack={goBackToList} key={`monitor-mcp-${task_0.id}`} />;
       case 'dream':
         return <DreamDetailDialog task={task_0} onDone={() => onDone('Background tasks dialog dismissed', {
           display: 'system'
