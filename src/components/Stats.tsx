@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
-import { feature } from 'bun:bundle';
+// [SHOT_STATS] import removed
 import { plot as asciichart } from 'asciichart';
 import chalk from 'chalk';
 import figures from 'figures';
@@ -390,7 +390,8 @@ function OverviewTab({
   // Calculate range days based on selected date range
   const rangeDays = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : stats.totalDays;
 
-  // Compute shot stats data (internal-only, gated by feature flag)
+  // [SHOT_STATS] was: Compute shot stats data (internal-only, gated by feature flag)
+  // Compute shot stats data (internal-only)
   let shotStatsData: {
     avgShots: string;
     buckets: {
@@ -399,7 +400,8 @@ function OverviewTab({
       pct: number;
     }[];
   } | null = null;
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  // [SHOT_STATS] was: feature('SHOT_STATS') &&
+  if (stats.shotDistribution) {
     const dist = stats.shotDistribution;
     const total = Object.values(dist).reduce((s, n) => s + n, 0);
     if (total > 0) {
@@ -1168,7 +1170,8 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   }
 
   // Shot stats (internal-only)
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  // [SHOT_STATS] was: feature('SHOT_STATS') &&
+  if (stats.shotDistribution) {
     const dist = stats.shotDistribution;
     const totalWithShots = Object.values(dist).reduce((s, n) => s + n, 0);
     if (totalWithShots > 0) {

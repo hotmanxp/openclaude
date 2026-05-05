@@ -2538,7 +2538,7 @@ export function REPL({
       },
       resume,
       setConversationId,
-      requestPrompt: feature('HOOK_PROMPTS') ? requestPrompt : undefined,
+      requestPrompt: requestPrompt,
       contentReplacementState: contentReplacementStateRef.current,
       syncToolResultReplacements
     };

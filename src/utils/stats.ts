@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { open } from 'fs/promises'
 import { basename, dirname, join, sep } from 'path'
 import type { ModelUsage } from 'src/entrypoints/agentSdkTypes.js'
@@ -81,7 +80,8 @@ export type ClaudeCodeStats = {
   // Speculation time saved
   totalSpeculationTimeSavedMs: number
 
-  // Shot stats (internal-only, gated by SHOT_STATS feature flag)
+  // [SHOT_STATS] was: internal-only, gated by SHOT_STATS feature flag
+  // Shot stats
   shotDistribution?: { [shotCount: number]: number }
   oneShotRate?: number
 }
@@ -128,9 +128,8 @@ async function processSessionFiles(
   let totalMessages = 0
   let totalSpeculationTimeSavedMs = 0
   const modelUsageAgg: { [modelName: string]: ModelUsage } = {}
-  const shotDistributionMap = feature('SHOT_STATS')
-    ? new Map<number, number>()
-    : undefined
+  // [SHOT_STATS] was: feature('SHOT_STATS') ? new Map() : undefined
+  const shotDistributionMap = new Map<number, number>()
   // Track parent sessions that already recorded a shot count (dedup across subagents)
   const sessionsWithShotCount = new Set<string>()
 
@@ -211,7 +210,8 @@ async function processSessionFiles(
       // Extract shot count from PR attribution in gh pr create calls (internal-only)
       // This must run before the sidechain filter since subagent transcripts
       // mark all messages as sidechain
-      if (feature('SHOT_STATS') && shotDistributionMap) {
+      // [SHOT_STATS] was: feature('SHOT_STATS') &&
+      if (shotDistributionMap) {
         const parentSessionId = isSubagentFile
           ? basename(dirname(dirname(sessionFile)))
           : sessionId
@@ -364,7 +364,8 @@ async function processSessionFiles(
     hourCounts: Object.fromEntries(hourCounts),
     totalMessages,
     totalSpeculationTimeSavedMs,
-    ...(feature('SHOT_STATS') && shotDistributionMap
+    // [SHOT_STATS] was: feature('SHOT_STATS') && shotDistributionMap ? {...} : {}
+    ...(shotDistributionMap
       ? { shotDistribution: Object.fromEntries(shotDistributionMap) }
       : {}),
   }
@@ -610,28 +611,27 @@ function cacheToStats(
     totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS')) {
-    const shotDistribution: { [shotCount: number]: number } = {
-      ...(cache.shotDistribution || {}),
-    }
-    if (todayStats?.shotDistribution) {
-      for (const [count, sessions] of Object.entries(
-        todayStats.shotDistribution,
-      )) {
-        const key = parseInt(count, 10)
-        shotDistribution[key] = (shotDistribution[key] || 0) + sessions
-      }
-    }
-    result.shotDistribution = shotDistribution
-    const totalWithShots = Object.values(shotDistribution).reduce(
-      (sum, n) => sum + n,
-      0,
-    )
-    result.oneShotRate =
-      totalWithShots > 0
-        ? Math.round(((shotDistribution[1] || 0) / totalWithShots) * 100)
-        : 0
+  // [SHOT_STATS] was: if (feature('SHOT_STATS')) { ... }
+  const shotDistribution: { [shotCount: number]: number } = {
+    ...(cache.shotDistribution || {}),
   }
+  if (todayStats?.shotDistribution) {
+    for (const [count, sessions] of Object.entries(
+      todayStats.shotDistribution,
+    )) {
+      const key = parseInt(count, 10)
+      shotDistribution[key] = (shotDistribution[key] || 0) + sessions
+    }
+  }
+  result.shotDistribution = shotDistribution
+  const totalWithShots = Object.values(shotDistribution).reduce(
+    (sum, n) => sum + n,
+    0,
+  )
+  result.oneShotRate =
+    totalWithShots > 0
+      ? Math.round(((shotDistribution[1] || 0) / totalWithShots) * 100)
+      : 0
 
   return result
 }
@@ -829,7 +829,8 @@ function processedStatsToClaudeCodeStats(
     totalSpeculationTimeSavedMs: stats.totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  // [SHOT_STATS] was: if (feature('SHOT_STATS') && stats.shotDistribution)
+  if (stats.shotDistribution) {
     result.shotDistribution = stats.shotDistribution
     const totalWithShots = Object.values(stats.shotDistribution).reduce(
       (sum, n) => sum + n,

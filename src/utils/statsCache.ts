@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { open } from 'fs/promises'
 import { join } from 'path'
@@ -134,8 +133,9 @@ function migrateStatsCache(
     firstSessionDate: parsed.firstSessionDate ?? null,
     hourCounts: parsed.hourCounts ?? {},
     totalSpeculationTimeSavedMs: parsed.totalSpeculationTimeSavedMs ?? 0,
-    // Preserve undefined (don't default to {}) so the SHOT_STATS recompute
-    // check in loadStatsCache fires for v1/v2 caches that lacked this field.
+    // [SHOT_STATS] was: Preserve undefined so the SHOT_STATS recompute check fires
+    // Preserve undefined (don't default to {}) so the recompute check fires
+    // for v1/v2 caches that lacked this field.
     shotDistribution: parsed.shotDistribution,
   }
 }
@@ -169,7 +169,8 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       // already current, so without this the on-disk file stays at the old
       // version indefinitely.
       await saveStatsCache(migrated)
-      if (feature('SHOT_STATS') && !migrated.shotDistribution) {
+      // [SHOT_STATS] was: feature('SHOT_STATS') &&
+      if (!migrated.shotDistribution) {
         logForDebugging(
           'Migrated stats cache missing shotDistribution, forcing recomputation',
         )
@@ -191,9 +192,10 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       return getEmptyCache()
     }
 
-    // If SHOT_STATS is enabled but cache doesn't have shotDistribution,
-    // force full recomputation to get historical shot data
-    if (feature('SHOT_STATS') && !parsed.shotDistribution) {
+    // [SHOT_STATS] was: If SHOT_STATS is enabled but cache doesn't have shotDistribution,
+    // If cache doesn't have shotDistribution, force full recomputation
+    // to get historical shot data
+    if (!parsed.shotDistribution) {
       logForDebugging(
         'Stats cache missing shotDistribution, forcing recomputation',
       )
@@ -381,18 +383,17 @@ export function mergeCacheWithNewStats(
       newStats.totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS')) {
-    const shotDistribution: { [shotCount: number]: number } = {
-      ...(existingCache.shotDistribution || {}),
-    }
-    for (const [count, sessions] of Object.entries(
-      newStats.shotDistribution || {},
-    )) {
-      const key = parseInt(count, 10)
-      shotDistribution[key] = (shotDistribution[key] || 0) + sessions
-    }
-    result.shotDistribution = shotDistribution
+  // [SHOT_STATS] was: if (feature('SHOT_STATS')) { ... }
+  const shotDistribution: { [shotCount: number]: number } = {
+    ...(existingCache.shotDistribution || {}),
   }
+  for (const [count, sessions] of Object.entries(
+    newStats.shotDistribution || {},
+  )) {
+    const key = parseInt(count, 10)
+    shotDistribution[key] = (shotDistribution[key] || 0) + sessions
+  }
+  result.shotDistribution = shotDistribution
 
   return result
 }
