@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { feature } from 'bun:bundle'
 import type { BetaToolUseBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
@@ -30,13 +29,11 @@ import type { BuiltInAgentDefinition } from './loadAgentsDir.js'
  * Mutually exclusive with coordinator mode — coordinator already owns the
  * orchestration role and has its own delegation model.
  */
+// [FORK_SUBAGENT] was: feature('FORK_SUBAGENT') ? ... : false
 export function isForkSubagentEnabled(): boolean {
-  if (feature('FORK_SUBAGENT')) {
-    if (isCoordinatorMode()) return false
-    if (getIsNonInteractiveSession()) return false
-    return true
-  }
-  return false
+  if (isCoordinatorMode()) return false
+  if (getIsNonInteractiveSession()) return false
+  return true
 }
 
 /** Synthetic agent type name used for analytics when the fork path fires. */
