@@ -4,8 +4,8 @@ import { getInitialSettings } from './settings/settings.js'
 import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { getAPIProvider } from './model/providers.js'
-import { resolveAntModel, getAntModelOverrideConfig } from './model/antModels.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { supportsCodexReasoningEffort } from '../services/api/providerConfig.js'
 import { isEnvTruthy } from './envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 
@@ -38,7 +38,10 @@ export function modelSupportsEffort(model: string): boolean {
   if (supported3P !== undefined) {
     return supported3P
   }
-  // Supported by a subset of Open CC 4 models
+  if (modelUsesOpenAIEffort(model) && supportsCodexReasoningEffort(model)) {
+    return true
+  }
+  // Supported by a subset of Claude 4 models
   if (m.includes('opus-4-6') || m.includes('sonnet-4-6')) {
     return true
   }
@@ -83,10 +86,13 @@ export function isOpenAIEffortLevel(value: string): value is OpenAIEffortLevel {
 
 export function modelUsesOpenAIEffort(model: string): boolean {
   const provider = getAPIProvider()
-  return provider === 'openai'
+  return provider === 'openai' || provider === 'codex'
 }
 
 export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
+  if (!modelSupportsEffort(model)) {
+    return []
+  }
   if (modelUsesOpenAIEffort(model)) {
     return [...OPENAI_EFFORT_LEVELS] as OpenAIEffortLevel[]
   }
@@ -98,8 +104,8 @@ export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIE
 }
 
 export function getEffortLevelLabel(level: EffortLevel | OpenAIEffortLevel): string {
-  if (level === 'xhigh') return '极高'
-  if (level === 'max') return '最高'
+  if (level === 'xhigh') return 'Extra High'
+  if (level === 'max') return 'Max'
   return capitalize(level)
 }
 
@@ -137,7 +143,9 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
 
 /**
  * Numeric values are model-default only and not persisted.
- * 'max' is session-scoped for external users (ants can persist it).
+ * 'max' can now be persisted by all users.
+ * OpenAI-shaped 'xhigh' is normalized to its EffortLevel equivalent ('max')
+ * so any code path that leaks the OpenAI label still persists correctly.
  * Write sites call this before saving to settings so the Zod schema
  * (which only accepts string levels) never rejects a write.
  */
@@ -147,15 +155,18 @@ export function toPersistableEffort(
   if (value === 'low' || value === 'medium' || value === 'high') {
     return value
   }
-  if (value === 'max' && process.env.USER_TYPE === 'ant') {
+  if (value === 'max') {
     return value
+  }
+  if (value === 'xhigh') {
+    return 'max'
   }
   return undefined
 }
 
 export function getInitialEffortSetting(): EffortLevel | undefined {
-  // toPersistableEffort filters 'max' for non-ants on read, so a manually
-  // edited settings.json doesn't leak session-scoped max into a fresh session.
+  // toPersistableEffort validates 'max' on read, so a manually
+  // edited settings.json with an invalid level doesn't leak into a fresh session.
   return toPersistableEffort(getInitialSettings().effortLevel)
 }
 
@@ -208,8 +219,14 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'max' on non-Opus-4.6 models — downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
+  // API rejects 'max' on non-Opus-4.6 Anthropic models — downgrade to 'high'.
+  // OpenAI/Codex models use 'max' as the standard form of 'xhigh'; the client
+  // shim converts it back to 'xhigh' on the wire, so don't clamp it here.
+  if (
+    resolved === 'max' &&
+    !modelSupportsMaxEffort(model) &&
+    !modelUsesOpenAIEffort(model)
+  ) {
     return 'high'
   }
   return resolved
@@ -273,15 +290,15 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
 export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel): string {
   switch (level) {
     case 'low':
-      return '快速、直接的实现，开销最小'
+      return 'Quick, straightforward implementation with minimal overhead'
     case 'medium':
-      return '平衡的方法，标准实现和测试'
+      return 'Balanced approach with standard implementation and testing'
     case 'high':
-      return '全面的实现，广泛测试和文档'
+      return 'Comprehensive implementation with extensive testing and documentation'
     case 'max':
-      return '最大能力，最深层推理（仅 Opus 4.6）'
+      return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
     case 'xhigh':
-      return '复杂任务极高推理投入（OpenAI/Codex）'
+      return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
   }
 }
 
@@ -312,7 +329,7 @@ const OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT: OpusDefaultEffortConfig = {
   enabled: true,
   dialogTitle: 'We recommend medium effort for Opus',
   dialogDescription:
-    'Effort determines how long Open CC thinks for when completing your task. We recommend medium effort for most tasks to balance speed and intelligence and maximize rate limits. Use ultrathink to trigger high effort when needed.',
+    'Effort determines how long Claude thinks for when completing your task. We recommend medium effort for most tasks to balance speed and intelligence and maximize rate limits. Use ultrathink to trigger high effort when needed.',
 }
 
 export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
