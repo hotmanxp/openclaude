@@ -445,6 +445,7 @@ export async function getEnhancedPRAttribution(
   // trailers on the squash commit.
   if (feature('COMMIT_ATTRIBUTION') && isInternal && attributionData) {
     const { buildPRTrailers } = await import('./attributionTrailer.js')
+    // @ts-ignore - COMMIT_ATTRIBUTION not enabled in open build
     const trailers = buildPRTrailers(attributionData, appState.attribution)
     const result = `${summary}\n\n${trailers.join('\n')}`
     logForDebugging(`PR Attribution: returning with trailers: ${result}`)

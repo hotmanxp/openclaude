@@ -5,6 +5,7 @@ import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getAntModelOverrideConfig, resolveAntModel } from './model/antModels.js'
 import { supportsCodexReasoningEffort } from '../services/api/providerConfig.js'
 import { isEnvTruthy } from './envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
@@ -84,9 +85,9 @@ export function isOpenAIEffortLevel(value: string): value is OpenAIEffortLevel {
   return (OPENAI_EFFORT_LEVELS as readonly string[]).includes(value)
 }
 
-export function modelUsesOpenAIEffort(model: string): boolean {
+export function modelUsesOpenAIEffort(_model: string): boolean {
   const provider = getAPIProvider()
-  return provider === 'openai' || provider === 'codex'
+  return provider === 'openai'
 }
 
 export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
@@ -152,6 +153,9 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
 export function toPersistableEffort(
   value: EffortValue | undefined,
 ): EffortLevel | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
   if (value === 'low' || value === 'medium' || value === 'high') {
     return value
   }

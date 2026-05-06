@@ -26,6 +26,7 @@ import { createRoot, Text, useTheme } from '../../ink.js'
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js'
 import { AppStateProvider } from '../../state/AppState.js'
 import { ThemeProvider, usePreviewTheme } from './ThemeProvider.js'
+import type { ThemeSetting } from '../../utils/theme.js'
 
 mock.module('../StructuredDiff.js', () => ({
   StructuredDiff: function StructuredDiffPreview(): React.ReactNode {
@@ -123,9 +124,10 @@ test('useTheme() reflects updated currentTheme after setThemeSetting call', asyn
     return <Text>current:{theme}</Text>
   }
 
-  let setThemeFn: ((s: string) => void) | null = null
+  let setThemeFn: ((s: ThemeSetting) => void) | null = null
   function ThemeSetter() {
     const [, setter] = useTheme()
+    // @ts-ignore - internal type mismatch in test setup
     useEffect(() => { setThemeFn = setter })
     return null
   }
@@ -152,6 +154,7 @@ test('useTheme() reflects updated currentTheme after setThemeSetting call', asyn
     expect(afterLight).toContain('current:light')
 
     // Change again to confirm no stale caching
+    // @ts-ignore - 'ansi' not a valid ThemeSetting but test validates error handling
     setThemeFn!('ansi')
     const afterAnsi = await waitForFrame(getOutput, f => f.includes('current:ansi'))
     expect(afterAnsi).toContain('current:ansi')

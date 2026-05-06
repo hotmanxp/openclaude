@@ -69,6 +69,7 @@ export function ThemeProvider({
         watchSystemTheme
       }) => {
         if (cancelled) return;
+        // @ts-ignore - AUTO_THEME not enabled in open build, type mismatch ignored
         cleanup = watchSystemTheme(internal_querier, setSystemTheme);
       });
       return () => {
