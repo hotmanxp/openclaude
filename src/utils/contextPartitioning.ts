@@ -128,7 +128,6 @@ export function getAllMessages(context: PartitionedContext): Message[] {
     if (zoneName === 'system') continue
     messages.push(...zoneMessages)
   }
-  // @ts-ignore - created_at not in type but used at runtime
   return messages.sort((a, b) => (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0))
 }
 

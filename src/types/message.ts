@@ -72,6 +72,7 @@ export interface Message {
     id?: string
     context_management?: unknown
     model?: string
+    created_at?: number
   }
   subtype?: string
   attachment?: {
@@ -253,6 +254,7 @@ export type NormalizedMessageContent = {
   content: string | ContentBlock[]
   role?: string
   context_management?: unknown
+  created_at?: number
 }
 
 export type NormalizedUserMessage = {

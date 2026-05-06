@@ -54,13 +54,14 @@ export function hasToolCalls(message: Message): boolean {
   const content = message.message?.content
   if (Array.isArray(content)) {
     return content.some(
-      block => typeof block === 'object' &&
-      ('type' in block) &&
-      // @ts-ignore - tool_use_block and function_call are valid runtime types
-      (block.type === 'tool_use' || block.type === 'tool_use_block' || block.type === 'function_call')
+      block => {
+        if (typeof block !== 'object' || block === null) return false
+        const blockType = (block as Record<string, unknown>).type
+        return blockType === 'tool_use' || blockType === 'tool_use_block' || blockType === 'function_call'
+      }
     )
   }
-  
+
   const textContent = typeof content === 'string' ? content : ''
   return textContent.includes('tool_use') || textContent.includes('function_call')
 }
@@ -105,7 +106,6 @@ export function calculateRelevance(
     score += 0.3
   }
 
-  // @ts-ignore - created_at not in type but used at runtime
   const ageHours = (Date.now() - (message.message?.created_at ?? 0)) / (1000 * 60 * 60)
   if (ageHours < 1) {
     score += 0.15
@@ -171,9 +171,7 @@ export function pruneByRelevance(
 
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score
-    // @ts-ignore - created_at not in type but used at runtime
     const aTime = a.group[0]?.message?.created_at ?? 0
-    // @ts-ignore - created_at not in type but used at runtime
     const bTime = b.group[0]?.message?.created_at ?? 0
     return bTime - aTime
   })
@@ -195,7 +193,6 @@ export function pruneByRelevance(
     totalTokens += tokens
   }
 
-  // @ts-ignore - created_at not in type but used at runtime
   return result.sort((a, b) => (a.message?.created_at ?? 0) - (b.message?.created_at ?? 0))
 }
 
