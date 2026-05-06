@@ -176,6 +176,14 @@ export function getReasoningEffortForModel(_model: string): string | undefined {
   return undefined
 }
 
+/**
+ * Returns whether a model supports Codex reasoning effort.
+ * Currently not supported in opencc.
+ */
+export function supportsCodexReasoningEffort(_model: string): boolean {
+  return false
+}
+
 export function isCodexBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   return /chatgpt\.com\/backend-api\/codex/i.test(baseUrl)
