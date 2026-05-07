@@ -7,7 +7,7 @@ import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '../tools/AgentTool/loadAgentsDir.js'
 // @ts-ignore - coordinator module may not exist at runtime
-import { isCoordinatorMode, getCoordinatorSystemPrompt } from '../../coordinator/coordinatorMode.js'
+import { isCoordinatorMode, getCoordinatorSystemPrompt } from '../coordinator/coordinatorMode.js'
 import { isEnvTruthy } from './envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 

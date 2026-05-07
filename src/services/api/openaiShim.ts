@@ -23,9 +23,6 @@
 import { APIError } from '@anthropic-ai/sdk'
 import { logForDebugging } from '../../utils/debug.js'
 import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
-import { resolveGeminiCredential } from '../../utils/geminiAuth.js'
-import { hydrateGeminiAccessTokenFromSecureStorage } from '../../utils/geminiCredentials.js'
-import { hydrateGithubModelsTokenFromSecureStorage } from '../../utils/githubModelsCredentials.js'
 import {
   createThinkTagFilter,
   stripThinkTags,
@@ -1563,14 +1560,6 @@ class OpenAIShimMessages {
       } else {
         headers.Authorization = `Bearer ${authValue}`
       }
-    } else if (isGemini) {
-      const geminiCredential = await resolveGeminiCredential(process.env)
-      if (geminiCredential.kind !== 'none') {
-        headers.Authorization = `Bearer ${geminiCredential.credential}`
-        if (geminiCredential.kind !== 'api-key' && 'projectId' in geminiCredential && geminiCredential.projectId) {
-          headers['x-goog-user-project'] = geminiCredential.projectId
-        }
-      }
     }
 
     const buildChatCompletionsUrl = (baseUrl: string): string => {
@@ -1997,9 +1986,6 @@ export function createOpenAIShimClient(options: {
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   providerOverride?: { model: string; baseURL: string; apiKey: string }
 }): unknown {
-  hydrateGeminiAccessTokenFromSecureStorage()
-  hydrateGithubModelsTokenFromSecureStorage()
-
   // When Gemini provider is active, map Gemini env vars to OpenAI-compatible ones
   // so the existing providerConfig.ts infrastructure picks them up correctly.
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
