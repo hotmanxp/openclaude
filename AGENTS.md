@@ -45,12 +45,7 @@ bun run test:provider-recommendation  # Provider recommendation tests
 
 The codebase supports multiple LLM providers through environment variables. The routing happens in `src/services/api/client.ts:getAnthropicClient()`:
 
-- `CLAUDE_CODE_USE_OPENAI=1` → OpenAI-compatible shim
-- `CLAUDE_CODE_USE_GITHUB=1` → GitHub Models
-- `CLAUDE_CODE_USE_BEDROCK=1` → AWS Bedrock
-- `CLAUDE_CODE_USE_VERTEX=1` → Google Vertex AI
-- `CLAUDE_CODE_USE_FOUNDRY=1` → Azure Foundry
-- `CLAUDE_CODE_USE_GEMINI=1` → Google Gemini
+- `CLAUDE_CODE_USE_OPENAI=1` → OpenAI-compatible shim (OpenAI, Ollama, DeepSeek, LM Studio, OpenRouter, etc.)
 - Default → First-party Anthropic API
 
 ### The API Shim Pattern
@@ -118,7 +113,7 @@ Local model profiles are stored in `.claude-profile.json` (gitignored) and manag
 
 **Only three providers are supported: anthropic, ollama, openai-compatible**
 
-Code, logic, and unit tests for other providers (mistral, gemini, github, bedrock, vertex, foundry, etc.) should be removed.
+Environment variables for other providers (`CLAUDE_CODE_USE_GITHUB`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CODE_USE_GEMINI`, `CLAUDE_CODE_USE_MISTRAL`) exist in the codebase but are legacy — do not use or test them.
 
 **When merging upstream**: If a PR introduces changes related to other providers, skip or revert them. When unavoidable, clean up thoroughly before building and testing.
 
@@ -128,24 +123,44 @@ Code, logic, and unit tests for other providers (mistral, gemini, github, bedroc
 - **Build output** goes to `dist/cli.mjs` — never edit this file directly
 - **CI pipeline**: smoke → test:provider → test:provider-recommendation (no typecheck in CI)
 
+## Agent Routing
+
+Route different sub-agents to different models via `~/.openclaude.json`:
+
+```json
+{
+  "agentModels": {
+    "deepseek-v4-flash": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "sk-your-key"
+    }
+  },
+  "agentRouting": {
+    "Explore": "deepseek-v4-flash",
+    "Plan": "gpt-4o",
+    "general-purpose": "gpt-4o",
+    "default": "gpt-4o"
+  }
+}
+```
+
+When no routing match is found, the global provider remains the fallback.
+
 ## Environment Variables for Development
 
 ```bash
-# OpenAI-compatible (most providers)
+# OpenAI-compatible (OpenAI, Ollama, DeepSeek, LM Studio, OpenRouter, etc.)
 CLAUDE_CODE_USE_OPENAI=1
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=http://localhost:11434/v1  # For Ollama
 OPENAI_MODEL=gpt-4o
 
-# GitHub Models
-CLAUDE_CODE_USE_GITHUB=1
-GITHUB_TOKEN=ghp_...
-
-# Local Ollama
+# Local Ollama (no API key needed)
 CLAUDE_CODE_USE_OPENAI=1
 OPENAI_BASE_URL=http://localhost:11434/v1
-# No API key needed
 ```
+
+Provider selection: `CLAUDE_CODE_USE_OPENAI=1` routes to OpenAI-compatible shim; otherwise uses first-party Anthropic API.
 
 ## Testing
 
@@ -153,4 +168,8 @@ OPENAI_BASE_URL=http://localhost:11434/v1
 # Non-interactive testing (when interactive mode is hard to debug)
 node dist/cli.mjs -p "hello"
 node dist/cli.mjs -p "what model are you using"
+
+# Coverage (recommended before opening PR)
+bun run test:coverage
+open coverage/index.html
 ```
