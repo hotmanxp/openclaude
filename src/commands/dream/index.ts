@@ -1,1 +1,4 @@
-export { default } from './dream.js'
+import dream from './dream.js'
+
+export default dream
+

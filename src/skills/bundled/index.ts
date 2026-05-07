@@ -26,7 +26,6 @@ export function initBundledSkills(): void {
   if (feature('KAIROS') || feature('KAIROS_DREAM')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { registerDreamSkill } = require('./dream.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
     registerDreamSkill()
   }
   if (feature('REVIEW_ARTIFACT')) {
