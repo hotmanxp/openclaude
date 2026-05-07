@@ -5,6 +5,20 @@ import { roughTokenCountEstimation, roughTokenCountEstimationForMessages } from 
 import type { AssistantMessage, Message } from '../types/message.js'
 import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
 import { jsonStringify } from './slowOperations.js'
+import { IncrementalTokenCounter } from './incrementalTokenCounter.js'
+
+let _tokenCounter: IncrementalTokenCounter | undefined
+
+export function getIncrementalTokenCounter(): IncrementalTokenCounter {
+  if (!_tokenCounter) {
+    _tokenCounter = new IncrementalTokenCounter({
+      tokenBudget: 100000,
+      autoInvalidate: true,
+      estimationMultiplier: 1.0,
+    })
+  }
+  return _tokenCounter
+}
 
 export function getTokenUsage(message: Message): Usage | undefined {
   if (message?.type !== 'assistant') return undefined
@@ -454,22 +468,12 @@ export function tokenCountWithEstimation(messages: readonly Message[]): number {
       }
       return (
         getTokenCountFromUsage(usage) +
-        roughTokenCountEstimationForMessages(
-          messages.slice(i + 1) as unknown as readonly {
-            type: string
-            message?: { content?: unknown }
-            attachment?: Attachment
-          }[],
-        )
+        getIncrementalTokenCounter().getCount(messages.slice(i + 1))
       )
     }
     i--
   }
-  return roughTokenCountEstimationForMessages(
-    messages as unknown as readonly {
-      type: string
-      message?: { content?: unknown }
-      attachment?: Attachment
-    }[],
-  )
+  return getIncrementalTokenCounter().getCount(messages)
 }
+
+
