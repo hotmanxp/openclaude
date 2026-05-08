@@ -2,7 +2,6 @@
 import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
 import { Markdown } from 'src/components/Markdown.js';
-import { BRAND_NAME } from 'src/constants/product.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { Box, Text } from '../../../ink.js';
 type Props = {
@@ -15,7 +14,7 @@ export function RejectedPlanMessage(t0) {
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text color="subtle">User rejected {BRAND_NAME}'s plan:</Text>;
+    t1 = <Text color="subtle">User rejected the plan:</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];
