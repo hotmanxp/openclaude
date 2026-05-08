@@ -150,7 +150,7 @@ export function ExitPlanModePermissionRequest({
     isAutoModeAvailable,
     isBypassPermissionsModeAvailable
   } = toolPermissionContext;
-  const planAuthorName = modelDisplayString(toolUseConfirm.assistantMessage.message.model);
+  const planAuthorName = modelDisplayString(toolUseConfirm.assistantMessage.message.model ?? null);
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
     showUltraplan,

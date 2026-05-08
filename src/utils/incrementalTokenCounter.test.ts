@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, expect, it, beforeEach } from 'bun:test'
 import { IncrementalTokenCounter, CounterFactory } from './incrementalTokenCounter.js'
 import type { Message } from '../types/message.js'

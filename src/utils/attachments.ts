@@ -709,7 +709,7 @@ export type Attachment =
   | {
       type: 'companion_intro'
       name: string
-      species: string
+      species?: string
     }
   | {
       type: 'bagel_console'

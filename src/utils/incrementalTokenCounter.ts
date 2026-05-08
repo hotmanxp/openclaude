@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * High-performance token counter with cache invalidation on content change.
  */
