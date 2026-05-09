@@ -1,8 +1,10 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'fs'
 import { join } from 'path'
-import { getProjectsDir } from './sessionStorage.js'
+import { getProjectsDir } from './envUtils.js'
 import { sanitizePath } from './sessionStoragePortable.js'
 import { getFsImplementation } from './fsOperations.js'
+import { create, insert, search, type Orama, remove } from '@orama/orama'
+import { persist, restore } from '@orama/plugin-data-persistence'
 
 export interface Entity {
   id: string
@@ -34,9 +36,132 @@ export interface KnowledgeGraph {
 
 let projectGraph: KnowledgeGraph | null = null
 
+function isOramaEnabled(): boolean {
+  return process.env.OPENCLAUDE_KNOWLEDGE_ORAMA === '1'
+}
+
+let oramaDb: Orama<any> | null = null
+let oramaInitPromise: Promise<void> | null = null
+let mutationQueue: Promise<any> = Promise.resolve()
+
+async function enqueueMutation<T>(fn: () => Promise<T>): Promise<T> {
+  const result = (async () => {
+    await mutationQueue
+    return fn()
+  })()
+  mutationQueue = result.then(
+    () => {},
+    () => {},
+  )
+  return result
+}
+
+const ORAMA_SCHEMA = {
+  id: 'string',
+  type: 'string',
+  name: 'string',
+  content: 'string',
+  attributes: 'string',
+} as const
+
+function attributesContainAll(
+  current: Record<string, string>,
+  next: Record<string, string>,
+): boolean {
+  return Object.entries(next).every(([key, value]) => current[key] === value)
+}
+
 export function getProjectGraphPath(cwd: string): string {
   const projectDir = join(getProjectsDir(), sanitizePath(cwd))
   return join(projectDir, 'knowledge_graph.json')
+}
+
+export function getOramaPersistencePath(cwd: string): string {
+  const projectDir = join(getProjectsDir(), sanitizePath(cwd))
+  return join(projectDir, 'knowledge.orama')
+}
+
+export async function initOrama(cwd: string): Promise<void> {
+  if (!isOramaEnabled()) return
+  if (oramaDb) return
+
+  if (oramaInitPromise) {
+    return oramaInitPromise
+  }
+
+  oramaInitPromise = (async () => {
+    const path = getOramaPersistencePath(cwd)
+    if (existsSync(path)) {
+      try {
+        const data = readFileSync(path)
+        oramaDb = await restore('binary', data)
+        return
+      } catch (e) {
+        console.error('Failed to restore Orama DB, renaming corrupted file:', e)
+        try {
+          renameSync(path, `${path}.corrupted.${Date.now()}`)
+        } catch (renameError) {
+          console.error('Failed to rename corrupted Orama file:', renameError)
+        }
+      }
+    }
+
+    oramaDb = await create({ schema: ORAMA_SCHEMA })
+
+    // Initial sync from JSON if it exists (only for new DB)
+    const graph = projectGraph || loadProjectGraph(cwd)
+    for (const entity of Object.values(graph.entities)) {
+      try {
+        await remove(oramaDb, entity.id)
+      } catch {
+        /* ignore if doesn't exist */
+      }
+      await insert(oramaDb, {
+        id: entity.id,
+        type: entity.type,
+        name: entity.name,
+        content: entity.name,
+        attributes: JSON.stringify(entity.attributes),
+      })
+    }
+    for (const summary of graph.summaries) {
+      try {
+        await remove(oramaDb, summary.id)
+      } catch {
+        /* ignore */
+      }
+      await insert(oramaDb, {
+        id: summary.id,
+        type: 'summary',
+        name: 'summary',
+        content: summary.content,
+        attributes: JSON.stringify({ keywords: summary.keywords }),
+      })
+    }
+  })()
+
+  try {
+    await oramaInitPromise
+  } finally {
+    oramaInitPromise = null
+  }
+}
+
+let isSavingOrama = false
+
+export async function saveOrama(cwd: string): Promise<void> {
+  if (!isOramaEnabled() || !oramaDb) return
+
+  isSavingOrama = true
+  const path = getOramaPersistencePath(cwd)
+  try {
+    const data = await persist(oramaDb, 'binary')
+    writeFileSync(path, data as Buffer)
+  } catch (e) {
+    console.error('Failed to save Orama DB:', e)
+  } finally {
+    isSavingOrama = false
+  }
 }
 
 export function loadProjectGraph(cwd: string): KnowledgeGraph {
@@ -63,7 +188,7 @@ export function loadProjectGraph(cwd: string): KnowledgeGraph {
     rules: [],
     lastUpdateTime: Date.now(),
   }
-  
+
   return projectGraph
 }
 
@@ -82,26 +207,55 @@ export function saveProjectGraph(cwd: string): void {
 }
 
 export function getGlobalGraph(): KnowledgeGraph {
-  if (!projectGraph || (Object.keys(projectGraph.entities).length === 0 && projectGraph.summaries.length === 0)) {
+  if (
+    !projectGraph ||
+    (Object.keys(projectGraph.entities).length === 0 &&
+      projectGraph.summaries.length === 0)
+  ) {
     return loadProjectGraph(getFsImplementation().cwd())
   }
   return projectGraph
 }
 
-export function addGlobalEntity(
+export async function addGlobalEntity(
   type: string,
   name: string,
   attributes: Record<string, string> = {},
-): Entity {
+): Promise<Entity> {
   const graph = getGlobalGraph()
   const existingEntity = Object.values(graph.entities).find(
     e => e.type === type && e.name === name,
   )
 
   if (existingEntity) {
+    if (attributesContainAll(existingEntity.attributes, attributes)) {
+      return existingEntity
+    }
+
     existingEntity.attributes = { ...existingEntity.attributes, ...attributes }
     graph.lastUpdateTime = Date.now()
     saveProjectGraph(getFsImplementation().cwd())
+
+    if (isOramaEnabled()) {
+      await enqueueMutation(async () => {
+        await initOrama(getFsImplementation().cwd())
+        if (oramaDb) {
+          try {
+            await remove(oramaDb, existingEntity.id)
+          } catch {
+            /* ignore if doesn't exist */
+          }
+          await insert(oramaDb, {
+            id: existingEntity.id,
+            type: existingEntity.type,
+            name: existingEntity.name,
+            content: existingEntity.name,
+            attributes: JSON.stringify(existingEntity.attributes),
+          })
+          await saveOrama(getFsImplementation().cwd())
+        }
+      })
+    }
     return existingEntity
   }
 
@@ -111,14 +265,36 @@ export function addGlobalEntity(
   graph.entities[id] = entity
   graph.lastUpdateTime = Date.now()
   saveProjectGraph(getFsImplementation().cwd())
+
+  if (isOramaEnabled()) {
+    await enqueueMutation(async () => {
+      await initOrama(getFsImplementation().cwd())
+      if (oramaDb) {
+        try {
+          await remove(oramaDb, id)
+        } catch {
+          /* ignore */
+        }
+        await insert(oramaDb, {
+          id,
+          type,
+          name,
+          content: name,
+          attributes: JSON.stringify(attributes),
+        })
+        await saveOrama(getFsImplementation().cwd())
+      }
+    })
+  }
+
   return entity
 }
 
-export function addGlobalRelation(
+export async function addGlobalRelation(
   sourceId: string,
   targetId: string,
   type: string,
-): void {
+): Promise<void> {
   const graph = getGlobalGraph()
   if (!graph.entities[sourceId] || !graph.entities[targetId]) {
     throw new Error('Source or target entity not found in graph')
@@ -129,9 +305,12 @@ export function addGlobalRelation(
   saveProjectGraph(getFsImplementation().cwd())
 }
 
-export function addGlobalSummary(content: string, keywords: string[]): void {
+export async function addGlobalSummary(
+  content: string,
+  keywords: string[],
+): Promise<void> {
   const graph = getGlobalGraph()
-  const id = `summary_${Date.now()}`
+  const id = `summary_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   graph.summaries.push({
     id,
     content,
@@ -140,9 +319,30 @@ export function addGlobalSummary(content: string, keywords: string[]): void {
   })
   graph.lastUpdateTime = Date.now()
   saveProjectGraph(getFsImplementation().cwd())
+
+  if (isOramaEnabled()) {
+    await enqueueMutation(async () => {
+      await initOrama(getFsImplementation().cwd())
+      if (oramaDb) {
+        try {
+          await remove(oramaDb, id)
+        } catch {
+          /* ignore */
+        }
+        await insert(oramaDb, {
+          id,
+          type: 'summary',
+          name: 'summary',
+          content,
+          attributes: JSON.stringify({ keywords }),
+        })
+        await saveOrama(getFsImplementation().cwd())
+      }
+    })
+  }
 }
 
-export function addGlobalRule(rule: string): void {
+export async function addGlobalRule(rule: string): Promise<void> {
   const graph = getGlobalGraph()
   if (!graph.rules.includes(rule)) {
     graph.rules.push(rule)
@@ -157,15 +357,15 @@ export function extractKeywords(text: string): string[] {
     .split(/[\s,;:()\"'`?]+/)
     .filter(word => word.length >= 2)
     .map(word => {
-       if (/^\d+\.\d+/.test(word)) return word; 
-       return word.replace(/\.$/g, ''); 
+       if (/^\d+\.\d+/.test(word)) return word;
+       return word.replace(/\.$/g, '');
     })
     .filter(word => word.length >= 2);
 
   const extraWords: string[] = [];
   for (const w of words) {
     if (w.endsWith('s') && w.length > 3) {
-      extraWords.push(w.slice(0, -1)); 
+      extraWords.push(w.slice(0, -1));
     }
   }
 
@@ -179,42 +379,75 @@ export function extractKeywords(text: string): string[] {
 function calculateBM25Score(queryWords: string[], summary: SemanticSummary, allSummaries: SemanticSummary[]): number {
   let totalScore = 0
   const totalDocs = allSummaries.length || 1
-  
+
   for (const word of queryWords) {
-    const tf = summary.keywords.filter(k => k === word).length || 
+    const tf = summary.keywords.filter(k => k === word).length ||
                (summary.content.toLowerCase().includes(word) ? 1 : 0)
-    
-    const docsWithWord = allSummaries.filter(s => 
+
+    const docsWithWord = allSummaries.filter(s =>
       s.keywords.includes(word) || s.content.toLowerCase().includes(word)
     ).length || 1
-    
+
     const idf = Math.log((totalDocs - docsWithWord + 0.5) / (docsWithWord + 0.5) + 1)
     totalScore += idf * (tf * 2.2) / (tf + 1.2)
   }
-  
+
   return totalScore
 }
-
-export function getOrchestratedMemory(query: string): string {
+export async function getOrchestratedMemory(query: string): Promise<string> {
   const graph = getGlobalGraph()
   const queryWords = extractKeywords(query)
-  
+
   if (queryWords.length === 0) {
     return getGlobalGraphSummary()
+  }
+
+  if (isOramaEnabled()) {
+    await initOrama(getFsImplementation().cwd())
+    if (oramaDb) {
+      const results = await search(oramaDb, { term: query, limit: 20 })
+      let output = '\\n--- [PERSISTENT PROJECT MEMORY (ORAMA RAG)] ---\\n'
+
+      if (graph.rules.length > 0) {
+        output += 'Active Project Rules:\\n'
+        graph.rules.forEach(r => (output += `- ${r}\\n`))
+      }
+
+      if (results.count > 0) {
+        output += '\\nRelevant Technical Entities & History:\\n'
+        for (const hit of results.hits) {
+          const doc = hit.document as any
+          if (doc.type === 'summary') {
+            output += `- ${doc.content}\\n`
+          } else {
+            try {
+              const attrs = JSON.parse(doc.attributes)
+              output += `- [${doc.type}] ${doc.name}: ${Object.entries(attrs)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ')}\\n`
+            } catch {
+              output += `- [${doc.type}] ${doc.name}: ${doc.attributes}\\n`
+            }
+          }
+        }
+      }
+      return output + '------------------------------------------------\\n'
+    }
   }
 
   // Tier 1: Exact Entity Matches (High precision)
   const matchingEntities = Object.values(graph.entities)
     .filter(e => {
-      const eName = e.name.toLowerCase();
-      const eType = e.type.toLowerCase();
-      const eAttrValues = Object.values(e.attributes).map(v => v.toLowerCase());
+      const eName = e.name.toLowerCase()
+      const eType = e.type.toLowerCase()
+      const eAttrValues = Object.values(e.attributes).map(v => v.toLowerCase())
 
-      return queryWords.some(qw => 
-        eName.includes(qw) || 
-        qw.includes(eName) || 
-        eType.includes(qw) ||
-        eAttrValues.some(v => v.includes(qw))
+      return queryWords.some(
+        qw =>
+          eName.includes(qw) ||
+          qw.includes(eName) ||
+          eType.includes(qw) ||
+          eAttrValues.some(v => v.includes(qw)),
       )
     })
     .sort((a, b) => {
@@ -225,7 +458,7 @@ export function getOrchestratedMemory(query: string): string {
 
       const aPerfect = queryWords.some(qw => aName === qw || aAttrValues.some(av => av === qw)) ? 1 : 0
       const bPerfect = queryWords.some(qw => bName === qw || bAttrValues.some(av => av === qw)) ? 1 : 0
-      
+
       if (aPerfect !== bPerfect) return bPerfect - aPerfect;
 
       // Recency boost: newer entities (higher timestamp in ID) rank higher
@@ -269,26 +502,33 @@ export function getOrchestratedMemory(query: string): string {
 
   return output + '------------------------------------------------\\n'
 }
-
-export function searchGlobalGraph(query: string): string {
+export async function searchGlobalGraph(query: string): Promise<string> {
   const graph = getGlobalGraph()
   const queryWords = extractKeywords(query)
-  
+
   if (queryWords.length === 0) return ''
 
+  if (isOramaEnabled()) {
+    await initOrama(getFsImplementation().cwd())
+    if (oramaDb) {
+      return getOrchestratedMemory(query)
+    }
+  }
+
   // 1. Search in Entities (High Precision)
-  const matchingEntities = Object.values(graph.entities).filter(e => 
-    queryWords.some(qw => 
-      e.name.toLowerCase().includes(qw) || 
-      qw.includes(e.name.toLowerCase()) ||
-      Object.values(e.attributes).some(v => v.toLowerCase().includes(qw))
-    )
+  const matchingEntities = Object.values(graph.entities).filter(e =>
+    queryWords.some(
+      qw =>
+        e.name.toLowerCase().includes(qw) ||
+        qw.includes(e.name.toLowerCase()) ||
+        Object.values(e.attributes).some(v => v.toLowerCase().includes(qw)),
+    ),
   )
 
   // 2. Search in Summaries (Broad Recall)
   const scoredSummaries = graph.summaries.map(s => {
-    const matches = queryWords.filter(qw => 
-      s.content.toLowerCase().includes(qw) || 
+    const matches = queryWords.filter(qw =>
+      s.content.toLowerCase().includes(qw) ||
       s.keywords.some(k => k.includes(qw) || qw.includes(k))
     )
     return { ...s, score: matches.length }
@@ -297,7 +537,7 @@ export function searchGlobalGraph(query: string): string {
   if (matchingEntities.length === 0 && scoredSummaries.length === 0) return ''
 
   let result = '\\n--- Persistent Project Memory ---\\n'
-  
+
   if (matchingEntities.length > 0) {
     result += 'Known Facts (from Knowledge Graph):\\n'
     for (const e of matchingEntities.slice(0, 15)) {
@@ -311,7 +551,7 @@ export function searchGlobalGraph(query: string): string {
       result += `- ${s.content}\\n`
     }
   }
-  
+
   return result + '-------------------------------\\n'
 }
 
@@ -351,11 +591,17 @@ export function getGlobalGraphSummary(): string {
 export function resetGlobalGraph(): void {
   const cwd = getFsImplementation().cwd()
   const path = getProjectGraphPath(cwd)
-  if (existsSync(path)) {
-    try {
-      import('fs').then(fs => fs.rmSync(path))
-    } catch { /* ignore */ }
-  }
+  try {
+    rmSync(path, { force: true })
+  } catch { /* ignore */ }
+
+  // Always attempt to clear Orama files to prevent stale data if flag is re-enabled later
+  const oramaPath = getOramaPersistencePath(cwd)
+  try {
+    rmSync(oramaPath, { force: true })
+  } catch { /* ignore */ }
+  oramaDb = null
+
   projectGraph = null;
 }
 
@@ -366,4 +612,5 @@ export function resetGlobalGraph(): void {
  */
 export function clearMemoryOnly(): void {
   projectGraph = null;
+  oramaDb = null;
 }
