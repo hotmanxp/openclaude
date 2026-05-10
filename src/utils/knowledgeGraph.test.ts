@@ -53,15 +53,6 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
     expect(result2).toContain('React')
   })
 
-  it('deduplicates entities and updates attributes', () => {
-    await addGlobalEntity('tool', 'openclaude', { status: 'alpha' })
-    await addGlobalEntity('tool', 'openclaude', { status: 'beta', version: '0.6.0' })
-    
-
-    const result2 = await searchGlobalGraph('What react components are used?')
-    expect(result2).toContain('React')
-  })
-
   it('deduplicates entities and updates attributes', async () => {
     await addGlobalEntity('tool', 'openclaude', { status: 'alpha' })
     await addGlobalEntity('tool', 'openclaude', { status: 'beta', version: '0.6.0' })

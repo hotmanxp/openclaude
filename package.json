@@ -158,7 +158,7 @@
     "gemini"
   ],
   "license": "SEE LICENSE FILE",
- "publishConfig": {
+  "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },

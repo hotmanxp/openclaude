@@ -94,7 +94,7 @@ export async function initOrama(cwd: string): Promise<void> {
     if (existsSync(path)) {
       try {
         const data = readFileSync(path)
-        oramaDb = await restore('binary', data)
+        oramaDb = (await restore('binary', data)) as Orama<any>
         return
       } catch (e) {
         console.error('Failed to restore Orama DB, renaming corrupted file:', e)

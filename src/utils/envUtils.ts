@@ -46,6 +46,10 @@ export function getTeamsDir(): string {
 export function getProjectsDir(): string {
   return join(getClaudeConfigHomeDir(), 'projects')
 }
+
+export function getUserAgentsDir(): string {
+  const homeDir = homedir()
+  return join(homeDir, '.agents')
 }
 
 /**
