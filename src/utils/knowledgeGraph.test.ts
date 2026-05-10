@@ -59,7 +59,7 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
     await addGlobalEntity('tool', 'openclaude', { status: 'beta', version: '0.6.0' })
 
     const graph = loadProjectGraph(cwd)
-    const entities = Object.values(graph.entities).filter(e => e.name === 'opencc')
+    const entities = Object.values(graph.entities).filter(e => e.name === 'openclaude')
     expect(entities.length).toBe(1)
     expect(entities[0].attributes.status).toBe('beta')
     expect(entities[0].attributes.version).toBe('0.6.0')

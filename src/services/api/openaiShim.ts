@@ -1472,6 +1472,9 @@ class OpenAIShimMessages {
         store: false,
       }
 
+      const isDeepSeek = request.baseUrl?.includes('deepseek.com')
+      const isZai = isZaiBaseUrl(request.baseUrl)
+
       if (
         isMistral ||
         isGeminiMode() ||

@@ -77,7 +77,13 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     // cross-provider leaks (e.g. ANTHROPIC_MODEL sent to the OpenAI API).
     const provider = getAPIProvider()
     specifiedModel =
-      (provider === 'openai' ? process.env.OPENAI_MODEL : undefined) ||
+      (provider === 'openai' ||
+      provider === 'codex' ||
+      provider === 'nvidia-nim' ||
+      provider === 'minimax' ||
+      provider === 'github'
+        ? process.env.OPENAI_MODEL
+        : undefined) ||
       (provider === 'firstParty' ? process.env.ANTHROPIC_MODEL : undefined) ||
       (settings.model ?? undefined)
   }
