@@ -57,7 +57,7 @@ describe('knowledge command', () => {
 
   it('clears the knowledge graph', async () => {
     // Add a fact first
-    addEntity('test', 'fact')
+    await addEntity('test', 'fact')
     const graph = getGlobalGraph()
     expect(Object.keys(graph.entities).length).toBe(1)
 
