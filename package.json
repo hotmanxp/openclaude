@@ -1,6 +1,6 @@
 {
   "name": "@hotmanxp/opencc",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "OpenCC opened to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
