@@ -1,14 +1,15 @@
 // @ts-nocheck
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import { 
-  addGlobalEntity, 
-  addGlobalRelation, 
-  addGlobalSummary, 
-  searchGlobalGraph, 
+import {
+  addGlobalEntity,
+  addGlobalRelation,
+  addGlobalSummary,
+  searchGlobalGraph,
   loadProjectGraph,
   getProjectGraphPath,
   resetGlobalGraph,
-  saveProjectGraph
+  saveProjectGraph,
+  clearMemoryOnly,
 } from './knowledgeGraph.js'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
@@ -33,9 +34,9 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
   it('persists entities across loads', async () => {
     await addGlobalEntity('server', 'prod-1', { ip: '1.2.3.4' })
     saveProjectGraph(cwd)
-    
-    // Reset singleton and reload
-    resetGlobalGraph()
+
+    // Reset singleton (not the file) and reload
+    clearMemoryOnly()
     const graph = loadProjectGraph(cwd)
     const entity = Object.values(graph.entities).find(e => e.name === 'prod-1')
     expect(entity).toBeDefined()

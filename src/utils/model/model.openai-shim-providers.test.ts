@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 
 import { saveGlobalConfig } from '../config.js'
+import { resetStateForTests } from '../../bootstrap/state.js'
 
 async function importFreshModelModule() {
   mock.restore()
@@ -59,6 +60,8 @@ beforeEach(() => {
   // globally. Without mock.restore() here, those overrides bleed into this
   // suite and the provider-kind branches we're testing become unreachable.
   mock.restore()
+  // Reset global STATE so getMainLoopModelOverride() returns undefined
+  resetStateForTests()
   delete process.env.CLAUDE_CODE_USE_OPENAI
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.CLAUDE_CODE_USE_GITHUB

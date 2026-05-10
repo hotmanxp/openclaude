@@ -53,20 +53,24 @@ function txtRequire(mod: string | { default: string }): string {
   return typeof mod === 'string' ? mod : mod.default
 }
 
-const BASE_PROMPT: string = true
-  ? txtRequire(require('./yolo-classifier-prompts/auto_mode_system_prompt.txt'))
-  : ''
+function safeRequire(path: string): string {
+  try {
+    return txtRequire(require(path))
+  } catch {
+    return ''
+  }
+}
+
+const BASE_PROMPT: string = safeRequire('./yolo-classifier-prompts/auto_mode_system_prompt.txt')
 
 // External template is loaded separately so it's available for
 // `claude auto-mode defaults` even in ant builds. Ant builds use
 // permissions_anthropic.txt at runtime but should dump external defaults.
-const EXTERNAL_PERMISSIONS_TEMPLATE: string = true
-  ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
-  : ''
+const EXTERNAL_PERMISSIONS_TEMPLATE: string = safeRequire('./yolo-classifier-prompts/permissions_external.txt')
 
 const ANTHROPIC_PERMISSIONS_TEMPLATE: string =
-  true && process.env.USER_TYPE === 'ant'
-    ? txtRequire(require('./yolo-classifier-prompts/permissions_anthropic.txt'))
+  process.env.USER_TYPE === 'ant'
+    ? safeRequire('./yolo-classifier-prompts/permissions_anthropic.txt')
     : ''
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 

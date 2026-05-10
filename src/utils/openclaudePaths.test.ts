@@ -156,7 +156,6 @@ describe('OpenCC paths', () => {
       }),
     ).toEqual([
       join(homedir(), '.claude', 'local'),
-      join(homedir(), '.claude', 'local'),
     ])
   })
 

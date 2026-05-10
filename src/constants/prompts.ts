@@ -64,12 +64,19 @@ import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 
 // Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
+function safeRequire<T>(path: string): T | null {
+  try {
+    return require(path) as T
+  } catch {
+    return null
+  }
+}
 // @ts-ignore - generated during build
 const getCachedMCConfigForFRC = true
   ? (
       // @ts-ignore - generated during build
-      require('../services/compact/cachedMCConfig.js') as typeof import('../services/compact/cachedMCConfig.js')
-    ).getCachedMCConfig
+      safeRequire<{ getCachedMCConfig: (...args: any[]) => any }>('../services/compact/cachedMCConfig.js')
+    )?.getCachedMCConfig ?? null
   : null
 
 const proactiveModule =

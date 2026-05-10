@@ -27,7 +27,7 @@ import {
   createThinkTagFilter,
   stripThinkTags,
 } from './thinkTagSanitizer.js'
-import { type AnthropicStreamEvent, type AnthropicUsage, type ShimCreateParams } from './codexShim.js'
+import { type AnthropicStreamEvent, type AnthropicUsage, type ShimCreateParams, convertAnthropicMessagesToResponsesInput } from './codexShim.js'
 import { compressToolHistory } from './compressToolHistory.js'
 import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {

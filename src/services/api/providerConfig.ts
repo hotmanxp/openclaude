@@ -141,8 +141,12 @@ export function resolveProviderRequest(options?: {
     asNamedEnvUrl(process.env.OPENAI_BASE_URL, 'OPENAI_BASE_URL') ??
     asNamedEnvUrl(process.env.OPENAI_API_BASE, 'OPENAI_API_BASE')
 
+  // Determine transport based on OPENAI_API_FORMAT env var
+  const apiFormat = parseOpenAICompatibleApiFormat(process.env.OPENAI_API_FORMAT)
+  const transport: ProviderTransport = apiFormat === 'responses' ? 'responses' : 'chat_completions'
+
   return {
-    transport: 'chat_completions',
+    transport,
     requestedModel,
     resolvedModel: requestedModel,
     baseUrl:
