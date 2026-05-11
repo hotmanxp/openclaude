@@ -42,6 +42,7 @@ import {
 import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
 import { isZaiBaseUrl } from '../../utils/zaiProvider.js'
+import { shouldRedactUrlQueryParam } from '../../utils/urlRedaction.js'
 import {
   normalizeToolArguments,
   hasToolFieldMapping,
@@ -85,6 +86,10 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
 
 function isMistralMode(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
+}
+
+function isGithubModelsMode(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
 }
 
 function filterAnthropicHeaders(
@@ -146,11 +151,6 @@ function isMoonshotBaseUrl(baseUrl: string | undefined): boolean {
 function formatRetryAfterHint(response: Response): string {
   const ra = response.headers.get('retry-after')
   return ra ? ` (Retry-After: ${ra})` : ''
-}
-
-function shouldRedactUrlQueryParam(name: string): boolean {
-  const lower = name.toLowerCase()
-  return SENSITIVE_URL_QUERY_PARAM_NAMES.some(token => lower.includes(token))
 }
 
 function redactUrlForDiagnostics(url: string): string {
