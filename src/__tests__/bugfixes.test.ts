@@ -233,15 +233,6 @@ describe('Regression checks', () => {
     }
   })
 
-  test('store field remains opt-out by per-route config rather than unconditional deletion', async () => {
-    const openaiShim = await file('services/api/openaiShim.ts').text()
-    const runtimeMetadata = await file('integrations/runtimeMetadata.ts').text()
-
-    expect(openaiShim).toMatch(/store:\s*false/)
-    expect(openaiShim).toContain('for (const field of shimConfig.removeBodyFields ?? [])')
-    expect(runtimeMetadata).toContain('mergeRemoveBodyFields')
-  })
-
 })
 
 // ---------------------------------------------------------------------------

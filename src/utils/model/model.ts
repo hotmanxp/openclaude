@@ -21,7 +21,7 @@ import {
 import { isEnvTruthy } from '../envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
-import { getSettings_DEPRECATED } from '../settings/settings.js'
+import { getInitialSettings } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider } from './providers.js'
 import { getAntModelOverrideConfig, resolveAntModel } from './antModels.js'
@@ -72,18 +72,12 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   if (modelOverride !== undefined) {
     specifiedModel = modelOverride
   } else {
-    const settings = getSettings_DEPRECATED() || {}
+    const settings = getInitialSettings() || {}
     // Read the model env var that matches the active provider to prevent
     // cross-provider leaks (e.g. ANTHROPIC_MODEL sent to the OpenAI API).
     const provider = getAPIProvider()
     specifiedModel =
-      (provider === 'openai' ||
-      provider === 'codex' ||
-      provider === 'nvidia-nim' ||
-      provider === 'minimax' ||
-      provider === 'github'
-        ? process.env.OPENAI_MODEL
-        : undefined) ||
+      (provider === 'openai' ? process.env.OPENAI_MODEL : undefined) ||
       (provider === 'firstParty' ? process.env.ANTHROPIC_MODEL : undefined) ||
       (settings.model ?? undefined)
   }
