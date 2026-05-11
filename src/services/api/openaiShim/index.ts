@@ -1,5 +1,53 @@
 // Public entry point for the openaiShim module.
-// Re-exports the factory function from the original openaiShim.ts.
-// The sub-modules in this directory (constants.ts, types.ts, etc.)
-// contain the extracted, modularized implementations.
+// Re-exports from the refactored sub-modules and the main shim implementation.
 export { createOpenAIShimClient } from '../openaiShim.js'
+
+// Re-export from sub-modules
+export type { AnthropicUsage, AnthropicStreamEvent, ShimCreateParams } from './types.js'
+export type { OpenAIMessage, OpenAITool, OpenAIStreamChunk } from './types.js'
+export type { SecretValueSource } from './types.js'
+
+export {
+  GEMINI_API_HOST,
+  MOONSHOT_API_HOSTS,
+  SENSITIVE_URL_QUERY_PARAM_NAMES,
+  isMistralMode,
+  isGithubModelsMode,
+} from './constants.js'
+
+export {
+  filterAnthropicHeaders,
+  hasGeminiApiHost,
+  hasCerebrasApiHost,
+  isMoonshotBaseUrl,
+  formatRetryAfterHint,
+  shouldRedactUrlQueryParam,
+  redactUrlForDiagnostics,
+  sleepMs,
+  getLocalProviderRetryBaseUrls,
+  shouldAttemptLocalToollessRetry,
+} from './providerUtils.js'
+
+export {
+  convertSystemPrompt,
+  convertToolResultContent,
+  convertContentBlocks,
+  isGeminiMode,
+  convertMessages,
+} from './messageConversion.js'
+
+export {
+  normalizeSchemaForOpenAI,
+  convertTools,
+} from './schemaNormalization.js'
+
+export {
+  JSON_REPAIR_SUFFIXES,
+  makeMessageId,
+  convertChunkUsage,
+  repairPossiblyTruncatedObjectJson,
+  readWithTimeout,
+  STREAM_IDLE_TIMEOUT_MS,
+} from './streaming.js'
+
+export { openaiStreamToAnthropic } from './openaiStreamToAnthropic.js'

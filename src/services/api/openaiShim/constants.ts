@@ -16,6 +16,9 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'sig',
   'secret',
   'password',
+  'passwd',
+  'pwd',
+  'auth',
   'authorization',
 ]
 
@@ -23,9 +26,14 @@ function isMistralMode(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
 }
 
+function isGithubModelsMode(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
+}
+
 export {
   GEMINI_API_HOST,
   MOONSHOT_API_HOSTS,
   SENSITIVE_URL_QUERY_PARAM_NAMES,
   isMistralMode,
+  isGithubModelsMode,
 }

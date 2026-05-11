@@ -1,4 +1,6 @@
 import { redactSecretValueForDisplay } from '../../../utils/providerProfile.js'
+import { isEnvTruthy } from '../../../utils/envUtils.js'
+import { isLocalProviderUrl } from '../providerConfig.js'
 import { GEMINI_API_HOST, MOONSHOT_API_HOSTS, SENSITIVE_URL_QUERY_PARAM_NAMES } from './constants.js'
 import type { SecretValueSource } from './types.js'
 
@@ -93,6 +95,92 @@ function redactUrlForDiagnostics(url: string): string {
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '')
+}
+
+function normalizePathWithV1(pathname: string): string {
+  const trimmed = trimTrailingSlash(pathname)
+  if (!trimmed || trimmed === '/') {
+    return '/v1'
+  }
+  if (trimmed.toLowerCase().endsWith('/v1')) {
+    return trimmed
+  }
+  return `${trimmed}/v1`
+}
+
+function isLikelyOllamaEndpoint(baseUrl: string): boolean {
+  try {
+    const parsed = new URL(baseUrl)
+    const hostname = parsed.hostname.toLowerCase()
+    const pathname = parsed.pathname.toLowerCase()
+    if (parsed.port === '11434') {
+      return true
+    }
+    return (
+      hostname.includes('ollama') ||
+      pathname.includes('ollama')
+    )
+  } catch {
+    return false
+  }
+}
+
+export function getLocalProviderRetryBaseUrls(baseUrl: string): string[] {
+  if (!isLocalProviderUrl(baseUrl)) {
+    return []
+  }
+  try {
+    const parsed = new URL(baseUrl)
+    const original = trimTrailingSlash(parsed.toString())
+    const seen = new Set<string>([original])
+    const candidates: string[] = []
+
+    const addCandidate = (hostname: string, pathname: string): void => {
+      const next = new URL(parsed.toString())
+      next.hostname = hostname
+      next.pathname = pathname
+      next.search = ''
+      next.hash = ''
+      const normalized = trimTrailingSlash(next.toString())
+      if (seen.has(normalized)) {
+        return
+      }
+      seen.add(normalized)
+      candidates.push(normalized)
+    }
+
+    const v1Pathname = normalizePathWithV1(parsed.pathname)
+    if (v1Pathname !== trimTrailingSlash(parsed.pathname)) {
+      addCandidate(parsed.hostname, v1Pathname)
+    }
+
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    if (hostname === 'localhost' || hostname === '::1') {
+      addCandidate('127.0.0.1', parsed.pathname || '/')
+      addCandidate('127.0.0.1', v1Pathname)
+    }
+
+    return candidates
+  } catch {
+    return []
+  }
+}
+
+export function shouldAttemptLocalToollessRetry(options: {
+  baseUrl: string
+  hasTools: boolean
+}): boolean {
+  if (!options.hasTools) {
+    return false
+  }
+  if (!isLocalProviderUrl(options.baseUrl)) {
+    return false
+  }
+  return isLikelyOllamaEndpoint(options.baseUrl)
 }
 
 export {
