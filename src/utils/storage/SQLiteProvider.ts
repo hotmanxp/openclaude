@@ -20,7 +20,7 @@ export class SQLiteProvider {
     this.dbPath = join(projectDir, 'knowledge.db')
     
     // Ensure connection is closed on process exit
-    registerCleanup(() => this.close())
+    registerCleanup(async () => this.close())
   }
 
   public get isReady(): boolean {

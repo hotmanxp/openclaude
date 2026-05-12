@@ -221,7 +221,7 @@ export async function saveOrama(cwd: string): Promise<void> {
   try {
     const data = await persist(oramaDb, 'binary')
     // Atomic write with flush using established project utility
-    writeFileSyncAndFlush_DEPRECATED(path, data as Buffer)
+    writeFileSyncAndFlush_DEPRECATED(path, data as unknown as string)
   } catch (e) {
     console.error('Failed to save Orama DB:', e)
   }
