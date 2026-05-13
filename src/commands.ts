@@ -214,6 +214,7 @@ import { getSettingSourceName } from './utils/settings/constants.js'
 import {
   type Command,
   getCommandName,
+  isCommand,
   isCommandEnabled,
 } from './types/command.js'
 
@@ -359,7 +360,7 @@ const COMMANDS = memoize((): Command[] => [
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
     ? INTERNAL_ONLY_COMMANDS
     : []),
-])
+].filter(isCommand))
 
 export const builtInCommandNames = memoize(
   (): Set<string> =>
