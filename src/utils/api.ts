@@ -559,7 +559,7 @@ export async function logContextMetrics(
   const { signal, cleanup } = createCombinedAbortSignal(undefined, {
     timeoutMs: 1000,
   })
-  let fileCount: number
+  let fileCount: number | undefined
   try {
     fileCount = await countFilesRoundedRg(
       currentDir,

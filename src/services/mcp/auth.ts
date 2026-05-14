@@ -199,7 +199,7 @@ export async function normalizeOAuthErrorBody(
 function createAuthFetch(): FetchLike {
   return async (url: string | URL, init?: RequestInit) => {
     const isPost = init?.method?.toUpperCase() === 'POST'
-    const { signal, cleanup } = createCombinedAbortSignal(init?.signal, {
+    const { signal, cleanup } = createCombinedAbortSignal(init?.signal ?? undefined, {
       timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
     })
     try {
