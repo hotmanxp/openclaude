@@ -3,7 +3,7 @@ import { APIError } from '@anthropic-ai/sdk'
 import { buildAnthropicUsageFromRawUsage } from './cacheMetrics.js'
 import { compressToolHistory } from './compressToolHistory.js'
 import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
-import { stableStringify } from '../../utils/stableStringify.js'
+import { stableStringifyJson } from '../../utils/stableStringify.js'
 import type {
   ResolvedCodexCredentials,
   ResolvedProviderRequest,
@@ -567,7 +567,7 @@ export async function performCodexRequest(options: {
       headers,
       // WHY: byte-identity required for implicit prefix caching on
       // OpenAI Responses API. See src/utils/stableStringify.ts.
-      body: stableStringify(body),
+      body: stableStringifyJson(body),
       signal: options.signal,
     },
   )
