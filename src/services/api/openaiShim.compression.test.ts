@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { acquireSharedMutationLock, releaseSharedMutationLock } from '../../test/sharedMutationLock.js'
 import { createOpenAIShimClient } from './openaiShim.js'
 
 type FetchType = typeof globalThis.fetch
@@ -96,7 +97,8 @@ function makeFakeResponse(): Response {
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await acquireSharedMutationLock('openaiShim.compression.test.ts')
   process.env.OPENAI_BASE_URL = 'http://example.test/v1'
   process.env.OPENAI_API_KEY = 'test-key'
   delete process.env.OPENAI_MODEL
@@ -105,13 +107,17 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (originalEnv.OPENAI_BASE_URL === undefined) delete process.env.OPENAI_BASE_URL
-  else process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
-  if (originalEnv.OPENAI_API_KEY === undefined) delete process.env.OPENAI_API_KEY
-  else process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
-  if (originalEnv.OPENAI_MODEL === undefined) delete process.env.OPENAI_MODEL
-  else process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
-  globalThis.fetch = originalFetch
+  try {
+    if (originalEnv.OPENAI_BASE_URL === undefined) delete process.env.OPENAI_BASE_URL
+    else process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
+    if (originalEnv.OPENAI_API_KEY === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
+    if (originalEnv.OPENAI_MODEL === undefined) delete process.env.OPENAI_MODEL
+    else process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
+    globalThis.fetch = originalFetch
+  } finally {
+    releaseSharedMutationLock()
+  }
 })
 
 async function captureRequestBody(
