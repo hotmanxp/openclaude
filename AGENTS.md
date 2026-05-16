@@ -17,6 +17,10 @@ bun run dev:gemini            # Gemini provider
 bun run dev:codex             # Codex backend
 bun run dev:atomic-chat       # Atomic Chat (Apple Silicon local inference)
 
+# gRPC headless server
+bun run dev:grpc             # Start gRPC server on localhost:50051
+bun run dev:grpc:cli         # Run test CLI client over gRPC
+
 # Profile management (local model setup)
 bun run profile:init -- --provider ollama --model llama3.1:8b
 bun run profile:recommend     # Get model recommendations
@@ -37,6 +41,27 @@ bun run hardening:strict      # typecheck + hardening:check
 bun test                      # Run all tests
 bun run test:provider          # Provider API tests
 bun run test:provider-recommendation  # Provider recommendation tests
+```
+
+## Repository Structure
+
+```
+opencc/
+├── src/                    # Core CLI/runtime (ink React components, tools, services)
+│   ├── commands/           # Slash commands (/provider, /help, etc.)
+│   ├── tools/              # Tool implementations (FileRead, Bash, Grep, Glob, etc.)
+│   ├── services/           # API clients and provider shims
+│   ├── components/        # Ink/React UI components
+│   ├── hooks/              # React hooks
+│   ├── utils/              # Utilities (model configs, providers, etc.)
+│   └── grpc/               # gRPC server implementation
+├── scripts/                # Build, provider bootstrap, system checks
+├── docs/                   # Setup and contributor documentation
+├── python/                 # Standalone Python helpers
+├── vscode-extension/       # VS Code extension
+├── web/                    # Web UI (Vite + React)
+├── bin/                    # CLI entrypoint
+└── dist/                   # Build output (dist/cli.mjs)
 ```
 
 ## Architecture
@@ -158,6 +183,9 @@ OPENAI_MODEL=gpt-4o
 # Local Ollama (no API key needed)
 CLAUDE_CODE_USE_OPENAI=1
 OPENAI_BASE_URL=http://localhost:11434/v1
+
+# Ollama launch (auto-configures everything)
+ollama launch openclaude --model qwen2.5-coder:7b
 ```
 
 Provider selection: `CLAUDE_CODE_USE_OPENAI=1` routes to OpenAI-compatible shim; otherwise uses first-party Anthropic API.
@@ -172,4 +200,8 @@ node dist/cli.mjs -p "what model are you using"
 # Coverage (recommended before opening PR)
 bun run test:coverage
 open coverage/index.html
+
+# Web UI (separate Vite + React app)
+bun run web:dev              # Development server
+bun run web:build            # Production build
 ```
