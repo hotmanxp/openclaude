@@ -54,7 +54,7 @@ const featureFlags: Record<string, boolean> = {
   HISTORY_PICKER: true,               // Enhanced interactive prompt history picker
   QUICK_SEARCH: true,                 // Ctrl+G quick search across prompts
   SHOT_STATS: true,                   // Shot distribution stats in session summary
-  EXTRACT_MEMORIES: false,            // Auto-extract durable memories from conversations
+  EXTRACT_MEMORIES: true,            // Auto-extract durable memories from conversations
   FORK_SUBAGENT: true,                // Implicit context-forking when omitting subagent_type
   VERIFICATION_AGENT: true,           // Built-in read-only agent for test/verification
   PROMPT_CACHE_BREAK_DETECTION: true, // Detect & log unexpected prompt cache invalidations
