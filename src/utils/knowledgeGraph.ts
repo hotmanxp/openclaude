@@ -49,52 +49,6 @@ let oramaInitPromise: Promise<void> | null = null
 // Storage Providers (Cached per project directory to handle CWD changes)
 const providerCache = new Map<string, { sqlite: SQLiteProvider; json: JSONProvider }>()
 
-function sleepSync(ms: number): void {
-  const shared = new SharedArrayBuffer(4)
-  const view = new Int32Array(shared)
-  Atomics.wait(view, 0, 0, ms)
-}
-
-function removePathWithRetry(
-  path: string,
-  options?: { requireMissingAfterCleanup?: boolean },
-): void {
-  const maxAttempts = 5
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      rmSync(path, { force: true })
-      if (!existsSync(path)) {
-        return
-      }
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'EBUSY' && code !== 'EPERM') {
-        throw error
-      }
-    }
-
-    sleepSync(25 * (attempt + 1))
-  }
-
-  if (!existsSync(path)) {
-    return
-  }
-
-  const quarantinePath = `${path}.stale-${Date.now()}`
-  try {
-    renameSync(path, quarantinePath)
-    return
-  } catch (error) {
-    if (!existsSync(path)) {
-      return
-    }
-    if (!options?.requireMissingAfterCleanup) {
-      return
-    }
-    throw error
-  }
-}
-
 const ORAMA_SCHEMA = {
   id: 'string',
   type: 'string',
@@ -678,35 +632,16 @@ export function getGlobalGraphSummary(): string {
 export function resetGlobalGraph(): void {
   const cwd = getFsImplementation().cwd()
   const { sqlite, json } = getProviders()
-  const emptyGraph: KnowledgeGraph = {
-    entities: {},
-    relations: [],
-    summaries: [],
-    rules: [],
-    lastUpdateTime: Date.now(),
-  }
   
-  const sqliteCleared = sqlite.clear()
+  json.delete()
   sqlite.close()
-  const jsonResetSucceeded = sqliteCleared
-    ? (json.delete() || json.saveGraph(emptyGraph))
-    : json.saveGraph(emptyGraph)
-
-  if (!jsonResetSucceeded) {
-    throw new Error('Failed to reset knowledge graph JSON state')
-  }
-
+  
   const projectDir = join(getProjectsDir(), sanitizePath(cwd))
-  for (const sqlitePath of [
-    join(projectDir, 'knowledge.db'),
-    join(projectDir, 'knowledge.db-wal'),
-    join(projectDir, 'knowledge.db-shm'),
-  ]) {
-    removePathWithRetry(sqlitePath)
-  }
+  const sqlitePath = join(projectDir, 'knowledge.db')
+  if (existsSync(sqlitePath)) rmSync(sqlitePath, { force: true })
   
   const oramaPath = getOramaPersistencePath(cwd)
-  removePathWithRetry(oramaPath, { requireMissingAfterCleanup: true })
+  try { rmSync(oramaPath, { force: true }) } catch {}
   
   oramaDb = null
   projectGraph = null

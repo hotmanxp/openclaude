@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { APIError } from '@anthropic-ai/sdk'
-import { acquireSharedMutationLock, releaseSharedMutationLock } from '../../test/sharedMutationLock.js'
 
 // Helper to build a mock APIError with specific headers
 function makeError(headers: Record<string, string>): APIError {
@@ -25,23 +24,18 @@ const envKeys = [
   'OPENAI_API_BASE',
 ] as const
 
-beforeEach(async () => {
-  await acquireSharedMutationLock('withRetry.test.ts')
+beforeEach(() => {
   for (const key of envKeys) {
     delete process.env[key]
   }
 })
 
 afterEach(() => {
-  try {
-    for (const key of envKeys) {
-      if (originalEnv[key] === undefined) delete process.env[key]
-      else process.env[key] = originalEnv[key]
-    }
-    mock.restore()
-  } finally {
-    releaseSharedMutationLock()
+  for (const key of envKeys) {
+    if (originalEnv[key] === undefined) delete process.env[key]
+    else process.env[key] = originalEnv[key]
   }
+  mock.restore()
 })
 
 async function importFreshWithRetryModule(

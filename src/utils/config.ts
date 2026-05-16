@@ -819,29 +819,13 @@ export function isPathTrusted(dir: string): boolean {
 }
 
 // We have to put this test code here because Jest doesn't support mocking ES modules :O
-// Use function accessors backed by `var` so cyclic test-only module graphs
-// never trip TDZ while config.ts is still evaluating.
-var testGlobalConfigForTesting: GlobalConfig | undefined
-var testProjectConfigForTesting: ProjectConfig | undefined
-
-function getTestGlobalConfigForTesting(): GlobalConfig {
-  if (!testGlobalConfigForTesting) {
-    testGlobalConfigForTesting = {
-      ...DEFAULT_GLOBAL_CONFIG,
-      autoUpdates: false,
-      knowledgeGraphEnabled: true,
-    }
-  }
-  return testGlobalConfigForTesting
+const TEST_GLOBAL_CONFIG_FOR_TESTING: GlobalConfig = {
+  ...DEFAULT_GLOBAL_CONFIG,
+  autoUpdates: false,
+  knowledgeGraphEnabled: true,
 }
-
-function getTestProjectConfigForTesting(): ProjectConfig {
-  if (!testProjectConfigForTesting) {
-    testProjectConfigForTesting = {
-      ...DEFAULT_PROJECT_CONFIG,
-    }
-  }
-  return testProjectConfigForTesting
+const TEST_PROJECT_CONFIG_FOR_TESTING: ProjectConfig = {
+  ...DEFAULT_PROJECT_CONFIG,
 }
 
 export function isProjectConfigKey(key: string): key is ProjectConfigKey {
@@ -873,13 +857,12 @@ export function saveGlobalConfig(
   updater: (currentConfig: GlobalConfig) => GlobalConfig,
 ): void {
   if (process.env.NODE_ENV === 'test') {
-    const current = getTestGlobalConfigForTesting()
-    const config = updater(current)
+    const config = updater(TEST_GLOBAL_CONFIG_FOR_TESTING)
     // Skip if no changes (same reference returned)
-    if (config === current) {
+    if (config === TEST_GLOBAL_CONFIG_FOR_TESTING) {
       return
     }
-    Object.assign(current, config)
+    Object.assign(TEST_GLOBAL_CONFIG_FOR_TESTING, config)
     return
   }
 
@@ -1127,7 +1110,7 @@ function writeThroughGlobalConfigCache(config: GlobalConfig): void {
 
 export function getGlobalConfig(): GlobalConfig {
   if (process.env.NODE_ENV === 'test') {
-    return getTestGlobalConfigForTesting()
+    return TEST_GLOBAL_CONFIG_FOR_TESTING
   }
 
   // Fast path: pure memory read. After startup, this always hits — our own
@@ -1685,7 +1668,7 @@ export const getProjectPathForConfig = memoize((): string => {
 
 export function getCurrentProjectConfig(): ProjectConfig {
   if (process.env.NODE_ENV === 'test') {
-    return getTestProjectConfigForTesting()
+    return TEST_PROJECT_CONFIG_FOR_TESTING
   }
 
   const absolutePath = getProjectPathForConfig()
@@ -1710,13 +1693,12 @@ export function saveCurrentProjectConfig(
   updater: (currentConfig: ProjectConfig) => ProjectConfig,
 ): void {
   if (process.env.NODE_ENV === 'test') {
-    const current = getTestProjectConfigForTesting()
-    const config = updater(current)
+    const config = updater(TEST_PROJECT_CONFIG_FOR_TESTING)
     // Skip if no changes (same reference returned)
-    if (config === current) {
+    if (config === TEST_PROJECT_CONFIG_FOR_TESTING) {
       return
     }
-    Object.assign(current, config)
+    Object.assign(TEST_PROJECT_CONFIG_FOR_TESTING, config)
     return
   }
   const absolutePath = getProjectPathForConfig()

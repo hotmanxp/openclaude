@@ -16,11 +16,7 @@ import {
   getArcStats,
   finalizeArcTurn,
 } from './conversationArc.js'
-import { getGlobalGraph, resetGlobalGraph, clearMemoryOnly } from './knowledgeGraph.js'
-import {
-  acquireSharedMutationLock,
-  releaseSharedMutationLock,
-} from '../test/sharedMutationLock.js'
+import { getGlobalGraph, resetGlobalGraph } from './knowledgeGraph.js'
 
 function createMessage(role: string, content: string): any {
   return {
@@ -30,21 +26,9 @@ function createMessage(role: string, content: string): any {
 }
 
 describe('conversationArc', () => {
-  beforeEach(async () => {
-    await acquireSharedMutationLock('conversationArc')
+  beforeEach(() => {
     resetArc()
     resetGlobalGraph()
-    clearMemoryOnly()
-  })
-
-  afterEach(() => {
-    try {
-      resetArc()
-      resetGlobalGraph()
-      clearMemoryOnly()
-    } finally {
-      releaseSharedMutationLock()
-    }
   })
 
   describe('initializeArc', () => {

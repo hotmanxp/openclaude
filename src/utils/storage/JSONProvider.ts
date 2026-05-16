@@ -29,7 +29,7 @@ export class JSONProvider {
     }
   }
 
-  public saveGraph(graph: KnowledgeGraph): boolean {
+  public saveGraph(graph: KnowledgeGraph): void {
     try {
       const dir = dirname(this.path)
       if (!existsSync(dir)) {
@@ -38,23 +38,16 @@ export class JSONProvider {
       
       // Use established project utility for atomic writes with flushing
       writeFileSyncAndFlush_DEPRECATED(this.path, JSON.stringify(graph, null, 2), { encoding: 'utf-8' })
-      return true
     } catch (e) {
       console.error(`Failed to save project graph to JSON:`, e)
-      return false
     }
   }
 
-  public delete(): boolean {
-    if (!existsSync(this.path)) {
-      return true
-    }
-
-    try {
-      rmSync(this.path, { force: true })
-      return !existsSync(this.path)
-    } catch {
-      return false
+  public delete(): void {
+    if (existsSync(this.path)) {
+      try {
+        rmSync(this.path, { force: true })
+      } catch {}
     }
   }
 }

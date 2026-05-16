@@ -15,6 +15,8 @@ test('cancelPendingAuthorization rejects a pending OAuth wait', async () => {
   const listener = new AuthCodeListener('/callback')
   listeners.push(listener)
 
+  await listener.start()
+
   const pendingAuthorization = listener.waitForAuthorization(
     'state-test',
     async () => {},

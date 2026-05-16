@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach, afterEach, afterAll } from 'bun:test'
+// @ts-nocheck
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import {
   addGlobalEntity,
   addGlobalRelation,
@@ -7,67 +8,27 @@ import {
   loadProjectGraph,
   getProjectGraphPath,
   resetGlobalGraph,
+  saveProjectGraph,
   clearMemoryOnly,
 } from './knowledgeGraph.js'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { acquireEnvMutex, releaseEnvMutex } from '../entrypoints/sdk/shared.js'
-import { getProjectsDir, setClaudeConfigHomeDirForTesting } from './envUtils.js'
+import { getFsImplementation } from './fsOperations.js'
+import { getProjectsDir } from './envUtils.js'
 import { sanitizePath } from './sessionStoragePortable.js'
 
 describe('KnowledgeGraph Global Persistence & RAG', () => {
-  const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
-  const configDir = mkdtempSync(join(tmpdir(), 'openclaude-test-'))
-  const cwd = process.cwd()
-  const removeDirWithRetry = (dir: string) => {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        rmSync(dir, { recursive: true, force: true })
-        return
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code
-        if (code !== 'EBUSY' && code !== 'EPERM') {
-          throw error
-        }
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (attempt + 1))
-      }
-    }
+  const cwd = getFsImplementation().cwd()
+  const graphPath = getProjectGraphPath(cwd)
 
-    try {
-      rmSync(dir, { recursive: true, force: true })
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'EBUSY' && code !== 'EPERM') {
-        throw error
-      }
-    }
-  }
-
-  beforeEach(async () => {
-    await acquireEnvMutex()
-    process.env.CLAUDE_CONFIG_DIR = configDir
-    setClaudeConfigHomeDirForTesting(configDir)
+  beforeEach(() => {
     resetGlobalGraph()
+    if (existsSync(graphPath)) rmSync(graphPath)
   })
 
   afterEach(() => {
-    try {
-      resetGlobalGraph()
-      clearMemoryOnly()
-      if (originalConfigDir === undefined) {
-        delete process.env.CLAUDE_CONFIG_DIR
-      } else {
-        process.env.CLAUDE_CONFIG_DIR = originalConfigDir
-      }
-      setClaudeConfigHomeDirForTesting(undefined)
-    } finally {
-      releaseEnvMutex()
-    }
-  })
-
-  afterAll(() => {
-    removeDirWithRetry(configDir)
+    if (existsSync(graphPath)) rmSync(graphPath)
   })
 
   it('persists entities across loads', async () => {
@@ -75,7 +36,7 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
     const path = getProjectGraphPath(cwd)
     expect(existsSync(path)).toBe(true)
 
-    // Clear cache and reload
+    // Clear memory cache and reload
     clearMemoryOnly()
     const graph = loadProjectGraph(cwd)
     const entities = Object.values(graph.entities).filter(e => e.name === 'openclaude')
