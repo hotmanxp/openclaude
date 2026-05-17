@@ -64,7 +64,6 @@ export const DANGEROUS_FILES = [
   '.profile',
   '.ripgreprc',
   '.mcp.json',
-  '.opencc.json',
   '.claude.json',
 ] as const
 
@@ -209,8 +208,6 @@ export function isClaudeSettingsPath(filePath: string): boolean {
 
   // Use platform separator so endsWith checks work on both Unix (/) and Windows (\)
   if (
-    normalizedPath.endsWith(`${sep}.opencc${sep}settings.json`) ||
-    normalizedPath.endsWith(`${sep}.opencc${sep}settings.local.json`) ||
     normalizedPath.endsWith(`${sep}.claude${sep}settings.json`) ||
     normalizedPath.endsWith(`${sep}.claude${sep}settings.local.json`)
   ) {
