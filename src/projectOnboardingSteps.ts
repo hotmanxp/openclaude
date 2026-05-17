@@ -1,7 +1,7 @@
 import { getCwd } from './utils/cwd.js'
 import { isDirEmpty } from './utils/file.js'
 import { getFsImplementation } from './utils/fsOperations.js'
-import { findProjectInstructionFilePathInAncestors } from './utils/projectInstructions.js'
+import { FALLBACK_PROJECT_INSTRUCTION_FILE, findProjectInstructionFilePathInAncestors } from './utils/projectInstructions.js'
 
 export type Step = {
   key: string
@@ -29,7 +29,7 @@ export function getSteps(): Step[] {
     },
     {
       key: 'claudemd',
-      text: 'Set up repo instructions (/init creates AGENTS.md or updates existing CLAUDE.md; either file counts)',
+      text: `Set up repo instructions (/init creates AGENTS.md or updates existing ${FALLBACK_PROJECT_INSTRUCTION_FILE}; either file counts)`,
       isComplete: hasRepoInstructions,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,

@@ -11,6 +11,7 @@ import {
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
 import { AGENT_INSTRUCTIONS_FILE, BRAND_NAME } from '../constants/product.js'
+import { FALLBACK_PROJECT_INSTRUCTION_FILE } from '../utils/projectInstructions.js'
 import { queryWithModel } from '../services/api/claude.js'
 import {
   AGENT_TOOL_NAME,
@@ -1891,8 +1892,8 @@ function generateHtmlReport(
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
     <div class="claude-md-section">
-      <h3>Suggested CLAUDE.md Additions</h3>
-      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into OpenCC to add it to your CLAUDE.md.</p>
+      <h3>Suggested ${FALLBACK_PROJECT_INSTRUCTION_FILE} Additions</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into OpenCC to add it to your ${FALLBACK_PROJECT_INSTRUCTION_FILE}.</p>
       <div class="claude-md-actions">
         <button class="copy-all-btn" onclick="copyAllCheckedClaudeMd()">Copy All Checked</button>
       </div>

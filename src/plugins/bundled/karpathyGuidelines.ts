@@ -1,6 +1,7 @@
 import { registerBuiltinPlugin } from '../builtinPlugins.js'
+import { FALLBACK_PROJECT_INSTRUCTION_FILE } from '../../utils/projectInstructions.js'
 
-const KARPATHY_GUIDELINES_PROMPT = `# CLAUDE.md
+const KARPATHY_GUIDELINES_PROMPT = `# ${FALLBACK_PROJECT_INSTRUCTION_FILE}
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
