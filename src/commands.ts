@@ -20,6 +20,7 @@ import { context, contextNonInteractive } from './commands/context/index.js'
 import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import dream from './commands/dream/index.js'
+import goal from './commands/goal/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import onboardGithub from './commands/onboard-github/index.js'
@@ -290,6 +291,7 @@ const COMMANDS = memoize((): Command[] => [
   exit,
   fast,
   files,
+  goal,
   heapDump,
   help,
   ide,

@@ -20,6 +20,7 @@ import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js'
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js'
 import type { AllowedPrompt } from '../tools/ExitPlanModeTool/ExitPlanModeV2Tool.js'
 import type { AgentId } from '../types/ids.js'
+import type { GoalState } from '../types/goal.js'
 import type { Message, UserMessage } from '../types/message.js'
 import type { LoadedPlugin, PluginError } from '../types/plugin.js'
 import type { DeepImmutable } from '../types/utils.js'
@@ -158,6 +159,8 @@ export type AppState = DeepImmutable<{
   replBridgeInitialName: string | undefined
   // Always-on bridge: first-time remote dialog pending (set by /remote-control command)
   showRemoteCallout: boolean
+  // Goal tracking state for /goal command
+  goalState: GoalState | undefined
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
@@ -497,6 +500,7 @@ export function getDefaultAppState(): AppState {
     replBridgeError: undefined,
     replBridgeInitialName: undefined,
     showRemoteCallout: false,
+    goalState: undefined,
     toolPermissionContext: {
       ...getEmptyToolPermissionContext(),
       mode: initialMode,

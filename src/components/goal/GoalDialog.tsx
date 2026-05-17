@@ -18,7 +18,7 @@ export function GoalDialog(t0) {
   const goalState = useAppState(s => s.goalState);
   let t1;
   if ($[0] !== goalState) {
-    t1 = goalState?.status === 'active' ? <Box flexDirection="column" gap={1}><Text>Condition: <Text bold={true}>{goalState.condition}</Text></Text><Text dimColor={true}>Rounds: {goalState.roundCount}{goalState.maxRounds ? `/${goalState.maxRounds}` : ''}</Text></Box> : <Text>No goal set</Text>;
+    t1 = goalState?.status === 'active' ? <Box flexDirection="column" gap={1}><Text>Condition: <Text bold={true}>{goalState.condition}</Text></Text><Text color="inactive">Rounds: {goalState.roundCount}{goalState.maxRounds ? `/${goalState.maxRounds}` : ''}</Text></Box> : <Text>No goal set</Text>;
     $[0] = goalState;
     $[1] = t1;
   } else {
@@ -27,7 +27,7 @@ export function GoalDialog(t0) {
   const statusContent = t1;
   let t2;
   if ($[2] !== goalState) {
-    t2 = goalState?.status === 'active' ? <Text dimColor={true}>/goal &lt;condition&gt; to set a new goal</Text> : <Text dimColor={true}>/goal &lt;condition&gt; to set one</Text>;
+    t2 = goalState?.status === 'active' ? <Text color="inactive">/goal &lt;condition&gt; to set a new goal</Text> : <Text color="inactive">/goal &lt;condition&gt; to set one</Text>;
     $[2] = goalState;
     $[3] = t2;
   } else {

@@ -4,5 +4,12 @@ export type StatusLineCommandInput = {
   cwd?: string
   branch?: string
   model?: string
+  goal?: {
+    condition: string
+    status: string
+    round_count: number
+    max_rounds: number | null
+    duration_seconds: number
+  }
   [key: string]: unknown
 }

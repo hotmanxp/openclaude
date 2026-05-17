@@ -14,6 +14,7 @@ import { Ansi, Box, Text } from '../ink.js';
 import { getRawUtilization } from '../services/claudeAiLimits.js';
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
+import type { GoalState } from '../types/goal.js';
 import type { VimMode } from '../types/textInputTypes.js';
 import { checkHasTrustDialogAccepted } from '../utils/config.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../utils/context.js';
@@ -33,7 +34,7 @@ export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
   if (feature('KAIROS') && getKairosActive()) return false;
   return settings?.statusLine !== undefined;
 }
-function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
+function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode, goalState?: GoalState): StatusLineCommandInput {
   const agentType = getMainThreadAgentType();
   const worktreeSession = getCurrentWorktreeSession();
   const runtimeModel = getRuntimeMainLoopModel({
@@ -123,6 +124,15 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
         original_cwd: worktreeSession.originalCwd,
         original_branch: worktreeSession.originalBranch
       }
+    }),
+    ...(goalState && goalState.status !== 'inactive' && {
+      goal: {
+        condition: goalState.condition,
+        status: goalState.status,
+        round_count: goalState.roundCount,
+        max_rounds: goalState.maxRounds,
+        duration_seconds: Math.floor((Date.now() - goalState.startTime) / 1000)
+      }
     })
   };
 }
@@ -146,6 +156,7 @@ function StatusLineInner({
   const permissionMode = useAppState(s => s.toolPermissionContext.mode);
   const additionalWorkingDirectories = useAppState(s => s.toolPermissionContext.additionalWorkingDirectories);
   const statusLineText = useAppState(s => s.statusLineText);
+  const goalState = useAppState(s => s.goalState);
   const setAppState = useSetAppState();
   const settings = useSettings();
   const {
@@ -167,6 +178,8 @@ function StatusLineInner({
   addedDirsRef.current = additionalWorkingDirectories;
   const mainLoopModelRef = useRef(mainLoopModel);
   mainLoopModelRef.current = mainLoopModel;
+  const goalStateRef = useRef(goalState);
+  goalStateRef.current = goalState;
 
   // Track previous state to detect changes and cache expensive calculations
   const previousStateRef = useRef<{
@@ -175,12 +188,14 @@ function StatusLineInner({
     permissionMode: PermissionMode;
     vimMode: VimMode | undefined;
     mainLoopModel: ModelName;
+    goalState: typeof goalState;
   }>({
     messageId: null,
     exceeds200kTokens: false,
     permissionMode,
     vimMode,
-    mainLoopModel
+    mainLoopModel,
+    goalState
   });
 
   // Debounce timer ref
@@ -208,7 +223,7 @@ function StatusLineInner({
         previousStateRef.current.messageId = currentMessageId;
         previousStateRef.current.exceeds200kTokens = exceeds200kTokens;
       }
-      const statusInput = buildStatusLineCommandInput(permissionModeRef.current, exceeds200kTokens, settingsRef.current, msgs, Array.from(addedDirsRef.current.keys()), mainLoopModelRef.current, vimModeRef.current);
+      const statusInput = buildStatusLineCommandInput(permissionModeRef.current, exceeds200kTokens, settingsRef.current, msgs, Array.from(addedDirsRef.current.keys()), mainLoopModelRef.current, vimModeRef.current, goalStateRef.current);
       const text = await executeStatusLineCommand(statusInput, controller.signal, undefined, logResult);
       if (!controller.signal.aborted) {
         setAppState(prev => {
@@ -235,17 +250,18 @@ function StatusLineInner({
     }, 300, debounceTimerRef, doUpdate);
   }, [doUpdate]);
 
-  // Only trigger update when assistant message, permission mode, vim mode, or model actually changes
+  // Only trigger update when assistant message, permission mode, vim mode, model, or goal state changes
   useEffect(() => {
-    if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel) {
+    if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel || goalState !== previousStateRef.current.goalState) {
       // Don't update messageId here — let doUpdate handle it so
       // exceeds200kTokens is recalculated with the latest messages
       previousStateRef.current.permissionMode = permissionMode;
       previousStateRef.current.vimMode = vimMode;
       previousStateRef.current.mainLoopModel = mainLoopModel;
+      previousStateRef.current.goalState = goalState;
       scheduleUpdate();
     }
-  }, [lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, scheduleUpdate]);
+  }, [lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, goalState, scheduleUpdate]);
 
   // When the statusLine command changes (hot reload), log the next result
   const statusLineCommand = settings?.statusLine?.command;

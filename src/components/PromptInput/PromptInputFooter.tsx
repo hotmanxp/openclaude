@@ -146,6 +146,7 @@ function PromptInputFooter({
           {/* @ts-ignore - build-time constant check */}
           {"external" === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
+          <GoalStatusIndicator />
         </Box>
       </Box>
       {/* @ts-ignore - build-time constant check */}
@@ -189,4 +190,21 @@ function BridgeStatusIndicator({
       {status.label}
       {bridgeSelected && <Text dimColor> · Enter to view</Text>}
     </Text>;
+}
+
+function GoalStatusIndicator(): React.ReactNode {
+  const goalState = useAppState(s => s.goalState);
+
+  if (!goalState || goalState.status !== 'active') return null;
+
+  const durationSeconds = Math.floor((Date.now() - goalState.startTime) / 1000);
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+  const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+  return (
+    <Text color="suggestion" wrap="truncate">
+      ◎ /goal active ({duration})
+    </Text>
+  );
 }
