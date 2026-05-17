@@ -158,9 +158,9 @@ export function renderMessagesToMarkdown(messages: Message[], _tools?: Tools, _c
 
     const msgType = String(msg.type ?? 'unknown')
 
-    if (!shouldExportStructuredMessage(msg, msgType)) continue
+    if (!shouldExportStructuredMessage(msg as unknown as Record<string, unknown>, msgType)) continue
 
-    const content = extractMessageContent(msg)
+    const content = extractMessageContent(msg as unknown as Record<string, unknown>)
 
     // Build rendered content first, so we can skip the heading if empty
     const contentLines: string[] = []
@@ -329,22 +329,22 @@ export function renderMessagesToJSON(messages: Message[], _tools?: Tools): strin
   // Filter out internal UI message types
   const filtered = messages.flatMap((msg, sourceIndex) => {
     if (!msg || typeof msg !== 'object') return []
-    const msgType = String((msg as Record<string, unknown>).type ?? '')
-    return shouldExportStructuredMessage(msg as Record<string, unknown>, msgType)
+    const msgType = String((msg as unknown as Record<string, unknown>).type ?? '')
+    return shouldExportStructuredMessage(msg as unknown as Record<string, unknown>, msgType)
       ? [{ msg, sourceIndex }]
       : []
   })
 
   const exportedMessages = filtered.map(({ msg, sourceIndex }, index) => {
-    const msgType = String((msg as Record<string, unknown>).type ?? 'unknown')
+    const msgType = String((msg as unknown as Record<string, unknown>).type ?? 'unknown')
 
-    const content = extractMessageContent(msg as Record<string, unknown>)
+    const content = extractMessageContent(msg as unknown as Record<string, unknown>)
     const terminalOutputs = getTerminalOutputs(content)
     const exportedType = toExportedMessageType(msgType, content)
     const role = toRoleForContent(msgType, content)
 
     const exportedContent = serializeContentBlocks(content)
-    const timestamp = (msg as Record<string, unknown>).timestamp as string | undefined
+    const timestamp = (msg as unknown as Record<string, unknown>).timestamp as string | undefined
 
     const result: Record<string, unknown> = {
       index,
@@ -356,7 +356,7 @@ export function renderMessagesToJSON(messages: Message[], _tools?: Tools): strin
     if (exportedType === 'unknown' && msgType && msgType !== 'unknown') {
       result.rawType = msgType
     }
-    const subtype = (msg as Record<string, unknown>).subtype
+    const subtype = (msg as unknown as Record<string, unknown>).subtype
     if (terminalOutputs) {
       result.subtype = terminalOutputs.every(output => output.source === 'bash')
         ? terminalOutputs.every(output => output.stream === 'stdin') ? 'bash_input' : 'bash_output'

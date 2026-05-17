@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
