@@ -36,14 +36,6 @@ const featureFlags: Record<string, boolean> = {
   COWORKER_TYPE_TELEMETRY: false, // Telemetry for agent/coworker type classification
   MCP_SKILLS: false,              // Dynamic MCP skill discovery (src/skills/mcpSkills.ts not mirrored; enabling this causes "fetchMcpSkillsForClient is not a function" when MCP servers with resources connect — see #856)
 
-  // ── Enabled: upstream defaults ──────────────────────────────────────
-  COORDINATOR_MODE: true,             // Multi-agent coordinator with worker delegation
-  BUILTIN_EXPLORE_PLAN_AGENTS: true,  // Built-in Explore/Plan specialized subagents
-  BUDDY: true,                        // Buddy mode for paired programming
-  MONITOR_TOOL: true,                 // MCP server monitoring/streaming tool
-  TEAMMEM: true,                      // Team memory management
-  MESSAGE_ACTIONS: true,              // Message action buttons in the UI
-
   // ── Enabled: new activations ────────────────────────────────────────
   // [EXTRACT_MEMORIES] Still uses feature() calls in src/query/stopHooks.ts, src/utils/backgroundHousekeeping.ts, src/cli/print.ts
   EXTRACT_MEMORIES: true,
