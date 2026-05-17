@@ -27,7 +27,13 @@ function isLocalMode(): boolean {
   return isLocalProviderUrl(baseUrl)
 }
 
-function boxRow(content: string, width: number, rawLen: number): string {
+// Strip ANSI escape codes to get visible string length
+function visibleLen(s: string): number {
+  return s.replace(/\x1b\[[0-9;]*m/g, '').length
+}
+
+function boxRow(content: string, width: number): string {
+  const rawLen = visibleLen(content)
   const pad = Math.max(0, width - 2 - rawLen)
   return `${rgb(...BORDER)}\u2502${RESET}${content}${' '.repeat(pad)}${rgb(...BORDER)}\u2502${RESET}`
 }
@@ -52,13 +58,13 @@ export function printStartupScreen(): void {
   const help = `type ${rgb(...ACCENT)}/help${RESET}`
 
   const sRow = `${dot}${mode}  \u00b7  ${ready}  \u00b7  ${version}  \u00b7  ${help}`
-  const sLen = 54
+  const sLen = visibleLen(sRow)
 
   const W = Math.max(62, sLen + 4)
 
   // Status line
   out.push(`${rgb(...BORDER)}\u2554${'\u2550'.repeat(W - 2)}\u2557${RESET}`)
-  out.push(boxRow(sRow, W, sLen))
+  out.push(boxRow(sRow, W))
   out.push(`${rgb(...BORDER)}\u255a${'\u2550'.repeat(W - 2)}\u255d${RESET}`)
 
   process.stdout.write(out.join('\n') + '\n')
