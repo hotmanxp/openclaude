@@ -56,12 +56,12 @@ describe('OpenCC paths', () => {
     ).toBe(join(homedir(), '.claude'))
   })
 
-  test('default plans directory uses ~/.openclaude/plans', async () => {
+  test('default plans directory uses ~/.claude/plans', async () => {
     delete process.env.CLAUDE_CONFIG_DIR
     const { getDefaultPlansDirectory } = await importFreshPlans()
 
     expect(getDefaultPlansDirectory({ homeDir: homedir() })).toBe(
-      join(homedir(), '.openclaude', 'plans'),
+      join(homedir(), '.claude', 'plans'),
     )
   })
 
@@ -78,7 +78,7 @@ describe('OpenCC paths', () => {
 
     expect(
       getDefaultPlansDirectory({ homeDir: '/tmp/cafe\u0301' }),
-    ).toBe(join('/tmp/caf\u00e9', '.openclaude', 'plans'))
+    ).toBe(join('/tmp/caf\u00e9', '.claude', 'plans'))
   })
 
   test('default plans directory normalizes explicit CLAUDE_CONFIG_DIR to NFC', async () => {

@@ -172,7 +172,7 @@ For best results, use models with strong tool/function calling support.
 
 OpenCC can route different agents to different models through settings-based routing. This is useful for cost optimization or splitting work by model strength.
 
-Add to `~/.openclaude.json`:
+Add to `~/.claude.json`:
 
 ```json
 {

@@ -150,7 +150,7 @@ Environment variables for other providers (`CLAUDE_CODE_USE_GITHUB`, `CLAUDE_COD
 
 ## Agent Routing
 
-Route different sub-agents to different models via `~/.openclaude.json`:
+Route different sub-agents to different models via `~/.claude.json`:
 
 ```json
 {
