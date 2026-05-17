@@ -3,7 +3,8 @@ import * as React from 'react'
 
 import type { LocalJSXCommandCall, LocalJSXCommandOnDone } from '../../types/command.js'
 import { PROFILE_FILENAME } from '../../constants.js'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import {
   ProviderManager,

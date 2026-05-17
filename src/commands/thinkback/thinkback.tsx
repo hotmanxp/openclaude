@@ -24,7 +24,8 @@ import { addMarketplaceSource, clearMarketplacesCache, loadKnownMarketplacesConf
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
 import { installSelectedPlugins } from '../../utils/plugins/pluginStartupCheck.js';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 
 // Marketplace and plugin identifiers - varies by user type
 const INTERNAL_MARKETPLACE_NAME = 'claude-code-marketplace';

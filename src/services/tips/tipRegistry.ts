@@ -54,7 +54,8 @@ import {
   getCachedReferrerReward,
 } from '../api/referral.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
-import { AGENT_INSTRUCTIONS_FILE, BRAND_NAME } from '../../constants/product.js'
+import { AGENT_INSTRUCTIONS_FILE,  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 // @ts-ignore
 import type { Tip, TipContext } from './types.js'
 

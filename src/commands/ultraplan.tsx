@@ -2,7 +2,8 @@ import { readFileSync } from 'fs';
 import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
-import { BRAND_NAME, getRemoteSessionUrl } from '../constants/product.js';
+import { getRemoteSessionUrl } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics/index.js';
 import type { AppState } from '../state/AppStateStore.js';

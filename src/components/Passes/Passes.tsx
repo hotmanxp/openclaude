@@ -2,7 +2,8 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 import { TEARDROP_ASTERISK } from '../../constants/figures.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { setClipboard } from '../../ink/termio/osc.js';

@@ -12,7 +12,8 @@ import { isEnvTruthy } from '../utils/envUtils.js';
 import { count } from '../utils/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber, formatSecondsShort } from '../utils/format.js';
-import { BRAND_NAME } from '../constants/product.js';
+import {  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js';
 import type { Theme } from 'src/utils/theme.js';
 import { activityManager } from '../utils/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';

@@ -28,6 +28,7 @@ import pickBy from 'lodash-es/pickBy.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import React from 'react';
 import { getOauthConfig } from './constants/oauth.js';
+import { AGENTS_INSTRUCTIONS_FILENAME } from './constants.js';
 import { getRemoteSessionUrl } from './constants/product.js';
 import { getSystemContext, getUserContext } from './context.js';
 import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js';
@@ -4357,9 +4358,9 @@ async function run(): Promise<CommanderCommand> {
     await update();
   });
 
-  // claude up — run the project's CLAUDE.md "# claude up" setup instructions.
+  // claude up — run the project's AGENTS.md "# claude up" setup instructions.
   if ("external" === 'ant') {
-    program.command('up').description('[internal-only] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md').action(async () => {
+    program.command('up').description(`[internal-only] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest ${AGENTS_INSTRUCTIONS_FILENAME}`).action(async () => {
       const {
         up
       } = await import('src/cli/up.js');

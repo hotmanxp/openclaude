@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { Command } from '../commands.js'
-import { AGENT_INSTRUCTIONS_FILE, AGENT_INSTRUCTIONS_LOCAL_FILE, BRAND_NAME } from '../constants/product.js'
+import { AGENT_INSTRUCTIONS_FILE, AGENT_INSTRUCTIONS_LOCAL_FILE,  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js'
 import { AGENTS_FILENAME } from '../utils/claudemd.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { isEnvTruthy } from '../utils/envUtils.js'

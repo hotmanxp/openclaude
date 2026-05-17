@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

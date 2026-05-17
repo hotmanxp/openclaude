@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import figures from 'figures';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';

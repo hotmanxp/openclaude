@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'fs/promises'
 import { basename, relative } from 'path'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import { getWikiPaths } from './paths.js'
 
 async function listMarkdownFiles(dir: string): Promise<string[]> {

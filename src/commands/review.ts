@@ -1,6 +1,7 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.js'
 import type { Command } from '../commands.js'
-import { BRAND_NAME } from '../constants/product.js'
+import {  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js'
 import { isUltrareviewEnabled } from './review/ultrareviewEnabled.js'
 
 // Legal wants the explicit surface name plus a docs link visible before the

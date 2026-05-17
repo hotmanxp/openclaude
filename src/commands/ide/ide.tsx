@@ -16,7 +16,8 @@ import { getCwd } from '../../utils/cwd.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
 import { type DetectedIDEInfo, detectIDEs, detectRunningIDEs, type IdeType, isJetBrainsIde, isSupportedJetBrainsTerminal, isSupportedTerminal, toIDEDisplayName } from '../../utils/ide.js';
 import { getCurrentWorktreeSession } from '../../utils/worktree.js';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 type IDEScreenProps = {
   availableIDEs: DetectedIDEInfo[];
   unavailableIDEs: DetectedIDEInfo[];

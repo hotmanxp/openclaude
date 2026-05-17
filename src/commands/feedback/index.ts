@@ -1,5 +1,6 @@
 import type { Command } from '../../commands.js'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'

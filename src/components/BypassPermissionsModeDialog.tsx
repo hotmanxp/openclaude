@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../constants.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Link, Newline, Text } from '../ink.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';

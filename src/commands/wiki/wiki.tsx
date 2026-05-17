@@ -1,6 +1,7 @@
 import React from 'react'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import { ingestLocalWikiSource } from '../../services/wiki/ingest.js'
 import { initializeWiki } from '../../services/wiki/init.js'
 import { getWikiStatus } from '../../services/wiki/status.js'

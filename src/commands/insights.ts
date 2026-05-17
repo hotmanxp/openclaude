@@ -10,7 +10,8 @@ import {
 } from 'fs/promises'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
-import { AGENT_INSTRUCTIONS_FILE, BRAND_NAME } from '../constants/product.js'
+import { AGENT_INSTRUCTIONS_FILE,  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js'
 import { FALLBACK_PROJECT_INSTRUCTION_FILE } from '../utils/projectInstructions.js'
 import { queryWithModel } from '../services/api/claude.js'
 import {

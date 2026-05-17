@@ -1,5 +1,6 @@
 import { AuthCodeListener } from '../oauth/auth-code-listener.js'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 import {
   generateCodeChallenge,
   generateCodeVerifier,

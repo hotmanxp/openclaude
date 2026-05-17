@@ -1,5 +1,6 @@
 import type { Command } from '../../commands.js'
-import { BRAND_NAME } from '../../constants/product.js'
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js'
 
 const stickers = {
   type: 'local',

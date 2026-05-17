@@ -23,7 +23,8 @@ import { isMarketplaceAutoUpdate } from '../../utils/plugins/schemas.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { plural } from '../../utils/stringUtils.js';
 import type { ViewState } from './types.js';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 type Props = {
   setViewState: (state: ViewState) => void;
   error?: string | null;

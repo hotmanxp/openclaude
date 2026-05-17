@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React, { useCallback, useState } from 'react';
-import { BRAND_NAME } from '../constants/product.js';
+import {  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js';
 import type { Workflow } from '../commands/install-github-app/types.js';
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Text } from '../ink.js';

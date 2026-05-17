@@ -2,6 +2,7 @@
 import { c as _c } from "react-compiler-runtime";
 import React, { type ReactNode } from 'react';
 import { Box } from '../../../../ink.js';
+import { USER_CONFIG_DIRNAME } from '../../../../constants.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import { type AgentMemoryScope, loadAgentMemoryPrompt } from '../../../../tools/AgentTool/agentMemory.js';
@@ -38,28 +39,28 @@ export function MemoryStep() {
   let t1;
   if ($[1] !== isUserScope) {
     t1 = isUserScope ? [{
-      label: "User scope (~/.claude/agent-memory/) (Recommended)",
+      label: `User scope (~/${USER_CONFIG_DIRNAME}/agent-memory/) (Recommended)`,
       value: "user"
     }, {
       label: "None (no persistent memory)",
       value: "none"
     }, {
-      label: "Project scope (.claude/agent-memory/)",
+      label: `Project scope (${USER_CONFIG_DIRNAME}/agent-memory/)`,
       value: "project"
     }, {
-      label: "Local scope (.claude/agent-memory-local/)",
+      label: `Local scope (${USER_CONFIG_DIRNAME}/agent-memory-local/)`,
       value: "local"
     }] : [{
-      label: "Project scope (.claude/agent-memory/) (Recommended)",
+      label: `Project scope (${USER_CONFIG_DIRNAME}/agent-memory/) (Recommended)`,
       value: "project"
     }, {
       label: "None (no persistent memory)",
       value: "none"
     }, {
-      label: "User scope (~/.claude/agent-memory/)",
+      label: `User scope (~/${USER_CONFIG_DIRNAME}/agent-memory/)`,
       value: "user"
     }, {
-      label: "Local scope (.claude/agent-memory-local/)",
+      label: `Local scope (${USER_CONFIG_DIRNAME}/agent-memory-local/)`,
       value: "local"
     }];
     $[1] = isUserScope;

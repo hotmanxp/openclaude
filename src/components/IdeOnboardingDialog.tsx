@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
-import { BRAND_NAME } from '../constants/product.js';
+import {  } from '../constants/product.js'
+import { BRAND_NAME } from '../constants.js';
 import { envDynamic } from 'src/utils/envDynamic.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';

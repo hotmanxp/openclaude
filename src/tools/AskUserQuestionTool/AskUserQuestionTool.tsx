@@ -5,7 +5,7 @@ import * as React from 'react';
 import { getAllowedChannels, getQuestionPreviewFormat } from 'src/bootstrap/state.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { BLACK_CIRCLE } from 'src/constants/figures.js';
-import { BRAND_NAME } from 'src/constants/product.js';
+import { BRAND_NAME } from 'src/constants.js';
 import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
 import { z } from 'zod/v4';
 import { Box, Text } from '../../ink.js';

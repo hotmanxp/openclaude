@@ -2,6 +2,7 @@
 import { c as _c } from "react-compiler-runtime";
 import { join } from 'path';
 import React, { type ReactNode } from 'react';
+import { USER_CONFIG_DIRNAME } from '../../../../constants.js';
 import { Box } from '../../../../ink.js';
 import { getClaudeConfigHomeDir } from '../../../../utils/envUtils.js';
 import type { SettingSource } from '../../../../utils/settings/constants.js';
@@ -22,7 +23,7 @@ export function LocationStep() {
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
-      label: "Project (.claude/agents/)",
+      label: `Project (${USER_CONFIG_DIRNAME}/agents/)`,
       value: "projectSettings" as SettingSource
     };
     $[0] = t0;

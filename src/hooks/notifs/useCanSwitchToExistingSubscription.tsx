@@ -2,7 +2,8 @@
 import * as React from 'react';
 import { getOauthProfileFromApiKey } from 'src/services/oauth/getOauthProfile.js';
 import { isClaudeAISubscriber } from 'src/utils/auth.js';
-import { BRAND_NAME } from '../../constants/product.js';
+import {  } from '../../constants/product.js'
+import { BRAND_NAME } from '../../constants.js';
 import { Text } from '../../ink.js';
 import { logEvent } from '../../services/analytics/index.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';

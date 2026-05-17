@@ -5,6 +5,16 @@
  * Import from here instead of hardcoding to ensure consistency.
  */
 
+// ---------------------------------------------------------------------------
+// Brand (re-exported from product.ts for centralized access)
+// ---------------------------------------------------------------------------
+
+export { BRAND_NAME } from './constants/product.js'
+
+// ---------------------------------------------------------------------------
+// Config directory names
+// ---------------------------------------------------------------------------
+
 /** Project-level config directory name (dot-prefixed) */
 export const CONFIG_DIRNAME = '.claude'
 
