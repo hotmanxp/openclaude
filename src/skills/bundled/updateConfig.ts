@@ -1,4 +1,5 @@
 import { toJSONSchema } from 'zod/v4'
+import { SETTINGS_PATH, SETTINGS_LOCAL_PATH, USER_SETTINGS_PATH } from '../../constants.js'
 import { SettingsSchema } from '../../utils/settings/types.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { registerBundledSkill } from '../bundledSkills.js'
@@ -18,9 +19,9 @@ Choose the appropriate file based on scope:
 
 | File | Scope | Git | Use For |
 |------|-------|-----|---------|
-| \`~/.claude/settings.json\` | Global | N/A | Personal preferences for all projects |
-| \`.claude/settings.json\` | Project | Commit | Team-wide hooks, permissions, plugins |
-| \`.claude/settings.local.json\` | Project | Gitignore | Personal overrides for this project |
+| \`${USER_SETTINGS_PATH}\` | Global | N/A | Personal preferences for all projects |
+| \`${SETTINGS_PATH}\` | Project | Commit | Team-wide hooks, permissions, plugins |
+| \`${SETTINGS_LOCAL_PATH}\` | Project | Gitignore | Personal overrides for this project |
 
 Settings load in order: user → project → local (later overrides earlier).
 
@@ -435,7 +436,7 @@ User: "Set DEBUG=true"
 ## Troubleshooting Hooks
 
 If a hook isn't running:
-1. **Check the settings file** - Read ~/.claude/settings.json or .claude/settings.json
+1. **Check the settings file** - Read ${USER_SETTINGS_PATH} or ${SETTINGS_PATH}
 2. **Verify JSON syntax** - Invalid JSON silently fails
 3. **Check the matcher** - Does it match the tool name? (e.g., "Bash", "Write", "Edit")
 4. **Check hook type** - Is it "command", "prompt", or "agent"?

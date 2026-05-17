@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
+import { BRAND_NAME } from '../../constants/product.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
@@ -97,7 +98,7 @@ export function ManagedSettingsSecurityDialog(t0) {
       label: "Yes, I trust these settings",
       value: "accept"
     }, {
-      label: "No, exit Claude Code",
+      label: `No, exit ${BRAND_NAME}`,
       value: "exit"
     }];
     $[11] = t15;

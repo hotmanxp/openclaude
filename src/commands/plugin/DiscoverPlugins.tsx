@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import figures from 'figures';
+import { BRAND_NAME } from '../../constants/product.js';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
@@ -714,7 +715,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>Git is required to install marketplaces.</Text><Text dimColor={true}>Please install git and restart OpenCC.</Text></>;
+          t1 = <><Text dimColor={true}>Git is required to install marketplaces.</Text><Text dimColor={true}>Please install git and restart ${BRAND_NAME}.</Text></>;
           $[0] = t1;
         } else {
           t1 = $[0];

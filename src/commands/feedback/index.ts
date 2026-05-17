@@ -1,4 +1,5 @@
 import type { Command } from '../../commands.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
@@ -7,7 +8,7 @@ const feedback = {
   aliases: ['bug'],
   type: 'local-jsx',
   name: 'feedback',
-  description: `提交关于 OpenCC 的反馈`,
+  description: `提交关于 ${BRAND_NAME} 的反馈`,
   argumentHint: '[report]',
   isEnabled: () =>
     !(

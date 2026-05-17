@@ -7,6 +7,7 @@
 
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
+import { USER_SETTINGS_PATH } from '../../constants.js'
 import { AGENT_INSTRUCTIONS_FILE, AGENT_INSTRUCTIONS_LOCAL_FILE } from '../../constants/product.js'
 
 /**
@@ -60,7 +61,7 @@ export type SettingsSyncUploadResult = {
  * Keys used for sync entries
  */
 export const SYNC_KEYS = {
-  USER_SETTINGS: '~/.claude/settings.json',
+  USER_SETTINGS: USER_SETTINGS_PATH,
   USER_MEMORY: `~/.claude/${AGENT_INSTRUCTIONS_FILE}`,
   projectSettings: (projectId: string) =>
     `projects/${projectId}/.claude/settings.local.json`,

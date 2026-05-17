@@ -9,10 +9,8 @@ import {
   sep as pathSep,
   relative,
 } from 'path'
-import {
-  getAdditionalDirectoriesForClaudeMd,
-  getSessionId,
-} from '../bootstrap/state.js'
+import { getAdditionalDirectoriesForClaudeMd, getSessionId } from '../bootstrap/state.js'
+import { AGENTS_DIRNAME, CONFIG_DIRNAME, SKILLS_DIRNAME } from '../constants.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -82,11 +80,11 @@ export function getSkillsPath(
 ): string {
   switch (source) {
     case 'policySettings':
-      return join(getManagedFilePath(), '.claude', dir)
+      return join(getManagedFilePath(), CONFIG_DIRNAME, dir)
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `.claude/${dir}`
+      return `${CONFIG_DIRNAME}/${dir}`
     case 'plugin':
       return 'plugin'
     default:
@@ -724,7 +722,7 @@ async function loadSkillsFromCommandsDir(
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
     const userSkillsDir = join(getUserAgentsDir(), 'skills')
-    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const managedSkillsDir = join(getManagedFilePath(), CONFIG_DIRNAME, SKILLS_DIRNAME)
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
     logForDebugging(
@@ -751,7 +749,7 @@ export const getSkillDirCommands = memoize(
       const additionalSkillsNested = await Promise.all(
         additionalDirs.map(dir =>
           loadSkillsFromSkillsDir(
-            join(dir, '.claude', 'skills'),
+            join(dir, CONFIG_DIRNAME, SKILLS_DIRNAME),
             'projectSettings',
           ),
         ),
@@ -786,7 +784,7 @@ export const getSkillDirCommands = memoize(
         ? Promise.all(
             additionalDirs.map(dir =>
               loadSkillsFromSkillsDir(
-                join(dir, '.claude', 'skills'),
+                join(dir, CONFIG_DIRNAME, SKILLS_DIRNAME),
                 'projectSettings',
               ),
             ),
@@ -960,7 +958,7 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.claude', 'skills')
+      const skillDir = join(currentDir, CONFIG_DIRNAME, SKILLS_DIRNAME)
 
       // Skip if we've already checked this path (hit or miss) — avoids
       // repeating the same failed stat on every Read/Write/Edit call when

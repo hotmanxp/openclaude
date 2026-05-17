@@ -54,7 +54,7 @@ import {
   getCachedReferrerReward,
 } from '../api/referral.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
-import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
+import { AGENT_INSTRUCTIONS_FILE, BRAND_NAME } from '../../constants/product.js'
 // @ts-ignore
 import type { Tip, TipContext } from './types.js'
 
@@ -439,7 +439,7 @@ const externalTips: Tip[] = [
   {
     id: 'desktop-app',
     content: async () =>
-      'Run OpenCC locally or remotely with /desktop',
+      `Run ${BRAND_NAME} locally or remotely with /desktop`,
     cooldownSessions: 15,
     isRelevant: async () => getPlatform() !== 'linux',
   },
@@ -552,8 +552,8 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tern_alloy', 'off')
       return variant === 'copy_b'
-        ? `For big tasks, tell OpenCC to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
-        : `Say ${blue('"fan out subagents"')} and OpenCC sends a team. Each one digs deep so nothing gets missed.`
+        ? `For big tasks, tell ${BRAND_NAME} to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
+        : `Say ${blue('"fan out subagents"')} and ${BRAND_NAME} sends a team. Each one digs deep so nothing gets missed.`
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -595,7 +595,7 @@ const externalTips: Tip[] = [
       const claude = color('claude', ctx.theme)
       const reward = getCachedReferrerReward()
       return reward
-        ? `Share OpenCC and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
+        ? `Share ${BRAND_NAME} and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
         : `You have free guest passes to share · ${claude('/passes')}`
     },
     cooldownSessions: 3,

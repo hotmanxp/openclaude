@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
+import { BRAND_NAME } from '../constants/product.js';
 import { envDynamic } from 'src/utils/envDynamic.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
@@ -101,7 +102,7 @@ export function IdeOnboardingDialog(t0) {
   }
   let t11;
   if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = <Text>• Review Claude Code's changes{" "}{t10}{" "}<Text color="diffRemovedWord">-22</Text> in the comfort of your IDE</Text>;
+    t11 = <Text>• Review ${BRAND_NAME}'s changes{" "}{t10}{" "}<Text color="diffRemovedWord">-22</Text> in the comfort of your IDE</Text>;
     $[13] = t11;
   } else {
     t11 = $[13];

@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
-import { getRemoteSessionUrl } from '../constants/product.js';
+import { BRAND_NAME, getRemoteSessionUrl } from '../constants/product.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics/index.js';
 import type { AppState } from '../state/AppStateStore.js';
@@ -116,7 +116,7 @@ function startDetachedPoll(taskId: string, sessionId: string, url: string, getAp
           ultraplanSessionUrl: undefined
         } : prev);
         enqueuePendingNotification({
-          value: [`Ultraplan approved — executing in OpenCC on the web. Follow along at: ${url}`, '', 'Results will land as a pull request when the remote session finishes. There is nothing to do here.'].join('\n'),
+          value: [`Ultraplan approved — executing in ${BRAND_NAME} on the web. Follow along at: ${url}`, '', 'Results will land as a pull request when the remote session finishes. There is nothing to do here.'].join('\n'),
           mode: 'task-notification'
         });
       } else {
@@ -185,10 +185,10 @@ function startDetachedPoll(taskId: string, sessionId: string, url: string, getAp
 // multi-second teleportToRemote round-trip.
 function buildLaunchMessage(disconnectedBridge?: boolean): string {
   const prefix = disconnectedBridge ? `${REMOTE_CONTROL_DISCONNECTED_MSG} ` : '';
-  return `${DIAMOND_OPEN} ultraplan\n${prefix}Starting OpenCC on the web…`;
+  return `${DIAMOND_OPEN} ultraplan\n${prefix}Starting ${BRAND_NAME} on the web…`;
 }
 function buildSessionReadyMessage(url: string): string {
-  return `${DIAMOND_OPEN} ultraplan · Monitor progress in OpenCC on the web ${url}\nYou can continue working — when the ${DIAMOND_OPEN} fills, press ↓ to view results`;
+  return `${DIAMOND_OPEN} ultraplan · Monitor progress in ${BRAND_NAME} on the web ${url}\nYou can continue working — when the ${DIAMOND_OPEN} fills, press ↓ to view results`;
 }
 function buildAlreadyActiveMessage(url: string | undefined): string {
   return url ? `ultraplan: already polling. Open ${url} to check status, or wait for the plan to land here.` : 'ultraplan: already launching. Please wait for the session to start.';
@@ -273,7 +273,7 @@ export async function launchUltraplan(opts: {
     return [
     // Rendered via <Markdown>; raw <message> is tokenized as HTML
     // and dropped. Backslash-escape the brackets.
-    'Usage: /ultraplan \\<prompt\\>, or include "ultraplan" anywhere', 'in your prompt', '', 'Advanced multi-agent plan mode with our most powerful model', '(Opus). Runs in OpenCC on the web. When the plan is ready,', 'you can execute it in the web session or send it back here.', 'Terminal stays free while the remote plans.', 'Requires /login.', '', `Terms: ${CCR_TERMS_URL}`].join('\n');
+    'Usage: /ultraplan \\<prompt\\>, or include "ultraplan" anywhere', 'in your prompt', '', 'Advanced multi-agent plan mode with our most powerful model', `(Opus). Runs in ${BRAND_NAME} on the web. When the plan is ready,`, 'you can execute it in the web session or send it back here.', 'Terminal stays free while the remote plans.', 'Requires /login.', '', `Terms: ${CCR_TERMS_URL}`].join('\n');
   }
 
   // Set synchronously before the detached flow to prevent duplicate launches
@@ -462,7 +462,7 @@ const call: LocalJSXCommandCall = async (onDone, context, args) => {
 export default {
   type: 'local-jsx',
   name: 'ultraplan',
-  description: `~10–30 min · OpenCC on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
+  description: `~10–30 min · ${BRAND_NAME} on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
   argumentHint: '<prompt>',
   // @ts-ignore - build-time constant check
   isEnabled: () => "external" === 'ant',

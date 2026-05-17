@@ -23,6 +23,7 @@ import { isMarketplaceAutoUpdate } from '../../utils/plugins/schemas.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { plural } from '../../utils/stringUtils.js';
 import type { ViewState } from './types.js';
+import { BRAND_NAME } from '../../constants/product.js';
 type Props = {
   setViewState: (state: ViewState) => void;
   error?: string | null;
@@ -659,7 +660,7 @@ export function ManageMarketplaces({
         {/* Show explanatory text at the bottom when auto-update is enabled */}
         {!isUpdating && !shouldSkipPluginAutoupdate() && selectedMarketplace.autoUpdate && <Box marginTop={1}>
               <Text dimColor>
-                Auto-update enabled. Claude Code will automatically update this
+                Auto-update enabled. ${BRAND_NAME} will automatically update this
                 marketplace and its installed plugins.
               </Text>
             </Box>}

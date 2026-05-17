@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { BRAND_NAME } from '../../constants/product.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -243,7 +244,7 @@ export const ConfigTool = buildTool({
           data: {
             success: false,
             error: !isAnthropicAuthEnabled()
-              ? 'Voice mode requires a OpenCC.ai account. Please run /login to sign in.'
+              ? `Voice mode requires a ${BRAND_NAME}.ai account. Please run /login to sign in.`
               : 'Voice mode is not available.',
           },
         }
@@ -273,7 +274,7 @@ export const ConfigTool = buildTool({
           data: {
             success: false,
             error:
-              'Voice mode requires a OpenCC.ai account. Please run /login to sign in.',
+              `Voice mode requires a ${BRAND_NAME}.ai account. Please run /login to sign in.`,
           },
         }
       }

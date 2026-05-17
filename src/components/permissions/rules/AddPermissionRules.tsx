@@ -10,6 +10,7 @@ import { applyPermissionUpdate, persistPermissionUpdate } from '../../../utils/p
 import { permissionRuleValueToString } from '../../../utils/permissions/permissionRuleParser.js';
 import { detectUnreachableRules, type UnreachableRule } from '../../../utils/permissions/shadowedRuleDetection.js';
 import { SandboxManager } from '../../../utils/sandbox/sandbox-adapter.js';
+import { USER_SETTINGS_PATH } from '../../../constants.js';
 import { type EditableSettingSource, SOURCES } from '../../../utils/settings/constants.js';
 import { getRelativeSettingsFilePathForSource } from '../../../utils/settings/settings.js';
 import { plural } from '../../../utils/stringUtils.js';
@@ -33,7 +34,7 @@ export function optionForPermissionSaveDestination(saveDestination: EditableSett
     case 'userSettings':
       return {
         label: 'User settings',
-        description: `Saved in ~/.claude/settings.json`,
+        description: `Saved in ${USER_SETTINGS_PATH}`,
         value: saveDestination
       };
   }

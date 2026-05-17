@@ -5,6 +5,7 @@ import TextInput from '../../components/TextInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, color, Text, useTheme } from '../../ink.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { BRAND_NAME } from '../../constants/product.js';
 interface ApiKeyStepProps {
   existingApiKey: string | null;
   useExistingKey: boolean;
@@ -153,7 +154,7 @@ export function ApiKeyStep(t0) {
   }
   let t11;
   if ($[27] !== existingApiKey || $[28] !== selectedOption || $[29] !== theme) {
-    t11 = existingApiKey && <Box marginBottom={1}><Text>{selectedOption === "existing" ? color("success", theme)("> ") : "  "}Use your existing Claude Code API key</Text></Box>;
+    t11 = existingApiKey && <Box marginBottom={1}><Text>{selectedOption === "existing" ? color("success", theme)("> ") : "  "}Use your existing ${BRAND_NAME} API key</Text></Box>;
     $[27] = existingApiKey;
     $[28] = selectedOption;
     $[29] = theme;

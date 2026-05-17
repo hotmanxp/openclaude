@@ -32,6 +32,7 @@ import { join } from 'path'
 import { parse } from 'url'
 import xss from 'xss'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { openBrowser } from '../../utils/browser.js'
 import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -1118,7 +1119,7 @@ export async function performMCPOAuthFlow(
 
           res.writeHead(200, { 'Content-Type': 'text/html' })
           res.end(
-            `<h1>Authentication Successful</h1><p>You can close this window. Return to OpenCC.</p>`,
+            `<h1>Authentication Successful</h1><p>You can close this window. Return to ${BRAND_NAME}.</p>`,
           )
           cleanup()
           // @ts-ignore

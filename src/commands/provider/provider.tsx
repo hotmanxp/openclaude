@@ -2,6 +2,8 @@
 import * as React from 'react'
 
 import type { LocalJSXCommandCall, LocalJSXCommandOnDone } from '../../types/command.js'
+import { PROFILE_FILENAME } from '../../constants.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import {
   ProviderManager,
@@ -294,7 +296,7 @@ export function buildProfileSaveMessage(
   }
 
   lines.push(`Profile: ${filePath}`)
-  lines.push('Restart OpenCC to use it.')
+  lines.push(`Restart ${BRAND_NAME} to use it.`)
 
   return lines.join('\n')
 }
@@ -311,7 +313,7 @@ function buildUsageText(): string {
     `Current endpoint: ${summary.endpointLabel}`,
     `Saved profile: ${summary.savedProfileLabel}`,
     '',
-    'Choose Auto, Ollama, or OpenAI-compatible, then save a profile for the next OpenCC restart.',
+    `Choose Auto, Ollama, or OpenAI-compatible, then save a profile for the next ${BRAND_NAME} restart.`,
   ].join('\n')
 }
 
@@ -433,7 +435,7 @@ function ProviderChooser({
     options.push({
       label: 'Clear saved profile',
       value: 'clear',
-      description: 'Remove .claude-profile.json and return to normal startup',
+      description: `Remove ${PROFILE_FILENAME} and return to normal startup`,
     })
   }
 
@@ -445,7 +447,7 @@ function ProviderChooser({
     >
       <Box flexDirection="column" gap={1}>
         <Text>
-          Save a provider profile for the next OpenCC restart without
+          Save a provider profile for the next ${BRAND_NAME} restart without
           editing environment variables first.
         </Text>
         <Box flexDirection="column">
@@ -817,7 +819,7 @@ export function ProviderWizard({
               })
             } else if (value === 'clear') {
               const filePath = deleteProfileFile()
-              onDone(`Removed saved provider profile at ${filePath}. Restart OpenCC to go back to normal startup.`, {
+              onDone(`Removed saved provider profile at ${filePath}. Restart ${BRAND_NAME} to go back to normal startup.`, {
                 display: 'system',
               })
             }

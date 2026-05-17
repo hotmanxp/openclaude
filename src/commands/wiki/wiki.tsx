@@ -1,5 +1,6 @@
 import React from 'react'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { ingestLocalWikiSource } from '../../services/wiki/ingest.js'
 import { initializeWiki } from '../../services/wiki/init.js'
 import { getWikiStatus } from '../../services/wiki/status.js'
@@ -12,7 +13,7 @@ import { getCwd } from '../../utils/cwd.js'
 function renderHelp(): string {
   return `Usage: /wiki [init|status|ingest <path>]
 
-Manage the OpenCC project wiki stored in .claude/wiki.
+Manage the ${BRAND_NAME} project wiki stored in .claude/wiki.
 
 Commands:
   /wiki init    Initialize the wiki structure in the current project
@@ -26,7 +27,7 @@ Examples:
 }
 
 function formatInitResult(result: Awaited<ReturnType<typeof initializeWiki>>): string {
-  const lines = [`Initialized OpenCC wiki at ${result.root}`]
+  const lines = [`Initialized ${BRAND_NAME} wiki at ${result.root}`]
 
   if (result.alreadyExisted) {
     lines.push('', 'Wiki already existed. No new files were created.')
@@ -45,11 +46,11 @@ function formatInitResult(result: Awaited<ReturnType<typeof initializeWiki>>): s
 
 function formatStatus(status: Awaited<ReturnType<typeof getWikiStatus>>): string {
   if (!status.initialized) {
-    return `OpenCC wiki is not initialized in this project.\n\nRun /wiki init to create ${status.root}.`
+    return `${BRAND_NAME} wiki is not initialized in this project.\n\nRun /wiki init to create ${status.root}.`
   }
 
   return [
-    'OpenCC wiki status',
+    `${BRAND_NAME} wiki status`,
     '',
     `Root: ${status.root}`,
     `Pages: ${status.pageCount}`,
@@ -65,7 +66,7 @@ function formatIngestResult(
   result: Awaited<ReturnType<typeof ingestLocalWikiSource>>,
 ): string {
   return [
-    `Ingested ${result.sourceFile} into the OpenCC wiki.`,
+    `Ingested ${result.sourceFile} into the ${BRAND_NAME} wiki.`,
     '',
     `Title: ${result.title}`,
     `Source note: ${result.sourceNote}`,

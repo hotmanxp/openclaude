@@ -2,6 +2,7 @@ import { homedir } from 'os';
 import { basename, join, sep } from 'path';
 import React, { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
+import { CONFIG_DIRNAME } from '../../../constants.js';
 import { Text } from '../../../ink.js';
 import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
@@ -14,7 +15,7 @@ import type { OptionWithDescription } from '../../CustomSelect/select.js';
  */
 export function isInClaudeFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const claudeFolderPath = expandPath(`${getOriginalCwd()}/.claude`);
+  const claudeFolderPath = expandPath(join(getOriginalCwd(), CONFIG_DIRNAME));
 
   // Check if the path is within the project's .claude folder
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
@@ -33,7 +34,7 @@ export function isInClaudeFolder(filePath: string): boolean {
  */
 export function isInGlobalClaudeFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const globalClaudeFolderPath = join(homedir(), '.claude');
+  const globalClaudeFolderPath = join(homedir(), CONFIG_DIRNAME);
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
   const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(globalClaudeFolderPath);
   return normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + '/');

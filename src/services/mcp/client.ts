@@ -44,7 +44,7 @@ import pMap from 'p-map'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { PRODUCT_URL } from '../../constants/product.js'
+import { PRODUCT_URL, BRAND_NAME } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   type Tool,
@@ -1008,7 +1008,7 @@ export const connectToServer = memoize(
           name: 'claude-code',
           title: 'Open Open CC',
           version: MACRO.VERSION ?? 'unknown',
-          description: 'OpenCC — coding-agent CLI for any LLM provider',
+          description: `${BRAND_NAME} — coding-agent CLI for any LLM provider`,
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -3345,7 +3345,7 @@ export async function setupSdkMcpClients(
           name: 'claude-code',
           title: 'Open Open CC',
           version: MACRO.VERSION ?? 'unknown',
-          description: 'OpenCC — coding-agent CLI for any LLM provider',
+          description: `${BRAND_NAME} — coding-agent CLI for any LLM provider`,
           websiteUrl: PRODUCT_URL,
         },
         {

@@ -1,9 +1,10 @@
 import type { Command } from '../../commands.js'
+import { BRAND_NAME } from '../../constants/product.js'
 
 const status = {
   type: 'local-jsx',
   name: 'status',
-  description: '显示 OpenCC 状态（版本、模型、账户、API 连接状态、工具状态）',
+  description: `显示 ${BRAND_NAME} 状态（版本、模型、账户、API 连接状态、工具状态）`,
   immediate: true,
   load: () => import('./status.js'),
 } satisfies Command

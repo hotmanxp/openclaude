@@ -1,9 +1,10 @@
 import type { Command } from '../../commands.js'
+import { BRAND_NAME } from '../../constants/product.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
 const doctor: Command = {
   name: 'doctor',
-  description: '诊断并验证 OpenCC 安装及设置',
+  description: `诊断并验证 ${BRAND_NAME} 安装及设置`,
   isEnabled: () => !isEnvTruthy(process.env.DISABLE_DOCTOR_COMMAND),
   type: 'local-jsx',
   load: () => import('./doctor.js'),

@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
+import { BRAND_NAME } from '../../constants/product.js';
 import { TEARDROP_ASTERISK } from '../../constants/figures.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { setClipboard } from '../../ink/termio/osc.js';
@@ -167,7 +168,7 @@ export function Passes({
 
         <Box flexDirection="column" marginLeft={2}>
           <Text dimColor>
-            {referrerReward ? `Share a free week of Claude Code with friends. If they love it and subscribe, you'll get ${formatCreditAmount(referrerReward)} of extra usage to keep building. ` : 'Share a free week of Claude Code with friends. '}
+            {referrerReward ? `Share a free week of ${BRAND_NAME} with friends. If they love it and subscribe, you'll get ${formatCreditAmount(referrerReward)} of extra usage to keep building. ` : `Share a free week of ${BRAND_NAME} with friends. `}
             <Link url={referrerReward ? 'https://support.claude.com/en/articles/13456702-claude-code-guest-passes' : 'https://support.claude.com/en/articles/12875061-claude-code-guest-passes'}>
               Terms apply.
             </Link>

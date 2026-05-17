@@ -10,6 +10,7 @@ import { isPolicyAllowed } from 'src/services/policyLimits/index.js';
 import { z } from 'zod/v4';
 import { getTeleportErrors, TeleportError, type TeleportLocalErrorType } from '../components/TeleportError.js';
 import { getOauthConfig } from '../constants/oauth.js';
+import { BRAND_NAME } from '../constants/product.js';
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { Root } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
@@ -439,7 +440,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
       logEvent('tengu_teleport_resume_error', {
         error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      throw new Error('Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.');
+      throw new Error(`${BRAND_NAME} web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.`);
     }
 
     // Get organization UUID
@@ -609,7 +610,7 @@ export async function teleportFromSessionsAPI(sessionId: string, orgUUID: string
       logEvent('tengu_teleport_error_session_not_found_404', {
         sessionId: sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      throw new TeleportOperationError(`${sessionId} not found.`, `${sessionId} not found.\n${chalk.dim('Run /status in Claude Code to check your account.')}`);
+      throw new TeleportOperationError(`${sessionId} not found.`, `${sessionId} not found.\n${chalk.dim(`Run /status in ${BRAND_NAME} to check your account.`)}`);
     }
     logError(err);
     throw new Error(`Failed to fetch session from Sessions API: ${err.message}`);

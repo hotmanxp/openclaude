@@ -13,6 +13,7 @@
  */
 import { dirname, join } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
+import { PLUGIN_DIRNAME } from '../../constants.js'
 import { isBuiltinPluginId } from '../../plugins/builtinPlugins.js'
 import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
 import { isENOENT, toError } from '../../utils/errors.js'
@@ -987,7 +988,7 @@ async function performPluginUpdate({
 
     // Try to load manifest from plugin directory (for version info)
     let pluginManifest: PluginManifest | undefined
-    const manifestPath = join(sourcePath, '.claude-plugin', 'plugin.json')
+    const manifestPath = join(sourcePath, PLUGIN_DIRNAME, 'plugin.json')
     try {
       pluginManifest = await loadPluginManifest(
         manifestPath,

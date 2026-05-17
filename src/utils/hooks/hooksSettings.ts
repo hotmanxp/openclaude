@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { getSessionId } from '../../bootstrap/state.js'
+import { SETTINGS_PATH, SETTINGS_LOCAL_PATH, USER_SETTINGS_PATH } from '../../constants.js'
 import type { AppState } from '../../state/AppState.js'
 import type { EditableSettingSource } from '../settings/constants.js'
 import { SOURCES } from '../settings/constants.js'
@@ -170,11 +171,11 @@ export function getHooksForEvent(
 export function hookSourceDescriptionDisplayString(source: HookSource): string {
   switch (source) {
     case 'userSettings':
-      return 'User settings (~/.claude/settings.json)'
+      return `User settings (${USER_SETTINGS_PATH})`
     case 'projectSettings':
-      return 'Project settings (.claude/settings.json)'
+      return `Project settings (${SETTINGS_PATH})`
     case 'localSettings':
-      return 'Local settings (.claude/settings.local.json)'
+      return `Local settings (${SETTINGS_LOCAL_PATH})`
     case 'pluginHook':
       // TODO: Get the actual plugin hook file paths instead of using glob pattern
       // We should capture the specific plugin paths during hook registration and display them here

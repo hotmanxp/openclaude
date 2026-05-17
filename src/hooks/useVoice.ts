@@ -7,6 +7,7 @@
 // endpoint (conversation_engine) for STT.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BRAND_NAME } from '../constants/product.js'
 import { useSetVoiceState } from '../context/voice.js'
 import { useTerminalFocus } from '../ink/hooks/use-terminal-focus.js'
 import {
@@ -988,7 +989,7 @@ export function useVoice({
             '[voice] Failed to connect to voice_stream (no OAuth token?)',
           )
           onErrorRef.current?.(
-            'Voice mode requires a OpenCC.ai account. Please run /login to sign in.',
+            `Voice mode requires a ${BRAND_NAME}.ai account. Please run /login to sign in.`,
           )
           // Clear the audio buffer on failure
           audioBuffer.length = 0

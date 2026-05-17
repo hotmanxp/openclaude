@@ -1,5 +1,6 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.js'
 import type { Command } from '../commands.js'
+import { BRAND_NAME } from '../constants/product.js'
 import { isUltrareviewEnabled } from './review/ultrareviewEnabled.js'
 
 // Legal wants the explicit surface name plus a docs link visible before the
@@ -48,7 +49,7 @@ const review: Command = {
 const ultrareview: Command = {
   type: 'local-jsx',
   name: 'ultrareview',
-  description: `~10–20 min · Finds and verifies bugs in your branch. Runs in OpenCC on the web. See ${CCR_TERMS_URL}`,
+  description: `~10–20 min · Finds and verifies bugs in your branch. Runs in ${BRAND_NAME} on the web. See ${CCR_TERMS_URL}`,
   isEnabled: () => isUltrareviewEnabled(),
   load: () => import('./review/ultrareviewCommand.js'),
 }

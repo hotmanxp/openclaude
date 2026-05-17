@@ -2,6 +2,7 @@
 import { c as _c } from "react-compiler-runtime";
 import React, { useEffect, useMemo } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
+import { BRAND_NAME } from '../../constants/product.js';
 import { ClaudeAuthProvider } from '../../services/mcp/auth.js';
 import type { McpClaudeAIProxyServerConfig, McpHTTPServerConfig, McpSSEServerConfig, McpStdioServerConfig } from '../../services/mcp/types.js';
 import { extractAgentMcpServers, filterToolsByServer } from '../../services/mcp/utils.js';
@@ -208,7 +209,7 @@ export function MCPSettings(t0) {
           t9 = $[25];
         }
         const serverTools_0 = t9;
-        const defaultTab = viewState.server.transport === "claudeai-proxy" ? "claude.ai" : "Claude Code";
+        const defaultTab = viewState.server.transport === "claudeai-proxy" ? "claude.ai" : BRAND_NAME;
         if (viewState.server.transport === "stdio") {
           let t10;
           if ($[26] !== viewState.server) {

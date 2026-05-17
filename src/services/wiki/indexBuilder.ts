@@ -1,5 +1,6 @@
 import { readdir, readFile, writeFile } from 'fs/promises'
 import { basename, relative } from 'path'
+import { BRAND_NAME } from '../../constants/product.js'
 import { getWikiPaths } from './paths.js'
 
 async function listMarkdownFiles(dir: string): Promise<string[]> {
@@ -49,7 +50,7 @@ export async function rebuildWikiIndex(cwd: string): Promise<void> {
 
   const content = `# ${basename(cwd)} Wiki
 
-This wiki is maintained by OpenCC as a durable project knowledge layer.
+This wiki is maintained by ${BRAND_NAME} as a durable project knowledge layer.
 
 ## Core Pages
 

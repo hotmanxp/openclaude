@@ -6,6 +6,7 @@
 import figures from 'figures'
 import { basename, dirname } from 'path'
 import { setUseCoworkPlugins } from '../../bootstrap/state.js'
+import { PLUGIN_DIRNAME } from '../../constants.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
@@ -117,7 +118,7 @@ export async function pluginValidateHandler(
     let contentResults: ValidationResult[] = []
     if (result.fileType === 'plugin') {
       const manifestDir = dirname(result.filePath)
-      if (basename(manifestDir) === '.claude-plugin') {
+      if (basename(manifestDir) === PLUGIN_DIRNAME) {
         contentResults = await validatePluginContents(dirname(manifestDir))
         for (const r of contentResults) {
           // biome-ignore lint/suspicious/noConsole:: intentional console output

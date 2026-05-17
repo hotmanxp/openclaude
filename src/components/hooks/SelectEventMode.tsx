@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
+import { SETTINGS_PATH, SETTINGS_LOCAL_PATH, USER_SETTINGS_PATH } from '../../../constants.js';
 /**
  * SelectEventMode is the entrypoint of the Hooks config menu, where the user
  * sees the list of available hook events.
@@ -46,7 +47,7 @@ export function SelectEventMode(t0) {
   const subtitle = `${totalHooksCount} ${t1} configured`;
   let t2;
   if ($[2] !== restrictedByPolicy) {
-    t2 = restrictedByPolicy && <Box flexDirection="column"><Text color="suggestion">{figures.info} Hooks Restricted by Policy</Text><Text dimColor={true}>Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json, .claude/settings.json, and .claude/settings.local.json are blocked.</Text></Box>;
+    t2 = restrictedByPolicy && <Box flexDirection="column"><Text color="suggestion">{figures.info} Hooks Restricted by Policy</Text><Text dimColor={true}>Only hooks from managed settings can run. User-defined hooks from {USER_SETTINGS_PATH}, {SETTINGS_PATH}, and {SETTINGS_LOCAL_PATH} are blocked.</Text></Box>;
     $[2] = restrictedByPolicy;
     $[3] = t2;
   } else {
