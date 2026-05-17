@@ -7,8 +7,8 @@ import type { ExternalClaudeMdInclude } from '../utils/claudemd.js';
 import { saveCurrentProjectConfig } from '../utils/config.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
-import { AGENTS_INSTRUCTIONS_FILENAME } from '../../constants.js';
-import { BRAND_NAME } from '../../constants.js';
+import { AGENTS_INSTRUCTIONS_FILENAME } from '../constants.js';
+import { BRAND_NAME } from '../constants.js';
 type Props = {
   onDone(): void;
   isStandaloneDialog?: boolean;

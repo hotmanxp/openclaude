@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { AGENT_INSTRUCTIONS_FILE } from '../../../constants/product.js'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
