@@ -34,8 +34,8 @@ function visibleLen(s: string): number {
 
 function boxRow(content: string, width: number): string {
   const rawLen = visibleLen(content)
-  const pad = Math.max(0, width - 4 - rawLen)
-  return `${rgb(...BORDER)}\u2502${RESET} ${content}${' '.repeat(pad)} ${rgb(...BORDER)}\u2502${RESET}`
+  const pad = Math.max(0, width - 5 - rawLen)
+  return `${rgb(...BORDER)}\u2502${RESET}  ${content}${' '.repeat(pad)} ${rgb(...BORDER)}\u2502${RESET}`
 }
 
 export function printStartupScreen(): void {
@@ -60,7 +60,7 @@ export function printStartupScreen(): void {
   const sRow = `${dot}${mode}  \u00b7  ${ready}  \u00b7  ${version}  \u00b7  ${help}`
   const sLen = visibleLen(sRow)
 
-  const W = Math.max(62, sLen + 4)
+  const W = Math.max(62, sLen + 5)
 
   // Status line
   out.push(`${rgb(...BORDER)}\u2554${'\u2550'.repeat(W - 2)}\u2557${RESET}`)
