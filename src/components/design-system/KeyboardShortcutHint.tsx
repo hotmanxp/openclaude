@@ -39,7 +39,7 @@ type Props = {
  * </Text>
  */
 export function KeyboardShortcutHint(t0) {
-  const $ = _c(9);
+  const $ = _c(10);
   const {
     shortcut,
     action,
