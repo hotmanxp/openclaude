@@ -34,8 +34,8 @@ function visibleLen(s: string): number {
 
 function boxRow(content: string, width: number): string {
   const rawLen = visibleLen(content)
-  const pad = Math.max(0, width - 2 - rawLen)
-  return `${rgb(...BORDER)}\u2502${RESET}${content}${' '.repeat(pad)}${rgb(...BORDER)}\u2502${RESET}`
+  const pad = Math.max(0, width - 4 - rawLen)
+  return `${rgb(...BORDER)}\u2502${RESET} ${content}${' '.repeat(pad)} ${rgb(...BORDER)}\u2502${RESET}`
 }
 
 export function printStartupScreen(): void {
