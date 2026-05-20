@@ -14,10 +14,6 @@ import { createRoot } from '../../../ink.js'
 import { DEFAULT_BINDINGS } from '../../../keybindings/defaultBindings.js'
 import { KeybindingProvider } from '../../../keybindings/KeybindingContext.js'
 import { parseBindings } from '../../../keybindings/parser.js'
-import {
-  acquireSharedMutationLock,
-  releaseSharedMutationLock,
-} from '../../../test/sharedMutationLock.js'
 import type {
   KeybindingContextName,
   ParsedKeystroke,
@@ -99,19 +95,14 @@ function createToolUseConfirm(
   return {
     assistantMessage: {
       type: 'assistant',
-      uuid: 'assistant-uuid',
+      content: '',
       message: {
         id: 'msg_123',
-        type: 'message',
         role: 'assistant',
         content: [],
         model: 'test-model',
-        stop_reason: null,
-        stop_sequence: null,
-        usage: {
-          input_tokens: 0,
-          output_tokens: 0,
-        },
+        stop_reason: undefined,
+        stop_sequence: undefined,
       },
     },
     tool: MonitorTool,
@@ -344,20 +335,13 @@ async function renderMonitorPermission(
 }
 
 beforeEach(async () => {
-  await acquireSharedMutationLock(
-    'components/permissions/MonitorPermissionRequest.test.tsx',
-  )
   mock.module('../PermissionRuleExplanation.js', () => ({
     PermissionRuleExplanation: () => null,
   }))
 })
 
 afterEach(() => {
-  try {
-    mock.restore()
-  } finally {
-    releaseSharedMutationLock()
-  }
+  mock.restore()
 })
 
 describe('MonitorPermissionRequest', () => {
