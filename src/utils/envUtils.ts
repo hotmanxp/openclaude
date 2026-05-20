@@ -71,6 +71,15 @@ export function isEnvTruthy(envVar: string | boolean | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes(normalizedValue)
 }
 
+/**
+ * Runtime feature flag — checked at execution time via environment variable.
+ * Unlike build-time feature() from bun:bundle, these can be toggled without rebuilding.
+ * Env var format: CLAUDE_CODE_<FLAG_NAME>=1 to enable.
+ */
+export function runtimeFeature(name: string): boolean {
+  return isEnvTruthy(process.env[`CLAUDE_CODE_${name}`])
+}
+
 export function isEnvDefinedFalsy(
   envVar: string | boolean | undefined,
 ): boolean {

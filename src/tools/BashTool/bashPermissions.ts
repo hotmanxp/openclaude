@@ -27,7 +27,7 @@ import { parseCommandRaw } from '../../utils/bash/parser.js'
 import { tryParseShellCommand } from '../../utils/bash/shellQuote.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy, runtimeFeature } from '../../utils/envUtils.js'
 import { AbortError } from '../../utils/errors.js'
 import type {
   ClassifierBehavior,
@@ -1690,14 +1690,14 @@ export async function bashToolHasPermission(
   )
   // GrowthBook killswitch for shadow mode — when off, skip the native parse
   // entirely. Computed once; feature() must stay inline in the ternary below.
-  const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
+  const shadowEnabled = runtimeFeature('TREE_SITTER_BASH_SHADOW')
     ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_birch_trellis', true)
     : false
   // Parse once here; the resulting AST feeds both parseForSecurityFromAst
   // and bashToolCheckCommandOperatorPermissions.
   let astRoot = injectionCheckDisabled
     ? null
-    : feature('TREE_SITTER_BASH_SHADOW') && !shadowEnabled
+    : runtimeFeature('TREE_SITTER_BASH_SHADOW') && !shadowEnabled
       ? null
       : await parseCommandRaw(input.command)
   let astResult: ParseForSecurityResult = astRoot
@@ -1714,7 +1714,7 @@ export async function bashToolHasPermission(
   // One event per bash call captures both divergence AND unavailability
   // reasons; module-load failures are separately covered by the
   // session-scoped tengu_tree_sitter_load event.
-  if (feature('TREE_SITTER_BASH_SHADOW')) {
+  if (runtimeFeature('TREE_SITTER_BASH_SHADOW')) {
     const available = astResult.kind !== 'parse-unavailable'
     let tooComplex = false
     let semanticFail = false
