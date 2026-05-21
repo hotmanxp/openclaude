@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { afterEach, expect, test } from 'bun:test'
 
 import { AuthCodeListener } from './auth-code-listener.js'
@@ -14,8 +13,6 @@ afterEach(() => {
 test('cancelPendingAuthorization rejects a pending OAuth wait', async () => {
   const listener = new AuthCodeListener('/callback')
   listeners.push(listener)
-
-  await listener.start()
 
   const pendingAuthorization = listener.waitForAuthorization(
     'state-test',

@@ -32,8 +32,6 @@ import { join } from 'path'
 import { parse } from 'url'
 import xss from 'xss'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
-import {  } from '../../constants/product.js'
-import { BRAND_NAME } from '../../constants.js'
 import { openBrowser } from '../../utils/browser.js'
 import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -127,6 +125,74 @@ function redactSensitiveUrlParams(url: string): string {
   }
 }
 
+type OAuthCallbackParamValue = string | string[] | null | undefined
+
+type OAuthCallbackValidationResult =
+  | { type: 'code'; code: string }
+  | {
+      type: 'error'
+      error: string
+      errorDescription: string
+      errorUri: string
+      message: string
+    }
+  | { type: 'missing_result' }
+  | { type: 'state_mismatch' }
+
+function getFirstOAuthCallbackParam(
+  value: OAuthCallbackParamValue,
+): string | undefined {
+  if (Array.isArray(value)) {
+    return value.find(item => item.length > 0)
+  }
+  return value && value.length > 0 ? value : undefined
+}
+
+export function validateOAuthCallbackParams(
+  params: {
+    code?: OAuthCallbackParamValue
+    state?: OAuthCallbackParamValue
+    error?: OAuthCallbackParamValue
+    error_description?: OAuthCallbackParamValue
+    error_uri?: OAuthCallbackParamValue
+  },
+  oauthState: string,
+): OAuthCallbackValidationResult {
+  const code = getFirstOAuthCallbackParam(params.code)
+  const state = getFirstOAuthCallbackParam(params.state)
+  const error = getFirstOAuthCallbackParam(params.error)
+  const errorDescription =
+    getFirstOAuthCallbackParam(params.error_description) ?? ''
+  const errorUri = getFirstOAuthCallbackParam(params.error_uri) ?? ''
+
+  if (state !== oauthState) {
+    return { type: 'state_mismatch' }
+  }
+
+  if (error) {
+    let message = `OAuth error: ${error}`
+    if (errorDescription) {
+      message += ` - ${errorDescription}`
+    }
+    if (errorUri) {
+      message += ` (See: ${errorUri})`
+    }
+    return {
+      type: 'error',
+      error,
+      errorDescription,
+      errorUri,
+      message,
+    }
+  }
+
+  if (code) {
+    return { type: 'code', code }
+  }
+
+  return { type: 'missing_result' }
+}
+
 /**
  * Some OAuth servers (notably Slack) return HTTP 200 for all responses,
  * signaling errors via the JSON body instead. The SDK's executeTokenRequest
@@ -201,7 +267,7 @@ export async function normalizeOAuthErrorBody(
 function createAuthFetch(): FetchLike {
   return async (url: string | URL, init?: RequestInit) => {
     const isPost = init?.method?.toUpperCase() === 'POST'
-    const { signal, cleanup } = createCombinedAbortSignal(init?.signal ?? undefined, {
+    const { signal, cleanup } = createCombinedAbortSignal(init?.signal, {
       timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
     })
     try {
@@ -343,7 +409,7 @@ export function hasMcpDiscoveryButNoToken(
 /**
  * Revokes a single token on the OAuth server.
  *
- * Per RFC 7009, public clients (like Open CC) should authenticate by including
+ * Per RFC 7009, public clients (like Claude Code) should authenticate by including
  * client_id in the request body, NOT via an Authorization header. The Bearer token
  * in an Authorization header is meant for resource owner authentication, not client
  * authentication.
@@ -1036,30 +1102,31 @@ export async function performMCPOAuthFlow(
         options.onWaitingForCallback((callbackUrl: string) => {
           try {
             const parsed = new URL(callbackUrl)
-            const code = parsed.searchParams.get('code')
-            const state = parsed.searchParams.get('state')
-            const error = parsed.searchParams.get('error')
+            const result = validateOAuthCallbackParams(
+              {
+                code: parsed.searchParams.get('code'),
+                state: parsed.searchParams.get('state'),
+                error: parsed.searchParams.get('error'),
+                error_description:
+                  parsed.searchParams.get('error_description'),
+                error_uri: parsed.searchParams.get('error_uri'),
+              },
+              oauthState,
+            )
 
-            if (error) {
-              const errorDescription =
-                parsed.searchParams.get('error_description') || ''
-              cleanup()
-              rejectOnce(
-                new Error(`OAuth error: ${error} - ${errorDescription}`),
-              )
+            if (result.type === 'state_mismatch') {
+              // Ignore so a stray or malicious URL cannot cancel an active flow.
               return
             }
 
-            if (!code) {
-              // Not a valid callback URL, ignore so the user can try again
+            if (result.type === 'missing_result') {
+              // Not a valid callback URL, ignore so the user can try again.
               return
             }
 
-            if (state !== oauthState) {
+            if (result.type === 'error') {
               cleanup()
-              rejectOnce(
-                new Error('OAuth state mismatch - possible CSRF attack'),
-              )
+              rejectOnce(new Error(result.message))
               return
             }
 
@@ -1068,7 +1135,7 @@ export async function performMCPOAuthFlow(
               `Received auth code via manual callback URL`,
             )
             cleanup()
-            resolveOnce(code)
+            resolveOnce(result.code)
           } catch {
             // Invalid URL, ignore so the user can try again
           }
@@ -1079,51 +1146,48 @@ export async function performMCPOAuthFlow(
         const parsedUrl = parse(req.url || '', true)
 
         if (parsedUrl.pathname === '/callback') {
-          const code = parsedUrl.query.code as string
-          const state = parsedUrl.query.state as string
-          const error = parsedUrl.query.error
-          const errorDescription = parsedUrl.query.error_description as string
-          const errorUri = parsedUrl.query.error_uri as string
+          const result = validateOAuthCallbackParams(
+            parsedUrl.query,
+            oauthState,
+          )
 
           // Validate OAuth state to prevent CSRF attacks
-          if (!error && state !== oauthState) {
+          if (result.type === 'state_mismatch') {
             res.writeHead(400, { 'Content-Type': 'text/html' })
             res.end(
               `<h1>Authentication Error</h1><p>Invalid state parameter. Please try again.</p><p>You can close this window.</p>`,
             )
-            cleanup()
-            rejectOnce(new Error('OAuth state mismatch - possible CSRF attack'))
             return
           }
 
-          if (error) {
+          if (result.type === 'missing_result') {
+            res.writeHead(400, { 'Content-Type': 'text/html' })
+            res.end(
+              `<h1>Authentication Error</h1><p>Missing OAuth result. Please try again.</p><p>You can close this window.</p>`,
+            )
+            return
+          }
+
+          if (result.type === 'error') {
             res.writeHead(200, { 'Content-Type': 'text/html' })
             // Sanitize error messages to prevent XSS
-            const sanitizedError = xss(String(error))
-            const sanitizedErrorDescription = errorDescription
-              ? xss(String(errorDescription))
+            const sanitizedError = xss(result.error)
+            const sanitizedErrorDescription = result.errorDescription
+              ? xss(result.errorDescription)
               : ''
             res.end(
               `<h1>Authentication Error</h1><p>${sanitizedError}: ${sanitizedErrorDescription}</p><p>You can close this window.</p>`,
             )
             cleanup()
-            let errorMessage = `OAuth error: ${error}`
-            if (errorDescription) {
-              errorMessage += ` - ${errorDescription}`
-            }
-            if (errorUri) {
-              errorMessage += ` (See: ${errorUri})`
-            }
-            rejectOnce(new Error(errorMessage))
+            rejectOnce(new Error(result.message))
             return
           }
 
           res.writeHead(200, { 'Content-Type': 'text/html' })
           res.end(
-            `<h1>Authentication Successful</h1><p>You can close this window. Return to ${BRAND_NAME}.</p>`,
+            `<h1>Authentication Successful</h1><p>You can close this window. Return to OpenCC.</p>`,
           )
           cleanup()
-          // @ts-ignore
           resolveOnce(result.code)
         }
       })
@@ -1394,7 +1458,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     const metadata: OAuthClientMetadata = {
-      client_name: `Open CC (${this.serverName})`,
+      client_name: `Claude Code (${this.serverName})`,
       redirect_uris: [this.redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -1723,7 +1787,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
    * both fire the full 4-request XAA chain and race on storage.update().
    * Unlike inc-4829 the id_token is not single-use so both access_tokens
    * stay valid (wasted round-trips + keychain write race, not brickage),
-   * but this is the shape AGENTS.md flags under "Token/auth caching across
+   * but this is the shape CLAUDE.md flags under "Token/auth caching across
    * process boundaries". Mirror refreshAuthorization()'s lockfile pattern.
    */
   private async xaaRefresh(): Promise<OAuthTokens | undefined> {

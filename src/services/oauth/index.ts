@@ -174,21 +174,16 @@ export class OAuthService {
   ): OAuthTokens {
     return {
       accessToken: response.access_token,
-      // @ts-ignore - refreshToken type mismatch
       refreshToken: response.refresh_token,
       expiresAt: Date.now() + response.expires_in * 1000,
       scopes: client.parseScopes(response.scope),
       subscriptionType,
       rateLimitTier,
       profile,
-      // @ts-ignore - tokenAccount type mismatch
       tokenAccount: response.account
         ? {
-            // @ts-ignore - type mismatch
             uuid: response.account.uuid,
-            // @ts-ignore - type mismatch
             emailAddress: response.account.email_address,
-            // @ts-ignore - organizationUuid type mismatch
             organizationUuid: response.organization?.uuid,
           }
         : undefined,

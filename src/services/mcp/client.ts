@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
@@ -44,8 +43,7 @@ import pMap from 'p-map'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { PRODUCT_URL,  } from '../../constants/product.js'
-import { BRAND_NAME } from '../../constants.js'
+import { PRODUCT_URL } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   type Tool,
@@ -236,7 +234,7 @@ function getMcpToolTimeoutMs(): number {
 
 import { isClaudeInChromeMCPServer } from '../../utils/claudeInChrome/common.js'
 
-// Lazy: toolRendering.tsx pulls React/ink; only needed when Open CC-in-Chrome MCP server is connected
+// Lazy: toolRendering.tsx pulls React/ink; only needed when Claude-in-Chrome MCP server is connected
 /* eslint-disable @typescript-eslint/no-require-imports */
 const claudeInChromeToolRendering =
   (): typeof import('../../utils/claudeInChrome/toolRendering.js') =>
@@ -730,7 +728,7 @@ export const connectToServer = memoize(
         const wsHeaders = {
           'User-Agent': getMCPUserAgent(),
           ...(serverRef.authToken && {
-            'X-Open CC-Code-Ide-Authorization': serverRef.authToken,
+            'X-Claude-Code-Ide-Authorization': serverRef.authToken,
           }),
         }
 
@@ -1007,9 +1005,9 @@ export const connectToServer = memoize(
           // name stays 'claude-code' for compatibility with MCP servers that
           // gate features on the upstream client identifier.
           name: 'claude-code',
-          title: 'Open Open CC',
+          title: 'OpenClaude',
           version: MACRO.VERSION ?? 'unknown',
-          description: `${BRAND_NAME} — coding-agent CLI for any LLM provider`,
+          description: 'OpenClaude — coding-agent CLI for any LLM provider',
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -3344,9 +3342,9 @@ export async function setupSdkMcpClients(
           // name stays 'claude-code' for compatibility with MCP servers that
           // gate features on the upstream client identifier.
           name: 'claude-code',
-          title: 'Open Open CC',
+          title: 'OpenClaude',
           version: MACRO.VERSION ?? 'unknown',
-          description: `${BRAND_NAME} — coding-agent CLI for any LLM provider`,
+          description: 'OpenClaude — coding-agent CLI for any LLM provider',
           websiteUrl: PRODUCT_URL,
         },
         {

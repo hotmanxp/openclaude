@@ -516,7 +516,6 @@ export function extractAgentMcpServers(
       result.push({
         name,
         sourceAgents,
-        // @ts-ignore - transport type mismatch
         transport: 'stdio',
         command: config.command,
         needsAuth: false,
@@ -524,7 +523,6 @@ export function extractAgentMcpServers(
     } else if (isSSEConfig(config)) {
       result.push({
         name,
-        // @ts-expect-error - sourceAgents not in type
         sourceAgents,
         transport: 'sse',
         url: config.url,
@@ -533,7 +531,6 @@ export function extractAgentMcpServers(
     } else if (isHTTPConfig(config)) {
       result.push({
         name,
-        // @ts-expect-error - sourceAgents not in type
         sourceAgents,
         transport: 'http',
         url: config.url,
@@ -543,7 +540,6 @@ export function extractAgentMcpServers(
       result.push({
         name,
         sourceAgents,
-        // @ts-ignore - transport type mismatch
         transport: 'ws',
         url: config.url,
         needsAuth: false,

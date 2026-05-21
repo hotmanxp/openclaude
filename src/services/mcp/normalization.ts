@@ -3,7 +3,7 @@
  * This file has no dependencies to avoid circular imports.
  */
 
-// Open CC.ai server names are prefixed with this string
+// Claude.ai server names are prefixed with this string
 const CLAUDEAI_SERVER_PREFIX = 'claude.ai '
 
 /**

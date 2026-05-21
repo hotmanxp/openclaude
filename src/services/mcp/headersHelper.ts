@@ -59,7 +59,6 @@ export async function getMcpHeadersFromHelper(
   try {
     logMCPDebug(serverName, 'Executing headersHelper to get dynamic headers')
     const execResult = await execFileNoThrowWithCwd(config.headersHelper, [], {
-      // @ts-ignore
       shell: true,
       timeout: 10000,
       // Pass server context so one helper script can serve multiple MCP servers

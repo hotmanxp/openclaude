@@ -1,21 +1,31 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import axios from 'axios'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../../test/sharedMutationLock.js'
 
 const originalEnv = { ...process.env }
+const originalAxiosGet = axios.get
 
 async function importFreshModule() {
   mock.restore()
   return import(`./officialRegistry.ts?ts=${Date.now()}-${Math.random()}`)
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await acquireSharedMutationLock('services/mcp/officialRegistry.test.ts')
   process.env = { ...originalEnv }
 })
 
 afterEach(() => {
-  process.env = { ...originalEnv }
-  mock.restore()
+  try {
+    process.env = { ...originalEnv }
+    axios.get = originalAxiosGet
+    mock.restore()
+  } finally {
+    releaseSharedMutationLock()
+  }
 })
 
 describe('prefetchOfficialMcpUrls', () => {
@@ -51,7 +61,6 @@ describe('prefetchOfficialMcpUrls', () => {
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GITHUB
-    delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
 
     mock.module('../../utils/model/providers.js', () => ({
       getAPIProvider: () => 'firstParty',

@@ -1,8 +1,19 @@
-// @ts-nocheck
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../../test/sharedMutationLock.js'
+
+beforeEach(async () => {
+  await acquireSharedMutationLock('services/oauth/auth-code-listener.analytics.test.ts')
+})
 
 afterEach(() => {
-  mock.restore()
+  try {
+    mock.restore()
+  } finally {
+    releaseSharedMutationLock()
+  }
 })
 
 test('custom error responses log the error redirect analytics event', async () => {
