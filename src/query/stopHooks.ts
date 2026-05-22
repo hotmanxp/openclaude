@@ -38,16 +38,12 @@ import {
 import type { SystemPrompt } from '../utils/systemPromptType.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
-
-/* eslint-disable @typescript-eslint/no-require-imports */
-const extractMemoriesModule = feature('EXTRACT_MEMORIES')
-  ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
-  : null
-const jobClassifierModule = feature('TEMPLATES')
-  ? (require('../jobs/classifier.js') as typeof import('../jobs/classifier.js'))
-  : null
-
-/* eslint-enable @typescript-eslint/no-require-imports */
+import {
+  drainPendingExtraction,
+  executeExtractMemories,
+  initExtractMemories,
+} from '../services/extractMemories/extractMemories.js'
+import { jobClassifierModule } from '../jobs/classifier.js'
 
 import type { QuerySource } from '../constants/querySource.js'
 import { executeAutoDream } from '../services/autoDream/autoDream.js'
@@ -140,14 +136,13 @@ export async function* handleStopHooks(
       void executePromptSuggestion(stopHookContext)
     }
     if (
-      feature('EXTRACT_MEMORIES') &&
       !toolUseContext.agentId &&
       isExtractModeActive()
     ) {
       // Fire-and-forget in both interactive and non-interactive. For -p/SDK,
       // print.ts drains the in-flight promise after flushing the response
       // but before gracefulShutdownSync (see drainPendingExtraction).
-      void extractMemoriesModule!.executeExtractMemories(
+      void executeExtractMemories(
         stopHookContext,
         toolUseContext.appendSystemMessage,
       )

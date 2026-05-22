@@ -30,6 +30,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { logForDebugging } from 'src/utils/debug.js'
+import { drainPendingExtraction } from 'src/services/extractMemories/extractMemories.js'
 import {
   logForDiagnosticsNoPII,
   withDiagnosticsTiming,
@@ -366,9 +367,6 @@ const proactiveModule: any =
 const cronSchedulerModule = require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js')
 const cronJitterConfigModule = require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js')
 const cronGate = require('../tools/ScheduleCronTool/prompt.js') as typeof import('../tools/ScheduleCronTool/prompt.js')
-const extractMemoriesModule = feature('EXTRACT_MEMORIES')
-  ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
-  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const SHUTDOWN_TEAM_PROMPT = `<system-reminder>
@@ -959,8 +957,8 @@ export async function runHeadless(
   // delays process exit so gracefulShutdownSync's 5s failsafe doesn't kill
   // the forked agent mid-flight. Gated by isExtractModeActive so the
   // tengu_slate_thimble flag controls non-interactive extraction end-to-end.
-  if (feature('EXTRACT_MEMORIES') && isExtractModeActive()) {
-    await extractMemoriesModule!.drainPendingExtraction()
+  if (isExtractModeActive()) {
+    await drainPendingExtraction()
   }
 
   gracefulShutdownSync(
