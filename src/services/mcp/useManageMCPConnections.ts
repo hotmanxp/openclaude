@@ -21,11 +21,13 @@ import type {
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fetchMcpSkillsForClient = feature('MCP_SKILLS')
   ? (
+      // @ts-ignore - mcpSkills module not available in open repo
       require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
     ).fetchMcpSkillsForClient
   : null
 const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (
+      // @ts-ignore - localSearch module not available in open repo
       require('../skillSearch/localSearch.js') as typeof import('../skillSearch/localSearch.js')
     ).clearSkillIndexCache
   : null

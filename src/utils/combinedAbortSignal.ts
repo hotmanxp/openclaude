@@ -13,7 +13,7 @@ import { createAbortController } from './abortController.js'
  * so the timer is freed immediately on cleanup.
  */
 export function createCombinedAbortSignal(
-  signal: AbortSignal | undefined,
+  signal: AbortSignal | null | undefined,
   opts?: { signalB?: AbortSignal; timeoutMs?: number },
 ): { signal: AbortSignal; cleanup: () => void } {
   const { signalB, timeoutMs } = opts ?? {}

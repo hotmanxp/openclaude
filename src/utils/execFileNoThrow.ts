@@ -35,6 +35,7 @@ type ExecFileWithCwdOptions = {
   env?: NodeJS.ProcessEnv
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
+  shell?: boolean
 }
 
 type ProcessResultWithError = {

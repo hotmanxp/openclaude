@@ -35,7 +35,8 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 
-// MCPProgress type for progress messages
+// Re-export MCPProgress from centralized types to break import cycles
+export type { MCPProgress } from '../../types/tools.js'
 
 const ajv = new Ajv({ strict: false })
 

@@ -40,10 +40,12 @@ export type ServerInfo = StdioServerInfo | SSEServerInfo | HTTPServerInfo | Clau
 
 export type AgentMcpServerInfo = {
   name: string
-  transport: 'http' | 'sse'
+  transport: 'http' | 'sse' | 'stdio' | 'ws'
   url?: string
+  command?: string
+  sourceAgents?: string[]
   needsAuth: boolean
-  isAuthenticated: boolean
+  isAuthenticated?: boolean
 }
 
 export type MCPViewState =

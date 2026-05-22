@@ -6,3 +6,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type ShellProgress = any
 export type BashProgress = any
+export type MCPProgress = any
+export type ToolProgressData = any

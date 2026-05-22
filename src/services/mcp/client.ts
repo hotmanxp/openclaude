@@ -117,6 +117,7 @@ import { getLoggingSafeMcpBaseUrl } from './utils.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fetchMcpSkillsForClient = feature('MCP_SKILLS')
   ? (
+    // @ts-ignore - mcpSkills module not available in open repo
     require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
   ).fetchMcpSkillsForClient
   : null
@@ -928,6 +929,7 @@ export const connectToServer = memoize(
         const { createChromeContext } = await import(
           '../../utils/claudeInChrome/mcpServer.js'
         )
+        // @ts-ignore - createClaudeForChromeMcpServer not in @ant/claude-for-chrome-mcp type
         const { createClaudeForChromeMcpServer } = await import(
           '@ant/claude-for-chrome-mcp'
         )
@@ -935,8 +937,10 @@ export const connectToServer = memoize(
           './InProcessTransport.js'
         )
         const context = createChromeContext(serverRef.env)
+        // @ts-ignore - createClaudeForChromeMcpServer type mismatch
         inProcessServer = createClaudeForChromeMcpServer(context)
         const [clientTransport, serverTransport] = createLinkedTransportPair()
+        // @ts-ignore - inProcessServer verified above
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
         logMCPDebug(name, `In-process Chrome MCP server started`)
@@ -954,8 +958,10 @@ export const connectToServer = memoize(
         const { createLinkedTransportPair } = await import(
           './InProcessTransport.js'
         )
+        // @ts-ignore - InProcessMcpServer type mismatch
         inProcessServer = await createComputerUseMcpServerForCli()
         const [clientTransport, serverTransport] = createLinkedTransportPair()
+        // @ts-ignore - inProcessServer verified above
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
         logMCPDebug(name, `In-process Computer Use MCP server started`)
@@ -3305,10 +3311,11 @@ async function callMCPTool({
 }
 
 function extractToolUseId(message: AssistantMessage): string | undefined {
-  if (message.message.content[0]?.type !== 'tool_use') {
+  const content = message.message.content
+  if (!Array.isArray(content) || content[0]?.type !== 'tool_use') {
     return undefined
   }
-  return message.message.content[0].id
+  return content[0].id
 }
 
 /**
