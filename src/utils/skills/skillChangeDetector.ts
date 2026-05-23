@@ -38,8 +38,12 @@ const FILE_STABILITY_POLL_INTERVAL_MS = 500
  * Without this, each file change triggers a full clearSkillCaches() +
  * clearCommandsCache() + listener notification cycle, which can deadlock the
  * event loop when dozens of events fire in rapid succession.
+ *
+ * Higher value (1000ms) to reduce UI freezes during active skill editing:
+ * when the user is typing, the debounce keeps resetting, so expensive
+ * getCommands() reloads only fire after the user stops editing for ~1s.
  */
-const RELOAD_DEBOUNCE_MS = 300
+const RELOAD_DEBOUNCE_MS = 1000
 
 /**
  * Polling interval for chokidar when usePolling is enabled.
