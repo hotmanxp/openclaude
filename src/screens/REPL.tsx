@@ -824,14 +824,9 @@ export function REPL({
   // Merge commands from local state, plugins, and MCP
   const commandsWithPlugins = useMergedCommands(localCommands, pluginCommands as Command[]);
   const mergedCommands = useMergedCommands(commandsWithPlugins, mcp.commands as Command[]);
-  // Include plugin commands in renderMergedCommands so they appear in slash
-  // command autocomplete. Memoize the concat to avoid creating new arrays on
-  // every render, which would bust the useMemo cache in useMergedCommands.
-  const mcpAndPluginCommands = useMemo(
-    () => mcp.commands.concat(pluginCommands) as Command[],
-    [mcp.commands, pluginCommands],
-  )
-  const renderMergedCommands = useMergedCommands(localCommands, mcpAndPluginCommands);
+  // renderMergedCommands is used for slash command autocomplete and must include
+  // plugin commands so users can discover and invoke plugin skills via /.
+  const renderMergedCommands = mergedCommands;
   // Filter out all commands if disableSlashCommands is true
   const commands = useMemo(() => disableSlashCommands ? [] : mergedCommands, [disableSlashCommands, mergedCommands]);
   const renderCommands = useMemo(() => disableSlashCommands ? [] : renderMergedCommands, [disableSlashCommands, renderMergedCommands]);
