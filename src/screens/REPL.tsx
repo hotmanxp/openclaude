@@ -824,17 +824,29 @@ export function REPL({
   // Merge commands from local state, plugins, and MCP
   const commandsWithPlugins = useMergedCommands(localCommands, pluginCommands as Command[]);
   const mergedCommands = useMergedCommands(commandsWithPlugins, mcp.commands as Command[]);
-  // Include plugin commands in renderMergedCommands so they appear in slash
-  // command autocomplete. Memoize the concat to avoid creating new arrays on
-  // every render, which would bust the useMemo cache in useMergedCommands.
-  const mcpAndPluginCommands = useMemo(
-    () => mcp.commands.concat(pluginCommands) as Command[],
-    [mcp.commands, pluginCommands],
-  )
-  const renderMergedCommands = useMergedCommands(localCommands, mcpAndPluginCommands);
+  // Keep plugin commands out of render-time command props. Feeding the full
+  // execution set into PromptInput/Messages reintroduced the startup repaint
+  // freeze, while transcript rendering still round-trips plugin skills via the
+  // SkillTool's `skill` payload without needing plugin command objects here.
+  const renderMergedCommands = useMergedCommands(localCommands, mcp.commands as Command[]);
+  // Include plugin commands in autocomplete. Use a separate memoized result to
+  // avoid changing renderMergedCommands' deps which would trigger extra renders.
+  const autocompleteCommands = useMemo(() => {
+    const pluginNames = new Set(
+      pluginCommands.map(c => c.name),
+    )
+    return [
+      ...renderMergedCommands,
+      ...mergedCommands.filter(c => pluginNames.has(c.name)),
+    ]
+  }, [renderMergedCommands, mergedCommands, pluginCommands])
   // Filter out all commands if disableSlashCommands is true
   const commands = useMemo(() => disableSlashCommands ? [] : mergedCommands, [disableSlashCommands, mergedCommands]);
-  const renderCommands = useMemo(() => disableSlashCommands ? [] : renderMergedCommands, [disableSlashCommands, renderMergedCommands]);
+  // Use autocompleteCommands for renderCommands so plugin skills appear in autocomplete
+  const renderCommands = useMemo(
+    () => disableSlashCommands ? [] : autocompleteCommands,
+    [disableSlashCommands, autocompleteCommands],
+  );
   useIdeLogging(isRemoteSession ? EMPTY_MCP_CLIENTS : mcp.clients);
   useIdeSelection(isRemoteSession ? EMPTY_MCP_CLIENTS : mcp.clients, setIDESelection);
   const [streamMode, setStreamMode] = useState<SpinnerMode>('responding');
