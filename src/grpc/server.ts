@@ -8,7 +8,6 @@ import { getTools } from '../tools.js'
 import { getDefaultAppState } from '../state/AppStateStore.js'
 import { AppState } from '../state/AppState.js'
 import { FileStateCache, READ_FILE_STATE_CACHE_SIZE } from '../utils/fileStateCache.js'
-import { getBuiltInAgents } from '../tools/AgentTool/builtInAgents.js'
 
 const PROTO_PATH = path.resolve(import.meta.dirname, '../proto/opencc.proto')
 
@@ -92,11 +91,7 @@ export class GrpcServer {
             tools: getTools(appState.toolPermissionContext), // Gets all available tools
             commands: [], // Slash commands
             mcpClients: [],
-            // Register OpenClaude's built-in agents (general-purpose,
-            // statusline-setup, optional code-guide). Without this the Agent
-            // tool throws "Agent type 'general-purpose' not found" the moment
-            // the model tries to spawn a subagent for investigation.
-            agents: getBuiltInAgents(),
+            agents: [],
             ...(previousMessages.length > 0 ? { initialMessages: previousMessages } : {}),
             includePartialMessages: true,
             canUseTool: async (tool, input, context, assistantMsg, toolUseID) => {
