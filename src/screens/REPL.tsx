@@ -824,13 +824,11 @@ export function REPL({
   // Merge commands from local state, plugins, and MCP
   const commandsWithPlugins = useMergedCommands(localCommands, pluginCommands as Command[]);
   const mergedCommands = useMergedCommands(commandsWithPlugins, mcp.commands as Command[]);
-  // Plugin skills need to be in renderMergedCommands so they appear in the
-  // slash command autocomplete list. Without them, users can't discover or invoke
-  // plugin skills via `/`.
-  const renderMergedCommands = useMergedCommands(
-    localCommands,
-    mcp.commands.concat(pluginCommands) as Command[],
-  );
+  // Keep plugin commands out of render-time command props. Feeding the full
+  // execution set into PromptInput/Messages reintroduced the startup repaint
+  // freeze, while transcript rendering still round-trips plugin skills via the
+  // SkillTool's `skill` payload without needing plugin command objects here.
+  const renderMergedCommands = useMergedCommands(localCommands, mcp.commands as Command[]);
   // Filter out all commands if disableSlashCommands is true
   const commands = useMemo(() => disableSlashCommands ? [] : mergedCommands, [disableSlashCommands, mergedCommands]);
   const renderCommands = useMemo(() => disableSlashCommands ? [] : renderMergedCommands, [disableSlashCommands, renderMergedCommands]);
