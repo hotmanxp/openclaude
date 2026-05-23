@@ -37,8 +37,6 @@ const featureFlags: Record<string, boolean> = {
   MCP_SKILLS: false,              // Dynamic MCP skill discovery (src/skills/mcpSkills.ts not mirrored; enabling this causes "fetchMcpSkillsForClient is not a function" when MCP servers with resources connect — see #856)
 
   // ── Enabled: new activations ────────────────────────────────────────
-  // [EXTRACT_MEMORIES] Still uses feature() calls in src/query/stopHooks.ts, src/utils/backgroundHousekeeping.ts, src/cli/print.ts
-  EXTRACT_MEMORIES: true,
   // [CONVERSATION_ARC] Disabled
   CONVERSATION_ARC: false,
 }
@@ -447,6 +445,8 @@ ${exports}
     '@opentelemetry/semantic-conventions',
     // Native image processing
     'sharp',
+    // MCP SDK dependency — bundled inside @modelcontextprotocol/sdk, must not be stubbed
+    'eventsource-parser',
     // Cloud provider SDKs
     '@aws-sdk/client-bedrock',
     '@aws-sdk/client-bedrock-runtime',
