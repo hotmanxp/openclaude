@@ -1,5 +1,5 @@
 // @ts-nocheck
-import figures from 'figures';
+import figures from '../../utils/figures-safe.js';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { Box, color, Link, Text, useTheme } from '../../ink.js';

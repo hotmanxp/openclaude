@@ -1,5 +1,5 @@
 // @ts-nocheck
-import figures from 'figures';
+import figures from '../../utils/figures-safe.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import type { CommandResultDisplay } from '../../commands.js';

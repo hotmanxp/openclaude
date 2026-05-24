@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
-import figures from 'figures';
+import figures from '../../utils/figures-safe.js';
 import React, { useCallback, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { Box, color, Link, Text, useTheme } from '../../ink.js';
@@ -458,6 +458,7 @@ export function MCPListPanel(t0) {
   } else {
     t29 = $[70];
   }
+  // DEBUG: progressively disable components to find ghost character source
   let t30;
   if ($[71] !== handleCancel || $[72] !== t21 || $[73] !== t29) {
     t30 = <Dialog title="Manage MCP servers" subtitle={t21} onCancel={handleCancel} hideInputGuide={true}>{t29}</Dialog>;
