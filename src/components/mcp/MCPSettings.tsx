@@ -84,10 +84,12 @@ export function MCPSettings(t0) {
             const hasToolsAndConnected = client_0.type === "connected" && filterToolsByServer(mcp.tools, client_0.name).length > 0;
             isAuthenticated = Boolean(tokens) || hasSessionAuth || hasToolsAndConnected;
           }
+          const toolsCount = filterToolsByServer(mcp.tools, client_0.name).length;
           const baseInfo = {
             name: client_0.name,
             client: client_0,
-            scope
+            scope,
+            toolsCount
           };
           if (isClaudeAIProxy) {
             return {

@@ -13,6 +13,7 @@ GEMINI.md
 CLAUDE.md
 .DS_Store
 package-lock.json
-/.claude
+/.claude/*.json
+/.claude/wiki
 coverage/
 agent.log

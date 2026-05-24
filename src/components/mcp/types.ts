@@ -7,6 +7,7 @@ export type StdioServerInfo = {
   scope: ConfigScope
   transport: 'stdio'
   config: McpStdioServerConfig
+  toolsCount: number
 }
 
 export type SSEServerInfo = {
@@ -16,6 +17,7 @@ export type SSEServerInfo = {
   transport: 'sse'
   isAuthenticated: boolean | undefined
   config: McpSSEServerConfig
+  toolsCount: number
 }
 
 export type HTTPServerInfo = {
@@ -25,6 +27,7 @@ export type HTTPServerInfo = {
   transport: 'http'
   isAuthenticated: boolean | undefined
   config: McpHTTPServerConfig
+  toolsCount: number
 }
 
 export type ClaudeAIServerInfo = {
@@ -34,6 +37,7 @@ export type ClaudeAIServerInfo = {
   transport: 'claudeai-proxy'
   isAuthenticated: boolean | undefined
   config: McpClaudeAIProxyServerConfig
+  toolsCount: number
 }
 
 export type ServerInfo = StdioServerInfo | SSEServerInfo | HTTPServerInfo | ClaudeAIServerInfo

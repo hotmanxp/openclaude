@@ -378,11 +378,13 @@ function waitForCallback(
         return
       }
 
+      // result.type is 'code' — shouldCompleteXaaIdpCallback already filtered out
+      // state_mismatch, and result.type === 'error' returned early above
       res.writeHead(200, { 'Content-Type': 'text/html' })
       res.end(
         '<html><body><h3>IdP login complete — you can close this window.</h3></body></html>',
       )
-      resolveOnce(result.code)
+      resolveOnce((result as { type: 'code'; code: string }).code)
     })
 
     server.on('error', (err: NodeJS.ErrnoException) => {

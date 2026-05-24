@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createSyntheticOutputTool } from './SyntheticOutputTool.js'
+import type { AssistantMessage } from '../../types/message.js'
+import type { PermissionDecision } from '../../types/permissions.js'
 
 // Regression for #1256 — `--json-schema` failed when the user passed a
 // top-level array (or any non-object root) because the Anthropic tool_use
@@ -25,6 +27,10 @@ const OBJECT_SCHEMA = {
   additionalProperties: false,
 } as const
 
+const mockCanUseTool = async (): Promise<PermissionDecision> => ({
+  behavior: 'allow',
+})
+
 describe('createSyntheticOutputTool (#1256 root schema wrapping)', () => {
   test('top-level array root: wraps inputJSONSchema as object envelope', () => {
     const result = createSyntheticOutputTool({ ...ARRAY_OF_OBJECTS_SCHEMA })
@@ -44,9 +50,13 @@ describe('createSyntheticOutputTool (#1256 root schema wrapping)', () => {
     const payload = [{ name: 'one' }, { name: 'two' }]
     const callResult = await result.tool.call(
       { result: payload },
-      undefined as never,
+      {} as never,
+      mockCanUseTool,
+      {} as AssistantMessage,
     )
-    expect(callResult.structured_output).toEqual(payload)
+    expect(
+      (callResult as unknown as { structured_output: unknown }).structured_output,
+    ).toEqual(payload)
   })
 
   test('top-level string root: same wrap-and-unwrap behaviour', async () => {
@@ -57,9 +67,13 @@ describe('createSyntheticOutputTool (#1256 root schema wrapping)', () => {
 
     const callResult = await result.tool.call(
       { result: 'hello' },
-      undefined as never,
+      {} as never,
+      mockCanUseTool,
+      {} as AssistantMessage,
     )
-    expect(callResult.structured_output).toBe('hello')
+    expect(
+      (callResult as unknown as { structured_output: unknown }).structured_output,
+    ).toBe('hello')
   })
 
   test('object root: passes through untouched', async () => {
@@ -69,16 +83,25 @@ describe('createSyntheticOutputTool (#1256 root schema wrapping)', () => {
 
     const callResult = await result.tool.call(
       { count: 5 },
-      undefined as never,
+      {} as never,
+      mockCanUseTool,
+      {} as AssistantMessage,
     )
-    expect(callResult.structured_output).toEqual({ count: 5 })
+    expect(
+      (callResult as unknown as { structured_output: unknown }).structured_output,
+    ).toEqual({ count: 5 })
   })
 
   test('wrapped tool rejects payloads that violate the inner schema', async () => {
     const result = createSyntheticOutputTool({ ...ARRAY_OF_OBJECTS_SCHEMA })
     if (!('tool' in result)) throw new Error(`expected tool: ${result.error}`)
     await expect(
-      result.tool.call({ result: [{ wrong: 'shape' }] }, undefined as never),
+      result.tool.call(
+        { result: [{ wrong: 'shape' }] },
+        {} as never,
+        mockCanUseTool,
+        {} as AssistantMessage,
+      ),
     ).rejects.toThrow(/schema/)
   })
 })
