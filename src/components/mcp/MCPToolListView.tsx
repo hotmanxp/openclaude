@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
 import { Text } from '../../ink.js';
@@ -62,7 +62,7 @@ export function MCPToolListView(t0) {
         const isReadOnly = tool.isReadOnly?.({}) ?? false;
         const isDestructive = tool.isDestructive?.({}) ?? false;
         const isOpenWorld = tool.isOpenWorld?.({}) ?? false;
-        const annotations = [];
+        const annotations: string[] = [];
         if (isReadOnly) {
           annotations.push("read-only");
         }
