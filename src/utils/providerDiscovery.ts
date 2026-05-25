@@ -1,6 +1,9 @@
 import type { OllamaModelDescriptor } from './providerRecommendation.ts'
 import { DEFAULT_OPENAI_BASE_URL } from '../services/api/providerConfig.js'
-import { isZaiBaseUrl } from './zaiProvider.js'
+import {
+  getRouteLabel,
+  resolveRouteIdFromBaseUrl,
+} from '../integrations/routeMetadata.js'
 
 export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
 export const DEFAULT_ATOMIC_CHAT_BASE_URL = 'http://127.0.0.1:1337'
@@ -105,6 +108,16 @@ async function fetchOllamaModelsProbe(
   }
 }
 
+export async function probeOllamaModelCatalog(options?: {
+  baseUrl?: string
+  timeoutMs?: number
+}): Promise<{
+  reachable: boolean
+  models: OllamaModelDescriptor[]
+}> {
+  return fetchOllamaModelsProbe(options?.baseUrl, options?.timeoutMs ?? 5000)
+}
+
 export function getOllamaApiBaseUrl(baseUrl?: string): string {
   const parsed = new URL(
     baseUrl || process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL,
@@ -190,6 +203,43 @@ export function getLocalOpenAICompatibleProviderLabel(baseUrl?: string): string 
     ) {
       return 'text-generation-webui'
     }
+    // Check for NVIDIA NIM
+    if (host.includes('nvidia') || haystack.includes('nvidia') || host.includes('integrate.api.nvidia')) {
+      return 'NVIDIA NIM'
+    }
+    // Check for MiniMax (both api.minimax.io and api.minimax.chat)
+    if (host.includes('minimax') || haystack.includes('minimax')) {
+      return 'MiniMax'
+    }
+    // Check for Xiaomi MiMo
+    if (
+      host.includes('xiaomimimo') ||
+      haystack.includes('xiaomimimo') ||
+      host.includes('mimo-v2') ||
+      haystack.includes('mimo-v2')
+    ) {
+      return 'Xiaomi MiMo'
+    }
+    // Kimi Code subscription API
+    if (hostname === 'api.kimi.com' && path.includes('/coding')) {
+      return 'Moonshot AI - Kimi Code'
+    }
+    // Check for Bankr LLM gateway
+    if (host.includes('bankr') || haystack.includes('bankr')) {
+      return 'Bankr'
+    }
+    const routeId = resolveRouteIdFromBaseUrl(parsed.href)
+    if (routeId && routeId !== 'custom' && routeId !== 'openai') {
+      return getRouteLabel(routeId) ?? routeId
+    }
+    // Moonshot AI direct API
+    if (
+      host.includes('moonshot') ||
+      haystack.includes('moonshot') ||
+      haystack.includes('kimi')
+    ) {
+      return 'Moonshot AI - API'
+    }
   } catch {
     // Fall back to the generic label when the base URL is malformed.
   }
@@ -212,18 +262,25 @@ export async function listOllamaModels(
 export async function listOpenAICompatibleModels(options?: {
   baseUrl?: string
   apiKey?: string
+  headers?: Record<string, string>
 }): Promise<string[] | null> {
   const { signal, clear } = withTimeoutSignal(5000)
   try {
+    const baseUrl = getOpenAICompatibleModelsBaseUrl(options?.baseUrl)
+    const isBankr = baseUrl.toLowerCase().includes('bankr')
+    const headers = {
+      ...(options?.headers ?? {}),
+      ...(options?.apiKey
+        ? isBankr
+          ? { 'X-API-Key': options.apiKey }
+          : { Authorization: `Bearer ${options.apiKey}` }
+        : {}),
+    }
     const response = await fetch(
-      `${getOpenAICompatibleModelsBaseUrl(options?.baseUrl)}/models`,
+      `${baseUrl}/models`,
       {
         method: 'GET',
-        headers: options?.apiKey
-          ? {
-              Authorization: `Bearer ${options.apiKey}`,
-            }
-          : undefined,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
         signal,
       },
     )
@@ -242,6 +299,44 @@ export async function listOpenAICompatibleModels(options?: {
           .map(model => model.id!),
       ),
     )
+  } catch {
+    return null
+  } finally {
+    clear()
+  }
+}
+
+export async function fetchOpenAICompatibleModelsRaw(options?: {
+  baseUrl?: string
+  apiKey?: string
+  headers?: Record<string, string>
+}): Promise<Record<string, unknown>[] | null> {
+  const { signal, clear } = withTimeoutSignal(5000)
+  try {
+    const baseUrl = getOpenAICompatibleModelsBaseUrl(options?.baseUrl)
+    const isBankr = baseUrl.toLowerCase().includes('bankr')
+    const headers = {
+      ...(options?.headers ?? {}),
+      ...(options?.apiKey
+        ? isBankr
+          ? { 'X-API-Key': options.apiKey }
+          : { Authorization: `Bearer ${options.apiKey}` }
+        : {}),
+    }
+    const response = await fetch(`${baseUrl}/models`, {
+      method: 'GET',
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      signal,
+    })
+    if (!response.ok) {
+      return null
+    }
+
+    const data = (await response.json()) as {
+      data?: Array<Record<string, unknown>>
+    }
+
+    return data.data ?? null
   } catch {
     return null
   } finally {
@@ -289,6 +384,24 @@ export async function listAtomicChatModels(
   } finally {
     clear()
   }
+}
+
+export type AtomicChatReadiness =
+  | { state: 'unreachable' }
+  | { state: 'no_models' }
+  | { state: 'ready'; models: string[] }
+
+export async function probeAtomicChatReadiness(options?: {
+  baseUrl?: string
+}): Promise<AtomicChatReadiness> {
+  if (!(await hasLocalAtomicChat(options?.baseUrl))) {
+    return { state: 'unreachable' }
+  }
+  const models = await listAtomicChatModels(options?.baseUrl)
+  if (models.length === 0) {
+    return { state: 'no_models' }
+  }
+  return { state: 'ready', models }
 }
 
 export async function benchmarkOllamaModel(
