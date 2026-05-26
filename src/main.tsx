@@ -2042,6 +2042,8 @@ async function run(): Promise<CommanderCommand> {
     // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
     const userSpecifiedModel = options.model === 'default' ? getDefaultMainLoopModel() : options.model;
     const userSpecifiedFallbackModel = fallbackModel === 'default' ? getDefaultMainLoopModel() : fallbackModel;
+    const hasExplicitModelOverride = userSpecifiedModel !== undefined;
+    const baseMainLoopModel = userSpecifiedModel ?? getUserSpecifiedModelSetting() ?? null;
 
     // Reuse preSetupCwd unless setup() chdir'd (worktreeEnabled). Saves a
     // getCwd() syscall in the common path.
@@ -3100,6 +3102,8 @@ async function run(): Promise<CommanderCommand> {
       mcpClients,
       autoConnectIdeFlag: ide,
       mainThreadAgentDefinition,
+      baseMainLoopModel,
+      hasExplicitModelOverride,
       disableSlashCommands,
       dynamicMcpConfig,
       strictMcpConfig,
