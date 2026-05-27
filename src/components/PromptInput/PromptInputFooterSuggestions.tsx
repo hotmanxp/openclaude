@@ -25,7 +25,7 @@ export type SuggestionType =
   | 'slack-channel'
   | 'none'
 
-export const OVERLAY_MAX_ITEMS = 5
+export const OVERLAY_MAX_ITEMS = 25
 
 const SELECTED_PREFIX = `${figures.pointer} `
 const UNSELECTED_PREFIX = '  '

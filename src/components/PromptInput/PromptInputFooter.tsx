@@ -129,7 +129,7 @@ function PromptInputFooter({
   useSetPromptOverlay(overlayData);
   if (suggestions.length && !isFullscreen) {
     return <Box paddingX={2} paddingY={0}>
-        <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} />
+        <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} overlay={true} />
       </Box>;
   }
   if (helpOpen) {
