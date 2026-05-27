@@ -144,7 +144,7 @@ Environment variables for other providers (`CLAUDE_CODE_USE_GITHUB`, `CLAUDE_COD
 
 ## Important Notes
 
-- **269 deprecated functions** across 96 files — grep for `_DEPRECATED` before modifying core files
+- **~230 deprecated functions** across the codebase — grep for `_DEPRECATED` before modifying core files
 - **Build output** goes to `dist/cli.mjs` — never edit this file directly
 - **CI pipeline**: smoke → test:provider → test:provider-recommendation (no typecheck in CI)
 
