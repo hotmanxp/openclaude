@@ -8,6 +8,7 @@ import {
   saveGlobalConfig,
   type ProviderProfile,
 } from './config.js'
+import { getSettings_DEPRECATED } from './settings/settings.js'
 import type { ProfileEnv } from './providerProfile.js'
 import { buildOpenAIProfileEnv } from './providerProfile.js'
 import type { ModelOption } from './model/modelOptions.js'
@@ -162,29 +163,42 @@ export function getProviderPresetDefaults(
         apiKey: process.env.ANTHROPIC_API_KEY ?? '',
         requiresApiKey: true,
       }
-    case 'openai':
+    case 'openai': {
+      // Also check settings.json env as fallback
+      const settingsEnv = getSettings_DEPRECATED()?.env
+      const settingsOpenAIUrl = settingsEnv?.OPENAI_BASE_URL
       return {
         provider: 'openai',
         name: 'OpenAI',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-5.4',
+        baseUrl:
+          process.env.OPENAI_BASE_URL ??
+          settingsOpenAIUrl ??
+          'https://api.openai.com/v1',
+        model: process.env.OPENAI_MODEL ?? 'gpt-5.4',
         apiKey: '',
         requiresApiKey: true,
       }
+    }
     case 'ollama':
     case 'custom':
-    default:
+    default: {
+      // Also check settings.json env as fallback (covers cases where env vars are
+      // not set in shell but configured in settings.json)
+      const settingsEnv = getSettings_DEPRECATED()?.env
+      const settingsOpenAIUrl = settingsEnv?.OPENAI_BASE_URL
       return {
         provider: 'openai',
         name: preset === 'ollama' ? 'Ollama' : 'Custom OpenAI-compatible',
         baseUrl:
           process.env.OPENAI_BASE_URL ??
+          settingsOpenAIUrl ??
           process.env.OPENAI_API_BASE ??
           DEFAULT_OLLAMA_BASE_URL,
         model: process.env.OPENAI_MODEL ?? DEFAULT_OLLAMA_MODEL,
         apiKey: process.env.OPENAI_API_KEY ?? '',
         requiresApiKey: false,
       }
+    }
   }
 }
 
@@ -369,7 +383,8 @@ export function clearProviderProfileEnvFromProcessEnv(
 }
 
 export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void {
-  clearProviderProfileEnvFromProcessEnv()
+  // 已注释：切换 provider 时不清除其它 provider 的环境变量
+  // clearProviderProfileEnvFromProcessEnv()
   process.env[PROFILE_ENV_APPLIED_FLAG] = '1'
   process.env[PROFILE_ENV_APPLIED_ID] = profile.id
 
@@ -420,9 +435,8 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
 
   if (profile.apiKey) {
     process.env.OPENAI_API_KEY = profile.apiKey
-  } else {
-    delete process.env.OPENAI_API_KEY
   }
+  // 不要删除 apiKey：如果 profile 没有 apiKey，保留当前环境的 apiKey
 }
 
 export function applyActiveProviderProfileFromConfig(
@@ -451,7 +465,21 @@ export function applyActiveProviderProfileFromConfig(
     // intent — respecting it would skip the saved profile and fall through
     // to hardcoded provider defaults, which surfaces as "my saved provider
     // isn't being picked up at startup".
-    if (!isCurrentEnvProfileManaged) {
+    // If the profile has an apiKey but the current env doesn't, we should still
+    // apply the profile's apiKey even if shell/settings has a "complete selection".
+    // But if the env already has the apiKey, we skip to preserve it (don't override with empty profile apiKey).
+    const profileHasApiKey = Boolean(activeProfile.apiKey)
+    const envHasApiKey = Boolean(
+      trimOrUndefined(processEnv.OPENAI_API_KEY) ||
+        trimOrUndefined(processEnv.ANTHROPIC_API_KEY),
+    )
+    // Skip profile application only if:
+    // - env is not managed by this profile AND
+    // - profile doesn't have apiKey that env is missing
+    if (
+      !isCurrentEnvProfileManaged &&
+      !(profileHasApiKey && !envHasApiKey)
+    ) {
       return undefined
     }
 

@@ -32,8 +32,6 @@ export default defineVendor({
     },
     credentialEnvVars: ['OPENAI_API_KEY'],
     allowLocalBaseUrlWithoutCredential: true,
-    missingCredentialMessage:
-      'OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.',
     invalidCredentialValues: [
       {
         envVar: 'OPENAI_API_KEY',

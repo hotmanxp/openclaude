@@ -1,5 +1,3 @@
-import { isLocalProviderUrl } from '../services/api/providerConfig.js'
-
 function isEnvTruthy(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
@@ -17,10 +15,6 @@ export async function getProviderValidationError(
 
   if (env.OPENAI_API_KEY === 'SUA_CHAVE') {
     return 'Invalid OPENAI_API_KEY: placeholder value SUA_CHAVE detected. Set a real key or unset for local providers.'
-  }
-
-  if (!env.OPENAI_API_KEY && !isLocalProviderUrl(env.OPENAI_BASE_URL)) {
-    return 'OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.'
   }
 
   return null
