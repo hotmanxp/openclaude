@@ -1,4 +1,3 @@
-import figures from 'figures'
 import { memo, type ReactNode } from 'react'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
@@ -27,9 +26,9 @@ export type SuggestionType =
 
 export const OVERLAY_MAX_ITEMS = 25
 
-const SELECTED_PREFIX = `${figures.pointer} `
-const UNSELECTED_PREFIX = '  '
-const PREFIX_WIDTH = stringWidth(SELECTED_PREFIX)
+const SELECTED_PREFIX = ''
+const UNSELECTED_PREFIX = ''
+const PREFIX_WIDTH = 0
 
 function getIcon(itemId: string): string {
   if (itemId.startsWith('file-')) return '+'
