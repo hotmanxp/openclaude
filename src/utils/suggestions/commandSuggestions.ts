@@ -78,6 +78,10 @@ function getCommandFuse(commands: Command[]): Fuse<CommandSearchItem> {
         weight: 2, // Same high priority for aliases
       },
       {
+        name: 'pluginNameKey',
+        weight: 1.5, // Medium priority for plugin names
+      },
+      {
         name: 'descriptionKey',
         weight: 0.5, // Lower priority for descriptions
       },
