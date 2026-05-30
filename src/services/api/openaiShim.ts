@@ -1703,6 +1703,11 @@ class OpenAIShimMessages {
       httpResponse = response
 
       if (params.stream) {
+        // _doOpenAIRequest already returns OpenAIShimStream for streaming (sdkStreamToAnthropic applied)
+        if (response instanceof OpenAIShimStream) {
+          return response
+        }
+        // Fallback: wrap with openaiStreamToAnthropic (for non-SDK fetch path)
         return new OpenAIShimStream(
           openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
         )
@@ -1728,9 +1733,11 @@ class OpenAIShimMessages {
           const data = await promise
           return {
             data,
-            response: httpResponse ?? new Response(),
+            response: httpResponse instanceof Response ? httpResponse : new Response(),
             request_id:
-              httpResponse?.headers.get('x-request-id') ?? makeMessageId(),
+              httpResponse instanceof Response
+                ? httpResponse.headers?.get('x-request-id') ?? makeMessageId()
+                : makeMessageId(),
           }
         }
 
