@@ -1411,31 +1411,91 @@ async function* sdkStreamToAnthropic(
           }
         }
 
-        // Text content
-        const content = delta.content as string | null | undefined
-        if (content != null && content !== '') {
-          if (hasEmittedThinkingStart && !hasClosedThinking) {
-            yield { type: 'content_block_stop', index: contentBlockIndex }
-            contentBlockIndex++
-            hasClosedThinking = true
-          }
-          if (!hasEmittedContentStart) {
-            yield {
-              type: 'content_block_start',
-              index: contentBlockIndex,
-              content_block: { type: 'text', text: '' },
+        // Text content - handle both string and content blocks array formats
+        const content = delta.content
+        if (content != null) {
+          // MiniMax may send content as an array of content blocks
+          if (Array.isArray(content)) {
+            for (const block of content as Array<Record<string, unknown>>) {
+              const blockType = block.type as string
+              if (blockType === 'text') {
+                const text = block.text as string | undefined
+                if (text) {
+                  if (hasEmittedThinkingStart && !hasClosedThinking) {
+                    yield { type: 'content_block_stop', index: contentBlockIndex }
+                    contentBlockIndex++
+                    hasClosedThinking = true
+                  }
+                  if (!hasEmittedContentStart) {
+                    yield {
+                      type: 'content_block_start',
+                      index: contentBlockIndex,
+                      content_block: { type: 'text', text: '' },
+                    }
+                    hasEmittedContentStart = true
+                  }
+                  const visible = thinkFilter.feed(text)
+                  if (visible) {
+                    yield {
+                      type: 'content_block_delta',
+                      index: contentBlockIndex,
+                      delta: { type: 'text_delta', text: visible },
+                    }
+                  }
+                  processStreamChunk(streamState, text)
+                }
+              } else if (blockType === 'tool_use') {
+                // Handle tool use blocks embedded in content array
+                const toolBlockIndex = contentBlockIndex
+                yield {
+                  type: 'content_block_start',
+                  index: toolBlockIndex,
+                  content_block: {
+                    type: 'tool_use',
+                    id: block.id as string,
+                    name: block.name as string,
+                    input: {},
+                  },
+                }
+                contentBlockIndex++
+
+                if (block.input !== undefined) {
+                  yield {
+                    type: 'content_block_delta',
+                    index: toolBlockIndex,
+                    delta: {
+                      type: 'input_json_delta',
+                      partial_json: JSON.stringify(block.input),
+                    },
+                  }
+                }
+              }
             }
-            hasEmittedContentStart = true
-          }
-          const visible = thinkFilter.feed(content)
-          if (visible) {
-            yield {
-              type: 'content_block_delta',
-              index: contentBlockIndex,
-              delta: { type: 'text_delta', text: visible },
+          } else if (typeof content === 'string' && content !== '') {
+            // Standard string content
+            if (hasEmittedThinkingStart && !hasClosedThinking) {
+              yield { type: 'content_block_stop', index: contentBlockIndex }
+              contentBlockIndex++
+              hasClosedThinking = true
             }
+            if (!hasEmittedContentStart) {
+              yield {
+                type: 'content_block_start',
+                index: contentBlockIndex,
+                content_block: { type: 'text', text: '' },
+              }
+              hasEmittedContentStart = true
+            }
+            const visible = thinkFilter.feed(content)
+            if (visible) {
+              yield {
+                type: 'content_block_delta',
+                index: contentBlockIndex,
+                delta: { type: 'text_delta', text: visible },
+              }
+            }
+            processStreamChunk(streamState, content)
           }
-          processStreamChunk(streamState, content)
         }
 
         // Tool calls
