@@ -446,11 +446,12 @@ export function generateCommandSuggestions(
   const withMeta = searchResults.map(r => {
     const name = r.item.commandName.toLowerCase()
     const aliases = r.item.aliasKey?.map(alias => alias.toLowerCase()) ?? []
+    const pluginNames = r.item.pluginNameKey?.map(n => n.toLowerCase()) ?? []
     const usage =
       r.item.command.type === 'prompt'
         ? getSkillUsageScore(getCommandName(r.item.command))
         : 0
-    return { r, name, aliases, usage }
+    return { r, name, aliases, pluginNames, usage }
   })
 
   const sortedResults = withMeta.sort((a, b) => {
@@ -493,6 +494,18 @@ export function generateCommandSuggestions(
       aPrefixAlias.length !== bPrefixAlias.length
     ) {
       return aPrefixAlias.length - bPrefixAlias.length
+    }
+
+    // Check for prefix plugin name match (new)
+    const aPrefixPlugin = a.pluginNames.some(name => name.startsWith(query))
+    const bPrefixPlugin = b.pluginNames.some(name => name.startsWith(query))
+    if (aPrefixPlugin && !bPrefixPlugin) return -1
+    if (bPrefixPlugin && !aPrefixPlugin) return 1
+    // Among prefix plugin matches, prefer shorter plugin names
+    if (aPrefixPlugin && bPrefixPlugin) {
+      const aPluginLen = Math.min(...a.pluginNames.filter(n => n.startsWith(query)).map(n => n.length))
+      const bPluginLen = Math.min(...b.pluginNames.filter(n => n.startsWith(query)).map(n => n.length))
+      if (aPluginLen !== bPluginLen) return aPluginLen - bPluginLen
     }
 
     // For similar match types, use Fuse score with usage as tiebreaker
