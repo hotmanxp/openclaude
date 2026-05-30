@@ -1380,7 +1380,13 @@ async function* sdkStreamToAnthropic(
   }
 
   try {
+    let firstChunkLogged = false
     for await (const chunk of sdkStream) {
+      // Debug: log first chunk
+      if (!firstChunkLogged) {
+        logForDebugging(`[sdkStreamToAnthropic] First chunk: ${JSON.stringify(chunk).slice(0, 500)}`)
+        firstChunkLogged = true
+      }
       // Check abort
       if (signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError')
