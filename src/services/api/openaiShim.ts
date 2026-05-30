@@ -21,6 +21,8 @@
  */
 
 import { APIError } from '@anthropic-ai/sdk'
+import { createParser } from 'eventsource-parser'
+import { jsonrepair } from 'jsonrepair'
 import { logForDebugging } from '../../utils/debug.js'
 import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
 import {
@@ -818,27 +820,20 @@ function convertChunkUsage(
   }
 }
 
-const JSON_REPAIR_SUFFIXES = [
-  '}', '"}', ']}', '"]}', '}}', '"}}', ']}}', '"]}}', '"]}]}', '}]}'
-]
-
 function repairPossiblyTruncatedObjectJson(raw: string): string | null {
   try {
     const parsed = JSON.parse(raw)
+    // Already valid JSON - return as-is
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? raw
       : null
   } catch {
-    for (const combo of JSON_REPAIR_SUFFIXES) {
-      try {
-        const repaired = raw + combo
-        const parsed = JSON.parse(repaired)
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return repaired
-        }
-      } catch {}
+    // Use jsonrepair to fix truncated JSON
+    try {
+      return jsonrepair(raw)
+    } catch {
+      return null
     }
-    return null
   }
 }
 
@@ -896,7 +891,6 @@ async function* openaiStreamToAnthropic(
   if (!reader) return
 
   const decoder = new TextDecoder()
-  let buffer = ''
   const STREAM_IDLE_TIMEOUT_MS = 120_000 // 2 minutes without data = connection likely dead
   let lastDataTime = Date.now()
 
@@ -943,6 +937,29 @@ async function* openaiStreamToAnthropic(
     })
   }
 
+  // Queue to bridge eventsource-parser callback to async generator
+  const parsedEventQueue: Array<{ data: string; event?: string }> = []
+
+  // Create eventsource-parser for proper SSE parsing
+  // eventsource-parser handles line buffering, multi-line data, and event types correctly
+  const parser = createParser({
+    onEvent: (sseEvent) => {
+      // eventsource-parser emits an event when data is complete (after empty line)
+      // We queue it for processing in the main loop
+      parsedEventQueue.push({ data: sseEvent.data, event: sseEvent.event })
+    },
+    onError: (error) => {
+      // Log parse errors but don't throw - let the main loop handle stream errors
+      console.error('SSE parse error:', error)
+    },
+    onRetry: (retryCount) => {
+      // Handle retry hint if provider sends one
+    },
+    onComment: (comment) => {
+      // Comments start with ':' - we can ignore them
+    },
+  })
+
   const closeActiveContentBlock = async function* () {
     if (!hasEmittedContentStart) return
 
@@ -965,54 +982,50 @@ async function* openaiStreamToAnthropic(
 
   try {
     while (true) {
-      const { done, value } = await readWithTimeout()
-      if (done) break
+      // Feed any pending parsed events first
+      while (parsedEventQueue.length > 0) {
+        const sseEvent = parsedEventQueue.shift()!
+        const data = sseEvent.data
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+        // Skip [DONE] sentinel
+        if (!data || data === '[DONE]') continue
 
-      for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed === 'data: [DONE]') continue
-      if (!trimmed.startsWith('data: ')) continue
-
-      let chunk: OpenAIStreamChunk
-      try {
-        chunk = JSON.parse(trimmed.slice(6))
-      } catch {
-        continue
-      }
-
-      // In-stream error event. Used by OpenAI when a stream fails after
-      // headers have been sent, and by intermediaries (e.g. gateways) that
-      // want to signal a structured failure without dropping the TCP
-      // connection. Surface it as an APIError so callers see a clean
-      // message instead of "stream ended without [DONE]".
-      const inStreamError = (chunk as unknown as { error?: { message?: string; type?: string; code?: string } }).error
-      if (inStreamError && typeof inStreamError === 'object') {
-        const message =
-          typeof inStreamError.message === 'string'
-            ? inStreamError.message
-            : 'Provider returned an in-stream error'
-        const errorPayload = {
-          error: {
-            message,
-            type: inStreamError.type ?? 'api_error',
-            code: inStreamError.code ?? null,
-          },
+        let chunk: OpenAIStreamChunk
+        try {
+          chunk = JSON.parse(data)
+        } catch {
+          continue
         }
-        throw APIError.generate(
-          (response.status ?? 200) as number,
-          errorPayload,
-          message,
-          response.headers as unknown as Headers,
-        )
-      }
 
-      const chunkUsage = convertChunkUsage(chunk.usage)
+        // In-stream error event. Used by OpenAI when a stream fails after
+        // headers have been sent, and by intermediaries (e.g. gateways) that
+        // want to signal a structured failure without dropping the TCP
+        // connection. Surface it as an APIError so callers see a clean
+        // message instead of "stream ended without [DONE]".
+        const inStreamError = (chunk as unknown as { error?: { message?: string; type?: string; code?: string } }).error
+        if (inStreamError && typeof inStreamError === 'object') {
+          const message =
+            typeof inStreamError.message === 'string'
+              ? inStreamError.message
+              : 'Provider returned an in-stream error'
+          const errorPayload = {
+            error: {
+              message,
+              type: inStreamError.type ?? 'api_error',
+              code: inStreamError.code ?? null,
+            },
+          }
+          throw APIError.generate(
+            (response.status ?? 200) as number,
+            errorPayload,
+            message,
+            response.headers as unknown as Headers,
+          )
+        }
 
-      for (const choice of chunk.choices ?? []) {
+        const chunkUsage = convertChunkUsage(chunk.usage)
+
+        for (const choice of chunk.choices ?? []) {
         const delta = choice.delta
 
         // Reasoning models (e.g. GLM-5, DeepSeek) may stream chain-of-thought
@@ -1291,7 +1304,13 @@ async function* openaiStreamToAnthropic(
         hasEmittedFinalUsage = true
       }
     }
-    }
+
+    // Read from stream and feed to eventsource-parser
+    const { done, value } = await readWithTimeout()
+    if (done) break
+    const text = decoder.decode(value, { stream: true })
+    parser.feed(text)
+  }
   } finally {
     reader.releaseLock()
   }
