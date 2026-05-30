@@ -35,7 +35,7 @@ import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
-import knowledge from './commands/knowledge/index.js'
+// import knowledge from './commands/knowledge/index.js'
 import breakCache from './commands/break-cache/index.js'
 import cacheProbe from './commands/cache-probe/index.js'
 import mcp from './commands/mcp/index.js'
@@ -212,6 +212,8 @@ const usageReport: Command = {
 import oauthRefresh from './commands/oauth-refresh/index.js'
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import {
   type Command,
   getCommandName,
@@ -263,6 +265,27 @@ export const INTERNAL_ONLY_COMMANDS = [
   autofixPr,
 ].filter(Boolean)
 
+const codegraph = (cwd: string): Command => ({
+  type: 'prompt',
+  name: 'codegraph',
+  description: '使用 codegraph MCP 工具查询代码结构（符号、调用链、影响范围）',
+  source: 'builtin',
+  argumentHint: '<查询内容>',
+  whenToUse: '需要查询代码符号、调用链、影响范围时使用',
+  progressMessage: '查询中',
+  isHidden: false,
+  isEnabled: () => {
+    const dbPath = join(cwd, '.codegraph', 'codegraph.db')
+    return existsSync(dbPath)
+  },
+  getPromptForCommand(args) {
+    return [{
+      type: 'text',
+      text: `使用 codegraph MCP 工具（codegraph_context、codegraph_search、codegraph_explore、codegraph_files、codegraph_status 等）回答以下查询。\n\n直接查询，不要先用 grep/Read/Glob 组合。\n\n查询：${args || '(未提供查询内容)'}`,
+    }]
+  },
+})
+
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
@@ -297,7 +320,7 @@ const COMMANDS = memoize((): Command[] => [
   ide,
   init,
   keybindings,
-  knowledge,
+  // knowledge,
   lsp,
   installGitHubApp,
   installSlackApp,
@@ -484,6 +507,7 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
     ...pluginCommands,
     ...pluginSkills,
     ...COMMANDS(),
+    codegraph(cwd),
   ]
 })
 
