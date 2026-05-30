@@ -445,8 +445,6 @@ ${exports}
     '@opentelemetry/semantic-conventions',
     // Native image processing
     'sharp',
-    // MCP SDK dependency — bundled inside @modelcontextprotocol/sdk, must not be stubbed
-    'eventsource-parser',
     // Cloud provider SDKs
     '@aws-sdk/client-bedrock',
     '@aws-sdk/client-bedrock-runtime',

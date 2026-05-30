@@ -58,11 +58,11 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "eventsource-parser": "^3.0.8",
-    "jsonrepair": "^3.14.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "eventsource-parser": "^3.0.8",
+    "jsonrepair": "^3.14.0",
     "@alcalzone/ansi-tokenize": "0.3.0",
     "@anthropic-ai/sandbox-runtime": "0.0.46",
     "@anthropic-ai/sdk": "0.81.0",
