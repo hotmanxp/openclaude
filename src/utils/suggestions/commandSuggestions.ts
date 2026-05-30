@@ -17,6 +17,7 @@ type CommandSearchItem = {
   commandName: string
   command: Command
   aliasKey: string[] | undefined
+  pluginNameKey: string[] | undefined
 }
 
 // Cache the Fuse index keyed by the commands array identity. The commands
@@ -38,6 +39,11 @@ function getCommandFuse(commands: Command[]): Fuse<CommandSearchItem> {
       const commandName = getCommandName(cmd)
       const parts = commandName.split(SEPARATORS).filter(Boolean)
 
+      const pluginName =
+        cmd.type === 'prompt' && cmd.source === 'plugin'
+          ? cmd.pluginInfo?.pluginManifest.name
+          : undefined
+
       return {
         descriptionKey: (cmd.description ?? '')
           .split(' ')
@@ -47,6 +53,9 @@ function getCommandFuse(commands: Command[]): Fuse<CommandSearchItem> {
         commandName,
         command: cmd,
         aliasKey: cmd.aliases,
+        pluginNameKey: pluginName
+          ? pluginName.split(SEPARATORS).filter(Boolean)
+          : undefined,
       }
     })
 
