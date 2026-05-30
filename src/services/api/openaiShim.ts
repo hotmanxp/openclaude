@@ -1338,6 +1338,7 @@ async function* sdkStreamToAnthropic(
   let hasEmittedContentStart = false
   let hasEmittedThinkingStart = false
   let hasClosedThinking = false
+  let thinkingBlockIndex = 0
   const thinkFilter = createThinkTagFilter()
   let lastStopReason: 'tool_use' | 'max_tokens' | 'end_turn' | null = null
   let hasEmittedFinalUsage = false
@@ -1397,16 +1398,17 @@ async function* sdkStreamToAnthropic(
         const reasoningContent = delta.reasoning_content as string | null | undefined
         if (reasoningContent != null && reasoningContent !== '') {
           if (!hasEmittedThinkingStart) {
+            thinkingBlockIndex = contentBlockIndex
             yield {
               type: 'content_block_start',
-              index: contentBlockIndex,
+              index: thinkingBlockIndex,
               content_block: { type: 'thinking', thinking: '' },
             }
             hasEmittedThinkingStart = true
           }
           yield {
             type: 'content_block_delta',
-            index: contentBlockIndex,
+            index: thinkingBlockIndex,
             delta: { type: 'thinking_delta', thinking: reasoningContent },
           }
         }
@@ -1422,7 +1424,7 @@ async function* sdkStreamToAnthropic(
                 const text = block.text as string | undefined
                 if (text) {
                   if (hasEmittedThinkingStart && !hasClosedThinking) {
-                    yield { type: 'content_block_stop', index: contentBlockIndex }
+                    yield { type: 'content_block_stop', index: thinkingBlockIndex }
                     contentBlockIndex++
                     hasClosedThinking = true
                   }
@@ -1432,7 +1434,6 @@ async function* sdkStreamToAnthropic(
                       index: contentBlockIndex,
                       content_block: { type: 'text', text: '' },
                     }
-                    contentBlockIndex++
                     hasEmittedContentStart = true
                   }
                   const visible = thinkFilter.feed(text)
@@ -1475,7 +1476,7 @@ async function* sdkStreamToAnthropic(
           } else if (typeof content === 'string' && content !== '') {
             // Standard string content
             if (hasEmittedThinkingStart && !hasClosedThinking) {
-              yield { type: 'content_block_stop', index: contentBlockIndex }
+              yield { type: 'content_block_stop', index: thinkingBlockIndex }
               contentBlockIndex++
               hasClosedThinking = true
             }
@@ -1485,7 +1486,6 @@ async function* sdkStreamToAnthropic(
                 index: contentBlockIndex,
                 content_block: { type: 'text', text: '' },
               }
-              contentBlockIndex++
               hasEmittedContentStart = true
             }
             const visible = thinkFilter.feed(content)
@@ -1512,7 +1512,7 @@ async function* sdkStreamToAnthropic(
 
             if (tcId && tcName) {
               if (hasEmittedThinkingStart && !hasClosedThinking) {
-                yield { type: 'content_block_stop', index: contentBlockIndex }
+                yield { type: 'content_block_stop', index: thinkingBlockIndex }
                 contentBlockIndex++
                 hasClosedThinking = true
               }
@@ -1692,7 +1692,13 @@ async function* sdkStreamToAnthropic(
               delta: { type: 'text_delta', text: '\n\n[Response truncated — reached length limit or upstream stalled. Ask the model to continue.]' },
             }
           }
-          yield { type: 'content_block_stop', index: contentBlockIndex - 1 }
+          // Close thinking block if still open (thinking-only case)
+          if (hasEmittedThinkingStart && !hasClosedThinking) {
+            yield { type: 'content_block_stop', index: thinkingBlockIndex }
+            hasClosedThinking = true
+          } else {
+            yield { type: 'content_block_stop', index: contentBlockIndex - 1 }
+          }
           yield {
             type: 'message_delta',
             delta: { stop_reason: lastStopReason, stop_sequence: null },
