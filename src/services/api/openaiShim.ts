@@ -84,6 +84,25 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'authorization',
 ]
 
+/**
+ * 将 OpenAI SDK 的流对象（ReadableStream）适配为 Response-like 对象，
+ * 以便复用现有的 openaiStreamToAnthropic() SSE 解析逻辑。
+ * SDK 流本身 .body 就是 ReadableStream，与 Response.body 接口一致。
+ */
+function adaptSdkStreamToResponse(
+  sdkStream: ReadableStream,
+  status = 200,
+  headersInit: Record<string, string> = {},
+): Response {
+  return new Response(sdkStream, {
+    status,
+    headers: {
+      'content-type': 'text/event-stream',
+      ...headersInit,
+    },
+  })
+}
+
 function isMistralMode(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
 }
