@@ -1432,6 +1432,7 @@ async function* sdkStreamToAnthropic(
                       index: contentBlockIndex,
                       content_block: { type: 'text', text: '' },
                     }
+                    contentBlockIndex++
                     hasEmittedContentStart = true
                   }
                   const visible = thinkFilter.feed(text)
@@ -1484,6 +1485,7 @@ async function* sdkStreamToAnthropic(
                 index: contentBlockIndex,
                 content_block: { type: 'text', text: '' },
               }
+              contentBlockIndex++
               hasEmittedContentStart = true
             }
             const visible = thinkFilter.feed(content)
