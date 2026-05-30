@@ -1478,22 +1478,21 @@ class OpenAIShimMessages {
       body.stream_options = { include_usage: true }
     }
 
-    const isMistral = isMistralMode()
     const isLocal = isLocalProviderUrl(request.baseUrl)
     const isMoonshot = isMoonshotBaseUrl(request.baseUrl)
 
-    if ((isMistral || isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
+    if ((isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
       body.max_tokens = body.max_completion_tokens
       delete body.max_completion_tokens
     }
 
-    // mistral and gemini don't recognize body.store — Gemini returns 400
+    // gemini doesn't recognize body.store — Gemini returns 400
     // "Invalid JSON payload received. Unknown name 'store': Cannot find field."
     // Moonshot (api.moonshot.ai/.cn) has not published support for the
     // parameter either; strip it preemptively to avoid the same class of
     // error on strict-parse providers.
     // Cerebras Cloud also rejects requests with a `store` field.
-    if (isMistral || isGeminiMode() || isMoonshot || hasCerebrasApiHost(request.baseUrl)) {
+    if (isGeminiMode() || isMoonshot || hasCerebrasApiHost(request.baseUrl)) {
       delete body.store
     }
 
@@ -1907,8 +1906,8 @@ class OpenAIShimMessages {
             { signal: options?.signal },
           )
 
-          // SDK 的流对象 (.body) 是 ReadableStream，适配为 Response 供 openaiStreamToAnthropic 使用
-          response = adaptSdkStreamToResponse(sdkStream.body as ReadableStream)
+          // SDK 的流对象转换为 ReadableStream，适配为 Response 供 openaiStreamToAnthropic 使用
+          response = adaptSdkStreamToResponse(sdkStream.toReadableStream())
         }
       } catch (error) {
         const isAbortError =
