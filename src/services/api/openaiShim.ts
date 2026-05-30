@@ -104,6 +104,79 @@ function adaptSdkStreamToResponse(
   })
 }
 
+/**
+ * Wraps OpenAI SDK's Stream<ChatCompletionChunk> to present a Response-like
+ * interface compatible with openaiStreamToAnthropic().
+ *
+ * openaiStreamToAnthropic() reads SSE from Response.body via getReader().
+ * The SSE parsing logic (line 991) expects lines prefixed with "data: ".
+ * But toReadableStream() gives us NDJSON (not SSE), which lacks the prefix.
+ *
+ * This adapter wraps the SDK stream and mimics the Response body interface,
+ * yielding parsed chunk objects as NDJSON text lines. The SSE parsing
+ * path in openaiStreamToAnthropic (lines 991-995) prepends "data: " and
+ * JSON-parses the result — so this gives it the same input it expects.
+ *
+ * We also attach sdkStream.controller to the adapter for AbortSignal support.
+ */
+class SDKStreamAdapter {
+  private sdkStream: AsyncIterator<Record<string, unknown>>
+  controller = new AbortController()
+  private pendingChunks: Array<{ value: Uint8Array; done: boolean }> = []
+  private resolved = false
+  private signal: AbortSignal | undefined
+
+  constructor(
+    sdkStream: AsyncIterator<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ) {
+    this.sdkStream = sdkStream
+    this.signal = signal
+  }
+
+  // Returns a reader that yields NDJSON text lines.
+  // openaiStreamToAnthropic's SSE parser (line 991) does:
+  //   if (!trimmed.startsWith('data: ')) continue
+  //   chunk = JSON.parse(trimmed.slice(6))
+  // So we need each line prefixed with "data: " and the JSON after it.
+  getReader(): { read(): Promise<{ value?: Uint8Array; done: boolean }> } {
+    return {
+      read: async () => {
+        // If signal is aborted, throw
+        if (this.signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
+
+        // Return any pending result
+        if (this.pendingChunks.length > 0) {
+          return this.pendingChunks.shift()!
+        }
+
+        if (this.resolved) {
+          return { done: true }
+        }
+
+        // Read next chunk from SDK stream
+        try {
+          const result = await this.sdkStream.next()
+          if (result.done) {
+            this.resolved = true
+            // Feed empty SSE line to signal end
+            return { value: new TextEncoder().encode('data: [DONE]\n'), done: false }
+          }
+
+          // Convert parsed chunk to NDJSON with "data: " prefix for SSE parser
+          const text = 'data: ' + JSON.stringify(result.value) + '\n'
+          return { value: new TextEncoder().encode(text), done: false }
+        } catch (err) {
+          this.resolved = true
+          throw err
+        }
+      },
+    }
+  }
+}
+
 
 function filterAnthropicHeaders(
   headers: Record<string, string> | undefined,
@@ -1907,8 +1980,20 @@ class OpenAIShimMessages {
             { signal: options?.signal },
           )
 
-          // SDK 的流对象转换为 ReadableStream，适配为 Response 供 openaiStreamToAnthropic 使用
-          response = adaptSdkStreamToResponse(sdkStream.toReadableStream())
+          // SDK 的流对象使用 SDKStreamAdapter 适配为 Response 格式供 openaiStreamToAnthropic 使用
+          // toReadableStream() gives NDJSON but openaiStreamToAnthropic expects SSE with "data: " prefix.
+          // SDKStreamAdapter wraps the SDK stream and prefixes each chunk with "data: " so the
+          // SSE parsing path in openaiStreamToAnthropic (line 991) can process it correctly.
+          const adapter = new SDKStreamAdapter(
+            sdkStream[Symbol.asyncIterator](),
+            options?.signal,
+          )
+          response = new Response(adapter as unknown as ReadableStream, {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          })
+          // Attach the SDK stream's abort controller so cancellation propagates correctly
+          adapter.controller = sdkStream.controller as AbortController
         }
       } catch (error) {
         const isAbortError =
