@@ -1544,6 +1544,7 @@ class OpenAIShimMessages {
 
       const isDeepSeek = request.baseUrl?.includes('deepseek.com')
       const isZai = isZaiBaseUrl(request.baseUrl)
+      const isMistral = request.baseUrl?.includes('mistral.ai')
 
       if (
         isMistral ||
