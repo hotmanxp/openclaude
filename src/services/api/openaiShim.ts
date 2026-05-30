@@ -85,99 +85,6 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'authorization',
 ]
 
-/**
- * 将 OpenAI SDK 的流对象（ReadableStream）适配为 Response-like 对象，
- * 以便复用现有的 openaiStreamToAnthropic() SSE 解析逻辑。
- * SDK 流本身 .body 就是 ReadableStream，与 Response.body 接口一致。
- */
-function adaptSdkStreamToResponse(
-  sdkStream: ReadableStream,
-  status = 200,
-  headersInit: Record<string, string> = {},
-): Response {
-  return new Response(sdkStream, {
-    status,
-    headers: {
-      'content-type': 'text/event-stream',
-      ...headersInit,
-    },
-  })
-}
-
-/**
- * Wraps OpenAI SDK's Stream<ChatCompletionChunk> to present a Response-like
- * interface compatible with openaiStreamToAnthropic().
- *
- * openaiStreamToAnthropic() reads SSE from Response.body via getReader().
- * The SSE parsing logic (line 991) expects lines prefixed with "data: ".
- * But toReadableStream() gives us NDJSON (not SSE), which lacks the prefix.
- *
- * This adapter wraps the SDK stream and mimics the Response body interface,
- * yielding parsed chunk objects as NDJSON text lines. The SSE parsing
- * path in openaiStreamToAnthropic (lines 991-995) prepends "data: " and
- * JSON-parses the result — so this gives it the same input it expects.
- *
- * We also attach sdkStream.controller to the adapter for AbortSignal support.
- */
-class SDKStreamAdapter {
-  private sdkStream: AsyncIterator<Record<string, unknown>>
-  controller = new AbortController()
-  private pendingChunks: Array<{ value: Uint8Array; done: boolean }> = []
-  private resolved = false
-  private signal: AbortSignal | undefined
-
-  constructor(
-    sdkStream: AsyncIterator<Record<string, unknown>>,
-    signal?: AbortSignal,
-  ) {
-    this.sdkStream = sdkStream
-    this.signal = signal
-  }
-
-  // Returns a reader that yields NDJSON text lines.
-  // openaiStreamToAnthropic's SSE parser (line 991) does:
-  //   if (!trimmed.startsWith('data: ')) continue
-  //   chunk = JSON.parse(trimmed.slice(6))
-  // So we need each line prefixed with "data: " and the JSON after it.
-  getReader(): { read(): Promise<{ value?: Uint8Array; done: boolean }> } {
-    return {
-      read: async () => {
-        // If signal is aborted, throw
-        if (this.signal?.aborted) {
-          throw new DOMException('Aborted', 'AbortError')
-        }
-
-        // Return any pending result
-        if (this.pendingChunks.length > 0) {
-          return this.pendingChunks.shift()!
-        }
-
-        if (this.resolved) {
-          return { done: true }
-        }
-
-        // Read next chunk from SDK stream
-        try {
-          const result = await this.sdkStream.next()
-          if (result.done) {
-            this.resolved = true
-            // Feed empty SSE line to signal end
-            return { value: new TextEncoder().encode('data: [DONE]\n'), done: false }
-          }
-
-          // Convert parsed chunk to NDJSON with "data: " prefix for SSE parser
-          const text = 'data: ' + JSON.stringify(result.value) + '\n'
-          return { value: new TextEncoder().encode(text), done: false }
-        } catch (err) {
-          this.resolved = true
-          throw err
-        }
-      },
-    }
-  }
-}
-
-
 function filterAnthropicHeaders(
   headers: Record<string, string> | undefined,
 ): Record<string, string> {
@@ -1399,6 +1306,360 @@ async function* openaiStreamToAnthropic(
   yield { type: 'message_stop' }
 }
 
+/**
+ * Converts OpenAI SDK streaming chunks directly to Anthropic events,
+ * bypassing SSE parsing entirely.
+ *
+ * The SDK's async iterator yields parsed ChatCompletionChunk objects.
+ * We convert each one to Anthropic stream events using the same
+ * transformation logic as openaiStreamToAnthropic.
+ *
+ * @param sdkStream - OpenAI SDK's Stream<ChatCompletionChunk>
+ * @param model - model name for message_start event
+ * @param signal - AbortSignal for cancellation
+ */
+async function* sdkStreamToAnthropic(
+  sdkStream: AsyncIterator<Record<string, unknown>>,
+  model: string,
+  signal?: AbortSignal,
+): AsyncGenerator<AnthropicStreamEvent> {
+  const messageId = makeMessageId()
+  let contentBlockIndex = 0
+  const activeToolCalls = new Map<
+    number,
+    {
+      id: string
+      name: string
+      index: number
+      jsonBuffer: string
+      normalizeAtStop: boolean
+    }
+  >()
+  let hasEmittedContentStart = false
+  let hasEmittedThinkingStart = false
+  let hasClosedThinking = false
+  const thinkFilter = createThinkTagFilter()
+  let lastStopReason: 'tool_use' | 'max_tokens' | 'end_turn' | null = null
+  let hasEmittedFinalUsage = false
+  let hasProcessedFinishReason = false
+  const streamState = createStreamState()
+
+  // Inline closeActiveContentBlock logic to avoid duplication
+  const closeContentBlock = () => {
+    if (!hasEmittedContentStart) return
+
+    const tail = thinkFilter.flush()
+    if (tail) {
+      return {
+        type: 'content_block_delta',
+        index: contentBlockIndex,
+        delta: { type: 'text_delta', text: tail },
+      }
+    }
+  }
+
+  // Emit message_start
+  yield {
+    type: 'message_start',
+    message: {
+      id: messageId,
+      type: 'message',
+      role: 'assistant',
+      content: [],
+      model,
+      stop_reason: null,
+      stop_sequence: null,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+    },
+  }
+
+  try {
+    for await (const chunk of sdkStream) {
+      // Check abort
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+
+      const chunkUsage = convertChunkUsage(chunk.usage as Record<string, unknown> | undefined)
+
+      const choices = chunk.choices as Array<Record<string, unknown>> | undefined
+      for (const choice of choices ?? []) {
+        const delta = choice.delta as Record<string, unknown> | undefined
+
+        if (!delta) continue
+
+        // Reasoning content (thinking)
+        const reasoningContent = delta.reasoning_content as string | null | undefined
+        if (reasoningContent != null && reasoningContent !== '') {
+          if (!hasEmittedThinkingStart) {
+            yield {
+              type: 'content_block_start',
+              index: contentBlockIndex,
+              content_block: { type: 'thinking', thinking: '' },
+            }
+            hasEmittedThinkingStart = true
+          }
+          yield {
+            type: 'content_block_delta',
+            index: contentBlockIndex,
+            delta: { type: 'thinking_delta', thinking: reasoningContent },
+          }
+        }
+
+        // Text content
+        const content = delta.content as string | null | undefined
+        if (content != null && content !== '') {
+          if (hasEmittedThinkingStart && !hasClosedThinking) {
+            yield { type: 'content_block_stop', index: contentBlockIndex }
+            contentBlockIndex++
+            hasClosedThinking = true
+          }
+          if (!hasEmittedContentStart) {
+            yield {
+              type: 'content_block_start',
+              index: contentBlockIndex,
+              content_block: { type: 'text', text: '' },
+            }
+            hasEmittedContentStart = true
+          }
+          const visible = thinkFilter.feed(content)
+          if (visible) {
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: { type: 'text_delta', text: visible },
+            }
+          }
+          processStreamChunk(streamState, content)
+        }
+
+        // Tool calls
+        const toolCalls = delta.tool_calls as Array<Record<string, unknown>> | undefined
+        if (toolCalls) {
+          for (const tc of toolCalls) {
+            const tcIndex = tc.index as number
+            const tcId = tc.id as string
+            const tcFunction = tc.function as Record<string, unknown> | undefined
+            const tcName = tcFunction?.name as string | undefined
+            const tcArgs = tcFunction?.arguments as string | undefined
+
+            if (tcId && tcName) {
+              if (hasEmittedThinkingStart && !hasClosedThinking) {
+                yield { type: 'content_block_stop', index: contentBlockIndex }
+                contentBlockIndex++
+                hasClosedThinking = true
+              }
+              if (hasEmittedContentStart) {
+                const tailResult = closeContentBlock()
+                if (tailResult) {
+                  yield tailResult
+                }
+                yield { type: 'content_block_stop', index: contentBlockIndex }
+                contentBlockIndex++
+                hasEmittedContentStart = false
+              }
+
+              const toolBlockIndex = contentBlockIndex
+              const initialArguments = tcArgs ?? ''
+              const normalizeAtStop = hasToolFieldMapping(tcName)
+              processStreamChunk(streamState, tcArgs ?? '')
+              activeToolCalls.set(tcIndex, {
+                id: tcId,
+                name: tcName,
+                index: toolBlockIndex,
+                jsonBuffer: initialArguments,
+                normalizeAtStop,
+              })
+
+              yield {
+                type: 'content_block_start',
+                index: toolBlockIndex,
+                content_block: {
+                  type: 'tool_use',
+                  id: tcId,
+                  name: tcName,
+                  input: {},
+                  ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
+                },
+              }
+              contentBlockIndex++
+
+              if (tcArgs && !normalizeAtStop) {
+                yield {
+                  type: 'content_block_delta',
+                  index: toolBlockIndex,
+                  delta: {
+                    type: 'input_json_delta',
+                    partial_json: tcArgs,
+                  },
+                }
+              }
+            } else if (tcFunction?.arguments) {
+              const active = activeToolCalls.get(tcIndex)
+              if (active) {
+                active.jsonBuffer += tcFunction.arguments as string
+
+                if (active.normalizeAtStop) continue
+
+                yield {
+                  type: 'content_block_delta',
+                  index: active.index,
+                  delta: {
+                    type: 'input_json_delta',
+                    partial_json: tcFunction.arguments as string,
+                  },
+                }
+              }
+            }
+          }
+        }
+
+        // Finish reason
+        const finishReason = choice.finish_reason as string | null | undefined
+        if (finishReason && !hasProcessedFinishReason) {
+          hasProcessedFinishReason = true
+          if (
+            !hasEmittedContentStart &&
+            !hasEmittedThinkingStart &&
+            activeToolCalls.size === 0
+          ) {
+            yield {
+              type: 'content_block_start',
+              index: contentBlockIndex,
+              content_block: { type: 'text', text: '' },
+            }
+            contentBlockIndex++
+          }
+          if (activeToolCalls.size > 0) {
+            for (const [idx, active] of activeToolCalls) {
+              if (active.normalizeAtStop) {
+                let partialJson: string
+                if (finishReason === 'length') {
+                  partialJson = active.jsonBuffer
+                } else {
+                  const repairedStructuredJson = repairPossiblyTruncatedObjectJson(
+                    active.jsonBuffer,
+                  )
+                  if (repairedStructuredJson) {
+                    partialJson = repairedStructuredJson
+                  } else {
+                    partialJson = JSON.stringify(
+                      normalizeToolArguments(active.name, active.jsonBuffer),
+                    )
+                  }
+                }
+                yield {
+                  type: 'content_block_delta',
+                  index: active.index,
+                  delta: {
+                    type: 'input_json_delta',
+                    partial_json: partialJson,
+                  },
+                }
+                yield { type: 'content_block_stop', index: active.index }
+                continue
+              }
+
+              let suffixToAdd = ''
+              if (active.jsonBuffer) {
+                try {
+                  JSON.parse(active.jsonBuffer)
+                } catch {
+                  const str = active.jsonBuffer.trimEnd()
+                  for (const combo of JSON_REPAIR_SUFFIXES) {
+                    try {
+                      JSON.parse(str + combo)
+                      suffixToAdd = combo
+                      break
+                    } catch {}
+                  }
+                }
+              }
+
+              if (suffixToAdd) {
+                yield {
+                  type: 'content_block_delta',
+                  index: active.index,
+                  delta: {
+                    type: 'input_json_delta',
+                    partial_json: suffixToAdd,
+                  },
+                }
+              }
+
+              yield { type: 'content_block_stop', index: active.index }
+            }
+            activeToolCalls.clear()
+          }
+          lastStopReason = finishReason === 'tool_calls'
+            ? 'tool_use'
+            : finishReason === 'length'
+              ? 'max_tokens'
+              : 'end_turn'
+          if (finishReason === 'content_filter' || finishReason === 'safety') {
+            if (!hasEmittedContentStart) {
+              yield {
+                type: 'content_block_start',
+                index: contentBlockIndex,
+                content_block: { type: 'text', text: '' },
+              }
+              hasEmittedContentStart = true
+            }
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: { type: 'text_delta', text: '\n\n[Content blocked by provider safety filter]' },
+            }
+          } else if (finishReason === 'length') {
+            if (!hasEmittedContentStart) {
+              yield {
+                type: 'content_block_start',
+                index: contentBlockIndex,
+                content_block: { type: 'text', text: '' },
+              }
+              hasEmittedContentStart = true
+            }
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: { type: 'text_delta', text: '\n\n[Response truncated — reached length limit or upstream stalled. Ask the model to continue.]' },
+            }
+          }
+          yield { type: 'content_block_stop', index: contentBlockIndex - 1 }
+          yield {
+            type: 'message_delta',
+            delta: { stop_reason: lastStopReason, stop_sequence: null },
+            usage: chunkUsage ?? undefined,
+          }
+          hasEmittedFinalUsage = true
+        }
+      }
+    }
+  } finally {
+    // Emit message_stop
+    yield { type: 'message_stop' }
+
+    const stats = getStreamStats(streamState)
+    if (stats.totalChunks > 0) {
+      logForDebugging(
+        JSON.stringify({
+          type: 'stream_stats',
+          model,
+          total_chunks: stats.totalChunks,
+          first_token_ms: stats.firstTokenMs,
+          duration_ms: stats.durationMs,
+        }),
+        { level: 'debug' },
+      )
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The shim client — duck-types as Anthropic SDK
 // ---------------------------------------------------------------------------
@@ -1949,7 +2210,7 @@ class OpenAIShimMessages {
             headers: { 'content-type': 'application/json' },
           })
         } else {
-          // Streaming: 使用 SDK
+          // Streaming: 直接迭代 SDK chunks 并转换为 Anthropic 格式
           const sdkStream = await openai.chat.completions.create(
             {
               model: request.resolvedModel,
@@ -1980,20 +2241,13 @@ class OpenAIShimMessages {
             { signal: options?.signal },
           )
 
-          // SDK 的流对象使用 SDKStreamAdapter 适配为 Response 格式供 openaiStreamToAnthropic 使用
-          // toReadableStream() gives NDJSON but openaiStreamToAnthropic expects SSE with "data: " prefix.
-          // SDKStreamAdapter wraps the SDK stream and prefixes each chunk with "data: " so the
-          // SSE parsing path in openaiStreamToAnthropic (line 991) can process it correctly.
-          const adapter = new SDKStreamAdapter(
+          // 直接迭代 SDK chunks 并转换为 Anthropic 格式，跳过 SSE 解析
+          const anthropicStream = sdkStreamToAnthropic(
             sdkStream[Symbol.asyncIterator](),
+            request.resolvedModel,
             options?.signal,
           )
-          response = new Response(adapter as unknown as ReadableStream, {
-            status: 200,
-            headers: { 'content-type': 'text/event-stream' },
-          })
-          // Attach the SDK stream's abort controller so cancellation propagates correctly
-          adapter.controller = sdkStream.controller as AbortController
+          return new OpenAIShimStream(anthropicStream)
         }
       } catch (error) {
         const isAbortError =
