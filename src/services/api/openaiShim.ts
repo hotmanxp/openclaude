@@ -1380,13 +1380,7 @@ async function* sdkStreamToAnthropic(
   }
 
   try {
-    let firstChunkLogged = false
     for await (const chunk of sdkStream) {
-      // Debug: log first chunk
-      if (!firstChunkLogged) {
-        logForDebugging(`[sdkStreamToAnthropic] First chunk: ${JSON.stringify(chunk).slice(0, 500)}`)
-        firstChunkLogged = true
-      }
       // Check abort
       if (signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError')
@@ -1455,25 +1449,36 @@ async function* sdkStreamToAnthropic(
               } else if (blockType === 'tool_use') {
                 // Handle tool use blocks embedded in content array
                 const toolBlockIndex = contentBlockIndex
+                const toolId = block.id as string
+                const toolName = block.name as string
+                const toolInput = block.input as Record<string, unknown> | undefined
                 yield {
                   type: 'content_block_start',
                   index: toolBlockIndex,
                   content_block: {
                     type: 'tool_use',
-                    id: block.id as string,
-                    name: block.name as string,
+                    id: toolId,
+                    name: toolName,
                     input: {},
                   },
                 }
+                // Track this tool_use in activeToolCalls so we emit content_block_stop at finish
+                activeToolCalls.set(toolBlockIndex, {
+                  id: toolId,
+                  name: toolName,
+                  index: toolBlockIndex,
+                  jsonBuffer: toolInput ? JSON.stringify(toolInput) : '',
+                  normalizeAtStop: false,
+                })
                 contentBlockIndex++
 
-                if (block.input !== undefined) {
+                if (toolInput !== undefined) {
                   yield {
                     type: 'content_block_delta',
                     index: toolBlockIndex,
                     delta: {
                       type: 'input_json_delta',
-                      partial_json: JSON.stringify(block.input),
+                      partial_json: JSON.stringify(toolInput),
                     },
                   }
                 }
