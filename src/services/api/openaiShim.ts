@@ -54,7 +54,6 @@ import {
   getStreamStats,
 } from '../../utils/streamingOptimizer.js'
 import { stableStringifyJson } from '../../utils/stableStringify.js'
-import OpenAI from 'openai'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
@@ -84,6 +83,14 @@ const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'password',
   'authorization',
 ]
+
+function isMistralMode(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
+}
+
+function isGithubModelsMode(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
+}
 
 function filterAnthropicHeaders(
   headers: Record<string, string> | undefined,
@@ -1306,439 +1313,6 @@ async function* openaiStreamToAnthropic(
   yield { type: 'message_stop' }
 }
 
-/**
- * Converts OpenAI SDK streaming chunks directly to Anthropic events,
- * bypassing SSE parsing entirely.
- *
- * The SDK's async iterator yields parsed ChatCompletionChunk objects.
- * We convert each one to Anthropic stream events using the same
- * transformation logic as openaiStreamToAnthropic.
- *
- * @param sdkStream - OpenAI SDK's Stream<ChatCompletionChunk>
- * @param model - model name for message_start event
- * @param signal - AbortSignal for cancellation
- */
-async function* sdkStreamToAnthropic(
-  sdkStream: AsyncIterator<Record<string, unknown>>,
-  model: string,
-  signal?: AbortSignal,
-): AsyncGenerator<AnthropicStreamEvent> {
-  const messageId = makeMessageId()
-  let contentBlockIndex = 0
-  const activeToolCalls = new Map<
-    number,
-    {
-      id: string
-      name: string
-      index: number
-      jsonBuffer: string
-      normalizeAtStop: boolean
-    }
-  >()
-  let hasEmittedContentStart = false
-  let hasEmittedThinkingStart = false
-  let hasClosedThinking = false
-  let thinkingBlockIndex = 0
-  const thinkFilter = createThinkTagFilter()
-  let lastStopReason: 'tool_use' | 'max_tokens' | 'end_turn' | null = null
-  let hasEmittedFinalUsage = false
-  let hasProcessedFinishReason = false
-  const streamState = createStreamState()
-
-  // Inline closeActiveContentBlock logic to avoid duplication
-  const closeContentBlock = () => {
-    if (!hasEmittedContentStart) return
-
-    const tail = thinkFilter.flush()
-    if (tail) {
-      return {
-        type: 'content_block_delta',
-        index: contentBlockIndex,
-        delta: { type: 'text_delta', text: tail },
-      }
-    }
-  }
-
-  // Emit message_start
-  yield {
-    type: 'message_start',
-    message: {
-      id: messageId,
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model,
-      stop_reason: null,
-      stop_sequence: null,
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-    },
-  }
-
-  try {
-    for await (const chunk of sdkStream) {
-      // Check abort
-      if (signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError')
-      }
-
-      const chunkUsage = convertChunkUsage(chunk.usage as Record<string, unknown> | undefined)
-
-      const choices = chunk.choices as Array<Record<string, unknown>> | undefined
-      for (const choice of choices ?? []) {
-        const delta = choice.delta as Record<string, unknown> | undefined
-
-        if (!delta) continue
-
-        // Reasoning content (thinking)
-        const reasoningContent = delta.reasoning_content as string | null | undefined
-        if (reasoningContent != null && reasoningContent !== '') {
-          if (!hasEmittedThinkingStart) {
-            thinkingBlockIndex = contentBlockIndex
-            yield {
-              type: 'content_block_start',
-              index: thinkingBlockIndex,
-              content_block: { type: 'thinking', thinking: '' },
-            }
-            hasEmittedThinkingStart = true
-          }
-          yield {
-            type: 'content_block_delta',
-            index: thinkingBlockIndex,
-            delta: { type: 'thinking_delta', thinking: reasoningContent },
-          }
-        }
-
-        // Text content - handle both string and content blocks array formats
-        const content = delta.content
-        if (content != null) {
-          // MiniMax may send content as an array of content blocks
-          if (Array.isArray(content)) {
-            for (const block of content as Array<Record<string, unknown>>) {
-              const blockType = block.type as string
-              if (blockType === 'text') {
-                const text = block.text as string | undefined
-                if (text) {
-                  if (hasEmittedThinkingStart && !hasClosedThinking) {
-                    yield { type: 'content_block_stop', index: thinkingBlockIndex }
-                    contentBlockIndex++
-                    hasClosedThinking = true
-                  }
-                  if (!hasEmittedContentStart) {
-                    yield {
-                      type: 'content_block_start',
-                      index: contentBlockIndex,
-                      content_block: { type: 'text', text: '' },
-                    }
-                    hasEmittedContentStart = true
-                  }
-                  const visible = thinkFilter.feed(text)
-                  if (visible) {
-                    yield {
-                      type: 'content_block_delta',
-                      index: contentBlockIndex,
-                      delta: { type: 'text_delta', text: visible },
-                    }
-                  }
-                  processStreamChunk(streamState, text)
-                }
-              } else if (blockType === 'tool_use') {
-                // Handle tool use blocks embedded in content array
-                const toolBlockIndex = contentBlockIndex
-                const toolId = block.id as string
-                const toolName = block.name as string
-                const toolInput = block.input as Record<string, unknown> | undefined
-                yield {
-                  type: 'content_block_start',
-                  index: toolBlockIndex,
-                  content_block: {
-                    type: 'tool_use',
-                    id: toolId,
-                    name: toolName,
-                    input: {},
-                  },
-                }
-                // Track this tool_use in activeToolCalls so we emit content_block_stop at finish
-                activeToolCalls.set(toolBlockIndex, {
-                  id: toolId,
-                  name: toolName,
-                  index: toolBlockIndex,
-                  jsonBuffer: toolInput ? JSON.stringify(toolInput) : '',
-                  normalizeAtStop: false,
-                })
-                contentBlockIndex++
-
-                if (toolInput !== undefined) {
-                  yield {
-                    type: 'content_block_delta',
-                    index: toolBlockIndex,
-                    delta: {
-                      type: 'input_json_delta',
-                      partial_json: JSON.stringify(toolInput),
-                    },
-                  }
-                }
-              }
-            }
-          } else if (typeof content === 'string' && content !== '') {
-            // Standard string content
-            if (hasEmittedThinkingStart && !hasClosedThinking) {
-              yield { type: 'content_block_stop', index: thinkingBlockIndex }
-              contentBlockIndex++
-              hasClosedThinking = true
-            }
-            if (!hasEmittedContentStart) {
-              yield {
-                type: 'content_block_start',
-                index: contentBlockIndex,
-                content_block: { type: 'text', text: '' },
-              }
-              hasEmittedContentStart = true
-            }
-            const visible = thinkFilter.feed(content)
-            if (visible) {
-              yield {
-                type: 'content_block_delta',
-                index: contentBlockIndex,
-                delta: { type: 'text_delta', text: visible },
-              }
-            }
-            processStreamChunk(streamState, content)
-          }
-        }
-
-        // Tool calls
-        const toolCalls = delta.tool_calls as Array<Record<string, unknown>> | undefined
-        if (toolCalls) {
-          for (const tc of toolCalls) {
-            const tcIndex = tc.index as number
-            const tcId = tc.id as string
-            const tcFunction = tc.function as Record<string, unknown> | undefined
-            const tcName = tcFunction?.name as string | undefined
-            const tcArgs = tcFunction?.arguments as string | undefined
-
-            if (tcId && tcName) {
-              if (hasEmittedThinkingStart && !hasClosedThinking) {
-                yield { type: 'content_block_stop', index: thinkingBlockIndex }
-                contentBlockIndex++
-                hasClosedThinking = true
-              }
-              if (hasEmittedContentStart) {
-                const tailResult = closeContentBlock()
-                if (tailResult) {
-                  yield tailResult
-                }
-                yield { type: 'content_block_stop', index: contentBlockIndex }
-                contentBlockIndex++
-                hasEmittedContentStart = false
-              }
-
-              const toolBlockIndex = contentBlockIndex
-              const initialArguments = tcArgs ?? ''
-              const normalizeAtStop = hasToolFieldMapping(tcName)
-              processStreamChunk(streamState, tcArgs ?? '')
-              activeToolCalls.set(tcIndex, {
-                id: tcId,
-                name: tcName,
-                index: toolBlockIndex,
-                jsonBuffer: initialArguments,
-                normalizeAtStop,
-              })
-
-              yield {
-                type: 'content_block_start',
-                index: toolBlockIndex,
-                content_block: {
-                  type: 'tool_use',
-                  id: tcId,
-                  name: tcName,
-                  input: {},
-                  ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
-                },
-              }
-              contentBlockIndex++
-
-              if (tcArgs && !normalizeAtStop) {
-                yield {
-                  type: 'content_block_delta',
-                  index: toolBlockIndex,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tcArgs,
-                  },
-                }
-              }
-            } else if (tcFunction?.arguments) {
-              const active = activeToolCalls.get(tcIndex)
-              if (active) {
-                active.jsonBuffer += tcFunction.arguments as string
-
-                if (active.normalizeAtStop) continue
-
-                yield {
-                  type: 'content_block_delta',
-                  index: active.index,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tcFunction.arguments as string,
-                  },
-                }
-              }
-            }
-          }
-        }
-
-        // Finish reason
-        const finishReason = choice.finish_reason as string | null | undefined
-        if (finishReason && !hasProcessedFinishReason) {
-          hasProcessedFinishReason = true
-          if (
-            !hasEmittedContentStart &&
-            !hasEmittedThinkingStart &&
-            activeToolCalls.size === 0
-          ) {
-            yield {
-              type: 'content_block_start',
-              index: contentBlockIndex,
-              content_block: { type: 'text', text: '' },
-            }
-            contentBlockIndex++
-          }
-          if (activeToolCalls.size > 0) {
-            for (const [idx, active] of activeToolCalls) {
-              if (active.normalizeAtStop) {
-                let partialJson: string
-                if (finishReason === 'length') {
-                  partialJson = active.jsonBuffer
-                } else {
-                  const repairedStructuredJson = repairPossiblyTruncatedObjectJson(
-                    active.jsonBuffer,
-                  )
-                  if (repairedStructuredJson) {
-                    partialJson = repairedStructuredJson
-                  } else {
-                    partialJson = JSON.stringify(
-                      normalizeToolArguments(active.name, active.jsonBuffer),
-                    )
-                  }
-                }
-                yield {
-                  type: 'content_block_delta',
-                  index: active.index,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: partialJson,
-                  },
-                }
-                yield { type: 'content_block_stop', index: active.index }
-                continue
-              }
-
-              let suffixToAdd = ''
-              if (active.jsonBuffer) {
-                try {
-                  JSON.parse(active.jsonBuffer)
-                } catch {
-                  const str = active.jsonBuffer.trimEnd()
-                  for (const combo of JSON_REPAIR_SUFFIXES) {
-                    try {
-                      JSON.parse(str + combo)
-                      suffixToAdd = combo
-                      break
-                    } catch {}
-                  }
-                }
-              }
-
-              if (suffixToAdd) {
-                yield {
-                  type: 'content_block_delta',
-                  index: active.index,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: suffixToAdd,
-                  },
-                }
-              }
-
-              yield { type: 'content_block_stop', index: active.index }
-            }
-            activeToolCalls.clear()
-          }
-          lastStopReason = finishReason === 'tool_calls'
-            ? 'tool_use'
-            : finishReason === 'length'
-              ? 'max_tokens'
-              : 'end_turn'
-          if (finishReason === 'content_filter' || finishReason === 'safety') {
-            if (!hasEmittedContentStart) {
-              yield {
-                type: 'content_block_start',
-                index: contentBlockIndex,
-                content_block: { type: 'text', text: '' },
-              }
-              hasEmittedContentStart = true
-            }
-            yield {
-              type: 'content_block_delta',
-              index: contentBlockIndex,
-              delta: { type: 'text_delta', text: '\n\n[Content blocked by provider safety filter]' },
-            }
-          } else if (finishReason === 'length') {
-            if (!hasEmittedContentStart) {
-              yield {
-                type: 'content_block_start',
-                index: contentBlockIndex,
-                content_block: { type: 'text', text: '' },
-              }
-              hasEmittedContentStart = true
-            }
-            yield {
-              type: 'content_block_delta',
-              index: contentBlockIndex,
-              delta: { type: 'text_delta', text: '\n\n[Response truncated — reached length limit or upstream stalled. Ask the model to continue.]' },
-            }
-          }
-          // Close thinking block if still open (thinking-only case)
-          if (hasEmittedThinkingStart && !hasClosedThinking) {
-            yield { type: 'content_block_stop', index: thinkingBlockIndex }
-            hasClosedThinking = true
-          } else {
-            yield { type: 'content_block_stop', index: contentBlockIndex - 1 }
-          }
-          yield {
-            type: 'message_delta',
-            delta: { stop_reason: lastStopReason, stop_sequence: null },
-            usage: chunkUsage ?? undefined,
-          }
-          hasEmittedFinalUsage = true
-        }
-      }
-    }
-  } finally {
-    // Emit message_stop
-    yield { type: 'message_stop' }
-
-    const stats = getStreamStats(streamState)
-    if (stats.totalChunks > 0) {
-      logForDebugging(
-        JSON.stringify({
-          type: 'stream_stats',
-          model,
-          total_chunks: stats.totalChunks,
-          first_token_ms: stats.firstTokenMs,
-          duration_ms: stats.durationMs,
-        }),
-        { level: 'debug' },
-      )
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // The shim client — duck-types as Anthropic SDK
 // ---------------------------------------------------------------------------
@@ -1782,17 +1356,12 @@ class OpenAIShimMessages {
       httpResponse = response
 
       if (params.stream) {
-        // _doOpenAIRequest already returns OpenAIShimStream for streaming (sdkStreamToAnthropic applied)
-        if (response instanceof OpenAIShimStream) {
-          return response
-        }
-        // Fallback: wrap with openaiStreamToAnthropic (for non-SDK fetch path)
         return new OpenAIShimStream(
           openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
         )
       }
 
-      const contentType = response?.headers?.get('content-type') ?? ''
+      const contentType = response.headers.get('content-type') ?? ''
       if (contentType.includes('application/json')) {
         const data = await response.json()
         return self._convertNonStreamingResponse(data, request.resolvedModel)
@@ -1812,11 +1381,9 @@ class OpenAIShimMessages {
           const data = await promise
           return {
             data,
-            response: httpResponse instanceof Response ? httpResponse : new Response(),
+            response: httpResponse ?? new Response(),
             request_id:
-              httpResponse instanceof Response
-                ? httpResponse.headers?.get('x-request-id') ?? makeMessageId()
-                : makeMessageId(),
+              httpResponse?.headers.get('x-request-id') ?? makeMessageId(),
           }
         }
 
@@ -1849,20 +1416,6 @@ class OpenAIShimMessages {
       // reasoning_content when its thinking feature is active. Echo it back
       // from the thinking block we captured on the inbound response.
       preserveReasoningContent: isMoonshotBaseUrl(request.baseUrl),
-    })
-
-    // 确定 API key（供 SDK 调用使用，避免与后续 const 声明冲突故命名不同）
-    const isMiniMaxSdk = !!process.env.MINIMAX_API_KEY
-    const apiKeySdk =
-      this.providerOverride?.apiKey ??
-      process.env.OPENAI_API_KEY ??
-      (isMiniMaxSdk ? process.env.MINIMAX_API_KEY : '')
-
-    const openai = new OpenAI({
-      apiKey: apiKeySdk || undefined,
-      baseURL: request.baseUrl !== 'https://api.openai.com/v1'
-        ? request.baseUrl
-        : undefined,
     })
 
     const body: Record<string, unknown> = {
@@ -1898,21 +1451,22 @@ class OpenAIShimMessages {
       body.stream_options = { include_usage: true }
     }
 
+    const isMistral = isMistralMode()
     const isLocal = isLocalProviderUrl(request.baseUrl)
     const isMoonshot = isMoonshotBaseUrl(request.baseUrl)
 
-    if ((isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
+    if ((isMistral || isLocal || isMoonshot) && body.max_completion_tokens !== undefined) {
       body.max_tokens = body.max_completion_tokens
       delete body.max_completion_tokens
     }
 
-    // gemini doesn't recognize body.store — Gemini returns 400
+    // mistral and gemini don't recognize body.store — Gemini returns 400
     // "Invalid JSON payload received. Unknown name 'store': Cannot find field."
     // Moonshot (api.moonshot.ai/.cn) has not published support for the
     // parameter either; strip it preemptively to avoid the same class of
     // error on strict-parse providers.
     // Cerebras Cloud also rejects requests with a `store` field.
-    if (isGeminiMode() || isMoonshot || hasCerebrasApiHost(request.baseUrl)) {
+    if (isMistral || isGeminiMode() || isMoonshot || hasCerebrasApiHost(request.baseUrl)) {
       delete body.store
     }
 
@@ -1964,7 +1518,6 @@ class OpenAIShimMessages {
 
       const isDeepSeek = request.baseUrl?.includes('deepseek.com')
       const isZai = isZaiBaseUrl(request.baseUrl)
-      const isMistral = request.baseUrl?.includes('mistral.ai')
 
       if (
         isMistral ||
@@ -2226,115 +1779,10 @@ class OpenAIShimMessages {
     const { correlationId, startTime } = logApiCallStart(provider, request.resolvedModel)
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        if (!params.stream) {
-          // Non-streaming: 使用 SDK 调用
-          const sdkResponse = await openai.chat.completions.create(
-            {
-              model: request.resolvedModel,
-              messages: openaiMessages,
-              stream: false,
-              // reasoning_effort
-              ...(request.reasoning ? { reasoning_effort: request.reasoning.effort } : {}),
-              // max_tokens / max_completion_tokens
-              ...(maxTokensValue !== undefined
-                ? { max_completion_tokens: maxTokensValue }
-                : maxCompletionTokensValue !== undefined
-                  ? { max_completion_tokens: maxCompletionTokensValue }
-                  : {}),
-              // tools
-              ...(params.tools && params.tools.length > 0
-                ? {
-                    tools: convertTools(
-                      params.tools as Array<{
-                        name: string
-                        description?: string
-                        input_schema?: Record<string, unknown>
-                      }>,
-                    ),
-                    ...(params.tool_choice
-                      ? {
-                          tool_choice: (() => {
-                            const tc = params.tool_choice as { type?: string; name?: string }
-                            if (tc.type === 'auto') return 'auto'
-                            if (tc.type === 'tool' && tc.name)
-                              return { type: 'function', function: { name: tc.name } }
-                            if (tc.type === 'any') return 'required'
-                            if (tc.type === 'none') return 'none'
-                            return 'auto'
-                          })(),
-                        }
-                      : {}),
-                  }
-                : {}),
-              // 其他参数
-              ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-              ...(params.top_p !== undefined ? { top_p: params.top_p } : {}),
-              store: false,
-            },
-            { signal: options?.signal },
-          )
-
-          // SDK 返回 ChatCompletion，将其转为 Response 格式以复用现有 _convertNonStreamingResponse
-          const compatData = {
-            id: sdkResponse.id,
-            model: sdkResponse.model,
-            choices: sdkResponse.choices.map((choice) => ({
-              message: choice.message,
-              finish_reason: choice.finish_reason,
-            })),
-            usage: sdkResponse.usage
-              ? {
-                  prompt_tokens: sdkResponse.usage.prompt_tokens,
-                  completion_tokens: sdkResponse.usage.completion_tokens,
-                  prompt_tokens_details: sdkResponse.usage.prompt_tokens_details,
-                }
-              : undefined,
-          }
-
-          response = new Response(JSON.stringify(compatData), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          })
-        } else {
-          // Streaming: 直接迭代 SDK chunks 并转换为 Anthropic 格式
-          const sdkStream = await openai.chat.completions.create(
-            {
-              model: request.resolvedModel,
-              messages: openaiMessages,
-              stream: true,
-              ...(request.reasoning ? { reasoning_effort: request.reasoning.effort } : {}),
-              ...(maxTokensValue !== undefined
-                ? { max_completion_tokens: maxTokensValue }
-                : maxCompletionTokensValue !== undefined
-                  ? { max_completion_tokens: maxCompletionTokensValue }
-                  : {}),
-              ...(params.tools && params.tools.length > 0
-                ? {
-                    tools: convertTools(
-                      params.tools as Array<{
-                        name: string
-                        description?: string
-                        input_schema?: Record<string, unknown>
-                      }>,
-                    ),
-                  }
-                : {}),
-              ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-              ...(params.top_p !== undefined ? { top_p: params.top_p } : {}),
-              stream_options: { include_usage: true },
-              store: false,
-            },
-            { signal: options?.signal },
-          )
-
-          // 直接迭代 SDK chunks 并转换为 Anthropic 格式，跳过 SSE 解析
-          const anthropicStream = sdkStreamToAnthropic(
-            sdkStream[Symbol.asyncIterator](),
-            request.resolvedModel,
-            options?.signal,
-          )
-          return new OpenAIShimStream(anthropicStream)
-        }
+        response = await fetchWithProxyRetry(
+          requestUrl,
+          buildFetchInit(),
+        )
       } catch (error) {
         const isAbortError =
           options?.signal?.aborted === true ||
@@ -2585,6 +2033,29 @@ export function createOpenAIShimClient(options: {
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   providerOverride?: { model: string; baseURL: string; apiKey: string }
 }): unknown {
+  // When Gemini provider is active, map Gemini env vars to OpenAI-compatible ones
+  // so the existing providerConfig.ts infrastructure picks them up correctly.
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
+    process.env.OPENAI_BASE_URL ??=
+      process.env.GEMINI_BASE_URL ??
+      'https://generativelanguage.googleapis.com/v1beta/openai'
+    const geminiApiKey =
+      process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
+    if (geminiApiKey && !process.env.OPENAI_API_KEY) {
+      process.env.OPENAI_API_KEY = geminiApiKey
+    }
+    if (process.env.GEMINI_MODEL && !process.env.OPENAI_MODEL) {
+      process.env.OPENAI_MODEL = process.env.GEMINI_MODEL
+    }
+  } else if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)) {
+    process.env.OPENAI_BASE_URL =
+      process.env.MISTRAL_BASE_URL ?? 'https://api.mistral.ai/v1'
+    process.env.OPENAI_API_KEY = process.env.MISTRAL_API_KEY
+    if (process.env.MISTRAL_MODEL) {
+      process.env.OPENAI_MODEL = process.env.MISTRAL_MODEL
+    }
+  }
+
   const beta = new OpenAIShimBeta({
     ...(options.defaultHeaders ?? {}),
   }, options.reasoningEffort, options.providerOverride)
