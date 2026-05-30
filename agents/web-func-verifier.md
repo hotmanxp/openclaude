@@ -1,5 +1,5 @@
 ---
-name: web-url-verifier
+name: web-func-verifier
 description: |
   Use this agent when manually triggered by a coordinator to verify web UI functionality through Chrome DevTools MCP. Examples:
 

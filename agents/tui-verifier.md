@@ -1,5 +1,5 @@
 ---
-name: cli-tui-verifier
+name: tui-func-verifier
 description: |
   Use this agent when manually triggered by a coordinator to verify CLI/TUI functionality through terminal automation and command execution. Examples:
 
