@@ -265,26 +265,46 @@ export const INTERNAL_ONLY_COMMANDS = [
   autofixPr,
 ].filter(Boolean)
 
-const codegraph = (cwd: string): Command => ({
-  type: 'prompt',
-  name: 'codegraph',
-  description: '使用 codegraph MCP 工具查询代码结构（符号、调用链、影响范围）',
-  source: 'builtin',
-  argumentHint: '<查询内容>',
-  whenToUse: '需要查询代码符号、调用链、影响范围时使用',
-  progressMessage: '查询中',
-  isHidden: false,
-  isEnabled: () => {
-    const dbPath = join(cwd, '.codegraph', 'codegraph.db')
-    return existsSync(dbPath)
-  },
-  getPromptForCommand(args) {
-    return [{
-      type: 'text',
-      text: `使用 codegraph MCP 工具（codegraph_context、codegraph_search、codegraph_explore、codegraph_files、codegraph_status 等）回答以下查询。\n\n直接查询，不要先用 grep/Read/Glob 组合。\n\n查询：${args || '(未提供查询内容)'}`,
-    }]
-  },
-})
+const codegraph = (cwd: string): Command => {
+  const codegraphDir = join(cwd, '.codegraph')
+  const dbPath = join(codegraphDir, 'codegraph.db')
+
+  return {
+    type: 'prompt',
+    name: 'codegraph',
+    description: '使用 codegraph MCP 工具查询代码结构（符号、调用链、影响范围）',
+    source: 'builtin',
+    argumentHint: '<查询内容>',
+    whenToUse: '需要查询代码符号、调用链、影响范围时使用',
+    progressMessage: '查询中',
+    isHidden: false,
+    isEnabled: () => existsSync(codegraphDir),
+    getPromptForCommand(args) {
+      if (!existsSync(dbPath)) {
+        // .codegraph dir exists but no db — prompt user to initialize
+        return [{
+          type: 'text',
+          text: `当前项目尚未初始化 codegraph 知识库。
+
+使用 AskUserQuestionTool 询问用户是否要初始化：
+- 问题：「是否要初始化 codegraph 知识库？这将索引当前项目的代码结构（符号、调用链、文件关系），需要几分钟时间。」
+- 选项：「是，初始化」或「否」
+
+如果用户回答「是」，则执行以下命令初始化：
+\`\`\`bash
+npx @colbymchenry/codegraph@latest init && npx @colbymchenry/codegraph@latest index
+\`\`\`
+
+初始化完成后，重新执行 /codegraph 查询。`
+        }]
+      }
+      return [{
+        type: 'text',
+        text: `使用 codegraph MCP 工具（codegraph_context、codegraph_search、codegraph_explore、codegraph_files、codegraph_status 等）回答以下查询。\n\n直接查询，不要先用 grep/Read/Glob 组合。\n\n查询：${args || '(未提供查询内容)'}`,
+      }]
+    },
+  }
+}
 
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
