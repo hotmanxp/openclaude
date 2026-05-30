@@ -1846,7 +1846,7 @@ class OpenAIShimMessages {
             tokensOut = data.usage?.completion_tokens ?? 0
           } catch { /* ignore */ }
         }
-        logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, false)
+        logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, params.stream)
         return response
       }
 
