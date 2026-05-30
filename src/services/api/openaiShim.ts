@@ -54,6 +54,7 @@ import {
   getStreamStats,
 } from '../../utils/streamingOptimizer.js'
 import { stableStringifyJson } from '../../utils/stableStringify.js'
+import OpenAI from 'openai'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
@@ -1437,6 +1438,20 @@ class OpenAIShimMessages {
       preserveReasoningContent: isMoonshotBaseUrl(request.baseUrl),
     })
 
+    // 确定 API key（供 SDK 调用使用，避免与后续 const 声明冲突故命名不同）
+    const isMiniMaxSdk = !!process.env.MINIMAX_API_KEY
+    const apiKeySdk =
+      this.providerOverride?.apiKey ??
+      process.env.OPENAI_API_KEY ??
+      (isMiniMaxSdk ? process.env.MINIMAX_API_KEY : '')
+
+    const openai = new OpenAI({
+      apiKey: apiKeySdk || undefined,
+      baseURL: request.baseUrl !== 'https://api.openai.com/v1'
+        ? request.baseUrl
+        : undefined,
+    })
+
     const body: Record<string, unknown> = {
       model: request.resolvedModel,
       messages: openaiMessages,
@@ -1798,10 +1813,81 @@ class OpenAIShimMessages {
     const { correlationId, startTime } = logApiCallStart(provider, request.resolvedModel)
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        response = await fetchWithProxyRetry(
-          requestUrl,
-          buildFetchInit(),
-        )
+        if (!params.stream) {
+          // Non-streaming: 使用 SDK 调用
+          const sdkResponse = await openai.chat.completions.create(
+            {
+              model: request.resolvedModel,
+              messages: openaiMessages,
+              stream: false,
+              // reasoning_effort
+              ...(request.reasoning ? { reasoning_effort: request.reasoning.effort } : {}),
+              // max_tokens / max_completion_tokens
+              ...(maxTokensValue !== undefined
+                ? { max_completion_tokens: maxTokensValue }
+                : maxCompletionTokensValue !== undefined
+                  ? { max_completion_tokens: maxCompletionTokensValue }
+                  : {}),
+              // tools
+              ...(params.tools && params.tools.length > 0
+                ? {
+                    tools: convertTools(
+                      params.tools as Array<{
+                        name: string
+                        description?: string
+                        input_schema?: Record<string, unknown>
+                      }>,
+                    ),
+                    ...(params.tool_choice
+                      ? {
+                          tool_choice: (() => {
+                            const tc = params.tool_choice as { type?: string; name?: string }
+                            if (tc.type === 'auto') return 'auto'
+                            if (tc.type === 'tool' && tc.name)
+                              return { type: 'function', function: { name: tc.name } }
+                            if (tc.type === 'any') return 'required'
+                            if (tc.type === 'none') return 'none'
+                            return 'auto'
+                          })(),
+                        }
+                      : {}),
+                  }
+                : {}),
+              // 其他参数
+              ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+              ...(params.top_p !== undefined ? { top_p: params.top_p } : {}),
+              store: false,
+            },
+            { signal: options?.signal },
+          )
+
+          // SDK 返回 ChatCompletion，将其转为 Response 格式以复用现有 _convertNonStreamingResponse
+          const compatData = {
+            id: sdkResponse.id,
+            model: sdkResponse.model,
+            choices: sdkResponse.choices.map((choice) => ({
+              message: choice.message,
+              finish_reason: choice.finish_reason,
+            })),
+            usage: sdkResponse.usage
+              ? {
+                  prompt_tokens: sdkResponse.usage.prompt_tokens,
+                  completion_tokens: sdkResponse.usage.completion_tokens,
+                  prompt_tokens_details: sdkResponse.usage.prompt_tokens_details,
+                }
+              : undefined,
+          }
+
+          response = new Response(JSON.stringify(compatData), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        } else {
+          response = await fetchWithProxyRetry(
+            requestUrl,
+            buildFetchInit(),
+          )
+        }
       } catch (error) {
         const isAbortError =
           options?.signal?.aborted === true ||
