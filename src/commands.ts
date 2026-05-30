@@ -292,7 +292,7 @@ const codegraph = (cwd: string): Command => {
 
 如果用户回答「是」，则执行以下命令初始化：
 \`\`\`bash
-npx @colbymchenry/codegraph@latest init && npx @colbymchenry/codegraph@latest index
+npx @colbymchenry/codegraph@latest init
 \`\`\`
 
 初始化完成后，重新执行 /codegraph 查询。`
