@@ -1883,10 +1883,39 @@ class OpenAIShimMessages {
             headers: { 'content-type': 'application/json' },
           })
         } else {
-          response = await fetchWithProxyRetry(
-            requestUrl,
-            buildFetchInit(),
+          // Streaming: 使用 SDK
+          const sdkStream = await openai.chat.completions.create(
+            {
+              model: request.resolvedModel,
+              messages: openaiMessages,
+              stream: true,
+              ...(request.reasoning ? { reasoning_effort: request.reasoning.effort } : {}),
+              ...(maxTokensValue !== undefined
+                ? { max_completion_tokens: maxTokensValue }
+                : maxCompletionTokensValue !== undefined
+                  ? { max_completion_tokens: maxCompletionTokensValue }
+                  : {}),
+              ...(params.tools && params.tools.length > 0
+                ? {
+                    tools: convertTools(
+                      params.tools as Array<{
+                        name: string
+                        description?: string
+                        input_schema?: Record<string, unknown>
+                      }>,
+                    ),
+                  }
+                : {}),
+              ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+              ...(params.top_p !== undefined ? { top_p: params.top_p } : {}),
+              stream_options: { include_usage: true },
+              store: false,
+            },
+            { signal: options?.signal },
           )
+
+          // SDK 的流对象 (.body) 是 ReadableStream，适配为 Response 供 openaiStreamToAnthropic 使用
+          response = adaptSdkStreamToResponse(sdkStream.body as ReadableStream)
         }
       } catch (error) {
         const isAbortError =
