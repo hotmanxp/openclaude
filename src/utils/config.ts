@@ -671,7 +671,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     copyFullResponse: false,
     providerProfiles: [],
     openaiAdditionalModelOptionsCacheByProfile: {},
-    knowledgeGraphEnabled: true,
+    knowledgeGraphEnabled: false,
   }
   return config
 }

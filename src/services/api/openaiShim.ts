@@ -30,6 +30,7 @@ import {
   stripThinkTags,
 } from './thinkTagSanitizer.js'
 import { type AnthropicStreamEvent, type AnthropicUsage, type ShimCreateParams, convertAnthropicMessagesToResponsesInput } from './codexShim.js'
+import { convertToolsToResponsesTools } from './codexShim.js'
 import { compressToolHistory } from './compressToolHistory.js'
 import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
