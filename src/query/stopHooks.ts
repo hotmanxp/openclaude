@@ -43,8 +43,6 @@ import {
   executeExtractMemories,
   initExtractMemories,
 } from '../services/extractMemories/extractMemories.js'
-import { jobClassifierModule } from '../jobs/classifier.js'
-
 import type { QuerySource } from '../constants/querySource.js'
 import { executeAutoDream } from '../services/autoDream/autoDream.js'
 import { executePromptSuggestion } from '../services/PromptSuggestion/promptSuggestion.js'
@@ -114,6 +112,8 @@ export async function* handleStopHooks(
     const turnAssistantMessages = stopHookContext.messages.filter(
       (m): m is AssistantMessage => m.type === 'assistant',
     )
+    // Dynamic import so the module is only resolved when TEMPLATES is enabled
+    const { jobClassifierModule } = await import('../jobs/classifier.js')
     const p = jobClassifierModule!
       .classifyAndWriteState(process.env.CLAUDE_JOB_DIR, turnAssistantMessages)
       .catch(err => {
