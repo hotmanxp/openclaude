@@ -10,6 +10,7 @@ import { count } from '../utils/array.js';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import figures from 'figures';
+import uniqBy from 'lodash-es/uniqBy.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- / n N Esc [ v are bare letters in transcript modal context, same class as g/G/j/k in ScrollKeybindingHandler
 import { useInput } from '../ink.js';
 import { useSearchInput } from '../hooks/useSearchInput.js';
@@ -835,10 +836,10 @@ export function REPL({
     const pluginNames = new Set(
       pluginCommands.map(c => c.name),
     )
-    return [
+    return uniqBy([
       ...renderMergedCommands,
       ...mergedCommands.filter(c => pluginNames.has(c.name)),
-    ]
+    ], 'name')
   }, [renderMergedCommands, mergedCommands, pluginCommands])
   // Filter out all commands if disableSlashCommands is true
   const commands = useMemo(() => disableSlashCommands ? [] : mergedCommands, [disableSlashCommands, mergedCommands]);
