@@ -45,10 +45,10 @@ test('deepseek-v4-flash uses provider-specific context and output caps', () => {
 
   expect(getContextWindowForModel('deepseek-v4-flash')).toBe(1_048_576)
   expect(getModelMaxOutputTokens('deepseek-v4-flash')).toEqual({
-    default: 262_144,
-    upperLimit: 262_144,
+    default: 65_536,
+    upperLimit: 65_536,
   })
-  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(262_144)
+  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(65_536)
 })
 
 test('deepseek legacy aliases keep their documented provider caps', () => {
@@ -67,7 +67,7 @@ test('deepseek-v4-flash clamps oversized max output overrides to the provider li
   process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '500000'
   delete process.env.OPENAI_MODEL
 
-  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(262_144)
+  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(65_536)
 })
 
 test('gpt-4o uses provider-specific context and output caps', () => {
@@ -137,12 +137,12 @@ test('MiniMax-M2.7 uses explicit provider-specific context and output caps', () 
   expect(getMaxOutputTokensForModel('MiniMax-M2.7')).toBe(131_072)
 })
 
-test('unknown openai-compatible models use the 200k fallback window', () => {
+test('unknown openai-compatible models use the 128k fallback window', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   delete process.env.OPENAI_MODEL
 
-  expect(getContextWindowForModel('some-unknown-3p-model')).toBe(200_000)
+  expect(getContextWindowForModel('some-unknown-3p-model')).toBe(128_000)
 })
 
 test('MiniMax-M2.5 and M2.1 use explicit provider-specific context and output caps', () => {

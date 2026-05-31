@@ -6,6 +6,11 @@ import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { getOpenAIContextWindow, getOpenAIMaxOutputTokens } from './model/openaiContextWindows.js'
 import { resolveAntModel } from './model/antModels.js'
+import { resolveModelRuntimeLimits } from '../integrations/runtimeMetadata.js'
+import {
+  getTransportKindForRoute,
+  resolveActiveRouteIdFromEnv,
+} from '../integrations/routeMetadata.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -60,6 +65,20 @@ export function modelSupports1M(model: string): boolean {
   return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-6')
 }
 
+function shouldUseIntegrationRuntimeLimits(
+  processEnv: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const routeId = resolveActiveRouteIdFromEnv(processEnv)
+  const transportKind = routeId ? getTransportKindForRoute(routeId) : null
+
+  return (
+    transportKind === 'openai-compatible' ||
+    transportKind === 'anthropic-proxy' ||
+    transportKind === 'local' ||
+    transportKind === 'gemini-native'
+  )
+}
+
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
@@ -84,8 +103,22 @@ export function getContextWindowForModel(
   }
 
   // OpenAI-compatible provider — use known context windows for the model.
-  // Unknown models get a conservative 8k default so auto-compact triggers
-  // before hitting a hard context_window_exceeded error.
+  // Unknown models get a conservative 128k default. This was previously 8k,
+  // but that caused auto-compact to fire on every turn because the effective
+  // context (8k minus output reservation) became negative (issue #635).
+  if (shouldUseIntegrationRuntimeLimits()) {
+    const runtimeLimits = resolveModelRuntimeLimits({ model })
+    if (runtimeLimits.contextWindow !== undefined) {
+      return runtimeLimits.contextWindow
+    }
+    console.error(
+      `[context] Warning: model "${model}" not in integration model metadata — using conservative 128k default. ` +
+        'Add it to src/integrations/models for accurate compaction.',
+    )
+    return OPENAI_FALLBACK_CONTEXT_WINDOW
+  }
+
+  // Legacy env var override (for custom deployments not yet in integration metadata)
   const openaiWindow = getOpenAIContextWindow(model)
   if (openaiWindow !== undefined) {
     return openaiWindow
@@ -183,6 +216,17 @@ export function getModelMaxOutputTokens(model: string): {
   }
 
   // OpenAI-compatible provider — use known output limits to avoid 400 errors
+  if (shouldUseIntegrationRuntimeLimits()) {
+    const runtimeLimits = resolveModelRuntimeLimits({ model })
+    if (runtimeLimits.maxOutputTokens !== undefined) {
+      return {
+        default: runtimeLimits.maxOutputTokens,
+        upperLimit: runtimeLimits.maxOutputTokens,
+      }
+    }
+  }
+
+  // Legacy env var override (for custom deployments not yet in integration metadata)
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
     const openaiMax = getOpenAIMaxOutputTokens(model)
     if (openaiMax !== undefined) {
