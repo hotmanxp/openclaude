@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { runtimeFeature } from '../../utils/envUtils.js'
 import { basename } from 'path'
 import { useCallback, useEffect, useRef } from 'react'
 import { getSessionId } from '../../bootstrap/state.js'
@@ -18,13 +19,8 @@ import type {
   ServerResource,
 } from './types.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = feature('MCP_SKILLS')
-  ? (
-      // @ts-ignore - mcpSkills module not available in open repo
-      require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
-    ).fetchMcpSkillsForClient
-  : null
+import { fetchMcpSkillsForClient } from '../../skills/mcpSkills.js'
+
 const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (
       // @ts-ignore - localSearch module not available in open repo
@@ -683,8 +679,8 @@ export function useManageMCPConnections(
                   fetchCommandsForClient.cache.delete(client.name)
                   const [mcpPrompts, mcpSkills] = await Promise.all([
                     fetchCommandsForClient(client),
-                    feature('MCP_SKILLS')
-                      ? fetchMcpSkillsForClient!(client)
+                    runtimeFeature('MCP_SKILLS')
+                      ? fetchMcpSkillsForClient(client)
                       : Promise.resolve([]),
                   ])
                   updateServer({
@@ -717,18 +713,18 @@ export function useManageMCPConnections(
                 })
                 try {
                   fetchResourcesForClient.cache.delete(client.name)
-                  if (feature('MCP_SKILLS')) {
+                  if (runtimeFeature('MCP_SKILLS')) {
                     // Skills are discovered from resources, so refresh them too.
                     // Invalidate prompts cache as well: we write commands here,
                     // and a concurrent prompts/list_changed could otherwise have
                     // us stomp its fresh result with our cached stale one.
-                    fetchMcpSkillsForClient!.cache.delete(client.name)
+                    fetchMcpSkillsForClient.cache.delete(client.name)
                     fetchCommandsForClient.cache.delete(client.name)
                     const [newResources, mcpPrompts, mcpSkills] =
                       await Promise.all([
                         fetchResourcesForClient(client),
                         fetchCommandsForClient(client),
-                        fetchMcpSkillsForClient!(client),
+                        fetchMcpSkillsForClient(client),
                       ])
                     updateServer({
                       ...client,

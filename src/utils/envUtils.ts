@@ -74,9 +74,19 @@ export function isEnvTruthy(envVar: string | boolean | undefined): boolean {
 /**
  * Runtime feature flag — checked at execution time via environment variable.
  * Unlike build-time feature() from bun:bundle, these can be toggled without rebuilding.
- * Env var format: CLAUDE_CODE_<FLAG_NAME>=1 to enable.
+ * Env var format: CLAUDE_CODE_<FLAG_NAME>=0 to disable, any truthy value to enable.
+ * Features not in DEFAULT_TRUE_LIST return false when env var is not set.
+ * Features in DEFAULT_TRUE_LIST return true when env var is not set.
  */
+const DEFAULT_TRUE_RUNTIME_FEATURES: readonly string[] = ['MCP_SKILLS']
+
 export function runtimeFeature(name: string): boolean {
+  if (DEFAULT_TRUE_RUNTIME_FEATURES.includes(name)) {
+    // Default-true feature: enabled unless explicitly disabled
+    const envVar = process.env[`CLAUDE_CODE_${name}`]
+    if (envVar === undefined) return true
+    return isEnvTruthy(envVar)
+  }
   return isEnvTruthy(process.env[`CLAUDE_CODE_${name}`])
 }
 
