@@ -15,6 +15,6 @@ const wrapAnsi: (
   input: string,
   columns: number,
   options?: WrapAnsiOptions,
-) => string = wrapAnsiBun ?? wrapAnsiNpm
+) => string = (wrapAnsiBun ?? wrapAnsiNpm) as typeof wrapAnsiNpm
 
 export { wrapAnsi }

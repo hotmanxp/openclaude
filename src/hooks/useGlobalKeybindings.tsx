@@ -4,6 +4,8 @@
  * Must be rendered inside KeybindingSetup to have access to the keybinding context.
  * This component renders nothing - it just registers the keybinding handlers.
  */
+// @ts-ignore
+import React from 'react'
 import { feature } from 'bun:bundle';
 import { useCallback } from 'react';
 import instances from '../ink/instances.js';

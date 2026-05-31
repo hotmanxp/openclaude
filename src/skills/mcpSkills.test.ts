@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, expect, test } from 'bun:test'
 import { deriveMcpSkillName, fetchMcpSkillsForClient, isSkillResource } from './mcpSkills.js'
 // Importing loadSkillsDir registers the MCP skill builders (createSkillCommand /

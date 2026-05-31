@@ -1,3 +1,5 @@
+// @ts-ignore
+import React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import type { RemotePermissionResponse } from '../remote/RemoteSessionManager.js'

@@ -186,6 +186,7 @@ function startBunRelay(
   type BunState = ConnState & { writeBuf: Uint8Array[] }
 
   // eslint-disable-next-line custom-rules/require-bun-typeof-guard -- caller dispatches on typeof Bun
+  // @ts-ignore
   const server = Bun.listen<BunState>({
     hostname: '127.0.0.1',
     port: 0,

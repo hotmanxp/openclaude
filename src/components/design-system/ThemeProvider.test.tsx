@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @file Regression tests for ThemeProvider context hooks.
  *

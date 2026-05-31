@@ -43,7 +43,7 @@ export function isProgressReportingAvailable(): boolean {
     return true
   }
 
-  const version = coerce(process.env.TERM_PROGRAM_VERSION)
+  const version = coerce(process.env.TERM_PROGRAM_VERSION ?? '')
   if (!version) {
     return false
   }

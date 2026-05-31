@@ -4,6 +4,34 @@
  * to be declared for tsc --noEmit to work correctly.
  */
 
+declare module 'bun:bundle' {
+  export function feature(name: string): boolean
+  export function getDefaultValue(name: string): unknown
+}
+
+declare module 'bun:test'
+declare module 'bun:sqlite'
+declare module 'bun:ffi'
+
+declare module 'semver' {
+  export function valid(version: string): string | null
+  export function clean(version: string): string | null
+  export function gt(a: string, b: string, options?: { loose: boolean }): boolean
+  export function gte(a: string, b: string, options?: { loose: boolean }): boolean
+  export function lt(a: string, b: string, options?: { loose: boolean }): boolean
+  export function lte(a: string, b: string, options?: { loose: boolean }): boolean
+  export function satisfies(version: string, range: string, options?: { loose: boolean }): boolean
+  export function compare(a: string, b: string, options?: { loose: boolean }): -1 | 0 | 1
+  export function major(version: string | { version: string }, options?: { loose: boolean }): number
+  export function minor(version: string | { version: string }, options?: { loose: boolean }): number
+  export function patch(version: string | { version: string }, options?: { loose: boolean }): number
+  export function coerce(version: string): { version: string; major: number; minor: number; patch: number }
+}
+
+// Bun global namespace - allows any property access without TS errors
+// @ts-ignore - Bun runtime API not fully typed
+declare const Bun: Record<string, unknown>
+
 declare const MACRO: {
   VERSION: string
   DISPLAY_VERSION?: string

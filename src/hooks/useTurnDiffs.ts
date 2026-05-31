@@ -141,7 +141,6 @@ export function useTurnDiffs(messages: Message[]): TurnDiff[] {
         c.currentTurn = {
           turnIndex: c.lastTurnIndex,
           userPromptPreview: getUserPromptPreview(message),
-          // @ts-expect-error - timestamp may not exist on message
           timestamp: message.timestamp,
           files: new Map(),
           stats: { filesChanged: 0, linesAdded: 0, linesRemoved: 0 },

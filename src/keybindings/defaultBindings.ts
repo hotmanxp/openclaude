@@ -21,7 +21,7 @@ const IMAGE_PASTE_KEY = getPlatform() === 'windows' ? 'alt+v' : 'ctrl+v'
 const SUPPORTS_TERMINAL_VT_MODE =
   getPlatform() !== 'windows' ||
   (isRunningWithBun()
-    ? satisfies(process.versions.bun, '>=1.2.23')
+    ? satisfies(process.versions.bun ?? '', '>=1.2.23')
     : satisfies(process.versions.node, '>=22.17.0 <23.0.0 || >=24.2.0'))
 
 // Platform-specific mode cycle shortcut:

@@ -426,7 +426,7 @@ function renderIntegrationArtifacts(
 export async function generateIntegrationArtifacts(
   options: GenerateIntegrationArtifactsOptions = {},
 ): Promise<GeneratedArtifact[]> {
-  const repoRoot = options.repoRoot ?? path.resolve(path.join(import.meta.dir, '..', '..'))
+  const repoRoot = options.repoRoot ?? path.resolve(path.join((import.meta as any).dir, '..', '..'))
   const loadedModules = await loadDescriptorModules(repoRoot)
   const content = renderIntegrationArtifacts(loadedModules)
 
@@ -443,7 +443,7 @@ export async function writeIntegrationArtifacts(
 ): Promise<GeneratedArtifact[]> {
   const artifacts = await generateIntegrationArtifacts(options)
 
-  await fs.mkdir(path.join(options.repoRoot ?? path.resolve(path.join(import.meta.dir, '..', '..')), ...GENERATED_DIR), {
+  await fs.mkdir(path.join(options.repoRoot ?? path.resolve(path.join((import.meta as any).dir, '..', '..')), ...GENERATED_DIR), {
     recursive: true,
   })
 

@@ -69,7 +69,7 @@ const bunWhich =
  * @returns The full path to the command, or null if not found
  */
 export const which: (command: string) => Promise<string | null> = bunWhich
-  ? async command => bunWhich(command)
+  ? async command => (bunWhich as (command: string) => string | null)(command)
   : whichNodeAsync
 
 /**
@@ -79,4 +79,4 @@ export const which: (command: string) => Promise<string | null> = bunWhich
  * @returns The full path to the command, or null if not found
  */
 export const whichSync: (command: string) => string | null =
-  bunWhich ?? whichNodeSync
+  bunWhich ? (bunWhich as (command: string) => string | null) : whichNodeSync

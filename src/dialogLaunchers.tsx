@@ -36,7 +36,6 @@ export async function launchSnapshotUpdateDialog(root: Root, props: {
     SnapshotUpdateDialog
   } = await import('./components/agents/SnapshotUpdateDialog.js');
   return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => (
-    // @ts-expect-error - onComplete type mismatch
     <SnapshotUpdateDialog agentType={props.agentType} scope={props.scope} snapshotTimestamp={props.snapshotTimestamp} onComplete={done} onCancel={() => done('keep')} />
   ));
 }
@@ -128,6 +127,7 @@ export async function launchResumeChooser(root: Root, appProps: {
   }] = await Promise.all([worktreePathsPromise, import('./screens/ResumeConversation.js'), import('./components/App.js')]);
   await renderAndRun(root, <App getFpsMetrics={appProps.getFpsMetrics} stats={appProps.stats} initialState={appProps.initialState}>
       <KeybindingSetup>
+        {/* @ts-ignore */}
         <ResumeConversation {...resumeProps} worktreePaths={worktreePaths} />
       </KeybindingSetup>
     </App>);

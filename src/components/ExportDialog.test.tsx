@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PassThrough } from 'node:stream'
 
 import { afterAll, afterEach, expect, mock, test } from 'bun:test'

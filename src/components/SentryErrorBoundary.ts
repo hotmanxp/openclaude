@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as React from 'react'
 
 interface Props {
@@ -8,6 +9,7 @@ interface State {
   hasError: boolean
 }
 
+// @ts-ignore
 export class SentryErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props)

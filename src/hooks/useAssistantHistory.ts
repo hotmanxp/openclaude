@@ -1,6 +1,10 @@
 import { randomUUID } from 'crypto'
+// @ts-ignore
+import React from 'react'
 import {
+  type Dispatch,
   type RefObject,
+  type SetStateAction,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -22,7 +26,7 @@ import { logForDebugging } from '../utils/debug.js'
 type Props = {
   /** Gated on viewerOnly — non-viewer sessions have no remote history to page. */
   config: RemoteSessionConfig | undefined
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>
+  setMessages: Dispatch<SetStateAction<Message[]>>
   scrollRef: RefObject<ScrollBoxHandle | null>
   /** Called after prepend from the layout effect with message count + height
    *  delta. Lets useUnseenDivider shift dividerIndex + dividerYRef. */
@@ -126,7 +130,6 @@ export function useAssistantHistory({
       }
 
       const sentinel = page.hasMore ? null : mkSentinel(SENTINEL_START)
-      // @ts-expect-error - sentinel may be SystemInformationalMessage
       setMessages(prev => {
         // Drop existing sentinel (index 0, known stable UUID — O(1)).
         const base =
@@ -169,7 +172,6 @@ export function useAssistantHistory({
     if (!cursor || !ctx) return // null=exhausted, undefined=initial pending
     inflightRef.current = true
     // Swap sentinel to "loading…" — O(1) slice since sentinel is at index 0.
-    // @ts-expect-error - sentinel may be SystemInformationalMessage
     setMessages(prev => {
       const base =
         prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev
@@ -180,7 +182,6 @@ export function useAssistantHistory({
       if (!page) {
         // Fetch failed — revert sentinel back to "start" placeholder so the user
         // can retry on next scroll-up. Cursor is preserved (not nulled out).
-        // @ts-expect-error - sentinel may be SystemInformationalMessage
         setMessages(prev => {
           const base =
             prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev

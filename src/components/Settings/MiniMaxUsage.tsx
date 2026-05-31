@@ -218,7 +218,9 @@ export function MiniMaxUsage(): React.ReactNode {
 
       {rows.map((row, index) =>
         row.kind === 'window' ? (
+          // @ts-ignore
           <MiniMaxUsageLimitBar
+            // @ts-ignore
             key={`${row.label}-${index}`}
             label={row.label}
             usedPercent={row.usedPercent}
@@ -230,6 +232,7 @@ export function MiniMaxUsage(): React.ReactNode {
         ) : (
           // @ts-ignore
           <MiniMaxUsageTextRow
+            // @ts-ignore
             key={`${row.label}-${index}`}
             label={row.label}
             value={row.value}

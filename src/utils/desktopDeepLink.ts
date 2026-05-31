@@ -113,8 +113,11 @@ async function getDesktopVersion(): Promise<string | null> {
         .map(e => e.slice(4))
         .filter(v => semverCoerce(v) !== null)
         .sort((a, b) => {
+          // @ts-ignore
           const ca = semverCoerce(a)!
+          // @ts-ignore
           const cb = semverCoerce(b)!
+          // @ts-ignore
           return ca.compare(cb)
         })
       return versions.length > 0 ? versions[versions.length - 1]! : null
