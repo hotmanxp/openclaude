@@ -831,7 +831,14 @@ function repairPossiblyTruncatedObjectJson(raw: string): string | null {
   } catch {
     // Use jsonrepair to fix truncated JSON
     try {
-      return jsonrepair(raw)
+      const repaired = jsonrepair(raw)
+      // Verify the repaired result is a structured object, not a primitive
+      // (jsonrepair may turn a plain string like 'pwd' into '"pwd"' - we should
+      // not use this as partial_json, but instead fall through to normalizeToolArguments)
+      const parsed = JSON.parse(repaired)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? repaired
+        : null
     } catch {
       return null
     }

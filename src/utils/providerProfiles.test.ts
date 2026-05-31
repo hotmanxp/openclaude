@@ -95,6 +95,8 @@ async function importFreshProviderProfileModules() {
     ) => {
       mockConfigState = updater(mockConfigState)
     },
+    checkHasTrustDialogAccepted: () => true,
+    getOrCreateUserID: () => 'test-user',
   }))
   const nonce = `${Date.now()}-${Math.random()}`
   const providers = await import(`./model/providers.js?ts=${nonce}`)

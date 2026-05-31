@@ -81,12 +81,16 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
   id: 'api-key-conflict',
   type: 'warning',
   isActive: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
+    try {
+      const {
+        source: apiKeySource
+      } = getAnthropicApiKeyWithSource({
+        skipRetrievingKeyFromApiKeyHelper: true
+      });
+      return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
+    } catch {
+      return false;
+    }
   },
   render: () => {
     const {
@@ -107,13 +111,17 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
   id: 'both-auth-methods',
   type: 'warning',
   isActive: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    const authTokenInfo = getAuthTokenSource();
-    return apiKeySource !== 'none' && authTokenInfo.source !== 'none' && !(apiKeySource === 'apiKeyHelper' && authTokenInfo.source === 'apiKeyHelper');
+    try {
+      const {
+        source: apiKeySource
+      } = getAnthropicApiKeyWithSource({
+        skipRetrievingKeyFromApiKeyHelper: true
+      });
+      const authTokenInfo = getAuthTokenSource();
+      return apiKeySource !== 'none' && authTokenInfo.source !== 'none' && !(apiKeySource === 'apiKeyHelper' && authTokenInfo.source === 'apiKeyHelper');
+    } catch {
+      return false;
+    }
   },
   render: () => {
     const {
@@ -262,7 +270,7 @@ const dangerouslySkipPermissionsNotice: StatusNoticeDefinition = {
 
 // All notice definitions
 // [local-dev] dangerouslySkipPermissionsNotice disabled — uncomment when needed
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice, thirdPartyPermissiveModeNotice /* dangerouslySkipPermissionsNotice */];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice, thirdPartyPermissiveModeNotice, dangerouslySkipPermissionsNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

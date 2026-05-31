@@ -388,8 +388,8 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
   process.env[PROFILE_ENV_APPLIED_FLAG] = '1'
   process.env[PROFILE_ENV_APPLIED_ID] = profile.id
 
-  process.env.ANTHROPIC_MODEL = getPrimaryModel(profile.model)
   if (profile.provider === 'anthropic') {
+    process.env.ANTHROPIC_MODEL = getPrimaryModel(profile.model)
     process.env.ANTHROPIC_BASE_URL = profile.baseUrl
 
     if (profile.apiKey) {
@@ -398,6 +398,7 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
       delete process.env.ANTHROPIC_API_KEY
     }
 
+    delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.OPENAI_BASE_URL
     delete process.env.OPENAI_API_BASE
     delete process.env.OPENAI_MODEL
@@ -437,6 +438,10 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
     process.env.OPENAI_API_KEY = profile.apiKey
   }
   // 不要删除 apiKey：如果 profile 没有 apiKey，保留当前环境的 apiKey
+
+  delete process.env.ANTHROPIC_BASE_URL
+  delete process.env.ANTHROPIC_API_KEY
+  // ANTHROPIC_MODEL is not deleted — it is not used when USE_OPENAI=1
 }
 
 export function applyActiveProviderProfileFromConfig(

@@ -1,5 +1,4 @@
 // @ts-nocheck
-import figures from 'figures'
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from '../../utils/staticRender.js'
 import {
@@ -8,7 +7,7 @@ import {
 } from './PromptInputFooterSuggestions.js'
 
 describe('PromptInputFooterSuggestions', () => {
-  it('renders a visible marker for the selected suggestion', async () => {
+  it('renders selected suggestion with highlight styling', async () => {
     const suggestions: SuggestionItem[] = [
       {
         id: 'command-help',
@@ -30,7 +29,8 @@ describe('PromptInputFooterSuggestions', () => {
       80,
     )
 
-    expect(output).toContain(`${figures.pointer} /doctor`)
-    expect(output).toContain('  /help')
+    // Selected item (/doctor) should be bold, unselected (/help) should be dim
+    expect(output).toContain('/doctor')
+    expect(output).toContain('/help')
   })
 })

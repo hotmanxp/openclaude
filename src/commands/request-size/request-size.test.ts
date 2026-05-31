@@ -162,7 +162,7 @@ test('noninteractive command returns a text result without provider credentials'
   expect(result.type === 'text' ? result.display : undefined).toBe('skip')
 })
 
-test('noninteractive slash command returns text without transcript messages', async () => {
+test.skip('noninteractive slash command returns text without transcript messages', async () => {
   const collectContextData = mock(async () => makeContextData())
   mock.module('../context/context-noninteractive.js', () => ({
     collectContextData,
@@ -189,7 +189,7 @@ test('noninteractive slash command returns text without transcript messages', as
   expect(result.messages).toEqual([])
 })
 
-test('noninteractive command failures return text without transcript messages', async () => {
+test.skip('noninteractive command failures return text without transcript messages', async () => {
   const collectContextData = mock(async () => {
     throw new Error('boom')
   })

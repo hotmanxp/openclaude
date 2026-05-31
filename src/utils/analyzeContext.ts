@@ -20,6 +20,7 @@ import {
   countMessagesTokensWithAPI,
   countTokensViaHaikuFallback,
   roughTokenCountEstimation,
+  roughTokenCountEstimationForMessages,
 } from '../services/tokenEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
 import {
@@ -94,19 +95,39 @@ async function countTokensWithFallback(
 
   try {
     const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
-    if (fallbackResult === null) {
-      logForDebugging(
-        `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,
-      )
+    if (fallbackResult !== null) {
+      return fallbackResult
     }
-    return fallbackResult
+    logForDebugging(
+      `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools), using local estimate`,
+    )
   } catch (err) {
     logForDebugging(
-      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}`,
+      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}, using local estimate`,
     )
     logError(err)
-    return null
   }
+
+  return estimateTokensLocally(messages, tools)
+}
+
+function estimateTokensLocally(
+  messages: Anthropic.Beta.Messages.BetaMessageParam[],
+  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+): number {
+  const messageTokens = roughTokenCountEstimationForMessages(
+    messages.map(message => ({
+      type: message.role,
+      message: { content: message.content },
+    })),
+  )
+  const toolTokens =
+    tools.length > 0
+      ? TOOL_TOKEN_COUNT_OVERHEAD +
+        roughTokenCountEstimation(jsonStringify(tools))
+      : 0
+
+  return messageTokens + toolTokens
 }
 
 interface ContextCategory {
@@ -705,7 +726,10 @@ export async function countMcpToolTokens(
       name: tool.name,
       serverName: tool.name.split('__')[1] || 'unknown',
       tokens: mcpToolTokensByTool[i]!,
-      isLoaded: loadedMcpToolNames.has(tool.name) || !isDeferredTool(tool),
+      isLoaded:
+        !isDeferred ||
+        loadedMcpToolNames.has(tool.name) ||
+        !isDeferredTool(tool),
     })
   }
 
@@ -780,14 +804,36 @@ type MessageBreakdown = {
   attachmentsByType: Map<string, number>
 }
 
+function isInlineMediaBlock(block: unknown): block is { type: string } {
+  return (
+    typeof block === 'object' &&
+    block !== null &&
+    'type' in block &&
+    (block.type === 'image' ||
+      block.type === 'document' ||
+      block.type === 'container_upload')
+  )
+}
+
+function estimateMessageBlockTokens(
+  role: 'assistant' | 'user',
+  block: unknown,
+): number {
+  return roughTokenCountEstimationForMessages([
+    {
+      type: role,
+      message: { content: [block] },
+    },
+  ])
+}
+
 function processAssistantMessage(
   msg: AssistantMessage | NormalizedAssistantMessage,
   breakdown: MessageBreakdown,
 ): void {
   // Process each content block individually
   for (const block of msg.message.content) {
-    const blockStr = jsonStringify(block)
-    const blockTokens = roughTokenCountEstimation(blockStr)
+    const blockTokens = estimateMessageBlockTokens('assistant', block)
 
     if ('type' in block && block.type === 'tool_use') {
       breakdown.toolCallTokens += blockTokens
@@ -818,8 +864,7 @@ function processUserMessage(
 
   // Process each content block individually
   for (const block of msg.message.content) {
-    const blockStr = jsonStringify(block)
-    const blockTokens = roughTokenCountEstimation(blockStr)
+    const blockTokens = estimateMessageBlockTokens('user', block)
 
     if ('type' in block && block.type === 'tool_result') {
       breakdown.toolResultTokens += blockTokens
@@ -829,6 +874,13 @@ function processUserMessage(
       breakdown.toolResultsByType.set(
         toolName,
         (breakdown.toolResultsByType.get(toolName) || 0) + blockTokens,
+      )
+    } else if (isInlineMediaBlock(block)) {
+      breakdown.attachmentTokens += blockTokens
+      const mediaType = String(block.type)
+      breakdown.attachmentsByType.set(
+        mediaType,
+        (breakdown.attachmentsByType.get(mediaType) || 0) + blockTokens,
       )
     } else {
       // Text blocks or other non-tool content
@@ -841,8 +893,7 @@ function processAttachment(
   msg: AttachmentMessage,
   breakdown: MessageBreakdown,
 ): void {
-  const contentStr = jsonStringify(msg.attachment)
-  const tokens = roughTokenCountEstimation(contentStr)
+  const tokens = roughTokenCountEstimationForMessages([msg])
   breakdown.attachmentTokens += tokens
   const attachType = msg.attachment.type || 'unknown'
   breakdown.attachmentsByType.set(
@@ -914,6 +965,12 @@ async function approximateMessageTokens(
 
   breakdown.totalTokens = approximateMessageTokens ?? 0
   return breakdown
+}
+
+export async function approximateMessageTokensForTesting(
+  messages: Message[],
+): Promise<MessageBreakdown> {
+  return approximateMessageTokens(messages)
 }
 
 export async function analyzeContextUsage(
