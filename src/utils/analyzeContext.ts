@@ -726,6 +726,8 @@ export async function countMcpToolTokens(
       name: tool.name,
       serverName: tool.name.split('__')[1] || 'unknown',
       tokens: mcpToolTokensByTool[i]!,
+      // When tool search is not active (isDeferred=false), all MCP tools are loaded.
+      // When active, a tool is loaded only if used in messages or not a deferred type.
       isLoaded:
         !isDeferred ||
         loadedMcpToolNames.has(tool.name) ||

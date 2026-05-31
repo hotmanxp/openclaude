@@ -162,6 +162,8 @@ test('noninteractive command returns a text result without provider credentials'
   expect(result.type === 'text' ? result.display : undefined).toBe('skip')
 })
 
+// Skip: processSlashCommand returns transcript messages in non-interactive mode
+// when it should return empty (pre-existing bug in slash command processing)
 test.skip('noninteractive slash command returns text without transcript messages', async () => {
   const collectContextData = mock(async () => makeContextData())
   mock.module('../context/context-noninteractive.js', () => ({
@@ -189,6 +191,8 @@ test.skip('noninteractive slash command returns text without transcript messages
   expect(result.messages).toEqual([])
 })
 
+// Skip: processSlashCommand returns transcript messages on error in non-interactive mode
+// when it should return empty (pre-existing bug)
 test.skip('noninteractive command failures return text without transcript messages', async () => {
   const collectContextData = mock(async () => {
     throw new Error('boom')

@@ -158,6 +158,8 @@ describe('/export direct filename', () => {
     })
   })
 
+  // Skip: StatusNotices accesses toolPermissionContext.mode outside AppStateProvider
+  // causing "undefined is not an object" error - pre-existing issue in export rendering
   test.skip('keeps existing extensionless filename behavior as .txt', async () => {
     await withExportTestCwd(async cwd => {
       await runExport(join(cwd, 'transcript'))
@@ -169,6 +171,7 @@ describe('/export direct filename', () => {
     })
   })
 
+  // Skip: Same StatusNotices toolPermissionContext.mode issue as above
   test.skip('keeps unknown filename extensions on the existing plain text path', async () => {
     await withExportTestCwd(async cwd => {
       await runExport(join(cwd, 'transcript.csv'))
@@ -210,6 +213,7 @@ describe('/export direct filename', () => {
     })
   })
 
+  // Skip: Same StatusNotices toolPermissionContext.mode issue as above
   test.skip('keeps explicit .txt export behavior', async () => {
     await withExportTestCwd(async cwd => {
       await runExport(join(cwd, 'transcript.txt'))
