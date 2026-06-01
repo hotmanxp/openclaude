@@ -20,6 +20,7 @@ export default defineBrand({
     'minimax-m2.5-highspeed',
     'minimax-m2.7',
     'minimax-m2.7-highspeed',
+    'minimax-m3',
     'minimax-text-01',
     'minimax-text-01-preview',
     'minimax-vision-01',

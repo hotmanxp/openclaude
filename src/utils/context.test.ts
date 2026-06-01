@@ -154,6 +154,7 @@ test('MiniMax-M2.5 and M2.1 use explicit provider-specific context and output ca
   expect(getContextWindowForModel('MiniMax-M2.5-highspeed')).toBe(204_800)
   expect(getContextWindowForModel('MiniMax-M2.1')).toBe(204_800)
   expect(getContextWindowForModel('MiniMax-M2.1-highspeed')).toBe(204_800)
+  expect(getContextWindowForModel('MiniMax-M3')).toBe(1_000_000)
   expect(getModelMaxOutputTokens('MiniMax-M2.5')).toEqual({
     default: 131_072,
     upperLimit: 131_072,
