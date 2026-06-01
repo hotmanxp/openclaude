@@ -736,6 +736,13 @@ function shouldIncludeFileReadMitigation(): boolean {
   if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
     return false
   }
+  // Dedicated kill switch for the file-read malware reminder only — leaves
+  // todo/task reminders (and other tool reminders) untouched. Useful when
+  // you want to silence this specific noise without losing the other
+  // reminder behaviors.
+  if (isEnvTruthy(process.env.OPENCC_DISABLE_FILE_READ_MITIGATION)) {
+    return false
+  }
   const shortName = getCanonicalName(getMainLoopModel())
   return !MITIGATION_EXEMPT_MODELS.has(shortName)
 }
