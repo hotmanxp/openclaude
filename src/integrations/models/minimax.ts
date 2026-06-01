@@ -87,6 +87,7 @@ export default [
     contextWindow: 204_800,
     maxOutputTokens: 131_072,
   }),
+  // MiniMax — M3 is 1M context (max output 512K); M2.x series is 204,800.
   defineModel({
     id: 'minimax-m3',
     label: 'MiniMax M3',
@@ -96,7 +97,7 @@ export default [
     defaultModel: 'MiniMax-M3',
     capabilities: minimaxM2Capabilities,
     contextWindow: 1_000_000,
-    maxOutputTokens: 131_072,
+    maxOutputTokens: 524_288,
   }),
   defineModel({
     id: 'minimax-text-01',

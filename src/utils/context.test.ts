@@ -137,6 +137,19 @@ test('MiniMax-M2.7 uses explicit provider-specific context and output caps', () 
   expect(getMaxOutputTokensForModel('MiniMax-M2.7')).toBe(131_072)
 })
 
+test('MiniMax-M3 uses 1M context with 512K max output', () => {
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+  delete process.env.OPENAI_MODEL
+
+  expect(getContextWindowForModel('MiniMax-M3')).toBe(1_000_000)
+  expect(getModelMaxOutputTokens('MiniMax-M3')).toEqual({
+    default: 524_288,
+    upperLimit: 524_288,
+  })
+  expect(getMaxOutputTokensForModel('MiniMax-M3')).toBe(524_288)
+})
+
 test('unknown openai-compatible models use the 128k fallback window', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
