@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { basename, join, sep } from 'path';
 import React, { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
-import { CONFIG_DIRNAME } from '../../../constants.js';
+import { BRAND_NAME, CONFIG_DIRNAME } from '../../../constants.js';
 import { Text } from '../../../ink.js';
 import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
@@ -156,7 +156,7 @@ export function getFilePermissionOptions({
     type: 'input',
     label: 'No, provide reason',
     value: 'no-with-reason',
-    placeholder: `tell ${PRODUCT_DISPLAY_NAME} what to do differently`,
+    placeholder: `tell ${BRAND_NAME} what to do differently`,
     onChange: onRejectFeedbackChange,
     option: {
       type: 'reject',
