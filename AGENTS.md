@@ -64,6 +64,24 @@ opencc/
 └── dist/                   # Build output (dist/cli.mjs)
 ```
 
+## Upstream Sync
+
+OpenCC is a 3-provider fork of `Gitlawb/openclaude`. New upstream commits
+are synced manually (per-file `git apply --3way`, never `cherry-pick`)
+following the rules in **[`docs/sync-upstream.md`](docs/sync-upstream.md)**.
+That doc captures:
+
+- the exact sync method (commands, conflict resolution, rename policy)
+- the 20 commits already synced (`5a9b7e3c → e3d89b0c` on
+  `main-openccv2`)
+- which commit classes are deliberately skipped (mistral / codex /
+  gemini / nvidia-nim / vertex / release chore / SDK bundle)
+- a per-commit verification checklist
+- the daily cron job that reports new upstream SHAs for human review
+
+Whenever you touch `main-openccv2`, skim the sync doc first so you
+don't duplicate or undo work the cron has already inventoried.
+
 ## Architecture
 
 ### Provider System
