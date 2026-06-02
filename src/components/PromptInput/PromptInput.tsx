@@ -178,7 +178,6 @@ type Props = {
   isSideQuestionVisible?: boolean;
   helpOpen: boolean;
   setHelpOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  hasSuppressedDialogs?: boolean;
   isLocalJSXCommandActive?: boolean;
   insertTextRef?: React.MutableRefObject<{
     insert: (text: string) => void;
@@ -233,7 +232,6 @@ function PromptInput({
   isSideQuestionVisible,
   helpOpen,
   setHelpOpen,
-  hasSuppressedDialogs,
   isLocalJSXCommandActive = false,
   insertTextRef,
   voiceInterimRange
@@ -2272,9 +2270,6 @@ function PromptInput({
   const textInputElement = isVimModeEnabled() ? <VimTextInput {...baseProps} initialMode={vimMode} onModeChange={setVimMode} /> : <TextInput {...baseProps} />;
   return <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
-      {hasSuppressedDialogs && <Box marginTop={1} marginLeft={2}>
-          <Text dimColor>Waiting for permission…</Text>
-        </Box>}
       <PromptInputStashNotice hasStash={stashedPrompt !== undefined} />
       {swarmBanner ? <>
           <Text color={swarmBanner.bgColor}>
