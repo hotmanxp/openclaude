@@ -12,6 +12,28 @@ upstream" rules) and the sync method (per-file `git apply --3way`, never
 
 ---
 
+## Terminology
+
+Throughout this doc (and the rest of the project), we use the following
+names consistently to avoid confusion between the source we fork from and
+the place we push to:
+
+| Term (中文)  | Git name   | Refers to                                |
+|-------------|------------|------------------------------------------|
+| **上游**    | `upstream` | `Gitlawb/openclaude` — the official source we forked from |
+| **远程**    | `remote` / `origin` | `hotmanxp/openclaude` — our own GitHub fork (the remote we push to) |
+| **本地**    | `local`    | `~/code/opencc` — the working directory on this machine |
+
+Implications for the commands below:
+
+- "拉上游" = `git fetch upstream main`
+- "推远程" = `git push origin main-openccv2`
+- "sync 上游" = porting commits from `upstream/main` into our local branch
+- A `git show <SHA>` in the sync flow should always be of an **upstream**
+  commit (i.e. from `upstream/main`), never from `origin/main-openccv2`.
+
+---
+
 ## Method (replicate exactly)
 
 ```bash
@@ -34,8 +56,9 @@ NEW=$(git log --oneline origin/main-openccv2..upstream/main)
 #            `providerProfile.ts` cleanups.
 
 # 4. Per commit, per file, apply with 3way merge and rename to OpenCC:
-git show <commit> -- <path> | git apply --3way
+git show <upstream-commit> -- <path> | git apply --3way
 # - If 3way fails, drop into patch(1) for manual resolution.
+# - (See the "Terminology" section above for what "upstream" means here.)
 # - If upstream renames "claude" → "openclaude" or "Claude" → "OpenCC", keep
 #   the upstream rename (we use "OpenCC" too, so it's usually a no-op).
 # - If upstream renames "claude" → something else (Xiaomi, Mistral, etc.),
