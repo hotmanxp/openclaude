@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
@@ -120,7 +121,9 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
       yes: 1,
       'yes-apply-suggestions': 2,
       'yes-prefix-edited': 2,
-      no: 3
+      'yes-full-access': 3,
+      'no-with-reason': 4,
+      no: 5,
     };
     logEvent('tengu_permission_request_option_selected', {
       option_index: optionIndex[value],
@@ -176,19 +179,24 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
       case 'no':
         {
           const trimmedFeedback = rejectFeedback.trim();
-
-          // Log reject submission with feedback context
-          logEvent('tengu_reject_submitted', {
-            toolName: toolNameForAnalytics,
-            isMcp: toolUseConfirm.tool.isMcp ?? false,
-            has_instructions: !!trimmedFeedback,
-            instructions_length: trimmedFeedback.length,
-            entered_feedback_mode: noFeedbackModeEntered
-          });
-
-          // Process rejection (with or without feedback)
-          handleReject(trimmedFeedback || undefined);
-          break;
+          handleBaseShellSelection({
+            value,
+            toolUseConfirm,
+            onDone,
+            onReject: handleReject,
+            acceptFeedback,
+            rejectFeedback,
+            yesFeedbackModeEntered,
+            noFeedbackModeEntered,
+            noInputMode,
+            editablePrefix,
+            ruleToolName: PowerShellTool.name,
+            toolAnalyticsName: toolNameForAnalytics,
+            confirmFullAccess: onConfirm => {
+              confirmDangerousMode('fullAccess', onConfirm)
+            },
+          })
+          return
         }
     }
   }

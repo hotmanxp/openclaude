@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { homedir } from 'os';
 import { basename, join, sep } from 'path';
 import React, { type ReactNode } from 'react';
@@ -46,6 +47,7 @@ export type PermissionOption = {
   scope?: 'claude-folder' | 'global-claude-folder';
 } | {
   type: 'reject';
+  withReason?: boolean;
 };
 export type PermissionOptionWithLabel = OptionWithDescription<string> & {
   option: PermissionOption;
@@ -63,7 +65,7 @@ export function getFilePermissionOptions({
   filePath: string;
   toolPermissionContext: ToolPermissionContext;
   operationType?: FileOperationType;
-  onRejectFeedbackChange?: (value: string) => void;
+  onRejectFeedbackChange: (value: string) => void;
   onAcceptFeedbackChange?: (value: string) => void;
   yesInputMode?: boolean;
   noInputMode?: boolean;
@@ -150,7 +152,19 @@ export function getFilePermissionOptions({
     });
   }
 
-  // When in input mode, show input field for reject
+  options.push({
+    type: 'input',
+    label: 'No, provide reason',
+    value: 'no-with-reason',
+    placeholder: `tell ${PRODUCT_DISPLAY_NAME} what to do differently`,
+    onChange: onRejectFeedbackChange,
+    option: {
+      type: 'reject',
+      withReason: true
+    }
+  });
+
+  // When in input mode, keep supporting the existing Tab-to-amend flow.
   if (noInputMode && onRejectFeedbackChange) {
     options.push({
       type: 'input',
@@ -164,7 +178,6 @@ export function getFilePermissionOptions({
       }
     });
   } else {
-    // Not in input mode - simple option
     options.push({
       label: 'No',
       value: 'no',

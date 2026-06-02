@@ -324,7 +324,9 @@ function BashPermissionRequestInner({
       yes: 1,
       'yes-apply-suggestions': 2,
       'yes-prefix-edited': 2,
-      no: 3
+      'yes-full-access': 3,
+      'no-with-reason': 4,
+      no: 5,
     };
     if (feature('BASH_CLASSIFIER')) {
       optionIndex = {
@@ -332,7 +334,9 @@ function BashPermissionRequestInner({
         'yes-apply-suggestions': 2,
         'yes-prefix-edited': 2,
         'yes-classifier-reviewed': 3,
-        no: 4
+        'yes-full-access': 4,
+        'no-with-reason': 5,
+        no: 6,
       };
     }
     logEvent('tengu_permission_request_option_selected', {
@@ -409,19 +413,24 @@ function BashPermissionRequestInner({
       case 'no':
         {
           const trimmedFeedback = rejectFeedback.trim();
-
-          // Log reject submission with feedback context
-          logEvent('tengu_reject_submitted', {
-            toolName: toolNameForAnalytics,
-            isMcp: toolUseConfirm.tool.isMcp ?? false,
-            has_instructions: !!trimmedFeedback,
-            instructions_length: trimmedFeedback.length,
-            entered_feedback_mode: noFeedbackModeEntered
-          });
-
-          // Process rejection (with or without feedback)
-          handleReject(trimmedFeedback || undefined);
-          break;
+          handleBaseShellSelection({
+            value,
+            toolUseConfirm,
+            onDone,
+            onReject: handleReject,
+            acceptFeedback,
+            rejectFeedback,
+            yesFeedbackModeEntered,
+            noFeedbackModeEntered,
+            noInputMode,
+            editablePrefix,
+            ruleToolName: BashTool.name,
+            toolAnalyticsName: toolNameForAnalytics,
+            confirmFullAccess: onConfirm => {
+              confirmDangerousMode('fullAccess', onConfirm)
+            },
+          })
+          return
         }
     }
   }
