@@ -145,10 +145,10 @@ test('MiniMax-M3 uses 1M context with 512K max output', () => {
 
   expect(getContextWindowForModel('MiniMax-M3')).toBe(1_000_000)
   expect(getModelMaxOutputTokens('MiniMax-M3')).toEqual({
-    default: 524_288,
-    upperLimit: 524_288,
+    default: 512_000,
+    upperLimit: 512_000,
   })
-  expect(getMaxOutputTokensForModel('MiniMax-M3')).toBe(524_288)
+  expect(getMaxOutputTokensForModel('MiniMax-M3')).toBe(512_000)
 })
 
 // Backport of upstream 8dd7cb0 — Ollama deepseek-v4-pro:cloud variant
