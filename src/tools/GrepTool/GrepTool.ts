@@ -23,6 +23,7 @@ import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
 import { plural } from '../../utils/stringUtils.js'
 import { GREP_TOOL_NAME, getDescription } from './prompt.js'
+import { normalizeCountLine } from './normalizeCountLine.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -141,6 +142,8 @@ function formatLimitInfo(
   return parts.join(', ')
 }
 
+// Normalize a single line of `rg -c` output into uniform "relpath:count" form.
+// See ./normalizeCountLine.ts for the full rationale.
 const outputSchema = lazySchema(() =>
   z.object({
     mode: z.enum(['content', 'files_with_matches', 'count']).optional(),
@@ -484,17 +487,15 @@ export const GrepTool = buildTool({
         offset,
       )
 
-      // Convert absolute paths to relative paths to save tokens
-      const finalCountLines = limitedResults.map(line => {
-        // Lines have format: /absolute/path:count
-        const colonIndex = line.lastIndexOf(':')
-        if (colonIndex > 0) {
-          const filePath = line.substring(0, colonIndex)
-          const count = line.substring(colonIndex)
-          return toRelativePath(filePath) + count
-        }
-        return line
-      })
+      // Convert absolute paths to relative paths to save tokens.
+      // ripgrep's `-c` mode omits the filename when the search has a single
+      // input file, so a line can be a bare number like "3" instead of
+      // "/abs/path:3". normalizeCountLine reattaches the searched file's path
+      // so the parser and display stay consistent.
+      // Ref: https://github.com/BurntSushi/ripgrep/blob/master/FAQ.md#why-doesnt-ripgrep-show-the-filename-when-using---count
+      const finalCountLines = limitedResults.map(line =>
+        normalizeCountLine(line, absolutePath),
+      )
 
       // Parse count output to extract total matches and file count
       let totalMatches = 0
