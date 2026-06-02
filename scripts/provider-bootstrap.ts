@@ -1,17 +1,11 @@
 // @ts-nocheck
 import {
-  resolveCodexApiCredentials,
-} from '../src/services/api/providerConfig.js'
-import {
   getGoalDefaultOpenAIModel,
   normalizeRecommendationGoal,
   recommendOllamaModel,
 } from '../src/utils/providerRecommendation.ts'
 import {
   buildAtomicChatProfileEnv,
-  buildCodexProfileEnv,
-  buildGeminiProfileEnv,
-  buildMistralProfileEnv,
   buildOllamaProfileEnv,
   buildOpenAIProfileEnv,
   createProfileFile,
@@ -38,7 +32,11 @@ function parseArg(name: string): string | null {
 
 function parseProviderArg(): ProviderProfile | 'auto' {
   const p = parseArg('--provider')?.toLowerCase()
-  if (p === 'openai' || p === 'ollama' || p === 'codex' || p === 'gemini' || p === 'mistral' || p === 'atomic-chat') return p
+  // Per AGENTS.md: only three providers are supported — anthropic / ollama /
+  // openai-compatible. openai covers MiniMax, Moonshot, DeepSeek, and other
+  // OpenAI-format APIs. atomic-chat stays as a local Apple Silicon inference
+  // path. mistral / codex / gemini were removed.
+  if (p === 'openai' || p === 'ollama' || p === 'atomic-chat') return p
   return 'auto'
 }
 
@@ -77,37 +75,7 @@ async function main(): Promise<void> {
   }
 
   let env: ProfileFile['env']
-  if (selected === 'gemini') {
-    const builtEnv = buildGeminiProfileEnv({
-      model: argModel || null,
-      baseUrl: argBaseUrl || null,
-      apiKey: argApiKey || null,
-      processEnv: process.env,
-    })
-
-    if (!builtEnv) {
-      console.error('Gemini profile requires an API key. Use --api-key or set GEMINI_API_KEY.')
-      console.error('Get a free key at: https://aistudio.google.com/apikey')
-      process.exit(1)
-    }
-
-    env = builtEnv
-  } else if (selected === 'mistral') {
-    const builtEnv = buildMistralProfileEnv({
-      model: argModel || null,
-      baseUrl: argBaseUrl || null,
-      apiKey: argApiKey || null,
-      processEnv: process.env,
-    })
-
-    if (!builtEnv) {
-      console.error('Mistral profile requires an API key. Use --api-key or set MISTRAL_API_KEY.')
-      console.error('Get a free key at: https://admin.mistral.ai/organization/api-keys')
-      process.exit(1)
-    }
-
-    env = builtEnv
-  } else if (selected === 'ollama') {
+  if (selected === 'ollama') {
     resolvedOllamaModel ??= await resolveOllamaModel(argModel, argBaseUrl, goal)
     if (!resolvedOllamaModel) {
       console.error('No viable Ollama chat model was discovered. Pull a chat model first or pass --model explicitly.')
@@ -136,32 +104,6 @@ async function main(): Promise<void> {
       baseUrl: argBaseUrl,
       getAtomicChatChatBaseUrl,
     })
-  } else if (selected === 'codex') {
-    const builtEnv = buildCodexProfileEnv({
-      model: argModel,
-      baseUrl: argBaseUrl,
-      apiKey: argApiKey || process.env.CODEX_API_KEY || null,
-      processEnv: process.env,
-    })
-
-    if (!builtEnv) {
-      const credentials = resolveCodexApiCredentials(
-        argApiKey
-          ? { ...process.env, CODEX_API_KEY: argApiKey }
-          : process.env,
-      )
-      const authHint = credentials.authPath
-        ? ` or make sure ${credentials.authPath} exists`
-        : ''
-      if (!credentials.apiKey) {
-        console.error(`Codex profile requires CODEX_API_KEY${authHint}.`)
-      } else {
-        console.error('Codex profile requires CHATGPT_ACCOUNT_ID or an auth.json that includes it.')
-      }
-      process.exit(1)
-    }
-
-    env = builtEnv
   } else {
     const builtEnv = buildOpenAIProfileEnv({
       goal,
@@ -185,7 +127,7 @@ async function main(): Promise<void> {
 
   console.log(`Saved profile: ${selected}`)
   console.log(`Goal: ${goal}`)
-  console.log(`Model: ${profile.env.GEMINI_MODEL || profile.env.MISTRAL_MODEL || profile.env.OPENAI_MODEL || getGoalDefaultOpenAIModel(goal)}`)
+  console.log(`Model: ${profile.env.OPENAI_MODEL || getGoalDefaultOpenAIModel(goal)}`)
   console.log(`Path: ${outputPath}`)
   console.log('Next: bun run dev:profile')
 }

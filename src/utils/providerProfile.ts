@@ -348,6 +348,7 @@ export async function buildLaunchEnv(options: {
     persistedEnv.OPENAI_BASE_URL,
     persistedEnv,
   )
+  const persistedOpenAIApiFormat = persistedEnv.OPENAI_API_FORMAT
   const shellOpenAIModel = sanitizeProviderConfigValue(
     processEnv.OPENAI_MODEL,
     processEnv,
