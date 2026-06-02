@@ -162,12 +162,24 @@ Before pushing any sync commit:
 
 ## Cron-driven daily sync
 
-A daily cron job (Hermes) fetches `upstream/main` and reports the new
-commit SHAs with an AGENTS.md-policy classification. The user reviews
-the report and runs the manual sync above.
+A daily cron job (Hermes, `0 9 * * *`) fetches `upstream/main` and
+reports upstream commits **from the last 3 days** that the local fork
+hasn't already integrated. The 3-day window is intentional: a 7-day
+window produces ~20-30 commit reports even on quiet upstream weeks,
+and a full merge-base diff would surface ~187 historical commits we
+deliberately left out of scope.
 
 The cron job does **not** auto-apply, auto-commit, or auto-push — sync
 remains a human-reviewed, per-file `git apply --3way` workflow. The
-cron's job is just "tell me what changed upstream so I can decide."
+cron's job is just "tell me what's new on upstream in the last 3 days
+so I can decide whether to act today."
 
-See `~/.hermes/cron/` for the job definition and its run history.
+Dedup note: the cron compares upstream commit subjects to those on
+`origin/main-openccv2`. Sync-fixup commits (e.g. "fix(typecheck):
+bypass upstream type drift") don't dedup against the upstream commit
+they backport, which is fine — the report's job is to flag *upstream*
+activity, not audit our fixups.
+
+See `~/.hermes/cron/output/<job_id>/` for the daily report files. The
+WeChat delivery occasionally rate-limits; if no message arrives, the
+file is the source of truth.
