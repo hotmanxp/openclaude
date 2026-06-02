@@ -97,7 +97,7 @@ export default [
     defaultModel: 'MiniMax-M3',
     capabilities: minimaxM2Capabilities,
     contextWindow: 1_000_000,
-    maxOutputTokens: 524_288,
+    maxOutputTokens: 512_000,
   }),
   defineModel({
     id: 'minimax-text-01',
