@@ -356,14 +356,14 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Customize attribution text for commits and PRs. ' +
-            'Each field defaults to the standard Open CC attribution if not set.',
+            'Unspecified fields are off by default; set a non-empty string to opt in.',
         ),
       includeCoAuthoredBy: z
         .boolean()
         .optional()
         .describe(
           'Deprecated: Use attribution instead. ' +
-            "Whether to include Open CC's co-authored by attribution in commits and PRs (defaults to true)",
+            "Whether to include Open CC's co-authored by attribution in commits and PRs (defaults to false)",
         ),
       includeGitInstructions: z
         .boolean()
