@@ -163,15 +163,17 @@ Before pushing any sync commit:
 ## Cron-driven daily sync
 
 A daily cron job (Hermes, `0 9 * * *`) fetches `upstream/main` and
-reports upstream commits **from the last 3 days** that the local fork
-hasn't already integrated. The 3-day window is intentional: a 7-day
-window produces ~20-30 commit reports even on quiet upstream weeks,
-and a full merge-base diff would surface ~187 historical commits we
-deliberately left out of scope.
+reports upstream commits **from the last 5 days** that the local fork
+hasn't already integrated. The 5-day window is intentional: it covers
+a typical work week so a quiet week collapses to a "no action needed"
+report, while a busy upstream sprint (like the 187-commit pile we
+discovered on day 1) still surfaces the recent activity without
+flooding WeChat. The full historical backlog is tracked here in this
+doc and is deliberately out of scope for the daily report.
 
 The cron job does **not** auto-apply, auto-commit, or auto-push — sync
 remains a human-reviewed, per-file `git apply --3way` workflow. The
-cron's job is just "tell me what's new on upstream in the last 3 days
+cron's job is just "tell me what's new on upstream in the last 5 days
 so I can decide whether to act today."
 
 Dedup note: the cron compares upstream commit subjects to those on
