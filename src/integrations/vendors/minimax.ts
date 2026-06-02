@@ -5,7 +5,7 @@ export default defineVendor({
   label: 'MiniMax',
   classification: 'openai-compatible',
   defaultBaseUrl: 'https://api.minimax.io/v1',
-  defaultModel: 'MiniMax-M2.7',
+  defaultModel: 'MiniMax-M3',
   requiredEnvVars: ['MINIMAX_API_KEY'],
   setup: {
     requiresAuth: true,
