@@ -26,6 +26,7 @@ import {
   NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
 import {
+  getDefaultMainLoopModel,
   getDefaultMainLoopModelSetting,
   isNonCustomOpusModel,
 } from 'src/utils/model/model.js'
@@ -1332,9 +1333,10 @@ export function getErrorMessageIfRefusal(
     ? `${API_ERROR_MESSAGE_PREFIX}: Open CC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Try rephrasing the request or attempting a different approach.`
     : `${API_ERROR_MESSAGE_PREFIX}: Open CC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Please double press esc to edit your last message or start a new session for Open CC to assist with a different task.`
 
+  const defaultModel = getDefaultMainLoopModel()
   const modelSuggestion =
-    model !== 'claude-sonnet-4-20250514'
-      ? ' If you are seeing this refusal repeatedly, try running /model claude-sonnet-4-20250514 to switch models.'
+    model !== defaultModel
+      ? ` If you are seeing this refusal repeatedly, try running /model ${defaultModel} to switch models.`
       : ''
 
   return createAssistantAPIErrorMessage({
