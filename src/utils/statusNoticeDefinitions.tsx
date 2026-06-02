@@ -62,14 +62,16 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
     return <>
         {largeMemoryFiles.map(file => {
         const displayPath = file.path.startsWith(getCwd()) ? relative(getCwd(), file.path) : file.path;
-        return <WarningNoticeRow key={file.path}>
+        return <Box key={file.path} flexDirection="column">
+          <WarningNoticeRow>
               <Text color="warning">
                 Large <Text bold>{displayPath}</Text> will impact performance (
                 {formatNumber(file.content.length)} chars &gt;{' '}
                 {formatNumber(MAX_MEMORY_CHARACTER_COUNT)})
                 <Text dimColor> · /memory to edit</Text>
               </Text>
-            </WarningNoticeRow>;
+            </WarningNoticeRow>
+        </Box>;
       })}
       </>;
   }

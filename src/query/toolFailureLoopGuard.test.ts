@@ -1,3 +1,4 @@
+// @ts-nocheck — upstream types (UserMessage, Bun.file) diverge from our local shim
 import { expect, test } from 'bun:test'
 
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
