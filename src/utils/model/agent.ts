@@ -1,3 +1,5 @@
+import type { SettingsJson } from '../settings/types.js'
+import { getInitialSettings } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
 import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
@@ -12,7 +14,7 @@ export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
 
 export type AgentModelOption = {
-  value: AgentModelAlias
+  value: AgentModelAlias | (string & {})
   label: string
   description: string
 }
@@ -137,11 +139,10 @@ export function getAgentModelDisplay(model: string | undefined): string {
   return capitalize(model)
 }
 
-/**
- * Get available model options for agents
- */
-export function getAgentModelOptions(): AgentModelOption[] {
-  return [
+export function getAgentModelOptions(
+  settings: SettingsJson | null = getInitialSettings(),
+): AgentModelOption[] {
+  const baseOptions: AgentModelOption[] = [
     {
       value: 'sonnet',
       label: 'Sonnet',
@@ -163,4 +164,19 @@ export function getAgentModelOptions(): AgentModelOption[] {
       description: 'Use the same model as the main conversation',
     },
   ]
+
+  if (settings?.agentModels) {
+    const configuredKeys = Object.keys(settings.agentModels)
+    for (const key of configuredKeys) {
+      if (!baseOptions.some(opt => opt.value === key)) {
+        baseOptions.push({
+          value: key,
+          label: key,
+          description: 'Configured agent model',
+        })
+      }
+    }
+  }
+
+  return baseOptions
 }

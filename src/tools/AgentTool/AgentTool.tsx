@@ -26,6 +26,9 @@ import type { CacheSafeParams } from '../../utils/forkedAgent.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { createUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from '../../utils/messages.js';
 import { getAgentModel } from '../../utils/model/agent.js';
+import { resolveOutOfProcessTeammateProvider } from '../../services/api/agentRouting.js';
+import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
+import { getInitialSettings } from '../../utils/settings/settings.js';
 import { permissionModeSchema } from '../../utils/permissions/PermissionMode.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
 import { filterDeniedAgents, getDenyRuleForAgent } from '../../utils/permissions/permissions.js';
@@ -288,6 +291,26 @@ export const AgentTool = buildTool({
       if (agentDef?.color) {
         setAgentColor(subagent_type!, agentDef.color);
       }
+      const rawTeammateModel = model ?? agentDef?.model;
+      const resolvedTeammateModel =
+        rawTeammateModel === undefined
+          ? undefined
+          : getAgentModel(
+              agentDef?.model,
+              toolUseContext.options.mainLoopModel,
+              model,
+              permissionMode
+            );
+      const routedTeammateProvider = resolveOutOfProcessTeammateProvider({
+        cliModel: model,
+        agentName: name,
+        agentType: subagent_type,
+        agentDefinitionModel: agentDef?.model,
+        settings: getInitialSettings()
+      });
+      if (routedTeammateProvider && !isModelAllowed(routedTeammateProvider.model)) {
+        throw new Error(`Model '${routedTeammateProvider.model}' is not available. Your organization restricts model selection.`);
+      }
       const result = await spawnTeammate({
         name,
         prompt,
@@ -295,7 +318,8 @@ export const AgentTool = buildTool({
         team_name: teamName,
         use_splitpane: true,
         plan_mode_required: spawnMode === 'plan',
-        model: model ?? agentDef?.model,
+        model: routedTeammateProvider?.model ?? resolvedTeammateModel,
+        modelWasToolSpecified: model !== undefined,
         agent_type: subagent_type,
         invokingRequestId: assistantMessage?.requestId
       }, toolUseContext);
