@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClientType, setClientType } from '../bootstrap/state.js'
 import {
   getAttributionTexts,
@@ -15,8 +15,8 @@ import type { SettingsJson } from './settings/types.js'
 const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
-  OPENCLAUDE_DISABLE_CO_AUTHORED_BY:
-    process.env.OPENCLAUDE_DISABLE_CO_AUTHORED_BY,
+  OPENCC_DISABLE_CO_AUTHORED_BY:
+    process.env.OPENCC_DISABLE_CO_AUTHORED_BY,
   CLAUDE_CODE_REMOTE_SESSION_ID: process.env.CLAUDE_CODE_REMOTE_SESSION_ID,
   SESSION_INGRESS_URL: process.env.SESSION_INGRESS_URL,
   USER_TYPE: process.env.USER_TYPE,
@@ -41,11 +41,16 @@ function restoreEnv(): void {
 }
 
 beforeEach(() => {
+  // Restore any mocks leaked by other test files (e.g. providerFallback.test.ts
+  // uses mock.module('./settings/settings.js', ...) to override
+  // getInitialSettings; that mock persists across test files in the same
+  // bun:test process unless explicitly cleared).
+  mock.restore()
   resetSettingsCache()
   setClientType('cli')
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   process.env.OPENAI_MODEL = 'gpt-5.5'
-  delete process.env.OPENCLAUDE_DISABLE_CO_AUTHORED_BY
+  delete process.env.OPENCC_DISABLE_CO_AUTHORED_BY
   delete process.env.CLAUDE_CODE_REMOTE_SESSION_ID
   delete process.env.SESSION_INGRESS_URL
   delete process.env.USER_TYPE
@@ -95,7 +100,7 @@ describe('getDefaultCommitCoAuthorName', () => {
         apiProvider: 'firstParty',
         isInternalRepo: true,
       }),
-    ).toBe('Claude (bad model id)')
+    ).toBe('Open CC (bad model id)')
   })
 
   it('does not duplicate the Claude prefix for Claude model names', () => {
@@ -172,8 +177,8 @@ describe('getAttributionTexts', () => {
     expect(getAttributionTexts()).toEqual({ commit: '', pr: '' })
   })
 
-  it('uses OPENCLAUDE_DISABLE_CO_AUTHORED_BY to disable the old default co-author trailer', () => {
-    process.env.OPENCLAUDE_DISABLE_CO_AUTHORED_BY = '1'
+  it('uses OPENCC_DISABLE_CO_AUTHORED_BY to disable the old default co-author trailer', () => {
+    process.env.OPENCC_DISABLE_CO_AUTHORED_BY = '1'
     useSettings({ includeCoAuthoredBy: true })
 
     expect(getAttributionTexts()).toEqual({
@@ -182,8 +187,8 @@ describe('getAttributionTexts', () => {
     })
   })
 
-  it('does not let OPENCLAUDE_DISABLE_CO_AUTHORED_BY override explicit commit attribution', () => {
-    process.env.OPENCLAUDE_DISABLE_CO_AUTHORED_BY = '1'
+  it('does not let OPENCC_DISABLE_CO_AUTHORED_BY override explicit commit attribution', () => {
+    process.env.OPENCC_DISABLE_CO_AUTHORED_BY = '1'
     useSettings({
       attribution: { commit: 'Reviewed-by: Human <h@example.com>' },
     })

@@ -1,8 +1,19 @@
 // @ts-nocheck
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import * as actualProviders from './model/providers.js'
+
 const originalEnv = { ...process.env }
 const originalFetch = globalThis.fetch
+
+function mockProviders(overrides: Record<string, unknown>): void {
+  // Spread actualProviders so the override only swaps the named exports —
+  // other tests that import providers.js transitively still see the rest.
+  mock.module('./model/providers.js', () => ({
+    ...actualProviders,
+    ...overrides,
+  }))
+}
 
 async function importFreshModule() {
   mock.restore()
@@ -22,9 +33,7 @@ afterEach(() => {
 describe('preconnectAnthropicApi', () => {
   test('does not fetch when OpenAI mode is enabled', async () => {
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
-    mock.module('./model/providers.js', () => ({
-      getAPIProvider: () => 'openai',
-    }))
+    mockProviders({ getAPIProvider: () => 'openai' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
     globalThis.fetch = fetchMock as typeof globalThis.fetch
 
@@ -36,9 +45,7 @@ describe('preconnectAnthropicApi', () => {
 
   test('does not fetch when Gemini mode is enabled', async () => {
     process.env.CLAUDE_CODE_USE_GEMINI = '1'
-    mock.module('./model/providers.js', () => ({
-      getAPIProvider: () => 'gemini',
-    }))
+    mockProviders({ getAPIProvider: () => 'gemini' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
     globalThis.fetch = fetchMock as typeof globalThis.fetch
 
@@ -50,9 +57,7 @@ describe('preconnectAnthropicApi', () => {
 
   test('does not fetch when GitHub mode is enabled', async () => {
     process.env.CLAUDE_CODE_USE_GITHUB = '1'
-    mock.module('./model/providers.js', () => ({
-      getAPIProvider: () => 'github',
-    }))
+    mockProviders({ getAPIProvider: () => 'github' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
     globalThis.fetch = fetchMock as typeof globalThis.fetch
 
@@ -77,9 +82,7 @@ describe('preconnectAnthropicApi', () => {
     delete process.env.CLAUDE_CODE_CLIENT_CERT
     delete process.env.CLAUDE_CODE_CLIENT_KEY
 
-    mock.module('./model/providers.js', () => ({
-      getAPIProvider: () => 'firstParty',
-    }))
+    mockProviders({ getAPIProvider: () => 'firstParty' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
     globalThis.fetch = fetchMock as typeof globalThis.fetch
 
