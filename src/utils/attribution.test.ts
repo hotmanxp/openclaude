@@ -7,6 +7,7 @@ import {
   getEnhancedPRAttribution,
 } from './attribution.js'
 import {
+  getSessionSettingsCache,
   resetSettingsCache,
   setSessionSettingsCache,
 } from './settings/settingsCache.js'
@@ -46,6 +47,28 @@ beforeEach(() => {
   // getInitialSettings; that mock persists across test files in the same
   // bun:test process unless explicitly cleared).
   mock.restore()
+  // Re-mock settings.js so getInitialSettings reads from the real
+  // sessionSettingsCache set via setSessionSettingsCache(). The previous test
+  // file's mock may have replaced getInitialSettings with a stub that ignores
+  // the cache, breaking useSettings() below.
+  mock.module('./settings/settings.js', () => {
+    const cacheModule = require('./settings/settingsCache.js') as {
+      getSessionSettingsCache: typeof getSessionSettingsCache
+    }
+    return {
+      getInitialSettings: () => {
+        const cached = cacheModule.getSessionSettingsCache()
+        return cached?.settings ?? {}
+      },
+    }
+  })
+  // Also re-mock providers.js so getAPIProvider() consistently returns
+  // 'openai'. Cross-file pollution from providerFlag.test.ts or domainCheck
+  // may have left the env in an unexpected state.
+  mock.module('./model/providers.js', () => ({
+    getAPIProvider: () =>
+      process.env.CLAUDE_CODE_USE_OPENAI === '1' ? 'openai' : 'firstParty',
+  }))
   resetSettingsCache()
   setClientType('cli')
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
@@ -70,7 +93,7 @@ describe('getDefaultCommitCoAuthorName', () => {
         apiProvider: 'openai',
         isInternalRepo: false,
       }),
-    ).toBe('OpenClaude (gpt-5.5)')
+    ).toBe('OpenCC (gpt-5.5)')
   })
 
   it('does not apply internal Claude formatting to non-Claude providers', () => {
@@ -80,7 +103,7 @@ describe('getDefaultCommitCoAuthorName', () => {
         apiProvider: 'openai',
         isInternalRepo: true,
       }),
-    ).toBe('OpenClaude (gpt-5.5)')
+    ).toBe('OpenCC (gpt-5.5)')
   })
 
   it('keeps the codename-safe fallback for unknown first-party models', () => {
@@ -113,12 +136,10 @@ describe('getDefaultCommitCoAuthorName', () => {
     ).toBe('Claude Opus 4.6')
   })
 
-  it('uses the OpenClaude email for commit attribution across providers', () => {
-    expect(getDefaultCommitCoAuthorEmail('openai')).toBe(
-      'openclaude@gitlawb.com',
-    )
+  it('uses the OpenCC email for commit attribution across providers', () => {
+    expect(getDefaultCommitCoAuthorEmail('openai')).toBe('opencc@opencc.com')
     expect(getDefaultCommitCoAuthorEmail('firstParty')).toBe(
-      'openclaude@gitlawb.com',
+      'opencc@opencc.com',
     )
   })
 })
@@ -166,7 +187,7 @@ describe('getAttributionTexts', () => {
     useSettings({ includeCoAuthoredBy: true })
 
     expect(getAttributionTexts()).toEqual({
-      commit: 'Co-Authored-By: OpenClaude (gpt-5.5) <openclaude@gitlawb.com>',
+      commit: 'Co-Authored-By: OpenCC (gpt-5.5) <opencc@opencc.com>',
       pr: defaultPrAttribution,
     })
   })
