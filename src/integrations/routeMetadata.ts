@@ -10,6 +10,7 @@ import {
   getAllVendors,
   getGateway,
   getVendor,
+  getAnthropicProxy,
   resolveProfileRoute,
 } from './index.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
@@ -110,7 +111,7 @@ export function getRouteDescriptor(
   routeId: string,
 ): RouteDescriptor | null {
   ensureIntegrationsLoaded()
-  return getGateway(routeId) ?? getVendor(routeId) ?? null
+  return getGateway(routeId) ?? getVendor(routeId) ?? getAnthropicProxy(routeId) ?? null
 }
 
 export function getRouteLabel(
@@ -641,6 +642,19 @@ export function resolveActiveRouteIdFromEnv(
 
   const envOnlyRouteId = resolveEnvOnlyProviderRouteId(processEnv)
   if (envOnlyRouteId) return envOnlyRouteId
+
+  // Anthropic-SDK proxy via the MiniMax endpoint
+  // (ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic).
+  // Map to the anthropic-proxy route so shouldUseIntegrationRuntimeLimits()
+  // returns true and the M3 catalog entry (1M/512K) is consulted.
+  const anthropicBaseUrl =
+    processEnv.ANTHROPIC_BASE_URL ?? processEnv.ANTHROPIC_API_BASE
+  if (anthropicBaseUrl) {
+    const host = normalizeHost(anthropicBaseUrl)
+    if (host === 'api.minimaxi.com') {
+      return 'minimax-anthropic'
+    }
+  }
 
   return 'anthropic'
 }

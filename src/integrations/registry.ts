@@ -125,6 +125,10 @@ export function getCatalogEntriesForRoute(routeId: string): ModelCatalogEntry[] 
   if (vendor?.catalog?.models) {
     return vendor.catalog.models
   }
+  const anthropicProxy = _anthropicProxies.get(routeId)
+  if (anthropicProxy?.catalog?.models) {
+    return anthropicProxy.catalog.models
+  }
   return []
 }
 
