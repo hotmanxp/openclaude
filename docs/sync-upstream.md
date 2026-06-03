@@ -348,3 +348,54 @@ mode port: implement the new files locally first, then re-apply
 `4a4f379b` as a single bulk cherry-pick (or its 7-8 sub-PRs from
 upstream) and resolve the resulting conflicts once the fork's
 permission infrastructure matches.
+
+---
+
+## 2026-06-04 sync (`8801a4cd`, 1 commit, partial port)
+
+Tier 1 small commit from the daily cron report. Vision-specific 404
+classification for image requests. Ported 5 of 6 files (3 hunk in
+`openaiShim.ts`, 1 hunk dropped to a removed-provider path,
+1 hunk test dropped to a non-supported provider).
+
+### Tier 1 — small / clean, 5 of 6 files
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `8801a4cd` | (this commit) | `fix: show vision-specific error when provider returns 404 for image requests` (#1187). Adds `bodyContainsImages()` helper + `'vision_not_supported'` category so a 404 with image content gets a clear "model may not support images" error instead of the misleading "verify OPENAI_BASE_URL" message |
+
+Files applied (5 of 6):
+- `src/services/api/errors.ts` — add `vision_not_supported` case
+- `src/services/api/openaiErrorClassification.ts` — add
+  `'vision_not_supported'` category + `hasImages` classification path
+- `src/services/api/errors.openaiCompatibility.test.ts` — new test
+- `src/services/api/openaiErrorClassification.test.ts` — new test
+- `src/services/api/openaiShim.ts` — add `bodyContainsImages()` +
+  `hasImages: bodyContainsImages()` at 2 of 3 `classifyOpenAIHttpFailure`
+  call sites
+
+Files dropped (1 of 6) — non-supported provider path:
+- `src/services/api/openaiShim.test.ts` hunk #1 (Accept-Encoding
+  identity test) — depends on `registerGateway({ id:
+  'gitlawb-opengateway-test' })`, OpenGateway is a legacy
+  aggregating provider not in the fork's 3 supported
+  (anthropic / ollama / openai-compatible) per the project provider
+  policy
+- `src/services/api/openaiShim.ts` hunk #3 (GitHub `/responses`
+  endpoint retry path's `hasImages:` addition) — the enclosing GitHub
+  Copilot `/responses` retry block was removed in an earlier sync
+  since GitHub is also a legacy provider; the hunk's context doesn't
+  exist in main-openccv2 so 3way cleanly skipped it (no orphan call
+  site)
+
+`git apply --3way` initially reported "does not exist in index" for
+`openaiShim.ts` and `openaiShim.test.ts` because the patch hunk
+anchors referenced removed code; falling back to `git apply --reject`
+let the other 3 hunks apply cleanly and exposed the 1 dropped hunk.
+
+### Verification (2026-06-04)
+
+- `bun run typecheck` → 0 errors
+- `bun test src/services/api/` → **376 pass / 11 skip / 2 fail**
+  (the 2 fails are pre-existing codexOAuth tests — codex is a legacy
+  provider not in the 3 supported; unrelated to this commit)
