@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { Box, Text } from '../ink.js';
@@ -11,9 +10,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { count } from '../utils/array.js';
 import sample from 'lodash-es/sample.js';
-import { formatDuration, formatNumber, formatSecondsShort } from '../utils/format.js';
-import {  } from '../constants/product.js'
-import { BRAND_NAME } from '../constants.js';
+import { formatDuration, formatNumber } from '../utils/format.js';
 import type { Theme } from 'src/utils/theme.js';
 import { activityManager } from '../utils/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';
@@ -216,16 +213,6 @@ function SpinnerWithVerbInner({
   const messageColor = overrideColor ?? defaultColor;
   const shimmerColor = overrideShimmerColor ?? defaultShimmerColor;
 
-  // Compute TTFT string here (off the 50ms animation clock) and pass to
-  // SpinnerAnimationRow so it folds into the `(thought for Ns · ...)` status
-  // line instead of taking a separate row. apiMetricsRef is a ref so this
-  // doesn't trigger re-renders; we pick up updates on the parent's ~25x/turn
-  // re-render cadence, same as the old ApiMetricsLine did.
-  let ttftText: string | null = null;
-  if ("external" === 'ant' && apiMetricsRef?.current && apiMetricsRef.current.length > 0) {
-    ttftText = computeTtftText(apiMetricsRef.current);
-  }
-
   // When leader is idle but teammates are running (and we're viewing the leader),
   // show a static dim idle display instead of the animated spinner — otherwise
   // useStalledAnimation detects no new tokens after 3s and turns the spinner red.
@@ -259,11 +246,11 @@ function SpinnerWithVerbInner({
   const tipsEnabled = settings.spinnerTipsEnabled !== false;
   const showClearTip = tipsEnabled && elapsedSnapshot > 1_800_000;
   const showBtwTip = tipsEnabled && elapsedSnapshot > 30_000 && !getGlobalConfig().btwUseCount;
-  const effectiveTip = contextTipsActive ? undefined : showClearTip && !nextTask ? 'Use /clear to start fresh when switching topics and free up context' : showBtwTip && !nextTask ? `Use /btw to ask a quick side question without interrupting ${BRAND_NAME}'s current work` : spinnerTip;
+  const effectiveTip = contextTipsActive ? undefined : showClearTip && !nextTask ? 'Use /clear to start fresh when switching topics and free up context' : showBtwTip && !nextTask ? "Use /btw to ask a quick side question without interrupting Claude's current work" : spinnerTip;
 
   // Budget text (internal-only) — shown above the tip line
   let budgetText: string | null = null;
-  if (true) {
+  if (feature('TOKEN_BUDGET')) {
     const budget = getCurrentTurnTokenBudget();
     if (budget !== null && budget > 0) {
       const tokens = getTurnOutputTokens();
