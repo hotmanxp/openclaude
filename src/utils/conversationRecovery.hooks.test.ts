@@ -133,8 +133,13 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
   ).not.toContain('only hidden reasoning')
 
   mock.restore()
+  // [FORK] bedrock is not a supported provider in the 3-provider fork
+  // (anthropic / ollama / openai-compatible per AGENTS.md), so the bedrock
+  // path can't be exercised end-to-end. Use 'firstParty' to cover the
+  // "non-OpenAI-compatible" branch of conversationRecovery without leaking
+  // a bedrock mock into subsequent tests' getAPIProvider() calls.
   mock.module('./model/providers.js', () => ({
-    getAPIProvider: () => 'bedrock',
+    getAPIProvider: () => 'firstParty',
     isOpenAICompatibleProvider: (provider: string) =>
       provider === 'openai' ||
       provider === 'gemini' ||
@@ -142,8 +147,8 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
       provider === 'codex',
   }))
 
-  const bedrockModule = await import(`./conversationRecovery.ts?provider=bedrock-${Date.now()}`)
-  const anthropicCompatible = bedrockModule.deserializeMessagesWithInterruptDetection(serializedMessages as never[])
+  const anthropicCompatibleModule = await import(`./conversationRecovery.ts?provider=firstParty-${Date.now()}`)
+  const anthropicCompatible = anthropicCompatibleModule.deserializeMessagesWithInterruptDetection(serializedMessages as never[])
   const anthropicAssistantMessages = anthropicCompatible.messages.filter(
     message => message.type === 'assistant',
   )
