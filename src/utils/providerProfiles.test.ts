@@ -88,8 +88,19 @@ afterEach(() => {
 
 async function importFreshProviderProfileModules() {
   mock.restore()
+  const actualConfig = await import(`./config.js?ts=${Date.now()}-${Math.random()}`)
   mock.module('./config.js', () => ({
-    getGlobalConfig: () => mockConfigState,
+    ...actualConfig,
+    // Spread the real config so the mock stays a COMPLETE GlobalConfig and only
+    // the provider-profile fields are overridden. bun's mock.restore() does NOT
+    // revert mock.module(), so this replacement leaks into later test files in
+    // the same process; returning a partial object (missing e.g.
+    // autoCompactEnabled) silently broke unrelated suites that read other config
+    // fields via getGlobalConfig().
+    getGlobalConfig: () => ({
+      ...actualConfig.getGlobalConfig(),
+      ...mockConfigState,
+    }),
     saveGlobalConfig: (
       updater: (current: MockConfigState) => MockConfigState,
     ) => {
