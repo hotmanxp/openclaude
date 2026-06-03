@@ -548,7 +548,7 @@ async function* queryLoop(
       querySource !== 'compact' && querySource !== 'session_memory'
     if (canForceCompact) {
       const MAX_ACTIVE_MESSAGES = Number.parseInt(
-        process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES ?? '200',
+        process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '200',
         10,
       )
       if (messagesForQuery.length > MAX_ACTIVE_MESSAGES) {

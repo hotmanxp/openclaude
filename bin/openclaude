@@ -15,9 +15,9 @@ import { spawnSync } from 'child_process'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distPath = join(__dirname, '..', 'dist', 'cli.mjs')
 
-const HEAP_RELAUNCHED_ENV = 'OPENCLAUDE_HEAP_RELAUNCHED'
-const DISABLE_HEAP_RELAUNCH_ENV = 'OPENCLAUDE_DISABLE_HEAP_RELAUNCH'
-const HEAP_SIZE_ENV = 'OPENCLAUDE_NODE_MAX_OLD_SPACE_SIZE_MB'
+const HEAP_RELAUNCHED_ENV = 'OPENCC_HEAP_RELAUNCHED'
+const DISABLE_HEAP_RELAUNCH_ENV = 'OPENCC_DISABLE_HEAP_RELAUNCH'
+const HEAP_SIZE_ENV = 'OPENCC_NODE_MAX_OLD_SPACE_SIZE_MB'
 const DEFAULT_HEAP_SIZE_MB = 8192
 
 function hasNodeFlag(args, flag) {
@@ -38,7 +38,7 @@ function getHeapSizeMb() {
     const mb = Number.parseInt(maxMemArg.split('=')[1] || '0', 10)
     if (Number.isSafeInteger(mb) && mb > 0) {
       process.env[HEAP_SIZE_ENV] = String(mb)
-      process.env.OPENCLAUDE_MAX_MEMORY_MB = String(mb)
+      process.env.OPENCC_MAX_MEMORY_MB = String(mb)
       return mb
     }
   }

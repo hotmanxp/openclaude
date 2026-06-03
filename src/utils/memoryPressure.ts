@@ -21,7 +21,7 @@ const DEFAULT_CONFIG: MemoryPressureConfig = {
   criticalThresholdMB: 0,
   checkIntervalMs: 30_000,
   perSessionBudgetMB: Number.parseInt(
-    process.env.OPENCLAUDE_MAX_MEMORY_MB ?? '1536',
+    process.env.OPENCC_MAX_MEMORY_MB ?? '1536',
     10,
   ),
 }
