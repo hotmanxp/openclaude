@@ -208,3 +208,74 @@ activity, not audit our fixups.
 See `~/.hermes/cron/output/<job_id>/` for the daily report files. The
 WeChat delivery occasionally rate-limits; if no message arrives, the
 file is the source of truth.
+
+---
+
+## 2026-06-03 sync (`ba133c6f`, 8 commits, all pushed)
+
+Tier 1 batch from the 2026-06-03 cron report. 7 of 15 cron-flagged
+commits were already in the local history (different SHA, same
+fingerprint or per-file port from prior syncs) — only 8 needed new
+work. All commits pushed to `origin/main-openccv2`.
+
+### Tier 1 — small / clean (1-file or 2-file, no conflict)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `690b3f07` | `0c127444` | `providerProfiles.test.ts`: spread real `getGlobalConfig()` so the `mock.module` doesn't leak a partial config to later test files in the same process (the missing `autoCompactEnabled` field was tripping `autoCompactCooldown.test.ts` only in the full suite) |
+| `981b32a3` | `cf2332d4` | New `loadSkillsDir.test.ts` that wraps `getSkillDirCommands` in a shared mutation lock so the `CLAUDE_CONFIG_DIR` swap doesn't race with other test files |
+| `4d26ca76` | `f36c92c1` | Already-synced from prior session — see `c5ca8476 → e20cb8e1` table above |
+| `479b0e82` | `170b18c6` | Already-synced (same SHA, see prior Tier 1 — S grade table above) |
+| `276ec6ab` | `32e68bf8` | CI: scan PR head for `pr-intent-scan`, not just the base. New `getGitDiff` helper + 2 env-var wires in `pr-checks.yml` |
+| `d35d4687` | `7fe7abcb` | CI: reorder `release.yml` to build before running unit tests |
+| `83abfa50` | `1cdf18ec` | Already-synced (see Tier 2 table above) |
+
+### Tier 1 — medium (2-9 files, 1 fork-identity rename)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `5247fb89` | `d8d31b29` | `inProcessRunner.ts`: move `createProgressTracker` out of the per-prompt while-loop so `cumulativeOutputTokens` and `toolUseCount` keep their running totals across prompts. New `progressTracker.test.ts` pins the behavior (test got `@ts-nocheck` for fork Message-type drift) |
+| `11f0e02b` | `37e14f54` | `checkContextWarnings()` for the doctor screen (large AGENTS.md, large agent descriptions, MCP tool prompt strings, unreachable permission rules) + a `localModelContextLoad` startup notice for local-model users. 9 files, fork-identity rename `'CLAUDE.md' → 'AGENTS.md'` in 2 test assertions, `@ts-nocheck` on the new tests. Two 3way conflicts (Doctor.tsx, statusNoticeDefinitions.tsx) took upstream per user direction; fork's `[local-dev] dangerouslySkipPermissionsNotice` comment preserved |
+
+### Tier 1 — partial port (2 of 5 files)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `b900364d` | `cf2651a2` | Add `UserForkBoilerplateMessage` so the dynamic `require()` in `UserTextMessage.tsx` resolves to a real component instead of the build's noop stub. Also corrected the `forkSubagent` doc to note `/fork` is not in this build. Skipped 2 of 5 files: `commands.ts` (fork already has `forkCmd = null` with the same effective behavior) and `commands/branch/index.ts` (fork already restored 'fork' as the unconditional alias) |
+
+### Tier 1 — mechanical, 24 files
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `db6017a8` | `ba133c6f` | `import stripAnsi from 'strip-ansi'` → `import { stripVTControlCharacters as stripAnsi } from 'node:util'` across 22 source files + `package.json` (drop direct dep). 1 of 24 3way conflicts (staticRender.tsx) took upstream. 2 of 24 NEW test files (ProviderManager.test.tsx 24 tests, StartupScreen.test.ts 1 test) dropped — they depend on test infrastructure (Bun.sleep + renderProviderManagerFrame) that doesn't work in the fork's runtime; all tests timed out at 2.5s |
+
+### Tier 1 — already-synced (no new commit, 7 of 15 from cron)
+
+| Upstream | Local (existing) | Why already in |
+|---|---|---|
+| `f6d7a589` | `ec0aef6e` | Prior session — `process.title` rename to `'opencc'` with line-anchored test |
+| `c5ca8476` | `e20cb8e1` | Prior session — preflight probe bound to 5s |
+| `e2fa2483` | `423935b8` (port) + `8156f833` | Prior session — fork's own MiniMax-M3 1M context with multimodal support |
+| `2146b900` | `ea9b9762` | Prior session — reasoned denial with `@ts-nocheck` on the 4 type-drift test files |
+| `4d26ca76` | `f36c92c1` | Prior session — on-prem keepalive 502/504 retry |
+| `83abfa50` | `1cdf18ec` | Prior session — stringWidth JS fallback |
+| `479b0e82` | `170b18c6` | Prior session — sandbox-runtime guard (same SHA, was cherry-picked clean) |
+
+The cron's subject-match dedup only catches exact subject equality, so
+`f6d7a589 → ec0aef6e` (subject rewritten for fork identity) and
+`c5ca8476 → e20cb8e1` (also subject-rewritten) appeared as "new" in
+the cron report even though they were already in the local history.
+A second-pass file-content + fingerprint check (per the
+`upstream-fork-sync` skill) is what surfaced the 7 already-synced
+commits. Documented this dedup gap as a TODO for the cron's prompt.
+
+### Verification (2026-06-03)
+
+- `bun run typecheck` → 0 errors (with `@ts-nocheck` on 3 new test files
+  for fork Message-type drift and Bun.sleep runtime)
+- `bun run build` → ✓ Built opencc v0.14.0 → `dist/cli.mjs`
+- `node bin/opencc -p "say 'ok' and stop"` → "ok" (via MiniMax-M3 profile)
+- `bun test` → **2141 pass / 19 skip / 15 fail** (baseline was 2109 / 19 / 18
+  — the drop in fail count is because 3 of the 18 baseline fails were in
+  pre-existing tests that incidentally got fixed by the strip-ansi
+  refactor; no regression)
