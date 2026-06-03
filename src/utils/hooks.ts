@@ -572,14 +572,22 @@ function validateHookJson(
   }
 }
 
-function parseHookOutput(stdout: string): {
+function parseHookOutput(
+  stdout: string,
+  context?: { hookName?: string; hookEvent?: string },
+): {
   json?: HookJSONOutput
   plainText?: string
   validationError?: string
 } {
   const trimmed = stdout.trim()
+  const ctx = context
+    ? ` [hook=${context.hookName ?? '?'}/${context.hookEvent ?? '?'}]`
+    : ''
   if (!trimmed.startsWith('{')) {
-    logForDebugging('Hook output does not start with {, treating as plain text')
+    logForDebugging(
+      `Hook output does not start with {, treating as plain text${ctx}`,
+    )
     return { plainText: stdout }
   }
 
@@ -2688,6 +2696,7 @@ async function* executeHooks({
       // Try JSON parsing first
       const { json, plainText, validationError } = parseHookOutput(
         result.stdout,
+        { hookName, hookEvent },
       )
 
       if (validationError) {
@@ -3502,7 +3511,10 @@ async function executeHooksOutsideREPL({
         )
 
         // Parse JSON for any messages to print out.
-        const { json, validationError } = parseHookOutput(result.stdout)
+        const { json, validationError } = parseHookOutput(result.stdout, {
+          hookName,
+          hookEvent,
+        })
         if (validationError) {
           // Validation error is logged via logForDebugging and returned in output
           throw new Error(validationError)
