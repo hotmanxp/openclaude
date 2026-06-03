@@ -3,8 +3,8 @@ import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
 import { useEffect } from 'react';
 import { PassThrough } from 'stream';
-import stripAnsi from 'strip-ansi';
-import { render } from '../ink.js';
+import { stripVTControlCharacters as stripAnsi } from 'node:util';
+import { render, useApp } from '../ink.js';
 
 // This is a workaround for the fact that Ink doesn't support multiple <Static>
 // components in the same render tree. Instead of using a <Static> we just render

@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream'
 
 import { afterEach, expect, mock, test } from 'bun:test'
 import React from 'react'
-import stripAnsi from 'strip-ansi'
+import { stripVTControlCharacters as stripAnsi } from 'node:util'
 
 import { createRoot, Text, useTheme } from '../ink.js'
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js'
