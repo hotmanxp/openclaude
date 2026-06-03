@@ -47,7 +47,7 @@ function update(
   state = createToolFailureLoopGuardState(),
   toolUseBlocks: ToolUseBlock[],
   results: ReturnType<typeof toolResult>[],
-  threshold = 3,
+  threshold = 5,
 ) {
   return updateToolFailureLoopGuard({
     state,
@@ -57,7 +57,7 @@ function update(
   })
 }
 
-test('three identical tool failures trip the guard', () => {
+test('five identical tool failures trip the guard', () => {
   const state = createToolFailureLoopGuardState()
 
   expect(
@@ -70,15 +70,25 @@ test('three identical tool failures trip the guard', () => {
       toolResult('b', 'Error writing file: failed to replace text'),
     ]).tripped,
   ).toBe(false)
+  expect(
+    update(state, [toolUse('c', 'Edit')], [
+      toolResult('c', 'Error writing file: failed to replace text'),
+    ]).tripped,
+  ).toBe(false)
+  expect(
+    update(state, [toolUse('d', 'Edit')], [
+      toolResult('d', 'Error writing file: failed to replace text'),
+    ]).tripped,
+  ).toBe(false)
 
-  const decision = update(state, [toolUse('c', 'Edit')], [
-    toolResult('c', 'Error writing file: failed to replace text'),
+  const decision = update(state, [toolUse('e', 'Edit')], [
+    toolResult('e', 'Error writing file: failed to replace text'),
   ])
 
   if (!decision.tripped) {
     throw new Error('Expected repeated Edit failures to trip the guard')
   }
-  expect(decision.message).toContain('`Edit` failed 3 times')
+  expect(decision.message).toContain('`Edit` failed 5 times')
   expect(decision.message).toContain('`FileWriteError`')
 })
 
@@ -91,11 +101,15 @@ test('multiple failures in the same batch each increment the counters', () => {
       toolUse('a', 'Edit'),
       toolUse('b', 'Edit'),
       toolUse('c', 'Edit'),
+      toolUse('d', 'Edit'),
+      toolUse('e', 'Edit'),
     ],
     [
       toolResult('a', 'Error writing file: failed to replace text'),
       toolResult('b', 'Error writing file: failed to replace text'),
       toolResult('c', 'Error writing file: failed to replace text'),
+      toolResult('d', 'Error writing file: failed to replace text'),
+      toolResult('e', 'Error writing file: failed to replace text'),
     ],
   )
 
@@ -281,16 +295,22 @@ test('same failing file_path across repeated failures trips the guard', () => {
   update(state, [toolUse('b', 'Edit', { path: 'src/foo.ts' })], [
     toolResult('b', 'InputValidationError: old_string not found'),
   ])
+  update(state, [toolUse('c', 'NotebookEdit', { notebook_path: 'src\\foo.ts' })], [
+    toolResult('c', 'No such tool available: NotebookEdit'),
+  ])
+  update(state, [toolUse('d', 'Edit', { file_path: 'src/foo.ts' })], [
+    toolResult('d', 'Error writing file: failed to replace text'),
+  ])
   const decision = update(
     state,
-    [toolUse('c', 'NotebookEdit', { notebook_path: 'src\\foo.ts' })],
-    [toolResult('c', 'No such tool available: NotebookEdit')],
+    [toolUse('e', 'Edit', { file_path: 'src/foo.ts' })],
+    [toolResult('e', 'Error writing file: failed to replace text')],
   )
 
   if (!decision.tripped) {
     throw new Error('Expected repeated path failures to trip the guard')
   }
-  expect(decision.message).toContain('The path `src/foo.ts` failed 3 times.')
+  expect(decision.message).toContain('The path `src/foo.ts` failed 5 times.')
 })
 
 test('a successful mutating tool result resets a failing path counter', () => {
@@ -327,16 +347,26 @@ test('successful reads do not reset repeated write failures for the same path', 
   update(state, [toolUse('d', 'Read', { file_path: 'E:/project/nui.lua' })], [
     toolResult('d', 'file contents', false),
   ])
-  const decision = update(state, [
+  update(state, [
     toolUse('e', 'Edit', { file_path: 'E:/project/nui.lua' }),
   ], [
     toolResult('e', 'Error writing file: failed to replace text'),
+  ])
+  update(state, [
+    toolUse('f', 'Write', { file_path: 'E:/project/nui.lua' }),
+  ], [
+    toolResult('f', 'Error writing file: failed to replace text'),
+  ])
+  const decision = update(state, [
+    toolUse('g', 'Edit', { file_path: 'E:/project/nui.lua' }),
+  ], [
+    toolResult('g', 'Error writing file: failed to replace text'),
   ])
 
   if (!decision.tripped) {
     throw new Error('Expected repeated path failures to survive Read successes')
   }
-  expect(decision.message).toContain('The path `E:/project/nui.lua` failed 3 times.')
+  expect(decision.message).toContain('The path `E:/project/nui.lua` failed 5 times.')
 })
 
 test('unrelated successes in the same batch do not hide repeated path failures', () => {
@@ -364,7 +394,7 @@ test('unrelated successes in the same batch do not hide repeated path failures',
       toolResult('read-b', 'file contents', false),
     ],
   )
-  const decision = update(
+  update(
     state,
     [
       toolUse('c', 'NotebookEdit', { notebook_path: 'src/a.ts' }),
@@ -375,11 +405,33 @@ test('unrelated successes in the same batch do not hide repeated path failures',
       toolResult('read-c', 'file contents', false),
     ],
   )
+  update(
+    state,
+    [
+      toolUse('d', 'Edit', { file_path: 'src/a.ts' }),
+      toolUse('read-d', 'Read', { file_path: 'src/other.ts' }),
+    ],
+    [
+      toolResult('d', 'Error writing file: failed to replace text'),
+      toolResult('read-d', 'file contents', false),
+    ],
+  )
+  const decision = update(
+    state,
+    [
+      toolUse('e', 'Edit', { file_path: 'src/a.ts' }),
+      toolUse('read-e', 'Read', { file_path: 'src/other.ts' }),
+    ],
+    [
+      toolResult('e', 'Error writing file: failed to replace text'),
+      toolResult('read-e', 'file contents', false),
+    ],
+  )
 
   if (!decision.tripped) {
     throw new Error('Expected repeated path failures to survive batch successes')
   }
-  expect(decision.message).toContain('The path `src/a.ts` failed 3 times.')
+  expect(decision.message).toContain('The path `src/a.ts` failed 5 times.')
 })
 
 test('unrelated successful tools do not reset repeated same-tool failure signatures', () => {
@@ -395,14 +447,23 @@ test('unrelated successful tools do not reset repeated same-tool failure signatu
   update(state, [toolUse('d', 'Bash')], [
     toolResult('d', 'Python 3.13.7', false),
   ])
-  const decision = update(state, [toolUse('e', 'Edit')], [
+  update(state, [toolUse('e', 'Edit')], [
     toolResult('e', 'Error writing file: failed to replace text'),
+  ])
+  update(state, [toolUse('f', 'Bash')], [
+    toolResult('f', 'Python 3.13.7', false),
+  ])
+  update(state, [toolUse('g', 'Edit')], [
+    toolResult('g', 'Error writing file: failed to replace text'),
+  ])
+  const decision = update(state, [toolUse('h', 'Edit')], [
+    toolResult('h', 'Error writing file: failed to replace text'),
   ])
 
   if (!decision.tripped) {
     throw new Error('Expected unrelated successes not to reset Edit failures')
   }
-  expect(decision.message).toContain('`Edit` failed 3 times')
+  expect(decision.message).toContain('`Edit` failed 5 times')
   expect(decision.message).toContain('`FileWriteError`')
 })
 
@@ -434,14 +495,21 @@ test('repeated invalid fallback commands trip despite unrelated successful reads
     toolResult('c', 'Invalid tool parameters: malformed Python heredoc'),
   ])
   update(state, [toolUse('d', 'Read')], [toolResult('d', 'file contents', false)])
-  const decision = update(state, [toolUse('e', 'Bash')], [
+  update(state, [toolUse('e', 'Bash')], [
     toolResult('e', 'Invalid tool parameters: malformed Python heredoc'),
+  ])
+  update(state, [toolUse('f', 'Read')], [toolResult('f', 'file contents', false)])
+  update(state, [toolUse('g', 'Bash')], [
+    toolResult('g', 'Invalid tool parameters: malformed Python heredoc'),
+  ])
+  const decision = update(state, [toolUse('h', 'Bash')], [
+    toolResult('h', 'Invalid tool parameters: malformed Python heredoc'),
   ])
 
   if (!decision.tripped) {
     throw new Error('Expected repeated Bash validation failures to trip')
   }
-  expect(decision.message).toContain('`Bash` failed 3 times')
+  expect(decision.message).toContain('`Bash` failed 5 times')
   expect(decision.message).toContain('`InputValidationError`')
 })
 
@@ -454,14 +522,20 @@ test('same error category across repeated no-success failures trips the guard', 
   update(state, [toolUse('b', 'Write')], [
     toolResult('b', 'Error writing file: two'),
   ])
-  const decision = update(state, [toolUse('c', 'NotebookEdit')], [
+  update(state, [toolUse('c', 'NotebookEdit')], [
     toolResult('c', 'Error writing file: three'),
+  ])
+  update(state, [toolUse('d', 'Edit')], [
+    toolResult('d', 'Error writing file: four'),
+  ])
+  const decision = update(state, [toolUse('e', 'Write')], [
+    toolResult('e', 'Error writing file: five'),
   ])
 
   if (!decision.tripped) {
     throw new Error('Expected repeated category failures to trip the guard')
   }
-  expect(decision.message).toContain('Tool calls failed 3 times')
+  expect(decision.message).toContain('Tool calls failed 5 times')
   expect(decision.message).toContain('`FileWriteError`')
 })
 
@@ -579,14 +653,14 @@ test('threshold override can be passed directly', () => {
     throw new Error('Expected threshold override to trip the guard')
   }
   expect(getToolFailureLoopThreshold('0')).toBe(0)
-  expect(getToolFailureLoopThreshold('bad')).toBe(3)
+  expect(getToolFailureLoopThreshold('bad')).toBe(5)
 })
 
 test('environment threshold parsing trims valid integers and rejects invalid values', () => {
   expect(getToolFailureLoopThreshold(' 2 ')).toBe(2)
-  expect(getToolFailureLoopThreshold('')).toBe(3)
-  expect(getToolFailureLoopThreshold('-1')).toBe(3)
-  expect(getToolFailureLoopThreshold('1.5')).toBe(3)
+  expect(getToolFailureLoopThreshold('')).toBe(5)
+  expect(getToolFailureLoopThreshold('-1')).toBe(5)
+  expect(getToolFailureLoopThreshold('1.5')).toBe(5)
 })
 
 test('zero threshold disables counting and invalid explicit thresholds fall back to default', () => {
@@ -616,10 +690,22 @@ test('zero threshold disables counting and invalid explicit thresholds fall back
     [toolResult('e', 'Error writing file: failed to replace text')],
     -1,
   )
-  const decision = update(
+  update(
     fallbackState,
     [toolUse('f', 'Edit')],
     [toolResult('f', 'Error writing file: failed to replace text')],
+    -1,
+  )
+  update(
+    fallbackState,
+    [toolUse('g', 'Edit')],
+    [toolResult('g', 'Error writing file: failed to replace text')],
+    -1,
+  )
+  const decision = update(
+    fallbackState,
+    [toolUse('h', 'Edit')],
+    [toolResult('h', 'Error writing file: failed to replace text')],
     -1,
   )
 
@@ -641,16 +727,28 @@ test('unsafe threshold values fall back to the default', () => {
     [toolResult('b', 'Error writing file: failed to replace text')],
     Number.MAX_SAFE_INTEGER + 1,
   )
-  const decision = update(
+  update(
     state,
     [toolUse('c', 'Edit')],
     [toolResult('c', 'Error writing file: failed to replace text')],
     Number.MAX_SAFE_INTEGER + 1,
   )
+  update(
+    state,
+    [toolUse('d', 'Edit')],
+    [toolResult('d', 'Error writing file: failed to replace text')],
+    Number.MAX_SAFE_INTEGER + 1,
+  )
+  const decision = update(
+    state,
+    [toolUse('e', 'Edit')],
+    [toolResult('e', 'Error writing file: failed to replace text')],
+    Number.MAX_SAFE_INTEGER + 1,
+  )
 
   expect(decision.tripped).toBe(true)
   expect(getToolFailureLoopThreshold(String(Number.MAX_SAFE_INTEGER + 1))).toBe(
-    3,
+    5,
   )
 })
 
