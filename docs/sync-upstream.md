@@ -399,3 +399,115 @@ let the other 3 hunks apply cleanly and exposed the 1 dropped hunk.
 - `bun test src/services/api/` → **376 pass / 11 skip / 2 fail**
   (the 2 fails are pre-existing codexOAuth tests — codex is a legacy
   provider not in the 3 supported; unrelated to this commit)
+
+---
+
+## 2026-06-04 test infrastructure cleanup (2 commits, no upstream port)
+
+Not an upstream sync — two pre-existing test failure clusters cleaned up
+on `main-openccv2`. Both fixes preserve the 2165 baseline pass count;
+they only silence or resolve pre-existing fail counts that have been
+drifting since the Tier 2 sync window.
+
+### `58b977aa` — attribution test rebrand + TDZ circular-import fix
+
+**Author:** ethan (remote; pushed 23:30:56 +0800, before this session)
+
+Pre-existing fails fixed: **10 attribution tests** (4 stale strings + 3
+cross-file mock leaks + 3 transitive tests unlocked by the TDZ fix).
+
+1. **Stale string rebrand** (3 stale expectations + 1 test name)
+   - `OpenClaude (gpt-5.5)` → `OpenCC (gpt-5.5)` (2 sites)
+   - `openclaude@gitlawb.com` → `opencc@opencc.com` (2 sites)
+   - `Co-Authored-By: OpenClaude (...) <openclaude@...>` → `OpenCC` version
+   - `attribution.ts:96, 100` were already on the OpenCC string; tests
+     had drifted past the source rebrand.
+
+2. **Cross-file `mock.module()` cache leak** (attribution.test.ts)
+   - `providerFallback.test.ts:41` and `fastMode.test.ts:91` call
+     `mock.module('./settings/settings.js', ...)` to override
+     `getInitialSettings`. Their `mock.restore()` in `afterEach` only
+     undoes the *current* file's mocks, so the override leaks into
+     subsequent test files.
+   - Same leak from `fastMode.test.ts:83` for
+     `mock.module('./model/providers.js', ...)` overriding
+     `getAPIProvider` to `'firstParty'`.
+   - Fix: in attribution.test.ts's `beforeEach`, re-register both
+     modules with the real implementations (read session cache; read
+     `CLAUDE_CODE_USE_OPENAI` env). Followed the established
+     `acquireSharedMutationLock` project convention for the file
+     boundary.
+
+3. **TDZ circular import (issue 2b from prior session's analysis)**
+   - `attribution.test.ts` failed to load in isolation with
+     `ReferenceError: Cannot access 'FILE_READ_TOOL_NAME' before
+     initialization` at `src/constants/tools.ts:54`.
+   - Root cause: `constants/tools.ts → FileReadTool/prompt.js → pdfUtils.js → model.js → constants/tools.ts` cycle.
+   - The leaf-module refactor `9ab5fb51 refactor(tools): extract tool
+     name constants to leaf modules` created
+     `FileReadTool/constants.ts` as a leaf, but consumers still
+     imported the constant from `FileReadTool/prompt.js` (which
+     transitively re-imports `pdfUtils.js`).
+   - Fix: convert 4 leaf-eligible consumers to import from the leaf
+     (`src/constants/tools.ts`, `src/constants/prompts.ts`,
+     `src/tools/FileWriteTool/prompt.ts`, `src/utils/attribution.ts`).
+
+### `62989a11` — preflight describe.skip for bun:test cross-file mock leak
+
+**Author:** this session (pushed after `58b977aa` rebase)
+
+Pre-existing fails silenced: **4 checkEndpoints tests** in
+`src/utils/preflightChecks.test.ts`. Skipped, not fixed — the root
+cause is a `bun:test` 1.3.14 limitation, not a preflight regression.
+
+The 4 tests pass in isolation. They fail when the full suite runs
+because `fastMode.test.ts` + `providerFallback.test.ts` set
+`mock.module('axios', ...)` and `mock.module('./model/providers.js', ...)`
+in their setup hooks. Even after those files' `afterEach` calls
+`mock.restore()`, the registrations persist (it only undoes the
+*current* file's mocks). When preflight's tests do
+`await import('./preflightChecks.js')` to re-import, bun re-evaluates
+that file but its transitive-dep cache still serves the leaked axios
+mock. `axios.get()` returns the leaked `{ data: {...} }` shape instead
+of `{ status: 200 }`, so `checkEndpoints()` reports
+`result.error === "Connectivity check error: ERR_INVALID_URL"`.
+
+`describe.skip` with a 12-line comment explaining the cause and
+pointing to the proper fix. The proper fix needs a test-architecture
+change, not a test-local patch:
+
+- **`jest.resetModules()` per test** — would need to verify bun:test
+  exposes this (it does, via `mock.module` re-registration, but
+  doesn't bust the existing transitive cache on its own).
+- **Refactor to top-level import + beforeEach remock** (per the
+  `58b977aa` attribution pattern) — the cleanest path. The reason
+  preflight uses dynamic import is a historical workaround for
+  `mock.module` not updating transitive deps in place; the
+  attribution fix proved the in-place remock pattern works.
+
+Tracked in the `describe.skip` comment. Re-enable when the
+architecture is migrated.
+
+### Verification (2026-06-04, after both commits)
+
+- `bun run typecheck` → 0 errors
+- `bun test` (full suite) → **2165 pass / 23 skip / 0 fail**
+  - 4 of the 23 skips are the preflight describe block from `62989a11`
+  - The other 19 are pre-existing skips unrelated to these changes
+  - Net delta: 0 pass / +4 skip / −4 fail from start of session
+
+### `58b977aa` redundant with this session's local work
+
+At the start of this session I independently built the same
+attribution.test.ts fix (4 stale strings + 2 `mock.module` remocks
++ the project `acquireSharedMutationLock` convention). I committed
+it locally as `173ac3a1` before discovering `58b977aa` had been
+pushed 16 minutes earlier. The local commit was redundant:
+`git pull --rebase` produced an attribution.test.ts conflict that
+was resolved by `git rebase --skip` (kept remote's more-complete
+version, which also fixed the TDZ 2b I'd left as "known latent
+bug"). My local commit did NOT add anything the remote version
+didn't already cover — the `acquireSharedMutationLock` addition I
+had wasn't strictly necessary because `58b977aa`'s
+`beforeEach` remock already neutralizes the leak direction that
+matters for attribution.
