@@ -1,14 +1,22 @@
 // @ts-nocheck
 import { PassThrough } from 'node:stream'
 import { stripVTControlCharacters as stripAnsi } from 'node:util'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import React from 'react'
 import { createRoot } from '../../ink.js'
 import { TerminalSizeContext } from '../../ink/components/TerminalSizeContext.js'
-import { AppStateProvider, useAppStateStore } from '../../state/AppState.js'
+import { AppStateProvider, getDefaultAppState } from '../../state/AppState.js'
 import { StartupHeader } from './StartupHeader.js'
 
-;(globalThis as { MACRO?: { VERSION?: string; DISPLAY_VERSION?: string } }).MACRO ??= {
+// user.test.ts leaks a cwd.js mock returning 'C:\\repo'. Override here so the
+// rendered directory line shows the expected real path.
+mock.module('../../utils/cwd.js', () => ({
+  getCwd: () => '/Users/test/code/opencc',
+  pwd: () => '/Users/test/code/opencc',
+  runWithCwdOverride: (cwd: string, fn: () => unknown) => fn(),
+}))
+
+;(globalThis as { MACRO?: { VERSION?: string; DISPLAY_VERSION?: string } }).MACRO = {
   VERSION: '0.11.1-test',
 }
 
@@ -57,23 +65,20 @@ async function renderHeader(
 ): Promise<string> {
   const { stdout, stdin, getOutput } = createTestStreams(columns)
   const root = await createRoot({ stdout, stdin })
+  const initialState = {
+    ...getDefaultAppState(),
+    mainLoopModel: modelName === undefined ? null : modelName,
+  }
   await root.render(
-    <AppStateProvider>
+    <AppStateProvider initialState={initialState}>
       <TerminalSizeContext.Provider value={{ columns, rows: 24 }}>
-        <StartupHeaderSetter modelName={modelName} />
+        <StartupHeader />
       </TerminalSizeContext.Provider>
     </AppStateProvider>,
   )
-  await new Promise(resolve => setTimeout(resolve, 50))
+  await new Promise(resolve => setTimeout(resolve, 100))
   root.unmount()
   return stripAnsi(extractLastFrame(getOutput()))
-}
-
-function StartupHeaderSetter({ modelName }: { modelName: string | undefined }) {
-  if (modelName !== undefined) {
-    useAppStateStore().setState(prev => ({ ...prev, mainLoopModel: modelName }))
-  }
-  return <StartupHeader />
 }
 
 describe('StartupHeader', () => {
