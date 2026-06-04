@@ -96,14 +96,24 @@ export default defineGateway({
         label: 'Gemini 3.1 Flash Lite Preview (via Opengateway)',
         modelDescriptorId: 'gemini-3.1-flash-lite-preview',
       },
-      // OpenRouter :free endpoint — bills $0 and bypasses the gateway credit
-      // gate, so it works even with an empty credit balance.
       {
         id: 'opengateway-nemotron-3-ultra-free',
         apiName: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         label: 'Nemotron 3 Ultra Free (via Opengateway)',
         modelDescriptorId: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         notes: 'Free',
+      },
+      {
+        id: 'opengateway-minimax-m3',
+        apiName: 'minimax/minimax-m3',
+        label: 'MiniMax M3 (via Opengateway)',
+        modelDescriptorId: 'minimax-m3',
+      },
+      {
+        id: 'opengateway-qwen3.7-max',
+        apiName: 'qwen/qwen3.7-max',
+        label: 'Qwen 3.7 Max (via Opengateway)',
+        modelDescriptorId: 'qwen3.7-max',
       },
     ],
   },
