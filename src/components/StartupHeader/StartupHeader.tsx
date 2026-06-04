@@ -15,6 +15,8 @@ import {
   truncatePath,
 } from './StartupHeader.pure.js'
 
+const ACCENT = 'rgb(240,148,100)' as const
+
 function safeGetCwd(): string {
   try {
     return getCwd()
@@ -54,11 +56,19 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
     () => buildHeaderLine(MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown'),
     [],
   )
+  // buildModelLine with empty hint — we render the hint separately below
+  // so it can take an accent color.
   const modelLine = useMemo(
-    () => buildModelLine(modelDisplay, '/model to change', ctxWindow),
+    () => buildModelLine(modelDisplay, '', ctxWindow),
     [modelDisplay, ctxWindow],
   )
   const dirLine = useMemo(() => buildDirectoryLine(dir), [dir])
+
+  // Split the header `>_ OpenCC (v0.14.0)` at the version parentheses
+  // so the version can render dimmed.
+  const versionIdx = header.indexOf('(v')
+  const headerBrand = versionIdx >= 0 ? header.slice(0, versionIdx) : header
+  const headerVersion = versionIdx >= 0 ? header.slice(versionIdx) : ''
 
   return (
     <Box
@@ -68,8 +78,14 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
       paddingX={1}
       flexDirection="column"
     >
-      <Text>{header}</Text>
-      <Text>{modelLine}</Text>
+      <Text>
+        {headerBrand}
+        {headerVersion && <Text dimColor>{headerVersion}</Text>}
+      </Text>
+      <Text>
+        {modelLine}
+        <Text color={ACCENT}>    /model to change</Text>
+      </Text>
       <Text>{dirLine}</Text>
     </Box>
   )
