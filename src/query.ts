@@ -8,11 +8,14 @@ import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
+  getAutoCompactThreshold,
   isAutoCompactEnabled,
   MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
+import { resolveForceReason } from './services/compact/forceReasonResolver.js'
 import { consumeCompactionRequest } from './utils/memoryPressure.js'
+import { validateBoundedIntEnvVar } from './utils/envValidation.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')
@@ -544,6 +547,12 @@ async function* queryLoop(
     // token-threshold check. Consumed once (one-shot) inside autocompact.
     // Skip for compact/session_memory sources — those run inside an existing
     // compaction and forcing would deadlock via recursive autocompaction.
+    //
+    // The force is gated by a token-count floor (OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT
+    // of the model's natural autoCompact threshold) so large-context models
+    // like MiniMax-M3 (1M tokens) aren't force-compacted at 60k tokens just
+    // because the conversation is long. See forceReasonResolver for the
+    // priority order: memory-pressure > message-count.
     const canForceCompact =
       querySource !== 'compact' && querySource !== 'session_memory'
     if (canForceCompact) {
@@ -551,16 +560,27 @@ async function* queryLoop(
         process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '200',
         10,
       )
-      if (messagesForQuery.length > MAX_ACTIVE_MESSAGES) {
+      const floorPct = validateBoundedIntEnvVar(
+        'OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT',
+        process.env.OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT,
+        75,
+        100,
+      ).effective
+      const flagWasSet = consumeCompactionRequest()
+      const forceReason = resolveForceReason({
+        messageCount: messagesForQuery.length,
+        tokenCount: tokenCountWithEstimation(messagesForQuery),
+        maxActiveMessages: MAX_ACTIVE_MESSAGES,
+        naturalThreshold: getAutoCompactThreshold(
+          toolUseContext.options.mainLoopModel,
+        ),
+        floorPct,
+        memoryPressureFlag: flagWasSet,
+      })
+      if (forceReason) {
         tracking = {
           ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
-          forceReason: 'message-count',
-        }
-      }
-      if (consumeCompactionRequest()) {
-        tracking = {
-          ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
-          forceReason: tracking?.forceReason ?? 'memory-pressure',
+          forceReason,
         }
       }
     }
