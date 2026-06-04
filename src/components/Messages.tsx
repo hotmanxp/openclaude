@@ -43,6 +43,7 @@ import { isNullRenderingAttachment } from './messages/nullRenderingAttachments.j
 import { OffscreenFreeze } from './OffscreenFreeze.js';
 import type { ToolUseConfirm } from './permissions/PermissionRequest.js';
 import { StatusNotices } from './StatusNotices.js';
+import { StartupHeader } from './StartupHeader/StartupHeader.js';
 import type { JumpHandle } from './VirtualMessageList.js';
 
 // Memoed logo header: this box is the FIRST sibling before all MessageRows
@@ -60,7 +61,7 @@ const LogoHeader = React.memo(function LogoHeader(t0) {
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = null;
+    t1 = <StartupHeader />;
     $[0] = t1;
   } else {
     t1 = $[0];
