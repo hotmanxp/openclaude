@@ -51,7 +51,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   const ctxWindow = modelName ? safeContextWindow(modelName) : undefined
 
   const header = useMemo(
-    () => buildHeaderLine(MACRO?.DISPLAY_VERSION ?? MACRO?.VERSION ?? 'unknown'),
+    () => buildHeaderLine(MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown'),
     [],
   )
   const modelLine = useMemo(
