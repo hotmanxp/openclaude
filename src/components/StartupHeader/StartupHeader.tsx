@@ -61,17 +61,15 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   const dirLine = useMemo(() => buildDirectoryLine(dir), [dir])
 
   return (
-    <Box flexDirection="column">
-      <Text dimColor>{header}</Text>
-      <Box
-        borderStyle="round"
-        borderColor="gray"
-        paddingX={1}
-        flexDirection="column"
-      >
-        <Text>{modelLine}</Text>
-        <Text>{dirLine}</Text>
-      </Box>
+    <Box
+      borderStyle="round"
+      borderColor="gray"
+      paddingX={1}
+      flexDirection="column"
+    >
+      <Text>{header}</Text>
+      <Text>{modelLine}</Text>
+      <Text>{dirLine}</Text>
     </Box>
   )
 })
