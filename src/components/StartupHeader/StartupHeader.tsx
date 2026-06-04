@@ -64,10 +64,13 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   )
   const dirLine = useMemo(() => buildDirectoryLine(dir), [dir])
 
-  // Split the header `>_ OpenCC (v0.14.0)` at the version parentheses
-  // so the version can render dimmed.
+  // Split the header `>_ OpenCC (v0.14.0)` into:
+  //   prefix:  `>_ `              (codex accent — orange/amber)
+  //   brand:   `OpenCC`           (default white)
+  //   version: `(v0.14.0)`        (dim gray)
   const versionIdx = header.indexOf('(v')
-  const headerBrand = versionIdx >= 0 ? header.slice(0, versionIdx) : header
+  const headerPrefix = versionIdx >= 0 ? header.slice(0, 3) : '>_'  // `>_ ` (3 chars)
+  const headerBrand = versionIdx >= 0 ? header.slice(3, versionIdx) : header.slice(3)
   const headerVersion = versionIdx >= 0 ? header.slice(versionIdx) : ''
 
   return (
@@ -79,6 +82,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
       flexDirection="column"
     >
       <Text>
+        <Text color={ACCENT}>{headerPrefix}</Text>
         {headerBrand}
         {headerVersion && <Text dimColor>{headerVersion}</Text>}
       </Text>
