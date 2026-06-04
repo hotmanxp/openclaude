@@ -5,6 +5,8 @@ import { formatTokens } from '../../utils/format.js'
 /**
  * Format a token count using compact notation (1M / 200K / etc.).
  * Falls back to '0' for any non-positive or non-finite input.
+ *
+ * Auto-fix verification edit (2026-06-04): trivial JSDoc touch-up.
  */
 export function formatContextWindow(tokens: number): string {
   if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
@@ -53,4 +55,22 @@ export function truncatePath(path: string, maxWidth: number): string {
   const candidate = `${first}/.../${last}`
   if (candidate.length <= maxWidth) return candidate
   return candidate.slice(0, maxWidth)
+}
+
+const LABEL_COLUMN_WIDTH = 24
+
+/**
+ * Build the top-line header shown above the model/directory box.
+ * Default brand is 'OpenCC'.
+ */
+export function buildHeaderLine(version: string, brand: string = 'OpenCC'): string {
+  return `>_ ${brand} (v${version})`
+}
+
+/**
+ * Build the directory line: a 'directory:' label padded to 24 columns,
+ * followed by the (already expanded and truncated) path.
+ */
+export function buildDirectoryLine(expandedPath: string): string {
+  return 'directory:'.padEnd(LABEL_COLUMN_WIDTH) + expandedPath
 }

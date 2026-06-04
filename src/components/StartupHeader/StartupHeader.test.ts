@@ -2,6 +2,8 @@
 import { describe, expect, test } from 'bun:test'
 import { homedir } from 'os'
 import {
+  buildDirectoryLine,
+  buildHeaderLine,
   expandTilde,
   formatContextWindow,
   truncatePath,
@@ -90,5 +92,27 @@ describe('truncatePath', () => {
 
   test('keeps first and last segment when there are at least 3 parts', () => {
     expect(truncatePath('/a/b/c/d/e/f.txt', 12)).toBe('/a/.../f.txt')
+  })
+})
+
+describe('buildHeaderLine', () => {
+  test('renders default brand and version', () => {
+    expect(buildHeaderLine('0.11.1')).toBe('>_ OpenCC (v0.11.1)')
+  })
+
+  test('accepts custom brand', () => {
+    expect(buildHeaderLine('0.11.1', 'CustomBrand')).toBe('>_ CustomBrand (v0.11.1)')
+  })
+})
+
+describe('buildDirectoryLine', () => {
+  test('renders label padded to 24 columns then path', () => {
+    expect(buildDirectoryLine('~/code/opencc')).toBe('directory:              ~/code/opencc')
+  })
+
+  test('preserves padding when path is empty', () => {
+    const result = buildDirectoryLine('')
+    expect(result.startsWith('directory:')).toBe(true)
+    expect(result.length).toBe(24)
   })
 })
