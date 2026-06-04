@@ -59,6 +59,9 @@ export function truncatePath(path: string, maxWidth: number): string {
 
 const LABEL_COLUMN_WIDTH = 24
 
+const DEFAULT_HINT = '/model to change'
+const HINT_GAP = '    '
+
 /**
  * Build the top-line header shown above the model/directory box.
  * Default brand is 'OpenCC'.
@@ -73,4 +76,22 @@ export function buildHeaderLine(version: string, brand: string = 'OpenCC'): stri
  */
 export function buildDirectoryLine(expandedPath: string): string {
   return 'directory:'.padEnd(LABEL_COLUMN_WIDTH) + expandedPath
+}
+
+/**
+ * Build the model line: a 'model:' label padded to 24 columns, then the
+ * model display, then an optional ' (N)' context window suffix, then
+ * 4 spaces, then the hint.
+ */
+export function buildModelLine(
+  modelDisplay: string,
+  hint: string = DEFAULT_HINT,
+  contextWindow?: number | null,
+): string {
+  const label = 'model:'.padEnd(LABEL_COLUMN_WIDTH)
+  let content = modelDisplay
+  if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+    content += ` (${formatContextWindow(contextWindow)})`
+  }
+  return `${label}${content}${HINT_GAP}${hint}`
 }

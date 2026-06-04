@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import {
   buildDirectoryLine,
   buildHeaderLine,
+  buildModelLine,
   expandTilde,
   formatContextWindow,
   truncatePath,
@@ -114,5 +115,54 @@ describe('buildDirectoryLine', () => {
     const result = buildDirectoryLine('')
     expect(result.startsWith('directory:')).toBe(true)
     expect(result.length).toBe(24)
+  })
+})
+
+describe('buildModelLine', () => {
+  test('renders default hint and 4-space gap between content and hint', () => {
+    const result = buildModelLine('MiniMax-M3 high')
+    // 'model:' (6) + padEnd(24) = 18 spaces + 'MiniMax-M3 high' + 4 spaces + '/model to change'
+    expect(result).toBe('model:                  MiniMax-M3 high    /model to change')
+  })
+
+  test('accepts a custom hint', () => {
+    expect(buildModelLine('x', 'custom hint')).toContain('custom hint')
+    expect(buildModelLine('x', 'custom hint')).not.toContain('/model to change')
+  })
+
+  test('keeps label column width when model is empty', () => {
+    const result = buildModelLine('')
+    expect(result.startsWith('model:'.padEnd(24))).toBe(true)
+    expect(result).toContain('/model to change')
+  })
+
+  test('appends (1M) when contextWindow is 1_000_000', () => {
+    expect(buildModelLine('MiniMax-M3 high', undefined, 1_000_000)).toContain(' (1M)')
+  })
+
+  test('appends (200K) when contextWindow is 200_000', () => {
+    expect(buildModelLine('x', undefined, 200_000)).toContain(' (200K)')
+  })
+
+  test('does not append suffix when contextWindow is 0', () => {
+    expect(buildModelLine('x', undefined, 0)).not.toMatch(/\(\d/)
+  })
+
+  test('does not append suffix when contextWindow is undefined', () => {
+    expect(buildModelLine('x')).not.toMatch(/\(\d/)
+  })
+
+  test('does not append suffix when contextWindow is null', () => {
+    expect(buildModelLine('x', undefined, null)).not.toMatch(/\(\d/)
+  })
+
+  test('does not append suffix when contextWindow is negative', () => {
+    expect(buildModelLine('x', undefined, -1)).not.toMatch(/\(\d/)
+  })
+
+  test('renders placeholder when modelDisplay is the (no model) marker', () => {
+    const result = buildModelLine('(no model)', undefined, undefined)
+    expect(result).toContain('(no model)')
+    expect(result).toContain('/model to change')
   })
 })
