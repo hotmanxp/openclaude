@@ -62,6 +62,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
 
   return (
     <Box
+      alignSelf="flex-start"
       borderStyle="round"
       borderColor="gray"
       paddingX={1}
