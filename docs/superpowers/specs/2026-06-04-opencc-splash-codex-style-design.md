@@ -11,7 +11,7 @@
 ```
 >_<color>_<reset> OpenCC<color> (v0.x.x)</color>  (dimColor, 无边框)
 ╭─────────────────────────────────────╮
-│ model:        MiniMax-M3 high   <dim>/model to change</dim> │
+│ model:        MiniMax-M3 high (1M) <dim>/model to change</dim> │
 │ directory:    ~/code/opencc                                 │
 ╰─────────────────────────────────────╯
 ```
@@ -51,11 +51,13 @@ expandTilde(path: string): string
   // os.homedir() 失败或 path 不在 home 下 → 原样返回
   // 'relative/path' → 原样返回
 
-buildModelLine(modelDisplay: string, hint?: string): string
+buildModelLine(modelDisplay: string, hint?: string, contextWindow?: number): string
   // 默认 hint = '/model to change'
-  // 返回 "model:        MiniMax-M3 high    /model to change"
+  // contextWindow 提供时, 在 modelDisplay 后追加 ' (1M)' / ' (200K)' / ' (128K)'
+  // 返回 "model:        MiniMax-M3 high (1M)    /model to change"
   //   ↑ label 24 字符列宽对齐 + 内容 + 4 空格 + hint
   // modelDisplay 为空字符串时 label 仍对齐
+  // contextWindow = 0 / undefined / null → 不追加 (兼容无 context 的 model)
 
 buildDirectoryLine(expandedPath: string): string
   // 返回 "directory:    ~/code/opencc"
@@ -70,6 +72,14 @@ truncatePath(path: string, maxWidth: number): string
   // '~/code/opencc' (14) maxWidth=14 → 不动
   // '~/code/opencc' (14) maxWidth=12 → '~/.../opencc'
   // 'x'.repeat(200) maxWidth=30 → 长度 ≤ 30
+
+formatContextWindow(tokens: number): string
+  // 复用 src/utils/format.ts:formatTokens (compact notation)
+  // 1_000_000 → '1M'
+  // 200_000   → '200K'
+  // 128_000   → '128K'
+  // 0         → '0'
+  // 负数      → '0' (兜底)
 ```
 
 每个函数无 React 依赖、无 I/O、可独立单测。
@@ -80,9 +90,9 @@ truncatePath(path: string, maxWidth: number): string
 [MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown']   ──┐
                                                           │
 [useAppState() model]                                     ├──► StartupHeader
-[getCwd()]                                                │       │
-                                                          │       ├─► buildHeaderLine
-[useTerminalSize() { columns }]                          │       ├─► buildModelLine
+[getContextWindowForModel(model.name)]                    │       │
+[getCwd()]                                                │       ├─► buildHeaderLine
+[useTerminalSize() { columns }]                          │       ├─► buildModelLine(ctxWindow)
                                                           │       └─► buildDirectoryLine
                                                                   └─► expandTilde + truncatePath
                                                                                 │
@@ -103,6 +113,7 @@ truncatePath(path: string, maxWidth: number): string
 |------|------|
 | `version` | `MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown'` |
 | `model` | `useAppState()` 返回的 model 字段 |
+| `contextWindow` | `getContextWindowForModel(model.name)` from `src/utils/context.ts:82`（fallback 128_000） |
 | `cwd` | `getCwd()` from `src/utils/cwd.ts:26` |
 | `columns` | `useTerminalSize()` from `src/hooks/useTerminalSize.js` |
 | `modelDisplay` | `renderModelSetting(model)` from `src/utils/model/model.ts:355` |
@@ -111,7 +122,7 @@ truncatePath(path: string, maxWidth: number): string
 
 | 文件 | 变更 |
 |------|------|
-| `src/components/StartupHeader/StartupHeader.pure.ts` | **新增** — 5 个纯函数 |
+| `src/components/StartupHeader/StartupHeader.pure.ts` | **新增** — 6 个纯函数 |
 | `src/components/StartupHeader/StartupHeader.tsx` | **新增** — Ink 组件 |
 | `src/components/StartupHeader/StartupHeader.test.ts` | **新增** — 纯函数单元测试 |
 | `src/components/StartupHeader/StartupHeader.test.tsx` | **新增** — ink snapshot 测试 |
@@ -131,6 +142,7 @@ truncatePath(path: string, maxWidth: number): string
 | `getCwd()` 抛错 | 静默吞掉 → fallback `process.cwd()` |
 | `os.homedir()` 抛错 | `expandTilde` 返回原 `path` |
 | `model` 为 `null` | `buildModelLine` 渲染 `"(no model)"`，hint 保留 |
+| `getContextWindowForModel` 抛错 | `buildModelLine` 不追加 `(N)`，仍显示 model 名 |
 | 终端宽度 < 30 列 | `truncatePath` 把目录压成 `~/.../<last>` (≥10 字符) |
 | 终端宽度 < 20 列 | 组件仍渲染，round box 交给 Ink 自动折行 |
 | `renderModelSetting` 抛错 | fallback 到 `model.name` |
@@ -150,6 +162,14 @@ truncatePath(path: string, maxWidth: number): string
 | `buildModelLine('MiniMax-M3 high')` | 含对齐空格 + `/model to change` |
 | `buildModelLine('')` | label 仍对齐 |
 | `buildModelLine('x', 'custom hint')` | hint 可定制 |
+| `buildModelLine('MiniMax-M3 high', undefined, 1_000_000)` | 含 `(1M)` |
+| `buildModelLine('x', undefined, 0)` | 不追加 (N) |
+| `buildModelLine('x', undefined, undefined)` | 不追加 (N) |
+| `formatContextWindow(1_000_000)` | `'1M'` |
+| `formatContextWindow(200_000)` | `'200K'` |
+| `formatContextWindow(128_000)` | `'128K'` |
+| `formatContextWindow(0)` | `'0'` |
+| `formatContextWindow(-1)` | `'0'` (兜底) |
 | `buildHeaderLine('0.11.1')` | `'>_ OpenCC (v0.11.1)'` |
 | `buildHeaderLine('0.11.1', 'CustomBrand')` | `'>_ CustomBrand (v0.11.1)'` |
 | `truncatePath('~/code/opencc', 14)` | 原样 |
@@ -162,9 +182,9 @@ truncatePath(path: string, maxWidth: number): string
 
 | 用例 | 期望 |
 |------|------|
-| 宽终端 (cols=80), 有 model | snapshot 包含 header 行 + round box + 两行内容 |
+| 宽终端 (cols=80), 有 model + 1M context | snapshot 包含 header 行 + round box + model 行带 `(1M)` |
 | 窄终端 (cols=24) | directory 行被压成 `~/.../opencc` |
-| model 为 `null` | `"(no model)"` 占位 |
+| model 为 `null` | `"(no model)"` 占位，无 `(N)` 后缀 |
 | `React.memo` 稳定性 | 相同 props 引用不变 → 不重渲（计数断言） |
 
 ### 覆盖范围
@@ -175,7 +195,7 @@ truncatePath(path: string, maxWidth: number): string
 
 ## 性能
 
-- **render 成本**：5 次同步函数调用 + 1 个 `<Box>` + 2 个 `<Text>`
+- **render 成本**：6 次同步函数调用 + 1 个 `<Box>` + 2 个 `<Text>`
 - **首次挂载**：在 `Messages.tsx:LogoHeader` 内，已被现有 `<OffscreenFreeze>` 包裹，**不会**延迟 REPL 启动
 - **重渲频率**：仅当 model / cwd / 终端宽度变化时触发（`React.memo` 短路）
 - **内存**：无闭包持有大对象，组件 unmount 即释放
@@ -193,3 +213,4 @@ truncatePath(path: string, maxWidth: number): string
 ## 历史
 
 - 2026-06-04: 初始设计，REPL 顶栏 Codex 风格化
+- 2026-06-04: 在 model 行追加 `context window` 大小（如 `(1M)`），数据源 `getContextWindowForModel`，新增 `formatContextWindow` 纯函数
