@@ -35,3 +35,22 @@ export function expandTilde(path: string): string {
   }
   return path
 }
+
+/**
+ * Truncate a path to fit `maxWidth` columns, keeping the first and last
+ * segments and eliding the middle. Returns the path unchanged if it
+ * already fits or if maxWidth is below the 10-char truncation threshold.
+ */
+export function truncatePath(path: string, maxWidth: number): string {
+  if (maxWidth < 10) return path
+  if (path.length <= maxWidth) return path
+  const parts = path.split('/')
+  if (parts.length <= 2) {
+    return path.slice(0, maxWidth)
+  }
+  const first = parts[0] === '' ? '/' + (parts[1] ?? '') : parts[0]
+  const last = parts[parts.length - 1]
+  const candidate = `${first}/.../${last}`
+  if (candidate.length <= maxWidth) return candidate
+  return candidate.slice(0, maxWidth)
+}
