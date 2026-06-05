@@ -17,7 +17,6 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline } from '../design-system/Byline.js';
 import { ProgressBar } from '../design-system/ProgressBar.js';
 import { isEligibleForOverageCreditGrant, OverageCreditUpsell } from '../LogoV2/OverageCreditUpsell.js';
-import { CodexUsage } from './CodexUsage.js';
 import { MiniMaxUsage } from './MiniMaxUsage.js';
 import { UnsupportedUsage } from './UnsupportedUsage.js';
 type LimitBarProps = {
@@ -270,9 +269,6 @@ function AnthropicUsage(): React.ReactNode {
 }
 export function Usage(): React.ReactNode {
   const provider = getAPIProvider();
-  if (provider === 'codex') {
-    return <CodexUsage />;
-  }
   if (provider === 'minimax') {
     return <MiniMaxUsage />;
   }
