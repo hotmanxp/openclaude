@@ -77,7 +77,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
     <Box
       alignSelf="flex-start"
       borderStyle="round"
-      borderColor="gray"
+      borderDimColor
       paddingX={1}
       flexDirection="column"
     >
@@ -86,9 +86,11 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
         {headerBrand}
         {headerVersion && <Text dimColor>{headerVersion}</Text>}
       </Text>
+      <Text> </Text>
       <Text>
         {modelLine}
-        <Text color={ACCENT}>    /model to change</Text>
+        <Text color={ACCENT}>    /model</Text>
+        <Text dimColor> to change</Text>
       </Text>
       <Text>{dirLine}</Text>
     </Box>
