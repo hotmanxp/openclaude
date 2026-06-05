@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   extractAtMentionedFiles,
   extractMcpResourceMentions,
+  shouldIncludeSkillListingAttachment,
 } from './attachments.js'
 
 // Contract tests for the two @-mention extractors.
@@ -83,4 +84,20 @@ describe('extractor contract', () => {
       expect(extractAtMentionedFiles(input)).toEqual(expected)
     })
   })
+})
+
+describe('skill listing attachment policy', () => {
+  test.each(['extract_memories', 'session_memory', 'compact'])(
+    'suppresses skill listings for %s utility forks',
+    querySource => {
+      expect(shouldIncludeSkillListingAttachment(querySource)).toBe(false)
+    },
+  )
+
+  test.each([undefined, 'repl_main_thread', 'agent:builtin:general-purpose', 'side_question'])(
+    'keeps skill listings available for %s',
+    querySource => {
+      expect(shouldIncludeSkillListingAttachment(querySource)).toBe(true)
+    },
+  )
 })
