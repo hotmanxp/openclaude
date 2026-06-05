@@ -41,7 +41,7 @@ OpenCC fork 在 `src/` 下有大量 `// @ts-nocheck` 注释（**668 个文件**�
 
 ### 1. 一次性扫描
 
-`scripts/coverage/find-uncovered-tsnocheck.sh`（临时脚本，不进 CI）：
+**临时内联命令**（不写入 repo，由主线程在 plan 阶段开始时 ad-hoc 执行，输出到 `uncovered.txt`）：
 
 ```bash
 #!/usr/bin/env bash
@@ -120,9 +120,9 @@ describe('X (smoke)', () => {
 适用：文件有命名/默认 React 组件导出。
 
 ```ts
-// @ts-nocheck — generated to satisfy @ts-nocheck coverage requirement;
-// intentionally does NOT use @ts-nocheck (would defeat the purpose) — but the
-// source X.tsx is heavy and may require many provider mocks. See the source.
+// 注意：本 test 文件本身 **不** 加 `// @ts-nocheck`。
+// 目的就是让本 test 在 bun test 加载时严格走 TS 类型检查，捕捉源文件
+// X.tsx 的语法错误（缺符号、括号不配对、未终止字符串等）。
 import { describe, expect, test } from 'bun:test';
 import { MyComponent } from './X.js';
 
@@ -187,7 +187,7 @@ test(coverage): add smoke tests for @ts-nocheck files in src/<bucket>
 bun run typecheck        # 1. 类型检查（新增 test 不带 @ts-nocheck）
 bun run smoke            # 2. 冒烟（build + --version）
 bun test                 # 3. 全量测试
-bash scripts/coverage/find-uncovered-tsnocheck.sh  # 4. 重跑扫描 → 期望 0 行
+# 4. 重跑"步骤 1"的一次性命令 → 期望 0 行输出
 ```
 
 ## 子任务契约
@@ -234,6 +234,8 @@ Report back: list of files created, list of files that fell back to Template C, 
 6. ❌ **不**为生成的 test 加 `// @ts-nocheck` —— test 文件本身**必须**被类型检查
 
 ## 后续（可选，未在本次范围）
+
+> 用户在 2026-06-05 brainstorming 阶段明确表示本次不引入 CI hook。下列项仅为候选，**不在本 spec 实施范围**：
 
 1. **CI hook**：`scripts/ci-check-tsnocheck-coverage.ts` 扫描 `uncovered.txt`，exit 1。
 2. **`@ts-nocheck` 注释规范**：lint rule 禁止无原因 `@ts-nocheck`。
