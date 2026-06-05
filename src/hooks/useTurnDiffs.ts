@@ -141,7 +141,7 @@ export function useTurnDiffs(messages: Message[]): TurnDiff[] {
         c.currentTurn = {
           turnIndex: c.lastTurnIndex,
           userPromptPreview: getUserPromptPreview(message),
-          timestamp: message.timestamp,
+          timestamp: String(message.timestamp),
           files: new Map(),
           stats: { filesChanged: 0, linesAdded: 0, linesRemoved: 0 },
         }

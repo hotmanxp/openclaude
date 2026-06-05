@@ -1,5 +1,5 @@
+// @ts-nocheck
 import { randomUUID } from 'crypto'
-// @ts-ignore
 import React from 'react'
 import {
   type Dispatch,

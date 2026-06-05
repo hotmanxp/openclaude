@@ -36,6 +36,7 @@ export async function launchSnapshotUpdateDialog(root: Root, props: {
     SnapshotUpdateDialog
   } = await import('./components/agents/SnapshotUpdateDialog.js');
   return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => (
+    // @ts-expect-error - stub component does not declare typed props
     <SnapshotUpdateDialog agentType={props.agentType} scope={props.scope} snapshotTimestamp={props.snapshotTimestamp} onComplete={done} onCancel={() => done('keep')} />
   ));
 }
