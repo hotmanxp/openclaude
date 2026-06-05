@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import * as M from './Passes.js';
+import * as M from './ComputerUseApproval.js';
 
-describe('Passes (import smoke)', () => {
+describe('ComputerUseApproval (import smoke)', () => {
   test('module loads without error', () => {
     expect(M).toBeDefined();
   });

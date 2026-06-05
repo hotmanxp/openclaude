@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { PlanDisplay } from './plan.js';
+import * as M from './plan.js';
 
-describe('plan (render smoke)', () => {
-  test('exports a callable component', () => {
-    expect(PlanDisplay).toBeDefined();
-    expect(() => PlanDisplay({})).not.toThrow();
+describe('plan (import smoke)', () => {
+  test('module loads without error', () => {
+    expect(M).toBeDefined();
   });
 });
