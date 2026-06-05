@@ -321,8 +321,8 @@ const dangerouslySkipPermissionsNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-// [local-dev] dangerouslySkipPermissionsNotice disabled — uncomment when needed
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, localModelContextLoadNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice, thirdPartyPermissiveModeNotice, dangerouslySkipPermissionsNotice];
+// [local-dev] thirdPartyPermissiveModeNotice + dangerouslySkipPermissionsNotice disabled — uncomment when needed
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, localModelContextLoadNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice/*, thirdPartyPermissiveModeNotice, dangerouslySkipPermissionsNotice*/];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {
