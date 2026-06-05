@@ -52,8 +52,8 @@ async function importRealModules(): Promise<RealModules> {
 }
 
 function getWorkflowMessage(path: string): string | null {
-  if (path === CLAUDE_WORKFLOW_PATH) return 'Claude PR Assistant workflow'
-  if (path === REVIEW_WORKFLOW_PATH) return 'Claude Code Review workflow'
+  if (path === CLAUDE_WORKFLOW_PATH) return 'Open CC PR Assistant workflow'
+  if (path === REVIEW_WORKFLOW_PATH) return 'Open CC Review workflow'
   return null
 }
 
