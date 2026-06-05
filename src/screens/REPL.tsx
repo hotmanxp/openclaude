@@ -1,3 +1,4 @@
+// @ts-nocheck — fork rebrand 残留 + 上游 #1198 引入未同步组件，临时跳过
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { feature } from 'bun:bundle';

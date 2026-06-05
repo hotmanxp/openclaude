@@ -69,7 +69,7 @@ async function waitForOutput(
   while (Date.now() - startedAt < 2500) {
     frame = stripAnsi(extractLastFrame(getOutput()))
     if (predicate(frame)) return frame
-    await Bun.sleep(10)
+    await new Promise(resolve => setTimeout(resolve, 10))
   }
 
   throw new Error(`Timed out waiting for agents menu output:\n${frame}`)

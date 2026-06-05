@@ -62,7 +62,7 @@ async function waitForOutput(
   while (Date.now() - startedAt < 2500) {
     const frame = stripAnsi(extractLastFrame(getOutput()))
     if (predicate(frame)) return frame
-    await Bun.sleep(10)
+    await new Promise(resolve => setTimeout(resolve, 10))
   }
 
   throw new Error('Timed out waiting for agents list output')
@@ -72,12 +72,16 @@ function createAgent(
   agentType: string,
   source: AgentDefinition['source'] = 'userSettings',
 ): AgentDefinition {
-  return {
+  const base = {
     agentType,
     whenToUse: `Use ${agentType}`,
     source,
     getSystemPrompt: () => `You are ${agentType}`,
   }
+  if (source === 'plugin') {
+    return { ...base, plugin: 'test-plugin' } as AgentDefinition
+  }
+  return base as AgentDefinition
 }
 
 beforeEach(async () => {

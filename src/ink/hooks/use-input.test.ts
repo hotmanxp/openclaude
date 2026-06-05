@@ -69,7 +69,7 @@ async function renderProbe(
 }
 
 function tick(): Promise<void> {
-  return Bun.sleep(5)
+  return new Promise(resolve => setTimeout(resolve, 5))
 }
 
 describe('useInput — raw mode lifecycle', () => {

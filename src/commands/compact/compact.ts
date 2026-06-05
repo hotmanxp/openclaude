@@ -268,7 +268,6 @@ async function getCacheSharingParams(
     context.options.tools,
     context.options.mainLoopModel,
     Array.from(
-      // @ts-expect-error - additionalWorkingDirectories may not exist
       appState.toolPermissionContext.additionalWorkingDirectories.keys(),
     ),
     context.options.mcpClients,

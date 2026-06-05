@@ -122,41 +122,7 @@ function SpinnerWithVerbInner({
 
   // Track thinking status: 'thinking' | number (duration in ms) | null
   // Shows each state for minimum 2s to avoid UI jank
-  const [thinkingStatus, setThinkingStatus] = useState<'thinking' | number | null>(null);
-  const thinkingStartRef = useRef<number | null>(null);
-  useEffect(() => {
-    let showDurationTimer: ReturnType<typeof setTimeout> | null = null;
-    let clearStatusTimer: ReturnType<typeof setTimeout> | null = null;
-    if (mode === 'thinking') {
-      // Started thinking
-      if (thinkingStartRef.current === null) {
-        thinkingStartRef.current = Date.now();
-        setThinkingStatus('thinking');
-      }
-    } else if (thinkingStartRef.current !== null) {
-      // Stopped thinking - calculate duration and ensure 2s minimum display
-      const duration = Date.now() - thinkingStartRef.current;
-      const elapsed = Date.now() - thinkingStartRef.current;
-      const remainingThinkingTime = Math.max(0, 2000 - elapsed);
-      thinkingStartRef.current = null;
-
-      // Show "thinking..." for remaining time if < 2s elapsed, then show duration
-      const showDuration = (): void => {
-        setThinkingStatus(duration);
-        // Clear after 2s
-        clearStatusTimer = setTimeout(setThinkingStatus, 2000, null);
-      };
-      if (remainingThinkingTime > 0) {
-        showDurationTimer = setTimeout(showDuration, remainingThinkingTime);
-      } else {
-        showDuration();
-      }
-    }
-    return () => {
-      if (showDurationTimer) clearTimeout(showDurationTimer);
-      if (clearStatusTimer) clearTimeout(clearStatusTimer);
-    };
-  }, [mode]);
+  const [thinkingStatus] = useState<'thinking' | number | null>(null);
 
   // Find the current in-progress task and next pending task
   const currentTodo = tasksV2?.find(task => task.status !== 'pending' && task.status !== 'completed');
