@@ -30,9 +30,27 @@ Globals you can call:
 
 - \`__setMeta({ name, description, phases })\` — call this at the top of your script to declare the workflow's UI-visible metadata. \`phases\` is an array of \`{ title }\` (the phase list rendered in the detail dialog). Call exactly once at the start; subsequent calls are ignored by the UI.
 - \`phase(title)\` — post a \`{ kind: 'phase', title }\` event so the dialog can show the current phase in the spinner. Call once per logical phase. \`phase('Build')\`, \`phase('Verify')\`, etc.
-- \`agent(prompt, opts)\` — returns \`Promise<{ ok, report?, error?, agentId?, label? }>\`. \`opts\` extends \`SpawnOpts\` with a \`label\` field (used for display in the UI). \`agent\` NEVER rejects — errors are normalized to \`{ ok: false, error }\` so you can do \`if (!r.ok) return { aborted: '<phase>', details: r.error }\` for hard-fail semantics. \`opts.tools\`: array of tool names the subagent can use. \`opts.model\`: optional model override.
+- \`agent(prompt, opts)\` — returns \`Promise<{ ok, report?, error?, agentId?, label? }>\`. \`opts\` extends \`SpawnOpts\` with a \`label\` field (used for display in the UI). \`agent\` NEVER rejects — errors are normalized to \`{ ok: false, error }\` so you can do \`if (!r.ok) return { aborted: '<phase>', details: r.error }\` for hard-fail semantics. \`opts.tools\`: array of tool names the subagent can use. \`opts.model\`: optional model override. See \`# agentType\` below for routing through the agent registry.
 - \`spawnSubagent(prompt, opts)\` — legacy API. Returns \`Promise<{ agentId, report }>\` and DOES reject on error. Prefer \`agent()\` for new scripts.
 - \`parallel([fn1, fn2, fn3])\` — \`Promise.all\` over an array of thunks. Use this for the parallel-fan-out pattern: \`const [a, b, c] = await parallel([() => agent(...), () => agent(...), () => agent(...)])\`. Results come back in input order.
+
+# agentType (optional, advanced)
+
+By default, agent() calls the LLM directly with a structured-output
+contract. Pass \`agentType\` to route through OpenCC's agent registry
+(e.g. \`'tui-func-verifier'\` for TUI verification, \`'Explore'\` for
+codebase exploration, \`'general-purpose'\` for multi-step tasks). The
+runtime forwards \`agentType\` to the \`spawnSubagent\` handler in the
+main process; when omitted, the LLM is called directly with the schema
+prompt.
+
+\`\`\`
+await agent('...', {
+  label: 'verify-tui',
+  agentType: 'tui-func-verifier',
+  schema: { type: 'object', ... }
+})
+\`\`\`
 
 # Recommended pattern
 For multi-phase workflows, the canonical structure is:

@@ -65,4 +65,13 @@ describe('buildScriptGenerationPrompt', () => {
     expect(p).toContain('aborted')
     expect(p).toContain('!r.ok')
   })
+
+  test('teaches agentType for registry dispatch', () => {
+    const p = buildScriptGenerationPrompt({ task: 't', workflowName: 'w', args: undefined })
+    // The agentType field routes through OpenCC's agent registry. The
+    // prompt should mention the field name and an example agent key so
+    // generated scripts can opt into registry dispatch when they need
+    // a specialized agent (TUI verifier, Explore, general-purpose, etc.).
+    expect(p).toContain('agentType')
+  })
 })
