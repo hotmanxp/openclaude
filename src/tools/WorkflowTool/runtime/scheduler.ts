@@ -51,7 +51,7 @@ export class Scheduler {
     return new Promise<T>((resolve, reject) => {
       this.queue.push({
         fn: fn as () => Promise<unknown>,
-        resolve: resolve as (v: unknown) => void,
+        resolve: (v) => resolve(v as T),
         reject,
       })
       this.drain()
