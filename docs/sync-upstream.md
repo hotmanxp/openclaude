@@ -508,6 +508,144 @@ was resolved by `git rebase --skip` (kept remote's more-complete
 version, which also fixed the TDZ 2b I'd left as "known latent
 bug"). My local commit did NOT add anything the remote version
 didn't already cover — the `acquireSharedMutationLock` addition I
-had wasn't strictly necessary because `58b977aa`'s
+`173ac3a1` had wasn't strictly necessary because `58b977aa`'s
 `beforeEach` remock already neutralizes the leak direction that
 matters for attribution.
+
+---
+
+## 2026-06-06 sync (tier 1, 3 applied + 2 fork-only, all pushed)
+
+Tier 1 batch from the 2026-06-06 session. 22 upstream commits since
+the `8801a4cd` anchor (2026-06-04): 3 applied cleanly, 4 applied
+cleanly but were no-op (3way silent miss — content already in fork
+from a prior session's port), 8 detected as already-synced by the
+`verify-already-synced.py` file-content + SHA fingerprint check, 7
+skipped per the AGENTS.md provider-policy / release-chore /
+missing-infra rules.
+
+### Tier 1 — applied, 1-file or 3-file, clean
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `9a342b61` | `a1d09d2c` | `fix(agent-routing): support API model aliases (#1546)`. 3 files: `agentRouting.ts` (collapse dual model-resolution paths through one helper), `agentRouting.test.ts` (+73, new tests), `settings/types.ts` (+9, settings type extension) |
+| `96ddec71` | `6ea315eb` | `fix(test): stop use-input test from leaking a global stdin mock (#1501)`. 1 file: `use-input.test.ts` with `// @ts-nocheck` line 1 (Bun.sleep runtime; took upstream's `Bun.sleep(5)` via 3way `theirs`) |
+| `1c279577` | `1e6140e8` | `feat: add .gitattributes to enforce LF line endings (#1550)`. 1 file: `.gitattributes` (124 lines, `eol=lf` for ts/tsx/js/json/md/yaml/yml/sh/py). Skipped 2 of 4 upstream hunks — `brave-search.ts` and `exa.ts` not in fork (search provider set is anthropic/ollama/openai-compatible only per AGENTS.md) |
+
+### Tier 1 — no-op, applied cleanly but no diff (3way silent miss)
+
+These commits had `git apply --3way` report success but produced zero
+file changes — the content was already in the fork from a prior
+session's port. Confirms the cron dedup gap documented in the
+2026-06-03 TODO: subject-match dedup misses cases where upstream
+content was ported in a prior session under a different SHA / subject.
+
+| Upstream | What it does |
+|---|---|
+| `2bed1849` | `perf(attachments): skip skill listings for utility forks (#1545)` — SKILL_LISTING skip already in fork |
+| `11e46aff` | `fix(typecheck): narrow hook event counts (#1503)` — already-typed |
+| `2c755d3d` | `fix(typecheck): restore typed add-dir source (#1553)` — already-typed |
+| `47eea3f8` | `fix(typecheck): type search UI state (#1548)` — GlobalSearchDialog + LogSelector already typed |
+
+### Tier 1 — already-synced (8 of 22, file-content + fingerprint match)
+
+Per `~/.hermes/skills/devops/upstream-fork-sync/scripts/verify-already-synced.py`.
+The cron's subject-match only flagged these as "new" because the
+upstream subject and the fork's subject (or SHA) don't match, even
+though the code content is byte-identical or fingerprint-equivalent.
+
+| Upstream |
+|---|
+| `80607ca1` |
+| `03c8e224` |
+| `73a28338` |
+| `8705cd35` |
+| `7278cad8` |
+| `343cd1a2` |
+| `3bf6ccd6` |
+| `1fc5116e` |
+
+### Tier 1 — skipped (7 of 22, AGENTS.md policy)
+
+| Upstream | Why skipped |
+|---|---|
+| `1b7e5505` | release chore (v0.17.1) — OpenCC ships its own version |
+| `997efb87` | release chore (v0.17.0) — OpenCC ships its own version |
+| `1204fe25` | gemma 4 models — gemini provider is removed per AGENTS.md |
+| `b1a80267` | xiaomi MiMo retire — xiaomi provider is removed per AGENTS.md |
+| `ea091768` | opengateway Gemini 3.1 Flash Lite — opengateway is removed |
+| `e357d593` | proactive module import surface — fork has no `src/proactive/` feature |
+| `3659eaad` | CodeRabbit PR reviews — CI config, fork has no CodeRabbit workflow |
+
+### Fork-only bug fix — streaming usage reporting
+
+`05140554` — `fix(openai-shim): log real token counts for streaming
+API calls`. Found by inspecting `~/.claude/debug/<session>.txt` after
+the 2026-06-05 sync: `api_call_end` log lines all reported
+`tokens_in=0, tokens_out=0` for streaming responses, even though the
+model (MiniMax M2.7-highspeed / M3) does report real usage. Root
+cause: `src/services/api/openaiShim.ts:1880` — the streaming path
+parsed and forwarded usage from the response body, but the
+`logApiCallEnd()` call sat *outside* the streaming generator, so when
+the generator finally-ran the usage was already lost.
+
+Fix: move `logApiCallEnd()` into the `openaiStreamToAnthropic`
+generator's `finally` block, passing `correlationId` and `startTime`
+via `_doRequest`'s return value (turned the previously
+`Promise<AnthropicResponse>` into
+`Promise<{ response, correlationId, startTime }>` for the streaming
+path). Plus the first `logApiCallEnd` signature was a no-op shadow
+that suppressed non-streaming logs; collapsed both paths to use the
+real `stream_stats` from the generator.
+
+Review-pass polish (6 items): (1) merge `first_token_ms` /
+`total_chunks` from `stream_stats` into the single `api_call_end` log
+line; (2) rewrite the misleading "keep the latest non-zero" comment;
+(3) keep the unified `signal: AbortSignal | undefined` signature;
+(4) add a streaming usage regression test; (5) cap `streamError.message`
+at 500 chars to avoid huge log lines; (6) fix the "shadow status"
+comment that claimed the call logged twice.
+
+### Fork-only infra — verification checklist
+
+`53a043b5` — `chore(verification): add 5-phase verification checklist,
+silence notice tests, drop codex tests`. Two non-syncing changes that
+came out of the 2026-06-05 sync verification:
+
+- `docs/verification-checklist.md` (new, 292 lines) — 5-phase checklist
+  (build → typecheck → test → TUI--debug → debug-log scan).
+  OpenCC-specific (not a general hermes skill) because the project's
+  TUI smoke depends on the `.claude-profile.json` MiniMax-M3 +
+  agent-tui + debug-log path, all of which are project-local.
+- `AGENTS.md` "Testing" section now points to the doc.
+- `src/utils/statusNoticeDefinitions.safety.test.tsx` — 5 notice tests
+  inverted from "fires" to "does not fire" (silenced per upstream
+  `352afa86`'s runtime change; the test assertions hadn't been
+  updated).
+- `src/services/api/codexOAuth.test.ts` (deleted, 167 lines) —
+  `useCodexOAuthFlow.ts` was the only remaining consumer of
+  `codexOAuth.ts`; its tests were pre-existing fails and codex is a
+  removed provider.
+
+### Verification (2026-06-06, all 5 commits)
+
+- `bun run typecheck` → 0 errors
+- `bun test` (full) → 2481 pass / 34 skip / 0 fail across 2515 tests
+  / 486 files / 9.58s. Baseline was 2165 / 23 / 0; +316 new pass,
+  +11 new skip, 0 fail delta.
+- `bun run build` → ✓ Built opencc v0.16.1 → `dist/cli.mjs`
+- TUI smoke: `node bin/opencc -p "say 'ok' and stop"` → "ok" (via
+  MiniMax-M3 profile); debug log shows real `tokens_in=36876,
+  tokens_out=24, first_token_ms=837, total_chunks=2` (the bug fix)
+- `git push origin main-openccv2` → `05140554..1e6140e8`
+
+### Cron dedup TODO update
+
+The 4 no-op 3way silent-miss commits confirm the 2026-06-03 TODO:
+subject-match dedup misses cases where the upstream content was
+ported in a prior session under a different SHA / subject. The
+`verify-already-synced.py` file-content + SHA fingerprint check
+catches these at sync time, but doesn't propagate back to the cron's
+prompt. The TODO remains: bake `verify-already-synced.py` into the
+cron's prompt so the daily report doesn't re-flag already-synced
+commits.
