@@ -35,6 +35,15 @@ export type SpawnOpts = {
   model?: string
   tools?: string[]
   signal?: AbortSignal
+  /**
+   * Optional agent registry key (e.g. 'tui-func-verifier', 'Explore',
+   * 'general-purpose'). When set, the main-process spawnSubagent handler
+   * is expected to route to that registered agent instead of calling the
+   * LLM directly with the schema prompt. Forwarded through the
+   * WorkerOutbound protocol; the runtime transport is the only thing this
+   * type currently expresses — actual registry lookup is a follow-up.
+   */
+  agentType?: string
 }
 
 /** Result of spawnSubagent() — final report from the subagent. */
@@ -108,6 +117,7 @@ export const SpawnOptsSchema = z.object({
   model: z.string().optional(),
   tools: z.array(z.string()).optional(),
   signal: z.instanceof(AbortSignal).optional(),
+  agentType: z.string().optional(),
 })
 
 /** Zod schema for the Workflow tool's input. */

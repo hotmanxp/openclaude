@@ -87,9 +87,13 @@ function phase(title) {
 // { ok: false, error } so the call site can pattern-match on ok cleanly.
 // The legacy spawnSubagent(prompt, opts) stays unchanged for backward
 // compatibility with scripts that destructure { agentId, report }.
+// \`label\` is a UI-only field; \`agentType\` is forwarded into SpawnOpts so
+// the main-process handler can route through the agent registry when set
+// (otherwise the LLM is called directly with the schema prompt).
 function agent(prompt, opts) {
-  const { label, ...spawnOpts } = opts || {};
-  return spawnSubagent(prompt, spawnOpts).then(
+  const { label, agentType, ...spawnOpts } = opts || {};
+  const finalOpts = agentType ? { ...spawnOpts, agentType } : spawnOpts;
+  return spawnSubagent(prompt, finalOpts).then(
     function (r) {
       return { ok: true, agentId: r.agentId, report: r.report, label: label };
     },

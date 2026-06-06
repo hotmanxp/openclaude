@@ -86,6 +86,14 @@ describe('buildWorkerScript', () => {
     expect(script).toMatch(/ok:\s*false/)
   })
 
+  test('agent wrapper passes agentType through to spawnSubagent', () => {
+    const script = buildWorkerScript(`return args;`)
+    // agentType is forwarded into SpawnOpts so the main-process handler
+    // can route through the agent registry. Look for the destructure
+    // pattern that pulls agentType out of opts.
+    expect(script).toMatch(/agentType/)
+  })
+
   test('parallel wrapper uses Promise.all', () => {
     const script = buildWorkerScript(`return args;`)
     expect(script).toMatch(/Promise\.all\s*\(\s*fns/)
