@@ -42,6 +42,7 @@ import { DreamDetailDialog } from './DreamDetailDialog.js';
 import { InProcessTeammateDetailDialog } from './InProcessTeammateDetailDialog.js';
 import { RemoteSessionDetailDialog } from './RemoteSessionDetailDialog.js';
 import { ShellDetailDialog } from './ShellDetailDialog.js';
+import { WorkflowDetailDialog } from './WorkflowDetailDialog.js';
 type ViewState = {
   mode: 'list';
 } | {
@@ -104,20 +105,14 @@ type ListItem = {
   status: 'running';
 };
 
-// WORKFLOW_SCRIPTS is internal-only (build_flags.yaml). Static imports would leak
-// ~1.3K lines into external builds. Gate with feature() + require so the
-// bundler can dead-code-eliminate the branch.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const WorkflowDetailDialog = feature('WORKFLOW_SCRIPTS') ? (require('./WorkflowDetailDialog.js') as typeof import('./WorkflowDetailDialog.js')).WorkflowDetailDialog : null;
-const workflowTaskModule = feature('WORKFLOW_SCRIPTS') ? require('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') : null;
-const killWorkflowTask = workflowTaskModule?.killWorkflowTask ?? null;
-const skipWorkflowAgent = workflowTaskModule?.skipWorkflowAgent ?? null;
-const retryWorkflowAgent = workflowTaskModule?.retryWorkflowAgent ?? null;
-// Relative path, not `src/...` path-mapping — Bun's DCE can statically
-// resolve + eliminate `./` requires, but path-mapped strings stay opaque
-// and survive as dead literals in the bundle. Matches tasks.ts pattern.
+// Lifecycle helpers (killWorkflowTask, skipWorkflowAgent, retryWorkflowAgent) are
+// not yet exported from src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts —
+// they will be added when the runtime control plane lands. Keep these as `null`
+// so the existing UI guards (&& killWorkflowTask) short-circuit gracefully.
+const killWorkflowTask: ((taskId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
+const skipWorkflowAgent: ((taskId: string, agentId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
+const retryWorkflowAgent: ((taskId: string, agentId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
 import { MonitorMcpDetailDialog } from './MonitorMcpDetailDialog.js';
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
 function getSelectableBackgroundTasks(tasks: Record<string, TaskState> | undefined, foregroundedTaskId: string | undefined): TaskState[] {
