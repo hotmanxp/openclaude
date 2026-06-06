@@ -67,6 +67,7 @@ import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
+import { workflowsListCommand } from './commands/workflows/listCommand.js'
 import { feature } from 'bun:bundle'
 import { runtimeFeature } from './utils/envUtils.js'
 import { isBuddyEnabled } from './buddy/feature.js'
@@ -95,11 +96,6 @@ const voiceCommand = feature('VOICE_MODE')
   : null
 const forceSnip = feature('HISTORY_SNIP')
   ? require('./commands/force-snip.js').default
-  : null
-const workflowsCmd = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
-    ).default
   : null
 const webCmd = feature('CCR_REMOTE_SETUP')
   ? (
@@ -406,7 +402,7 @@ const COMMANDS = memoize((): Command[] => [
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
-  ...(workflowsCmd ? [workflowsCmd] : []),
+  workflowsListCommand,
   ...(torch ? [torch] : []),
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
     ? INTERNAL_ONLY_COMMANDS
