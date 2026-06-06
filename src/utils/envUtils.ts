@@ -2,7 +2,6 @@ import memoize from 'lodash-es/memoize.js'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { getInitialSettings } from './settings/settings.js'
 
 export function resolveClaudeConfigHomeDir(options?: {
   configDirEnv?: string
@@ -262,6 +261,14 @@ export function isWorkflowsDisabled(): boolean {
     return true
   }
   try {
+    // Lazy require: breaks the envUtils ↔ settings circular import.
+    // envUtils.ts and settings.ts mutually import each other at module top
+    // level; touching settings.ts from a static import here would put
+    // getClaudeConfigHomeDir in TDZ whenever something deep in the tool
+    // graph (e.g. AgentTool) calls into settings.ts during its own
+    // evaluation. require() defers the binding until the function runs,
+    // which is always after the module graph finishes loading.
+    const { getInitialSettings } = require('./settings/settings.js') as typeof import('./settings/settings.js')
     const settings = getInitialSettings()
     if (settings.disableWorkflows === true) {
       return true
