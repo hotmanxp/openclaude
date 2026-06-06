@@ -161,9 +161,9 @@ const handon: Command = {
       // ---- GENERATE ----
       const taskList = Object.values(appState.tasks ?? {}).map(t => ({
         id: t.id,
+        type: t.type,
         status: t.status,
-        subject: t.subject,
-        content: t.content,
+        description: t.description, // TaskStateBase.description is the human-readable subject
       }))
       const text = await renderGeneratePrompt({
         cwd,
@@ -185,90 +185,90 @@ export default handon
 
 ### `prompts/generate.ts`
 
-返回给 LLM 的完整文本:
+Returns the full prompt text given to the LLM. **The prompt is English** to match the system prompt convention:
 
 ```markdown
-# 任务:为当前会话生成 handoff 文档
+# Task: Generate a handoff document for the current session
 
-你正在为下一次会话生成交接文档。**不要**直接向用户回复 —— 用 **Bash 工具**写文件。
+You are generating a handoff document for the next session. **Do not** reply directly to the user — write the file with the **Bash** tool.
 
-## 输出路径
+## Output path
 
 \`\`\`
 <project>/.agent_working_dir/handoff/<task>-<YYYY-MM-DD>.md
 \`\`\`
 
-- `<project>`: 当前 cwd(见下)
-- `<task>`: 你生成的 kebab-case 任务简称(基于本次任务核心目标,≤ 30 字符,**英文**,避免歧义)
+- `<project>`: current cwd (see below)
+- `<task>`: a kebab-case task slug YOU generate based on the core goal of this session (≤ 30 chars, **English**, unambiguous)
 - `<YYYY-MM-DD>`: \`${today}\`
-- 如果同名文件已存在,加后缀 \`-2\` / \`-3\` ...
+- If a file with the same name already exists, append \`-2\` / \`-3\` ...
 
-## cwd 与 task list 上下文
+## Context
 
 - cwd: \`${cwd}\`
-- 消息数: \`${messageCount}\`
-- 当前 TaskList:
+- messageCount: \`${messageCount}\`
+- current TaskList:
 \`\`\`
 ${taskList.length
   ? taskList.map(t => `- [${t.status}] #${t.id} ${t.subject}`).join('\n')
-  : '(无)'}
+  : '(empty)'}
 \`\`\`
 
-## 文档结构(必须按顺序写)
+## Document structure (write in this order)
 
-1. **# 任务标题** —— 一句话概括
-2. **## 原始任务** —— 用户最初提的请求,逐字引用或要点提炼
-3. **## 任务目标** —— 完成的标准(可验证的 condition)
-4. **## 中间产物** —— 本会话写过的文档 / 计划 / spec / 代码 / commits(带路径或 commit hash)
-5. **## 关键发现** —— 过程中得到的非显然结论
-6. **## 踩坑记录** —— 失败过的尝试、原因、修复(防止下一会话重蹈覆辙)
-7. **## 当前 TaskList** —— 完整复制上面的 task list(状态 + subject + content)
-8. **## 下一步** —— 接手会话应该从哪里开始、还有什么待办
+1. **# Task title** — one-line summary
+2. **## Original Request** — the user's first request, verbatim or distilled
+3. **## Goal** — completion condition (verifiable)
+4. **## Artifacts** — files / plans / specs / code / commits produced in this session (with paths or commit hashes)
+5. **## Key Findings** — non-obvious conclusions
+6. **## Pitfalls** — failed attempts, root causes, fixes (so the next session doesn't repeat them)
+7. **## Current TaskList** — full copy of the task list above (status + description)
+8. **## Next Steps** — where the next session should start, what's still open
 
-## 写作要求
+## Writing rules
 
-- 中文,清晰简洁,每节不超过 5 段
-- 路径用相对 cwd 的相对路径
-- 任务命名要语义化(例: \`add-handoff-command\`, 不要 \`task-12345\`)
-- 写完后用 Bash 工具执行 \`ls -la \`<dir>\`\` 确认文件已落盘
-- 最后用一句话告诉用户: 「✅ 交接文档已生成: \`<path>\`」
+- Use English, clear and concise, max 5 short paragraphs per section
+- Use paths **relative to cwd**
+- Task slug must be semantic (e.g. \`add-handoff-command\`, NOT \`task-12345\`)
+- After writing, run \`ls -la \`<dir>\`\` to confirm the file exists on disk
+- Finish with a single line to the user: "✅ Handoff document written: \`<path>\`"
 
-现在开始。
+Start now.
 ```
 
 ### `prompts/pickup.ts`
 
-返回给 LLM 的完整文本:
+Returns the full prompt text given to the LLM. **The prompt is English** to match the system prompt convention:
 
 ```markdown
-# 任务:接手 handoff 文档继续工作
+# Task: Resume from a handoff document
 
 ${errorNote
-  ? `## ⚠️ 警告
+  ? `## ⚠️ Warning
 
 ${errorNote}
 
-**不要**直接放弃。先用 **AskUserQuestion** 询问用户:
-- 实际的 handoff 文档路径(可能是别的项目、别处拷贝、手写)
-- 或者让用户先在另一会话跑 /handon 生成
+**Do not** give up. Use **AskUserQuestion** to ask the user:
+- the actual handoff file path (could be from another project, copied elsewhere, or hand-written)
+- or instruct the user to run /handon in another session to generate one
 `
   : ''}
 ${pickPath
-  ? `## 预读的 handoff
+  ? `## Pre-read handoff
 
-路径: \`${pickPath}\`
+Path: \`${pickPath}\`
 
 \`\`\`markdown
 ${pickContent}
 \`\`\`
 `
   : ''}
-## 接手后流程
+## Resume flow
 
-1. **${errorNote ? '拿到正确路径后,' : ''}用 Read 工具完整读 handoff 文档**
-2. **用 TaskCreate / TaskUpdate 恢复 TaskList**
-3. **检查 cwd、依赖、中间产物是否就位**
-4. **告诉用户:** "已接手 \`<task>\`,当前进度 X,下一步 Y。要继续吗?"
+1. **${errorNote ? 'Once you have the correct path,' : ''} Read the handoff document in full with the Read tool**
+2. **Restore the TaskList using TaskCreate / TaskUpdate**
+3. **Verify cwd, dependencies, and intermediate artifacts are in place**
+4. **Tell the user:** "Resumed \`<task>\`. Current progress: X. Next step: Y. Continue?"
 
 ## cwd
 
