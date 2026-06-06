@@ -29,7 +29,7 @@ export const workflowInputSchema = z.object({
  *  2. Read its source — bundled workflows ship their script inline, project/
  *     user workflows are .js files on disk.
  *  3. Create a `LocalWorkflowTask` and start it in a Worker thread.
- *  4. Yield a `{ taskId }` result immediately so the LLM turn can continue.
+ *  4. Return a `{ taskId }` result immediately so the LLM turn can continue.
  *
  * Progress is visible via the background-tasks dialog (`/tasks`) and the
  * workflow detail dialog. The final report is persisted on the task state
@@ -37,12 +37,12 @@ export const workflowInputSchema = z.object({
  * works for AgentTool.
  *
  * Note on the `as unknown as Tool` cast: the Tool interface declares
- * `description` as an `(input, options) => Promise<string>` and `call` as
- * `async (...args) => Promise<ToolResult<Output>>`. We deliberately use a
- * plain string for `description` (matches the LLM-facing copy exposed via
- * `tools.ts`) and an async generator for `call` (lets us yield the taskId
- * before the worker finishes), and let the runtime shape satisfy the
- * contract. This pattern is used elsewhere in the codebase.
+ * `call` as a strict async function returning `Promise<ToolResult<Output>>`,
+ * but we need an async generator pattern to yield the taskId before the
+ * worker finishes. The runtime shape satisfies the contract via duck-typing
+ * (the `toolToAPISchema` caller only uses `.prompt()`, the runtime caller
+ * only uses `Symbol.asyncIterator`). This pattern is used elsewhere in the
+ * codebase.
  *
  * Note on the lazy `LocalWorkflowTask` / `logError` imports: pulling these
  * in at module top-level would transitively import `bootstrap/state.ts`,
@@ -51,16 +51,30 @@ export const workflowInputSchema = z.object({
  * cycle. Deferring the import to the call body keeps module-load clean
  * (the tool definition is just metadata until the LLM actually invokes it).
  */
+const WORKFLOW_DESCRIPTION =
+  'Run a dynamic workflow: a JavaScript script that orchestrates subagents at scale. ' +
+  'Use this when a task needs parallel work across many agents (e.g., multi-angle research, ' +
+  'codebase audit, migration). The workflow script receives `args` and `spawnSubagent(prompt, opts)` ' +
+  'and must return a single string report.'
+
 export const WorkflowTool = {
   name: WORKFLOW_TOOL_NAME,
-  description:
-    'Run a dynamic workflow: a JavaScript script that orchestrates subagents at scale. ' +
-    'Use this when a task needs parallel work across many agents (e.g., multi-angle research, ' +
-    'codebase audit, migration). The workflow script receives `args` and `spawnSubagent(prompt, opts)` ' +
-    'and must return a single string report.',
   inputSchema: workflowInputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
+
+  // Required by the Tool interface: API schema uses prompt() (see
+  // src/utils/api.ts:toolToAPISchema), UI uses description() for activity
+  // display. Both signatures are required even when the copy is identical.
+  async prompt(): Promise<string> {
+    return WORKFLOW_DESCRIPTION
+  },
+  async description(): Promise<string> {
+    return WORKFLOW_DESCRIPTION
+  },
+  userFacingName(): string {
+    return 'Run Workflow'
+  },
 
   async *call(
     { workflowName, args }: z.infer<typeof workflowInputSchema>,
