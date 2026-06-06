@@ -18,42 +18,68 @@ export type RegistryOpts = {
  *   2. User workflows from `<userDir>/.claude/workflows/*.js`
  *   3. Project workflows from `<projectDir>/.claude/workflows/*.js`
  *
- * Discovery is cold-scan: the directory is re-read on the first `list()`/`get()`
- * after the registry is empty, and can be forced with `reload()`.
+ * Discovery is cold-scan-once: the project + user dirs are scanned the
+ * first time `list()`/`get()` is called (or when `reload()` is forced
+ * explicitly). Bundled workflows registered via `registerBundled()` do
+ * NOT count as a scan — they're always visible. The first-scan guard
+ * (`_diskScanned`) prevents re-scanning the disk on every lookup, which
+ * would be O(disk IO) per `WorkflowTool.call()` invocation.
  */
 export class WorkflowRegistry {
-  private workflows = new Map<string, Workflow>()
+  // Bundled workflows are kept in a separate map so `reload()` (which
+  // clears the disk-scanned workflows) doesn't evict them. Bundled
+  // workflows are registered at construction time and never change.
+  private bundledWorkflows = new Map<string, Workflow>()
+  private diskWorkflows = new Map<string, Workflow>()
+  private _diskScanned = false
   private watchers: FSWatcher[] = []
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly opts: RegistryOpts) {}
 
-  /** Cold scan: re-read all .js files in project + user dirs. */
+  /** Cold scan: re-read all .js files in project + user dirs. Resets
+   *  the `_diskScanned` guard so the next `list()`/`get()` triggers
+   *  another scan. Bundled workflows are preserved. */
   async reload(): Promise<void> {
-    this.workflows.clear()
+    this.diskWorkflows.clear()
+    this._diskScanned = false
     for (const wf of await this.scanDir(join(this.opts.userDir, '.claude', 'workflows'), 'user')) {
-      this.workflows.set(wf.name, wf)
+      this.diskWorkflows.set(wf.name, wf)
     }
     for (const wf of await this.scanDir(join(this.opts.projectDir, '.claude', 'workflows'), 'project')) {
-      this.workflows.set(wf.name, wf)
+      this.diskWorkflows.set(wf.name, wf)
     }
+    this._diskScanned = true
   }
 
-  /** Add a bundled workflow (e.g. /deep-research). */
+  /** Add a bundled workflow (e.g. /deep-research). Bundled workflows
+   *  bypass the disk-scan guard — they're always visible regardless of
+   *  whether the disk has been scanned. */
   registerBundled(workflow: Workflow): void {
-    this.workflows.set(workflow.name, workflow)
+    this.bundledWorkflows.set(workflow.name, workflow)
   }
 
-  /** List all known workflows, sorted by name. */
+  /** Combined view: bundled first (so the lookup below finds them on
+   *  the first cold-scan), then disk-scanned. Project > user resolution
+   *  is preserved (later wins), so disk wins on name collision. */
+  private merged(): Map<string, Workflow> {
+    const out = new Map<string, Workflow>()
+    for (const [k, v] of this.bundledWorkflows) out.set(k, v)
+    for (const [k, v] of this.diskWorkflows) out.set(k, v)
+    return out
+  }
+
+  /** List all known workflows, sorted by name. Triggers the first
+   *  cold-scan if it hasn't run yet. */
   async list(): Promise<Workflow[]> {
-    if (this.workflows.size === 0) await this.reload()
-    return [...this.workflows.values()].sort((a, b) => a.name.localeCompare(b.name))
+    if (!this._diskScanned) await this.reload()
+    return [...this.merged().values()].sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  /** Look up by name. */
+  /** Look up by name. Triggers the first cold-scan if it hasn't run yet. */
   async get(name: string): Promise<Workflow | undefined> {
-    if (this.workflows.size === 0) await this.reload()
-    return this.workflows.get(name)
+    if (!this._diskScanned) await this.reload()
+    return this.merged().get(name)
   }
 
   /**
@@ -80,6 +106,11 @@ export class WorkflowRegistry {
         ignored: /(^|[\\/])\../,
         persistent: true,
         ignoreInitial: true,
+        // macOS fsevents sometimes drops the `add` event for files
+        // written in quick succession (e.g. test fixtures or editor
+        // save bursts). awaitWriteFinish waits for the file size to
+        // stabilize before firing the event, eliminating the race.
+        awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 25 },
       })
       w.on('add', () => this.scheduleReload())
       w.on('change', () => this.scheduleReload())
