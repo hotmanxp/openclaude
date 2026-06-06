@@ -227,7 +227,7 @@ export const WorkflowTool = {
           taskId: task.id,
           workflowName,
           status: 'running',
-          message: `Workflow ${workflowName} started. Run /tasks to see progress.`,
+          message: `Workflow ${workflowName} started. Run /workflows to see progress.`,
         },
       }
     } catch (e) {
