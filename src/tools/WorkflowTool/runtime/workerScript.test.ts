@@ -98,4 +98,16 @@ describe('buildWorkerScript', () => {
     const script = buildWorkerScript(`return args;`)
     expect(script).toMatch(/Promise\.all\s*\(\s*fns/)
   })
+
+  test('strips export const declarations', () => {
+    const script = buildWorkerScript(`
+    export const meta = { name: 'foo' };
+    return meta.name;
+  `)
+    // The wrapper should not contain 'export const' (would be a syntax error
+    // inside the userScript function body).
+    expect(script).not.toContain('export const')
+    // But the meta value should still be there.
+    expect(script).toContain("meta = { name: 'foo' }")
+  })
 })

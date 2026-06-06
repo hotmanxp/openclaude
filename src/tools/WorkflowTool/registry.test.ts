@@ -1,9 +1,28 @@
 // src/tools/WorkflowTool/registry.test.ts
 import { describe, expect, test, beforeEach } from 'bun:test'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { WorkflowRegistry } from './registry.js'
+
+describe('WorkflowRegistry user script loading', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'wf-reg-user-'))
+  })
+
+  test('loads a freshly-written sample.js from project .claude/workflows', async () => {
+    const wfDir = join(tmp, '.claude', 'workflows')
+    mkdirSync(wfDir, { recursive: true })
+    writeFileSync(
+      join(wfDir, 'sample.js'),
+      `export default async function () { return 'hello' }`,
+    )
+    const r = new WorkflowRegistry({ projectDir: tmp, userDir: tmp })
+    const all = await r.list()
+    expect(all.find(w => w.name === 'sample')).toBeDefined()
+  })
+})
 
 describe('WorkflowRegistry', () => {
   let tmp: string

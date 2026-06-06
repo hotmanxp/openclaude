@@ -35,6 +35,8 @@ export function buildWorkerScript(userScript: string): string {
     .replace(/export\s+default\s+async\s+function/g, 'async function')
     .replace(/export\s+default\s+function/g, 'function')
     .replace(/export\s+default\s+/g, '')
+    .replace(/export\s+const\s+/g, 'const ')
+    .replace(/export\s+(let|var)\s+/g, '$1 ')
 
   // parentPort must be captured before the require shadow takes effect.
   // The module-level wrapper is trusted code (not user-supplied), so we
