@@ -6,6 +6,7 @@ import type {
   Workflow,
   WorkflowAgentState,
 } from '../../tools/WorkflowTool/types.js'
+import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
 
@@ -62,6 +63,9 @@ export class LocalWorkflowTask implements Task {
       description: `Workflow: ${args.workflow.name}`,
       argsJson: args.argsJson,
     })
+    // Make the task findable by the lifecycle helpers (kill / skip / retry)
+    // used by BackgroundTasksDialog and WorkflowDetailDialog.
+    registerWorkflowTask(this)
   }
 
   get type(): 'local_workflow' {
@@ -118,6 +122,9 @@ export class LocalWorkflowTask implements Task {
       this.state.status = 'failed'
     } finally {
       this.state.completedAt = Date.now()
+      // Terminal state reached — drop from the lifecycle registry so the
+      // dialog no longer offers kill / skip / retry controls for it.
+      unregisterWorkflowTask(this.state.id)
     }
   }
 
