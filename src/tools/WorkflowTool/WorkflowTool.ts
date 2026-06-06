@@ -94,6 +94,22 @@ export const WorkflowTool = {
     return name ? `Run workflow: ${name}` : 'Run workflow'
   },
 
+  // Required by the Tool interface (src/Tool.ts:517). The runtime
+  // calls this before tool.call; if it's missing the tool never
+  // executes and the workflow never reaches registerWorkflowInAppState
+  // — which is why /workflows panel was empty for the user.
+  // Workflows already gate themselves via spawnSubagent's permission
+  // surface (each sub-agent call is permission-checked), so we just
+  // allow the workflow-tool itself at the entry point. Pattern
+  // mirrors src/tools/McpAuthTool/McpAuthTool.ts:checkPermissions.
+  async checkPermissions(input: {
+    workflowName?: string
+    args?: unknown
+    description?: string
+  }): Promise<{ behavior: 'allow'; updatedInput: typeof input }> {
+    return { behavior: 'allow', updatedInput: input }
+  },
+
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     const msg =
       typeof output === 'object' && output !== null && 'message' in output

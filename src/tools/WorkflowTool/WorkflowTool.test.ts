@@ -24,4 +24,28 @@ describe('WorkflowTool', () => {
     const schema = tool.inputSchema
     expect(schema).toBeDefined()
   })
+
+  // Regression: every Tool interface method that the runtime actually
+  // calls must be a function on the WorkflowTool plain object. The
+  // `as unknown as Tool` cast at WorkflowTool.ts silences type errors
+  // for missing methods, so the typecheck won't catch them. Each time
+  // the runtime calls a missing method, the user sees a specific
+  // failure (see opencc-dynamic-worktool-plain-object-shape.md for the
+  // full symptom table). This test pins down the full set so a future
+  // "tighten the type" pass can't silently remove them.
+  test('exposes all Tool-interface methods the runtime calls', () => {
+    const raw = WorkflowTool as unknown as Record<string, unknown>
+    const required = [
+      'description',
+      'prompt',
+      'userFacingName',
+      'renderToolUseMessage',
+      'mapToolResultToToolResultBlockParam',
+      'call',
+      'checkPermissions',
+    ]
+    for (const m of required) {
+      expect(typeof raw[m]).toBe('function')
+    }
+  })
 })
