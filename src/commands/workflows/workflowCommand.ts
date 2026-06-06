@@ -32,7 +32,7 @@ export function workflowFileToCommand(
             `The user typed /${name}. Run the workflow named "${name}" ` +
             `(from ${source}) with args ${argListJson}. ` +
             `Use the WorkflowTool with input: ` +
-            `name: "${name}", args: ${argListJson}. ` +
+            `workflowName: "${name}", args: ${argListJson}. ` +
             `Pass any descriptive summary of the user's intent as the ` +
             `description field.`,
         },
