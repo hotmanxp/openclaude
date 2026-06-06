@@ -56,3 +56,33 @@ describe('WorkflowRegistry', () => {
     expect(all.find(w => w.name === 'deep-research')).toBeDefined()
   })
 })
+
+describe('WorkflowRegistry hot-reload', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'wf-reg-watch-'))
+  })
+
+  test('newly created workflow appears in list after add event', async () => {
+    const r = new WorkflowRegistry({ projectDir: tmp, userDir: tmp })
+    r.startWatching()
+    const initial = await r.list()
+    expect(initial.length).toBe(0)
+
+    // Add a workflow file
+    const wfDir = join(tmp, '.claude', 'workflows')
+    mkdirSync(wfDir, { recursive: true })
+    writeFileSync(
+      join(wfDir, 'late.js'),
+      'export default async function() { return "late"; }',
+    )
+
+    // Wait for chokidar to fire (with 100ms debounce + scan)
+    await new Promise(res => setTimeout(res, 500))
+    const after = await r.list()
+    expect(after.length).toBe(1)
+    expect(after[0]!.name).toBe('late')
+
+    r.stopWatching()
+  })
+})
