@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import chokidar, { type FSWatcher } from 'chokidar'
 import type { Workflow } from './types.js'
 
 export type RegistryOpts = {
@@ -22,6 +23,8 @@ export type RegistryOpts = {
  */
 export class WorkflowRegistry {
   private workflows = new Map<string, Workflow>()
+  private watchers: FSWatcher[] = []
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly opts: RegistryOpts) {}
 
@@ -51,6 +54,56 @@ export class WorkflowRegistry {
   async get(name: string): Promise<Workflow | undefined> {
     if (this.workflows.size === 0) await this.reload()
     return this.workflows.get(name)
+  }
+
+  /**
+   * Start watching project + user workflow directories for file changes.
+   * Any add/change/unlink event triggers a debounced (100ms) `reload()`.
+   * No-op if already watching.
+   */
+  startWatching(): void {
+    if (this.watchers.length > 0) return  // already watching
+
+    const dirs = [
+      join(this.opts.projectDir, '.claude', 'workflows'),
+      join(this.opts.userDir, '.claude', 'workflows'),
+    ]
+    for (const dir of dirs) {
+      let stat
+      try {
+        stat = statSync(dir)
+      } catch {
+        continue
+      }
+      if (!stat.isDirectory()) continue
+      const w = chokidar.watch(dir, {
+        ignored: /(^|[\\/])\../,
+        persistent: true,
+        ignoreInitial: true,
+      })
+      w.on('add', () => this.scheduleReload())
+      w.on('change', () => this.scheduleReload())
+      w.on('unlink', () => this.scheduleReload())
+      this.watchers.push(w)
+    }
+  }
+
+  /** Stop all watchers and clear any pending debounced reload. */
+  stopWatching(): void {
+    for (const w of this.watchers) w.close()
+    this.watchers = []
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = null
+    }
+  }
+
+  /** Debounce rapid file events: only call reload() after 100ms of quiet. */
+  private scheduleReload(): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer)
+    this.debounceTimer = setTimeout(() => {
+      this.reload().catch(e => console.error('[workflow] Reload failed:', e))
+    }, 100)
   }
 
   private async scanDir(dir: string, source: 'project' | 'user'): Promise<Workflow[]> {
