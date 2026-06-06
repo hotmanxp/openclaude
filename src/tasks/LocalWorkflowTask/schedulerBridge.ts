@@ -34,6 +34,13 @@ export type RunArgs = {
    * running but the caller didn't wire it through the lifecycle registry).
    */
   runId?: string
+  /**
+   * Total token budget for this run, exposed to the script as
+   * `budget.total`. Defaults to 0 (no budget) until OpenCC's LLM token
+   * counter is wired in (separate task). When 0, scripts should guard
+   * with `if (budget.total)` before reading `budget.remaining()`.
+   */
+  budgetTotal?: number
 }
 
 /**
@@ -225,11 +232,14 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
     // Kick off the script. init.runId is the LocalWorkflowTask id when
     // wired through the lifecycle registry; the worker doesn't currently
     // echo it back, but the bridge uses args.runId directly to route
-    // phase/meta events to the right task instance.
+    // phase/meta events to the right task instance. init.budgetTotal is
+    // passed through from LocalWorkflowTaskState — for now defaults to 0
+    // (no real token tracking yet; see RunArgs.budgetTotal).
     worker.postMessage({
       kind: 'init',
       args: initArgs,
       runId: args.runId ?? 'pending',
+      budgetTotal: args.budgetTotal ?? 0,
     } satisfies WorkerInbound)
   })
 }

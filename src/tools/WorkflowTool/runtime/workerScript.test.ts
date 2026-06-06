@@ -66,6 +66,43 @@ describe('buildWorkerScript', () => {
     expect(script).toMatch(/function\s+parallel\s*\(/)
   })
 
+  test('defines log() global', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/function\s+log\s*\(/)
+    // The wrapper should post a { kind: 'log', level, message } message
+    // so the bridge in schedulerBridge.ts can route it through the
+    // canonical log sink.
+    expect(script).toMatch(/log[\s\S]{0,400}kind:\s*['"]log['"]/)
+  })
+
+  test('defines budget object with total/used/remaining', () => {
+    const script = buildWorkerScript(`return args;`)
+    // The wrapper should expose a budget object with a total getter,
+    // a used getter, and a remaining() function. Used by scripts to
+    // make cost-aware decisions (e.g. trim deep-dive count).
+    expect(script).toContain('budget = {')
+    expect(script).toContain('remaining()')
+    expect(script).toContain('__budgetTotal')
+    expect(script).toContain('__budgetUsed')
+  })
+
+  test('init message captures budgetTotal into __budgetTotal', () => {
+    const script = buildWorkerScript(`return args;`)
+    // The init handler should set __budgetTotal from msg.budgetTotal
+    // before the userScript runs so the budget is visible at script
+    // start. Coerced via Number() to handle stringified numbers from
+    // older bridges.
+    expect(script).toMatch(/__budgetTotal\s*=\s*Number\(msg\.budgetTotal/)
+    expect(script).toMatch(/__budgetUsed\s*=\s*Number\(msg\.budgetUsed/)
+  })
+
+  test('budget.remaining() clamps to 0 (never negative)', () => {
+    const script = buildWorkerScript(`return args;`)
+    // Defensive: if used > total for any reason, remaining() must
+    // not return a negative number (would break budget guards).
+    expect(script).toMatch(/Math\.max\(0,\s*__budgetTotal\s*-\s*__budgetUsed\)/)
+  })
+
   test('__setMeta wrapper posts a meta message', () => {
     const script = buildWorkerScript(`return args;`)
     // The wrapper should post { kind: 'meta', meta } somewhere inside
