@@ -1,70 +1,86 @@
 // src/tools/WorkflowTool/types.ts
-import type { UUID } from 'crypto'
-import { z } from 'zod/v4'
+// Note: spec referenced `import type { ToolName } from '../../Tool.js'`,
+// but that type does not exist in this codebase. Tool names are
+// runtime strings (including MCP tool names), so we use `string[]` here.
 
-/**
- * Subagent spawn options exposed to workflow scripts.
- */
-export const SpawnSubagentOptionsSchema = z.object({
-  tools: z.array(z.string()).optional(),
-  model: z.string().optional(),
-})
-export type SpawnSubagentOptions = z.infer<typeof SpawnSubagentOptionsSchema>
-
-/**
- * Subagent return value (passed back to the workflow script).
- */
-export type SubagentResult = {
-  text: string
-  agentId: string
-  costUsd: number
+/** A workflow defined in a .js file */
+export type Workflow = {
+  name: string
+  description?: string
+  source: 'project' | 'user' | 'bundled'
+  path: string
+  run: (args: unknown) => Promise<string>
 }
 
-/**
- * Subagent spawn function injected into the script context.
- */
+/** Status of a single workflow run */
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+
+/** Status of a single subagent run spawned by a workflow */
+export type SubagentStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+
+/** Options passed to spawnSubagent() from inside a workflow script */
+export type SpawnOpts = {
+  model?: string
+  tools?: string[]
+  signal?: AbortSignal
+}
+
+/** Result of spawnSubagent() — final report from the subagent */
+export type SpawnResult = {
+  agentId: string
+  report: string
+}
+
+/** Function injected into the Worker as `spawnSubagent` global */
 export type SpawnSubagentFn = (
   prompt: string,
-  opts?: SpawnSubagentOptions,
-) => Promise<SubagentResult>
+  opts?: SpawnOpts,
+) => Promise<SpawnResult>
 
-/**
- * Workflow tool input schema.
- */
-export const WorkflowToolInputSchema = z.object({
-  name: z.string().describe('Workflow name (e.g., "deep-research") or "auto" for ad-hoc'),
-  args: z.array(z.string()).optional().describe('Positional args from /<name> invocation'),
-  description: z.string().describe('Task description Claude will turn into a JS script'),
-})
-export type WorkflowToolInput = z.infer<typeof WorkflowToolInputSchema>
-
-/**
- * State of a single spawned subagent within a workflow run.
- */
-export type WorkflowAgentState = {
+/** A single subagent's run state */
+export type SubagentRun = {
   id: string
   prompt: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  status: SubagentStatus
   startedAt?: number
-  completedAt?: number
-  result?: string
+  finishedAt?: number
+  report?: string
   error?: string
 }
 
-/**
- * State of a full workflow run (mirrors LocalWorkflowTaskState in tasks/.../state.ts).
- */
-export type LocalWorkflowTaskState = {
-  id: UUID
-  type: 'local_workflow'
-  name: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'killed'
-  args: string[]
-  script: string
+/** Full run state — kept in main process */
+export type WorkflowRun = {
+  id: string
+  workflowName: string
+  source: 'project' | 'user' | 'bundled'
+  workflowPath: string
+  args: unknown
+  status: WorkflowRunStatus
   startedAt: number
-  completedAt?: number
-  agents: WorkflowAgentState[]
-  result?: string
+  finishedAt?: number
+  subagentRuns: SubagentRun[]
+  finalReport?: string
   error?: { message: string; stack?: string }
   totalCostUsd: number
 }
+
+/** Message protocol between Worker and main process */
+export type WorkerInbound =  // main → worker
+  | { kind: 'init'; args: unknown; runId: string }
+  | { kind: 'cancel' }
+export type WorkerOutbound = // worker → main
+  | { kind: 'spawnSubagent'; callId: string; prompt: string; opts?: SpawnOpts }
+  | { kind: 'report'; value: string }
+  | { kind: 'error'; message: string; stack?: string }
+  | { kind: 'log'; level: 'info' | 'warn' | 'error'; message: string }
