@@ -6,6 +6,7 @@ import handon from '../handon.js'
 import type { ToolUseContext } from '../../../Tool.js'
 import type { AppState } from '../../../state/AppState.js'
 import type { TaskStatus, TaskType } from '../../../Task.js'
+import type { PromptCommand } from '../../../types/command.js'
 
 let fakeCwd: string
 let root: string
@@ -58,9 +59,12 @@ describe('handon command', () => {
     expect(handon.type).toBe('prompt')
   })
 
+  // Cast to PromptCommand so TS narrows the discriminated union
+  const cmd = handon as unknown as PromptCommand
+
   test('pickup mode (N=1, missing dir) returns prompt with warning', async () => {
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await cmd.getPromptForCommand('', ctx)
     expect(blocks).toHaveLength(1)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Resume from a handoff document')
@@ -73,7 +77,7 @@ describe('handon command', () => {
     await writeFile(join(root, 'old-2026-06-06.md'), '# old')
     await writeFile(join(root, 'new-2026-06-07.md'), '# new')
     const ctx = makeContext(2)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('new-2026-06-07.md')
     expect(text).toContain('# new')
@@ -84,7 +88,7 @@ describe('handon command', () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'custom.md'), '# custom')
     const ctx = makeContext(2)
-    const blocks = await handon.getPromptForCommand('--pick custom', ctx)
+    const blocks = await cmd.getPromptForCommand('--pick custom', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('custom.md')
     expect(text).toContain('# custom')
@@ -93,7 +97,7 @@ describe('handon command', () => {
   test('pickup mode with --pick arg pointing to missing file', async () => {
     await mkdir(root, { recursive: true })
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('--pick nope', ctx)
+    const blocks = await cmd.getPromptForCommand('--pick nope', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('nope.md')
     expect(text).toContain('does not exist')
@@ -108,7 +112,7 @@ describe('handon command', () => {
         description: 'do thing',
       },
     })
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Generate a handoff document')
     expect(text).toContain('[pending] #1 local_bash do thing')
@@ -117,7 +121,7 @@ describe('handon command', () => {
 
   test('generate mode (N=10) with empty task list', async () => {
     const ctx = makeContext(10)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
