@@ -27,7 +27,7 @@ export type Workflow = {
   description?: string
   source: 'project' | 'user' | 'bundled'
   path: string
-  run: (args: unknown) => Promise<string>
+  run: (args: string[]) => Promise<string>
 }
 
 /** Options passed to spawnSubagent() from inside a workflow script. */
@@ -66,7 +66,7 @@ export type WorkflowRun = {
   workflowName: string
   source: 'project' | 'user' | 'bundled'
   workflowPath: string
-  args: unknown
+  args: string[]
   status: WorkflowRunStatus
   startedAt: number
   finishedAt?: number
@@ -78,7 +78,7 @@ export type WorkflowRun = {
 
 /** Worker ↔ main process message protocol. */
 export type WorkerInbound =
-  | { kind: 'init'; args: unknown; runId: string }
+  | { kind: 'init'; args: string[]; runId: string }
   | { kind: 'cancel' }
   | {
       kind: 'spawnSubagentResult'
