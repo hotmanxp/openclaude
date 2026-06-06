@@ -1,4 +1,5 @@
 import type { Notification } from 'src/context/notifications.js'
+import type { LocalWorkflowTaskState } from '../tasks/LocalWorkflowTask/state.js'
 import { isTeammate, isPlanModeRequired } from '../utils/teammate.js'
 import type { TodoList } from 'src/utils/todo/types.js'
 import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
@@ -165,6 +166,14 @@ export type AppState = DeepImmutable<{
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
+  // Dynamic workflow runs (LocalWorkflowTaskState). Separate slice from
+  // `tasks` because workflows have a different lifecycle (long-running,
+  // background, no foreground), a different UI surface (/workflows panel),
+  // and a different set of permitted operations (kill / skip / retry).
+  // The /workflows panel reads this slice directly; the BackgroundTasks
+  // dialog no longer surfaces workflow tasks (they're owned by their own
+  // dialog so the two views stay independent).
+  workflows: { [workflowId: string]: LocalWorkflowTaskState }
   // Name → AgentId registry populated by Agent tool when `name` is provided.
   // Latest-wins on collision. Used by SendMessage to route by name.
   agentNameRegistry: Map<string, AgentId>
@@ -471,6 +480,7 @@ export function getDefaultAppState(): AppState {
   return {
     settings: getInitialSettings(),
     tasks: {},
+    workflows: {},
     agentNameRegistry: new Map(),
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)

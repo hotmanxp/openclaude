@@ -55,12 +55,9 @@ function formatElapsed(startedAt: number, completedAt?: number): string {
 }
 
 export function WorkflowsListDialog({ onDone, toolUseContext: _toolUseContext }: Props) {
-  const tasksMap = useAppState(s => s.tasks)
+  const workflowsMap = useAppState(s => s.workflows)
   const workflows = useMemo<LocalWorkflowTaskState[]>(() => {
-    const out: LocalWorkflowTaskState[] = []
-    for (const task of Object.values(tasksMap ?? {})) {
-      if (task.type === 'local_workflow') out.push(task)
-    }
+    const out = Object.values(workflowsMap ?? {}) as LocalWorkflowTaskState[]
     // Running first; within the same status bucket, newest startedAt first.
     out.sort((a, b) => {
       const rank = (s: LocalWorkflowTaskState['status']): number =>
@@ -71,7 +68,7 @@ export function WorkflowsListDialog({ onDone, toolUseContext: _toolUseContext }:
       return b.startedAt - a.startedAt
     })
     return out
-  }, [tasksMap])
+  }, [workflowsMap])
 
   const [viewState, setViewState] = useState<ViewState>({ mode: 'list' })
   const [selectedIndex, setSelectedIndex] = useState(0)

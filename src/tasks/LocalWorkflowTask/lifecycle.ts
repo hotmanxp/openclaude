@@ -1,4 +1,6 @@
 import type { LocalWorkflowTask } from './LocalWorkflowTask.js'
+import type { SetAppState } from '../../Task.js'
+import type { AppState } from '../../state/AppStateStore.js'
 
 /**
  * Module-level registry of in-process LocalWorkflowTask instances, keyed by
@@ -26,6 +28,35 @@ export function unregisterWorkflowTask(id: string): void {
  */
 export function findWorkflowTask(id: string): LocalWorkflowTask | null {
   return _taskRegistry.get(id) ?? null
+}
+
+/**
+ * Register a workflow's state in appState.workflows so the /workflows
+ * panel can discover it. The setAppState is captured at registration time
+ * (the caller — WorkflowTool.call — has it via toolUseCtx). Returns an
+ * unregister function that the caller should invoke when the task reaches
+ * a terminal state (the bridge already does this for the in-process
+ * registry; this is the parallel cleanup for the app-state slice).
+ *
+ * Pattern mirrors `registerAsyncAgent` in src/tasks/LocalAgentTask/.
+ */
+export function registerWorkflowInAppState(
+  task: LocalWorkflowTask,
+  setAppState: SetAppState,
+): () => void {
+  const id = task.state.id
+  setAppState((prev: AppState) => ({
+    ...prev,
+    workflows: { ...prev.workflows, [id]: task.state },
+  }))
+  return () => {
+    setAppState((prev: AppState) => {
+      if (!(id in (prev.workflows ?? {}))) return prev
+      const next = { ...prev.workflows }
+      delete next[id]
+      return { ...prev, workflows: next }
+    })
+  }
 }
 
 /**

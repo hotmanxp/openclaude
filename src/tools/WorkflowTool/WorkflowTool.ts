@@ -177,25 +177,26 @@ export const WorkflowTool = {
       })
       task.start(script).catch(e => logError(e))
 
-      // Register the task in appState.tasks so the /workflows panel
-      // (and BackgroundTasksDialog) can find it. Without this, the task
-      // runs invisibly — the user only sees the LLM's tool_result,
-      // not the progress UI. The runtime at toolExecution.ts:1294 spreads
-      // `toolUseContext` into the second arg, so setAppState is in scope.
+      // Register the task in appState.workflows so the /workflows panel
+      // can find it. Without this, the task runs invisibly — the user
+      // only sees the LLM's tool_result, not the progress UI. The runtime
+      // at toolExecution.ts:1294 spreads `toolUseContext` into the second
+      // arg, so setAppState is in scope. We use the dedicated
+      // `appState.workflows` slice (separate from `appState.tasks` so the
+      // /workflows and /tasks panels don't fight over the same data).
       const setAppState = (toolUseCtx as unknown as {
-        setAppState?: (updater: (prev: unknown) => unknown) => void
+        setAppState?: (f: (prev: any) => any) => void
       })?.setAppState
       if (setAppState) {
-        const stateRef = task.state
-        setAppState((prev: unknown) => {
-          const p = prev as { tasks?: Record<string, unknown> }
-          return {
-            ...(p as Record<string, unknown>),
-            tasks: { ...(p.tasks ?? {}), [stateRef.id]: stateRef },
-          }
-        })
-        // Unregister on terminal state so the panel removes completed
-        // rows. Polling task.state.status every 1s until terminal.
+        // Lazy-import the helper (it pulls in SetAppState from Task.ts and
+        // we'd rather not load the whole Task type surface eagerly here).
+        const { registerWorkflowInAppState } = await import(
+          '../../tasks/LocalWorkflowTask/lifecycle.js'
+        )
+        const unregister = registerWorkflowInAppState(task, setAppState)
+        // Poll task.state.status every 1s; on terminal state, remove
+        // the entry from appState.workflows so the panel doesn't show
+        // stale rows. Safety stop after 1h in case the task hangs.
         const startedAt = Date.now()
         const pollHandle = setInterval(() => {
           if (
@@ -204,14 +205,9 @@ export const WorkflowTool = {
             task.state.status === 'killed'
           ) {
             clearInterval(pollHandle)
-            setAppState((prev: unknown) => {
-              const p = prev as { tasks?: Record<string, unknown> }
-              const tasks = { ...(p.tasks ?? {}) }
-              delete tasks[stateRef.id]
-              return { ...(p as Record<string, unknown>), tasks }
-            })
+            unregister()
           } else if (Date.now() - startedAt > 60 * 60 * 1000) {
-            clearInterval(pollHandle)  // safety stop after 1h
+            clearInterval(pollHandle)
           }
         }, 1000)
       }
