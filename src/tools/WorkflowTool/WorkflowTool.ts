@@ -2,12 +2,7 @@
 import { readFileSync } from 'fs'
 import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
-import { logError } from '../../utils/log.js'
-import {
-  LocalWorkflowTask,
-  type LocalWorkflowParentContext,
-  type LocalSpawner,
-} from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+import type { LocalWorkflowParentContext, LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
 import { getWorkflowRegistry } from './singleton.js'
@@ -48,6 +43,13 @@ export const workflowInputSchema = z.object({
  * `tools.ts`) and an async generator for `call` (lets us yield the taskId
  * before the worker finishes), and let the runtime shape satisfy the
  * contract. This pattern is used elsewhere in the codebase.
+ *
+ * Note on the lazy `LocalWorkflowTask` / `logError` imports: pulling these
+ * in at module top-level would transitively import `bootstrap/state.ts`,
+ * which (via `Task.ts → diskOutput.ts → bootstrap/state.ts → settingsCache.ts`)
+ * triggers a circular-import TDZ in the existing `settings.ts` ↔ `envUtils.ts`
+ * cycle. Deferring the import to the call body keeps module-load clean
+ * (the tool definition is just metadata until the LLM actually invokes it).
  */
 export const WorkflowTool = {
   name: WORKFLOW_TOOL_NAME,
@@ -123,6 +125,14 @@ export const WorkflowTool = {
         spawner,
         abortController: toolUseCtx?.abortController ?? new AbortController(),
       }
+
+      // Lazy-import LocalWorkflowTask + logError here (not at module top
+      // level) to avoid the pre-existing circular-import TDZ. See the
+      // module-level comment above.
+      const [{ LocalWorkflowTask }, { logError }] = await Promise.all([
+        import('../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'),
+        import('../../utils/log.js'),
+      ])
 
       // Create background task and start it. The task wraps its own
       // start() promise — we attach a .catch() to log unexpected errors
