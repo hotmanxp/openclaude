@@ -3,9 +3,10 @@ import { readFileSync } from 'fs'
 import type React from 'react'
 import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
-import type { LocalWorkflowParentContext, LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
+import { buildRealSpawner } from './realSpawner.js'
 import { getWorkflowRegistry } from './singleton.js'
 import { listWorkflowRuns } from './workflowRunStore.js'
 
@@ -14,6 +15,11 @@ import { listWorkflowRuns } from './workflowRunStore.js'
  * Exposed here so the /workflows slash command can call it.
  */
 export const listRuns = listWorkflowRuns
+
+// Re-export the real spawner builder for direct use in tests and for
+// callers that want to wire the spawner into their own parent
+// context (instead of relying on the WorkflowTool.call() default).
+export { buildRealSpawner }
 
 export const workflowInputSchema = z.object({
   workflowName: z
@@ -168,23 +174,21 @@ export const WorkflowTool = {
       // Build a parent context. The real spawnSubagent() wiring
       // (calling runAgent() with the parent's toolUseContext / canUseTool)
       // is supplied by the parent caller via `toolUseCtx.callAgent` when
-      // it knows the agent pipeline shape. For tests / standalone use,
-      // we fall back to a no-op spawner that returns the prompt as the
-      // "report" — that way the test path doesn't have to mock AgentTool
-      // (which would trigger the pre-existing circular import in the
-      // AgentTool → settings chain).
-      const spawner: LocalSpawner = ((toolUseCtx as unknown as {
+      // it knows the agent pipeline shape. When no override is present
+      // (e.g. tests, or any caller that didn't bother wiring
+      // toolUseCtx.callAgent), we fall back to a real LLM-backed
+      // spawner that captures toolUseCtx + canUseTool itself and runs
+      // each subagent prompt through runAgent() — so a workflow that
+      // calls spawnSubagent() in production never gets a "pending"
+      // agentId or a prompt-as-report from the fallback path.
+      //
+      // The real spawner is built AFTER the LocalWorkflowTask is
+      // constructed (via setParentContext) so it can use `task.id` as
+      // the transcriptSubdir — that groups each subagent's transcript
+      // under subagents/workflows/<runId>/ for easier debugging.
+      const overrideSpawner = (toolUseCtx as unknown as {
         callAgent?: LocalSpawner
-      })?.callAgent ??
-        (async (prompt: string) => ({
-          agentId: 'pending',
-          report: prompt,
-        }))) as LocalSpawner
-
-      const parentContext: LocalWorkflowParentContext = {
-        spawner,
-        abortController: toolUseCtx?.abortController ?? new AbortController(),
-      }
+      })?.callAgent
 
       // Lazy-import LocalWorkflowTask + logError here (not at module top
       // level) to avoid the pre-existing circular-import TDZ. See the
@@ -194,14 +198,30 @@ export const WorkflowTool = {
         import('../../utils/log.js'),
       ])
 
-      // Create background task and start it. The task wraps its own
-      // start() promise — we attach a .catch() to log unexpected errors
-      // (the task itself records state.error for callers to inspect).
+      // Create background task without parentContext — we inject it
+      // below after we've built the spawner (which needs task.id).
       const task = new LocalWorkflowTask({
         workflow,
         argsJson: args,
-        parentContext,
       })
+
+      const realSpawner: LocalSpawner = overrideSpawner
+        ? (async () => ({ agentId: 'unreachable', report: '' })) as LocalSpawner
+        : await buildRealSpawner(
+            (toolUseCtx ?? {}) as { callAgent?: LocalSpawner; options?: Record<string, unknown> } & Record<string, unknown>,
+            _canUseTool,
+            task.id,
+          )
+      const spawner: LocalSpawner = (overrideSpawner ?? realSpawner) as LocalSpawner
+
+      task.setParentContext({
+        spawner,
+        abortController: toolUseCtx?.abortController ?? new AbortController(),
+      })
+
+      // Start the task. The task wraps its own start() promise — we
+      // attach a .catch() to log unexpected errors (the task itself
+      // records state.error for callers to inspect).
       task.start(script).catch(e => logError(e))
 
       // Register the task in appState.workflows so the /workflows panel
