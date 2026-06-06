@@ -18,6 +18,12 @@ export const meta = {
     { title: 'Synthesis: 最终报告' }
   ]
 }
+// Push meta to main so the WorkflowDetailDialog can render the
+// Phases pane. The worker wrapper doesn't auto-hoist ESM `export const`
+// bindings — we have to call __setMeta() explicitly. (The bundler
+// strips this `export const` keyword before the wrapper IIFE runs, so
+// the bare local `meta` would otherwise be unreachable.)
+__setMeta(meta)
 
 // ============== Schemas (强约束 subagent 输出) ==============
 const FINDING_SCHEMA = {
