@@ -443,6 +443,66 @@ export const SettingsSchema = lazySchema(() =>
           'Auto-fix configuration: automatically run lint/test after AI file edits ' +
           'and feed errors back for self-repair.',
         ),
+      // OpenCC Dynamic Workflows — multi-agent orchestration tool.
+      // See src/tools/WorkflowTool/ for runtime. Env-var equivalents
+      // (OPENCC_DISABLE_WORKFLOWS, OPENCC_WORKFLOW_TIMEOUT_MS,
+      // OPENCC_WORKFLOW_MAX_AGENTS, OPENCC_WORKFLOW_KEYWORD) live in
+      // src/utils/envUtils.ts.
+      workflows: z
+        .object({
+          disabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Disable Open CC dynamic workflows (equivalent to OPENCC_DISABLE_WORKFLOWS=1). ' +
+                'Useful for projects where multi-agent orchestration is not desired.',
+            ),
+          keyword: z
+            .string()
+            .optional()
+            .describe(
+              'Custom trigger word that activates a workflow from the user prompt. ' +
+                'Defaults to "ultracode". Equivalent to OPENCC_WORKFLOW_KEYWORD.',
+            ),
+          permissions: z
+            .object({
+              allow: z
+                .array(
+                  z.object({
+                    name: z
+                      .string()
+                      .describe(
+                        'Tool name this permission rule applies to (e.g. "Bash", "FileRead").',
+                      ),
+                    pathPattern: z
+                      .string()
+                      .describe(
+                        'Glob pattern matched against the tool argument (e.g. file path). ' +
+                          'Use "*" to match all paths.',
+                      ),
+                  }),
+                )
+                .optional()
+                .describe(
+                  'Per-workflow permission allow rules. Combined with the global ' +
+                    "permission system when a workflow spawns tools on the user's behalf.",
+                ),
+            })
+            .optional()
+            .describe('Permission overrides that apply only inside workflow execution'),
+        })
+        .optional()
+        .describe('Open CC Dynamic Workflows configuration'),
+      // Legacy top-level kill switch — kept for backward compatibility with
+      // users who set it before the nested `workflows` object existed.
+      disableWorkflows: z
+        .boolean()
+        .optional()
+        .describe(
+          'Disable Open CC dynamic workflows. Equivalent to OPENCC_DISABLE_WORKFLOWS=1 ' +
+            'and to setting workflows.disabled = true. Kept for backward compatibility; ' +
+            'prefer the nested workflows.disabled form in new settings files.',
+        ),
       worktree: z
         .object({
           symlinkDirectories: z

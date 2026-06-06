@@ -2,6 +2,7 @@ import memoize from 'lodash-es/memoize.js'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { getInitialSettings } from './settings/settings.js'
 
 export function resolveClaudeConfigHomeDir(options?: {
   configDirEnv?: string
@@ -235,4 +236,89 @@ export function getVertexRegionForModel(
     }
   }
   return getDefaultVertexRegion()
+}
+
+// ---------------------------------------------------------------------------
+// Open CC Dynamic Workflows — env var helpers
+// ---------------------------------------------------------------------------
+// Runtime knobs for the WorkflowTool. Mirrored in settings.workflows.* so
+// users can pin them in .claude/settings.json instead of exporting env vars.
+// Env vars win over settings when both are set, matching the rest of
+// OpenCC's "env-var kill switch" convention.
+
+/**
+ * Whether Open CC dynamic workflows are disabled.
+ *
+ * Truthy when ANY of:
+ * - OPENCC_DISABLE_WORKFLOWS is a truthy env var (1/true/yes/on)
+ * - settings.disableWorkflows === true (legacy top-level flag)
+ * - settings.workflows?.disabled === true (newer nested form)
+ *
+ * Env var is checked first so admins / CI can hard-disable workflows even
+ * for users who accidentally opted in via settings.
+ */
+export function isWorkflowsDisabled(): boolean {
+  if (isEnvTruthy(process.env.OPENCC_DISABLE_WORKFLOWS)) {
+    return true
+  }
+  try {
+    const settings = getInitialSettings()
+    if (settings.disableWorkflows === true) {
+      return true
+    }
+    if (settings.workflows?.disabled === true) {
+      return true
+    }
+  } catch {
+    // getInitialSettings can throw during early bootstrap (settings files
+    // unreadable, JSON parse error, etc.). Default to "not disabled" so a
+    // misconfigured env doesn't accidentally turn off the feature.
+  }
+  return false
+}
+
+/**
+ * Per-workflow execution timeout in milliseconds.
+ *
+ * Sources, in priority order:
+ * 1. OPENCC_WORKFLOW_TIMEOUT_MS env var (positive integer)
+ * 2. WORKFLOW_DEFAULTS.defaultTimeoutMs (30 minutes) — defined in
+ *    src/tools/WorkflowTool/constants.ts.
+ */
+export function getWorkflowTimeoutMs(): number {
+  const raw = process.env.OPENCC_WORKFLOW_TIMEOUT_MS
+  const parsed = Number(raw)
+  if (raw !== undefined && Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  // Mirrors WORKFLOW_DEFAULTS.defaultTimeoutMs from WorkflowTool/constants.ts.
+  // Duplicated to keep envUtils.ts free of a tool-layer import (would create
+  // a settings ↔ tool cycle once the tool starts reading settings).
+  return 30 * 60 * 1000
+}
+
+/**
+ * Hard ceiling on total agents a single workflow may spawn.
+ *
+ * Sources, in priority order:
+ * 1. OPENCC_WORKFLOW_MAX_AGENTS env var (positive integer)
+ * 2. WORKFLOW_DEFAULTS.maxTotalAgents (1000) — defined in
+ *    src/tools/WorkflowTool/constants.ts.
+ */
+export function getWorkflowMaxAgents(): number {
+  const raw = process.env.OPENCC_WORKFLOW_MAX_AGENTS
+  const parsed = Number(raw)
+  if (raw !== undefined && Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  // Mirrors WORKFLOW_DEFAULTS.maxTotalAgents — see getWorkflowTimeoutMs.
+  return 1000
+}
+
+/**
+ * Custom trigger keyword that activates a workflow from a user prompt.
+ * Defaults to "ultracode" (the same default baked into the WorkflowTool).
+ */
+export function getWorkflowKeyword(): string {
+  return process.env.OPENCC_WORKFLOW_KEYWORD || 'ultracode'
 }
