@@ -203,11 +203,11 @@ grep -cE '\[ERROR\]|\[WARN\]' "$LATEST"
 / no-`gh` setup on macOS. Anything above that range = new
 regression worth fixing before commit.
 
-### 5.2 Anomaly classification (A–I)
+### 5.2 Anomaly classification (A–J)
 
 | Class | Grep signature | Severity | Action |
 |---|---|---|---|
-| A — circuit-breaker | `circuit-breaker` | noise (banner only) | ignore |
+| A — circuit-breaker | `circuit breaker` | noise (banner only) | ignore |
 | B — title parse | `generateSessionTitle.*SyntaxError` | noise (UI title skip) | ignore |
 | C — model gate | `supportedModels=undefined` | noise (gate correctly disabled) | ignore |
 | D — gh probe | `spawn gh ENOENT` | env (5–20 normal) | ignore or `brew install gh` |
@@ -216,6 +216,7 @@ regression worth fixing before commit.
 | G — chrome-devtools plugin loader | no `Starting connection` line for chrome-devtools (vs context7 which has one) | bug (loader skips plugin) | see remediation in tui-testing skill |
 | H — streaming stall | `Streaming stall detected` + matching `stream_stats` with `first_token_ms ≈ duration_ms` | noise (MiniMax first-token latency) | ignore |
 | I — M2.7-highspeed post-stream JSON parse | `SyntaxError: Unexpected token '`', ""` within 5ms after a M2.7-highspeed `stream_stats` | noise (pre-existing, model-specific) | ignore; open issue to trace post-processing path |
+| J — session-end stderr capture | `[WARN] [stderr]` at session cleanup (after `LSP server manager shut down successfully`) | noise (LSP child stderr flush) | ignore |
 
 For each `[ERROR]` / `[WARN]`: read 5 lines of context before and
 after, classify, and decide. **A new class not in this catalog
