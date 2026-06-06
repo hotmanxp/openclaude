@@ -194,18 +194,25 @@ export const WorkflowTool = {
           '../../tasks/LocalWorkflowTask/lifecycle.js'
         )
         const unregister = registerWorkflowInAppState(task, setAppState)
-        // Poll task.state.status every 1s; on terminal state, remove
-        // the entry from appState.workflows so the panel doesn't show
-        // stale rows. Safety stop after 1h in case the task hangs.
+        // Poll task.state.status every 1s. When the task reaches a
+        // terminal state (completed/failed/killed), keep the row visible
+        // for KEEPALIVE_MS so the user can see the result before it
+        // disappears from the /workflows panel. The status stays in its
+        // terminal value (e.g. 'completed' / 'failed') during this
+        // window so the panel can render it with the right icon.
+        // Safety stop after 1h in case the task hangs.
+        const KEEPALIVE_MS = 5_000
         const startedAt = Date.now()
         const pollHandle = setInterval(() => {
-          if (
-            task.state.status === 'completed' ||
-            task.state.status === 'failed' ||
-            task.state.status === 'killed'
-          ) {
-            clearInterval(pollHandle)
-            unregister()
+          const status = task.state.status
+          const isTerminal =
+            status === 'completed' || status === 'failed' || status === 'killed'
+          if (isTerminal) {
+            const sinceTerminal = Date.now() - (task.state.completedAt ?? startedAt)
+            if (sinceTerminal >= KEEPALIVE_MS) {
+              clearInterval(pollHandle)
+              unregister()
+            }
           } else if (Date.now() - startedAt > 60 * 60 * 1000) {
             clearInterval(pollHandle)
           }
