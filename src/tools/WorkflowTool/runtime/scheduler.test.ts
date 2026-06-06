@@ -17,7 +17,10 @@ describe('Scheduler', () => {
       s.run(task), s.run(task), s.run(task), s.run(task),
     ])
     expect(results).toEqual(['done', 'done', 'done', 'done'])
-    expect(maxActive).toBeLessThanOrEqual(2)
+    // toBe(2) — not toBeLessThanOrEqual(2). The latter would pass even if
+    // the scheduler accidentally serialized (e.g., drain() removed/async).
+    // toBe(2) catches that regression by asserting true concurrency.
+    expect(maxActive).toBe(2)
   })
 
   test('rejects after maxTotal', async () => {
