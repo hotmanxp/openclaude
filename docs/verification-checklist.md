@@ -203,7 +203,7 @@ grep -cE '\[ERROR\]|\[WARN\]' "$LATEST"
 / no-`gh` setup on macOS. Anything above that range = new
 regression worth fixing before commit.
 
-### 5.2 Anomaly classification (A–H)
+### 5.2 Anomaly classification (A–I)
 
 | Class | Grep signature | Severity | Action |
 |---|---|---|---|
@@ -215,6 +215,7 @@ regression worth fixing before commit.
 | F — chrome-devtools Node engine | `does not support Node` | env (Node v22.11.0 < 22.12.0) | upgrade Node or disable plugin |
 | G — chrome-devtools plugin loader | no `Starting connection` line for chrome-devtools (vs context7 which has one) | bug (loader skips plugin) | see remediation in tui-testing skill |
 | H — streaming stall | `Streaming stall detected` + matching `stream_stats` with `first_token_ms ≈ duration_ms` | noise (MiniMax first-token latency) | ignore |
+| I — M2.7-highspeed post-stream JSON parse | `SyntaxError: Unexpected token '`', ""` within 5ms after a M2.7-highspeed `stream_stats` | noise (pre-existing, model-specific) | ignore; open issue to trace post-processing path |
 
 For each `[ERROR]` / `[WARN]`: read 5 lines of context before and
 after, classify, and decide. **A new class not in this catalog
