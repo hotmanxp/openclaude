@@ -172,12 +172,19 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
 
     worker.on('exit', (code) => {
       if (settled) return
-      // Code 0 = clean exit. Code 1 = the script reported an error (handled
-      // via the 'error' message above); if we get here with 1 and aren't
-      // settled, the worker crashed before reporting. Any other code = bug.
-      if (code !== 0 && code !== 1) {
-        if (timeoutHandle) clearTimeout(timeoutHandle)
-        reject(new Error(`Worker exited with code ${code}`))
+      // Promise not yet settled: the worker exited before delivering a
+      // result. Code 0 = clean exit with no result (caller never gets a
+      // report). Code 1 = the script crashed before sending the
+      // {kind:'error'} message. Any other code = unexpected failure.
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      settled = true
+      void worker.terminate().catch(() => {})
+      if (code === 0) {
+        reject(new Error('Worker exited cleanly without sending a result'))
+      } else if (code === 1) {
+        reject(new Error('Worker crashed with code 1 before reporting'))
+      } else {
+        reject(new Error(`Worker exited with code ${code} before reporting`))
       }
     })
 
