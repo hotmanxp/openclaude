@@ -30,6 +30,14 @@ export type LocalWorkflowTaskState = TaskStateBase & {
   result?: string
   error?: { message: string; stack?: string }
   totalCostUsd: number
+  /**
+   * Total token budget for this run, exposed to the script as
+   * `budget.total`. Defaults to 0 (no budget) until OpenCC's LLM token
+   * counter is wired in (separate task). Optional in the type so older
+   * state snapshots without the field still type-check; callers should
+   * coalesce to 0 at read time.
+   */
+  budgetTotal?: number
 }
 
 export function createInitialState(args: {
@@ -51,6 +59,10 @@ export function createInitialState(args: {
     startTime: now,
     agents: [],
     totalCostUsd: 0,
+    // Default 0 = no budget; scripts guard with `if (budget.total)` before
+    // reading. Real token tracking hooks into OpenCC's LLM counter and is
+    // a separate task — see LocalWorkflowTaskState.budgetTotal.
+    budgetTotal: 0,
     // Set by the framework on registration (getTaskOutputPath).
     // Populated here with empty defaults so the state is structurally valid
     // before registration completes.

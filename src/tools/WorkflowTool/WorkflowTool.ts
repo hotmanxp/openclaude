@@ -97,7 +97,7 @@ export const WorkflowTool = {
 
   async call(
     { workflowName, args }: z.infer<typeof workflowInputSchema>,
-    toolUseCtx?: { abortController?: AbortController; [k: string]: unknown },
+    toolUseCtx?: { abortController?: AbortController; setAppState?: (updater: (prev: unknown) => unknown) => void; [k: string]: unknown },
     _canUseTool?: unknown,
   ) {
     try {
@@ -176,6 +176,45 @@ export const WorkflowTool = {
         parentContext,
       })
       task.start(script).catch(e => logError(e))
+
+      // Register the task in appState.tasks so the /workflows panel
+      // (and BackgroundTasksDialog) can find it. Without this, the task
+      // runs invisibly — the user only sees the LLM's tool_result,
+      // not the progress UI. The runtime at toolExecution.ts:1294 spreads
+      // `toolUseContext` into the second arg, so setAppState is in scope.
+      const setAppState = (toolUseCtx as unknown as {
+        setAppState?: (updater: (prev: unknown) => unknown) => void
+      })?.setAppState
+      if (setAppState) {
+        const stateRef = task.state
+        setAppState((prev: unknown) => {
+          const p = prev as { tasks?: Record<string, unknown> }
+          return {
+            ...(p as Record<string, unknown>),
+            tasks: { ...(p.tasks ?? {}), [stateRef.id]: stateRef },
+          }
+        })
+        // Unregister on terminal state so the panel removes completed
+        // rows. Polling task.state.status every 1s until terminal.
+        const startedAt = Date.now()
+        const pollHandle = setInterval(() => {
+          if (
+            task.state.status === 'completed' ||
+            task.state.status === 'failed' ||
+            task.state.status === 'killed'
+          ) {
+            clearInterval(pollHandle)
+            setAppState((prev: unknown) => {
+              const p = prev as { tasks?: Record<string, unknown> }
+              const tasks = { ...(p.tasks ?? {}) }
+              delete tasks[stateRef.id]
+              return { ...(p as Record<string, unknown>), tasks }
+            })
+          } else if (Date.now() - startedAt > 60 * 60 * 1000) {
+            clearInterval(pollHandle)  // safety stop after 1h
+          }
+        }, 1000)
+      }
 
       // Return Promise<ToolResult<Output>>. The Tool interface declares
       // call() as `async (...args) => Promise<ToolResult>`, and the
