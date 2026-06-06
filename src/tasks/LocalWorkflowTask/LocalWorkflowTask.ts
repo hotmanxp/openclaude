@@ -111,6 +111,7 @@ export class LocalWorkflowTask implements Task {
         args: this.state.args,
         spawnSubagent,
         signal: this.abortController.signal,
+        runId: this.state.id,
       })
       this.state.result = report
       this.state.status = 'completed'

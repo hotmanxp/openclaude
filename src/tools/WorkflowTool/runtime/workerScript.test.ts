@@ -45,4 +45,49 @@ describe('buildWorkerScript', () => {
       buildWorkerScript(`eval('1+1');`),
     ).toThrow(/eval|forbidden/)
   })
+
+  test('defines __setMeta global', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/function\s+__setMeta\b/)
+  })
+
+  test('defines phase global', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/function\s+phase\s*\(/)
+  })
+
+  test('defines agent global', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/function\s+agent\s*\(/)
+  })
+
+  test('defines parallel global', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/function\s+parallel\s*\(/)
+  })
+
+  test('__setMeta wrapper posts a meta message', () => {
+    const script = buildWorkerScript(`return args;`)
+    // The wrapper should post { kind: 'meta', meta } somewhere inside
+    // the __setMeta function body.
+    expect(script).toMatch(/__setMeta[\s\S]{0,400}kind:\s*['"]meta['"]/)
+  })
+
+  test('phase wrapper posts a phase message', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/phase[\s\S]{0,400}kind:\s*['"]phase['"]/)
+  })
+
+  test('agent wrapper never rejects (normalizes errors to { ok: false })', () => {
+    const script = buildWorkerScript(`return args;`)
+    // Look for the .then(success, error) shape with `ok: false` in the
+    // rejection handler — confirms the global catches the spawnSubagent
+    // rejection and converts it instead of re-throwing.
+    expect(script).toMatch(/ok:\s*false/)
+  })
+
+  test('parallel wrapper uses Promise.all', () => {
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/Promise\.all\s*\(\s*fns/)
+  })
 })
