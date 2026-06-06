@@ -210,7 +210,7 @@ regression worth fixing before commit.
 | A — circuit-breaker | `circuit breaker` | noise (banner only) | ignore |
 | B — title parse | `generateSessionTitle.*SyntaxError` | noise (UI title skip) | ignore |
 | C — model gate | `supportedModels=undefined` | noise (gate correctly disabled) | ignore |
-| D — gh probe | `spawn gh ENOENT` | env (5–20 normal) | ignore or `brew install gh` |
+| D — gh probe | `spawn gh ENOENT` | env (5–20 normal; **0 in this fork since 2026-06-06**) | ignore — all probes disabled at source (3 files: `ghAuthStatus.ts`, `ghPrStatus.ts`, `usePrStatus.ts`) |
 | E — MCP stderr banner | `MCP server .* Server stderr:` | noise (false positive) | ignore |
 | F — chrome-devtools Node engine | `does not support Node` | env (Node v22.11.0 < 22.12.0) | upgrade Node or disable plugin |
 | G — chrome-devtools plugin loader | no `Starting connection` line for chrome-devtools (vs context7 which has one) | bug (loader skips plugin) | see remediation in tui-testing skill |

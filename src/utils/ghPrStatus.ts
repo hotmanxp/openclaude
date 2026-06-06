@@ -1,7 +1,3 @@
-import { execFileNoThrow } from './execFileNoThrow.js'
-import { getBranch, getDefaultBranch, getIsGit } from './git.js'
-import { jsonParse } from './slowOperations.js'
-
 export type PrReviewState =
   | 'approved'
   | 'pending'
@@ -15,8 +11,6 @@ export type PrStatus = {
   url: string
   reviewState: PrReviewState
 }
-
-const GH_TIMEOUT_MS = 5000
 
 /**
  * Derive review state from GitHub API values.
@@ -38,69 +32,12 @@ export function deriveReviewState(
   }
 }
 
-/**
- * Fetch PR status for the current branch using `gh pr view`.
- * Returns null on any failure (gh not installed, no PR, not in git repo, etc).
- * Also returns null if the PR's head branch is the default branch (e.g., main/master).
- */
 export async function fetchPrStatus(): Promise<PrStatus | null> {
-  const isGit = await getIsGit()
-  if (!isGit) return null
-
-  // Skip on the default branch — `gh pr view` returns the most recently
-  // merged PR there, which is misleading.
-  const [branch, defaultBranch] = await Promise.all([
-    getBranch(),
-    getDefaultBranch(),
-  ])
-  if (branch === defaultBranch) return null
-
-  const { stdout, code } = await execFileNoThrow(
-    'gh',
-    [
-      'pr',
-      'view',
-      '--json',
-      'number,url,reviewDecision,isDraft,headRefName,state',
-    ],
-    { timeout: GH_TIMEOUT_MS, preserveOutputOnError: false },
-  )
-
-  if (code !== 0 || !stdout.trim()) return null
-
-  try {
-    const data = jsonParse(stdout) as {
-      number: number
-      url: string
-      reviewDecision: string
-      isDraft: boolean
-      headRefName: string
-      state: string
-    }
-
-    // Don't show PR status for PRs from the default branch (e.g., main, master)
-    // This can happen when someone opens a PR from main to another branch
-    if (
-      data.headRefName === defaultBranch ||
-      data.headRefName === 'main' ||
-      data.headRefName === 'master'
-    ) {
-      return null
-    }
-
-    // Don't show PR status for merged or closed PRs — `gh pr view` returns
-    // the most recently associated PR for a branch, which may be merged/closed.
-    // The status line should only display open PRs.
-    if (data.state === 'MERGED' || data.state === 'CLOSED') {
-      return null
-    }
-
-    return {
-      number: data.number,
-      url: data.url,
-      reviewState: deriveReviewState(data.isDraft, data.reviewDecision),
-    }
-  } catch {
-    return null
-  }
+  // DISABLED 2026-06-06: this fork does not use GitHub PR integration.
+  // The probe spawned `gh pr view` every 60s via usePrStatus hook,
+  // producing `spawn gh ENOENT` in debug logs. The result fed a PR
+  // review state footer pill (PromptInputFooterLeftSide.tsx:266) that
+  // is not useful in a non-GitHub workflow.
+  // To re-enable: remove this block and restore the original body.
+  return null
 }
