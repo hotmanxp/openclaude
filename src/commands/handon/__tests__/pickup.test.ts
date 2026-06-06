@@ -1,0 +1,50 @@
+import { describe, test, expect } from 'bun:test'
+import { renderPickupPrompt } from '../prompts/pickup.js'
+
+describe('renderPickupPrompt', () => {
+  test('renders happy-path with pre-read handoff', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: '/p/.agent_working_dir/handoff/foo-2026-06-07.md',
+      pickContent: '# foo\n\nbody',
+      errorNote: null,
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      availableFiles: ['foo-2026-06-07.md'],
+    })
+    expect(text).toContain('# Task: Resume from a handoff document')
+    expect(text).toContain('foo-2026-06-07.md')
+    expect(text).toContain('# foo')
+    expect(text).toContain('body')
+    expect(text).toContain('cwd')
+    expect(text).toContain('/p')
+    expect(text).not.toContain('Warning')
+  })
+
+  test('renders error block when handoff is missing', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: null,
+      pickContent: null,
+      errorNote: 'Directory `/p/.agent_working_dir/handoff` is empty',
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      availableFiles: [],
+    })
+    expect(text).toContain('Warning')
+    expect(text).toContain('Directory `/p/.agent_working_dir/handoff` is empty')
+    expect(text).toContain('AskUserQuestion')
+    expect(text).not.toContain('Pre-read handoff')
+  })
+
+  test('renders specific --pick error when file is missing', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: null,
+      pickContent: null,
+      errorNote: 'Specified file `missing.md` does not exist',
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      availableFiles: [],
+    })
+    expect(text).toContain('missing.md')
+    expect(text).toContain('does not exist')
+  })
+})
