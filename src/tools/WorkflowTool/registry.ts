@@ -119,19 +119,30 @@ export class WorkflowRegistry {
     const entries = readdirSync(dir).filter(f => f.endsWith('.js'))
     for (const file of entries) {
       const fullPath = join(dir, file)
+      let run: ((args: string[]) => Promise<string>) | null = null
       try {
         const mod = await import(/* @vite-ignore */ pathToFileURL(fullPath).href)
-        const run = mod.default ?? mod.workflow
-        if (typeof run !== 'function') continue
-        out.push({
-          name: file.replace(/\.js$/, ''),
-          source,
-          path: fullPath,
-          run: run as (args: string[]) => Promise<string>,
-        })
+        run = (mod.default ?? mod.workflow) as
+          | ((args: string[]) => Promise<string>)
+          | null
       } catch {
-        // Skip invalid workflow files
+        // import() failed (e.g. bare top-level await, no exports). The
+        // script body is still valid for the WorkflowTool worker — it
+        // reads the source via readFileSync(workflow.path) and the
+        // `run` function on the Workflow is never actually called.
+        // Fall through with run = null and use a stub below.
+        run = null
       }
+      out.push({
+        name: file.replace(/\.js$/, ''),
+        source,
+        path: fullPath,
+        // The runtime reads the script source from `path` and runs it
+        // in a Worker thread. The `run` field is required by the
+        // Workflow type but never invoked — see bundled/deepResearch.ts
+        // for the same pattern (run: async () => '').
+        run: run ?? (async () => ''),
+      })
     }
     return out
   }
