@@ -6,6 +6,7 @@ import type {
   Workflow,
   WorkflowAgentState,
 } from '../../tools/WorkflowTool/types.js'
+import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.js'
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
@@ -48,6 +49,7 @@ export class LocalWorkflowTask implements Task {
   private readonly workflow: Workflow
   private abortController = new AbortController()
   private parentContext: LocalWorkflowParentContext | null = null
+  private readonly _unregisterRun: () => void
   // Task interface compliance — name is required by Task.
   public readonly name = 'LocalWorkflowTask'
 
@@ -66,6 +68,8 @@ export class LocalWorkflowTask implements Task {
     // Make the task findable by the lifecycle helpers (kill / skip / retry)
     // used by BackgroundTasksDialog and WorkflowDetailDialog.
     registerWorkflowTask(this)
+    // Register with the session-level run store so /workflows can list it.
+    this._unregisterRun = registerWorkflowRun(this)
   }
 
   get type(): 'local_workflow' {
@@ -112,6 +116,7 @@ export class LocalWorkflowTask implements Task {
         spawnSubagent,
         signal: this.abortController.signal,
         runId: this.state.id,
+        budgetTotal: this.state.budgetTotal ?? 0,
       })
       this.state.result = report
       this.state.status = 'completed'
@@ -126,6 +131,8 @@ export class LocalWorkflowTask implements Task {
       // Terminal state reached — drop from the lifecycle registry so the
       // dialog no longer offers kill / skip / retry controls for it.
       unregisterWorkflowTask(this.state.id)
+      // Also remove from the session run store.
+      this._unregisterRun()
     }
   }
 
@@ -171,6 +178,12 @@ export class LocalWorkflowTask implements Task {
         prompt,
         status: 'running',
         startedAt: Date.now(),
+        // Copy UI metadata from opts so WorkflowDetailDialog can show
+        // the label / phase / model without re-parsing the prompt or
+        // reaching back to the bridge.
+        label: opts?.label,
+        phase: opts?.phase,
+        model: opts?.model,
       }
       this.state.agents.push(agent)
       try {

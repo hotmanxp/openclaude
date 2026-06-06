@@ -53,7 +53,7 @@ describe('WorkflowRun args typing', () => {
   })
 
   test('WorkerInbound init carries string[] args', () => {
-    const msg: WorkerInbound = { kind: 'init', args: ['a', 'b'], runId: 'wf-1' }
+    const msg: WorkerInbound = { kind: 'init', args: ['a', 'b'], runId: 'wf-1', budgetTotal: 0 }
     if (msg.kind === 'init') {
       expect(msg.args).toEqual(['a', 'b'])
       expect(msg.runId).toBe('wf-1')
