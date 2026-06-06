@@ -36,7 +36,7 @@ import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { createCombinedAbortSignal } from '../utils/combinedAbortSignal.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isEnvTruthy, getWorkflowKeyword } from '../utils/envUtils.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
@@ -325,6 +325,31 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2) : sorted[mid]!;
+}
+
+/**
+ * Detects whether the user typed the OpenCC dynamic-workflow trigger keyword
+ * (`ultracode` by default, overridable via OPENCC_WORKFLOW_KEYWORD) at the
+ * start of the prompt input. Matches keyword + whitespace + remaining text.
+ *
+ * Returns the keyword that matched and the rest of the prompt (after the
+ * keyword + whitespace) so callers can strip the prefix and dispatch the
+ * remainder as a workflow task description.
+ *
+ * Why a regex over `startsWith` + `slice`: the keyword can be overridden via
+ * env var to a string of arbitrary length, and we want to require at least
+ * one whitespace separator so a prompt that just *contains* the word
+ * (e.g. "tell me about ultracode") is not misdetected.
+ */
+function detectUltracodeTrigger(
+  input: string,
+  keyword: string,
+): { triggered: boolean; keyword: string; rest: string } {
+  const match = input.match(new RegExp(`^${keyword}\\s+([\\s\\S]+)$`));
+  if (!match) {
+    return { triggered: false, keyword, rest: input };
+  }
+  return { triggered: true, keyword, rest: match[1]! };
 }
 
 /**
@@ -3429,6 +3454,20 @@ export function REPL({
         };
         void executeImmediateCommand();
         return; // Always return early - don't add to history or queue
+      }
+    }
+
+    // OpenCC Dynamic Workflows: detect the ultracode trigger keyword (default
+    // "ultracode", overridable via OPENCC_WORKFLOW_KEYWORD). When detected,
+    // strip the prefix from the input and forward the remainder to the model
+    // — the WorkflowTool description tells the LLM when to invoke it, so the
+    // remaining text becomes a free-form task description. This mirrors
+    // upstream claude-code v2.1.160's behavior where the trigger is a pure
+    // user-facing convention; the LLM-facing surface is the tool itself.
+    {
+      const trigger = detectUltracodeTrigger(input, getWorkflowKeyword());
+      if (trigger.triggered && !options?.fromKeybinding && !speculationAccept) {
+        input = trigger.rest;
       }
     }
 
