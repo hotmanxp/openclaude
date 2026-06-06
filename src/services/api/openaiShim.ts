@@ -853,7 +853,23 @@ async function* openaiStreamToAnthropic(
   response: Response,
   model: string,
   signal?: AbortSignal,
+  correlationId: string,
+  startTime: number,
 ): AsyncGenerator<AnthropicStreamEvent> {
+  // Accumulate usage across the stream. OpenAI's `include_usage` sends the
+  // cumulative totals in the final chunk (after `finish_reason`), so we
+  // overwrite on each chunk and the last value wins. Initialized to 0 so
+  // mid-stream errors still report a partial count.
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  // Track success/error state for the api_call_end log line. Initialized
+  // to 'success' optimistically; the catch block flips to 'error' if
+  // the stream loop throws. `streamState` (created by createStreamState)
+  // is a separate object that tracks chunks and first-token latency —
+  // they don't share fields.
+  let streamStatus: 'success' | 'error' = 'success'
+  let streamError: string | undefined
+
   const messageId = makeMessageId()
   let contentBlockIndex = 0
   const activeToolCalls = new Map<
@@ -874,6 +890,12 @@ async function* openaiStreamToAnthropic(
   let hasEmittedFinalUsage = false
   let hasProcessedFinishReason = false
   const streamState = createStreamState()
+  // `stats` snapshots the streamState at log-time. The streaming loop
+  // mutates `streamState` (chunkCount, firstTokenTime) incrementally, so
+  // we recompute inside the `finally` block to get the final values,
+  // then read it again below for the `stream_stats` log line — both
+  // reads must happen AFTER the loop finishes, not before.
+  let stats: ReturnType<typeof getStreamStats> | null = null
 
   // Emit message_start
   yield {
@@ -989,6 +1011,7 @@ async function* openaiStreamToAnthropic(
   }
 
   try {
+    try {
     while (true) {
       // Feed any pending parsed events first
       while (parsedEventQueue.length > 0) {
@@ -1032,6 +1055,14 @@ async function* openaiStreamToAnthropic(
         }
 
         const chunkUsage = convertChunkUsage(chunk.usage)
+        if (chunkUsage) {
+          // OpenAI's `include_usage: true` sends cumulative totals in the
+          // final chunk; intermediate chunks have usage=undefined and skip
+          // this branch. Overwrite with the latest non-undefined value so
+          // the running total converges on the final chunk's figures.
+          totalInputTokens = chunkUsage.input_tokens ?? 0
+          totalOutputTokens = chunkUsage.output_tokens ?? 0
+        }
 
         for (const choice of chunk.choices ?? []) {
         const delta = choice.delta
@@ -1319,12 +1350,43 @@ async function* openaiStreamToAnthropic(
     const text = decoder.decode(value, { stream: true })
     parser.feed(text)
   }
+    } catch (err) {
+      // Record error state so the post-loop log line reflects the failure
+      // while preserving any partial usage accumulated up to this point.
+      streamStatus = 'error'
+      streamError = err instanceof Error ? err.message : String(err)
+      if (streamError.length > 500) {
+        streamError = streamError.slice(0, 500) + '…[truncated]'
+      }
+      throw err
+    }
   } finally {
     reader.releaseLock()
+    // Always log the api_call_end for streaming, regardless of success or
+    // error. The non-streaming path logs at the fetch site because the
+    // usage is available synchronously; for streaming we only have the
+    // totals once the generator finishes.
+    // TODO: regression test for streaming usage accumulation — would
+    // require mocking a complete SSE stream with usage chunks, which
+    // the existing requestLogging.test.ts does not cover. See
+    // docs/verification-checklist.md "Debug log scan" — manual smoke
+    // test confirmed non-zero values for MiniMax M3 (2026-06-06).
+    stats = getStreamStats(streamState)
+    logApiCallEnd(
+      correlationId,
+      startTime,
+      model,
+      streamStatus,
+      totalInputTokens,
+      totalOutputTokens,
+      true,
+      stats.firstTokenMs,
+      stats.totalChunks,
+      streamError,
+    )
   }
 
-  const stats = getStreamStats(streamState)
-  if (stats.totalChunks > 0) {
+  if (stats && stats.totalChunks > 0) {
     logForDebugging(
       JSON.stringify({
         type: 'stream_stats',
@@ -1379,12 +1441,18 @@ class OpenAIShimMessages {
 
     const promise = (async () => {
       const request = resolveProviderRequest({ model: self.providerOverride?.model ?? params.model, baseUrl: self.providerOverride?.baseURL, reasoningEffortOverride: self.reasoningEffort })
-      const response = await self._doRequest(request, params, options)
+      const { response, correlationId, startTime } = await self._doRequest(request, params, options)
       httpResponse = response
 
       if (params.stream) {
         return new OpenAIShimStream(
-          openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
+          openaiStreamToAnthropic(
+            response,
+            request.resolvedModel,
+            options?.signal,
+            correlationId,
+            startTime,
+          ),
         )
       }
 
@@ -1421,7 +1489,7 @@ class OpenAIShimMessages {
     request: ReturnType<typeof resolveProviderRequest>,
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
-  ): Promise<Response> {
+  ): Promise<{ response: Response; correlationId: string; startTime: number }> {
     return this._doOpenAIRequest(request, params, options)
   }
 
@@ -1429,7 +1497,7 @@ class OpenAIShimMessages {
     request: ReturnType<typeof resolveProviderRequest>,
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
-  ): Promise<Response> {
+  ): Promise<{ response: Response; correlationId: string; startTime: number }> {
     const compressedMessages = compressToolHistory(
       params.messages as Array<{
         role: string
@@ -1868,7 +1936,8 @@ class OpenAIShimMessages {
         let tokensOut = 0
         // Skip clone() for streaming responses - it blocks until full body is received,
         // defeating the purpose of streaming. Usage data is already sent via
-        // stream_options: { include_usage: true } and can be extracted from the stream.
+        // stream_options: { include_usage: true } and the streaming generator
+        // extracts it incrementally and logs api_call_end itself.
         if (!params.stream) {
           try {
             const clone = response.clone()
@@ -1876,9 +1945,12 @@ class OpenAIShimMessages {
             tokensIn = data.usage?.prompt_tokens ?? 0
             tokensOut = data.usage?.completion_tokens ?? 0
           } catch { /* ignore */ }
+          logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, params.stream)
+          return { response, correlationId, startTime }
         }
-        logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, params.stream)
-        return response
+        // Streaming path: return the response and let the generator log
+        // api_call_end with the accumulated usage once the stream finishes.
+        return { response, correlationId, startTime }
       }
 
       // Read body exactly once here — Response body is a stream that can only
