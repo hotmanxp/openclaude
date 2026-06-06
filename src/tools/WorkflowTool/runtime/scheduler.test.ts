@@ -62,4 +62,19 @@ describe('Scheduler', () => {
     expect(result).toBe('ok')
     expect(s.running).toBe(0)
   })
+
+  test('sync-throw in fn does not leak concurrency slot', async () => {
+    const s = new Scheduler({ maxConcurrent: 1, maxTotal: 100 })
+    // Note: NOT async — this is a sync throw, violates the () => Promise<T> contract
+    const syncThrowing = () => { throw new Error('boom') }
+    await expect(s.run(syncThrowing)).rejects.toThrow('boom')
+    // Slot should be released — next task can run
+    const result = await s.run(async () => 'ok')
+    expect(result).toBe('ok')
+    expect(s.running).toBe(0)
+  })
+
+  test('rejects maxConcurrent: 0 at construction', () => {
+    expect(() => new Scheduler({ maxConcurrent: 0, maxTotal: 100 })).toThrow(/maxConcurrent/)
+  })
 })

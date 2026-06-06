@@ -3,9 +3,9 @@ export type SchedulerOpts = {
   maxTotal: number
 }
 
-type QueuedTask<T> = {
-  fn: () => Promise<T>
-  resolve: (value: T) => void
+type QueuedTask = {
+  fn: () => Promise<unknown>
+  resolve: (value: unknown) => void
   reject: (reason?: unknown) => void
 }
 
@@ -19,11 +19,18 @@ type QueuedTask<T> = {
  * This is intentional — we want to bound the total work, not just concurrency.
  */
 export class Scheduler {
-  private queue: QueuedTask<unknown>[] = []
+  private queue: QueuedTask[] = []
   private _running = 0
   private _total = 0
 
-  constructor(private readonly opts: SchedulerOpts) {}
+  constructor(private readonly opts: SchedulerOpts) {
+    if (opts.maxConcurrent < 1) {
+      throw new Error('Scheduler: maxConcurrent must be >= 1')
+    }
+    if (opts.maxTotal < 1) {
+      throw new Error('Scheduler: maxTotal must be >= 1')
+    }
+  }
 
   get running(): number {
     return this._running
@@ -53,9 +60,13 @@ export class Scheduler {
 
   private drain(): void {
     while (this._running < this.opts.maxConcurrent && this.queue.length > 0) {
-      const task = this.queue.shift()!
+      const task = this.queue.shift()
+      if (!task) break
       this._running++
-      task.fn()
+      // Promise.resolve().then() ensures sync throws from task.fn() are caught
+      // and routed through the rejection path — otherwise _running would leak.
+      Promise.resolve()
+        .then(() => task.fn())
         .then(task.resolve, task.reject)
         .finally(() => {
           this._running--
