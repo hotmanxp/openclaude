@@ -43,6 +43,11 @@ import { InProcessTeammateDetailDialog } from './InProcessTeammateDetailDialog.j
 import { RemoteSessionDetailDialog } from './RemoteSessionDetailDialog.js';
 import { ShellDetailDialog } from './ShellDetailDialog.js';
 import { WorkflowDetailDialog } from './WorkflowDetailDialog.js';
+import {
+  killWorkflowTask,
+  skipWorkflowAgent,
+  retryWorkflowAgent,
+} from '../../tasks/LocalWorkflowTask/lifecycle.js';
 type ViewState = {
   mode: 'list';
 } | {
@@ -105,13 +110,9 @@ type ListItem = {
   status: 'running';
 };
 
-// Lifecycle helpers (killWorkflowTask, skipWorkflowAgent, retryWorkflowAgent) are
-// not yet exported from src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts —
-// they will be added when the runtime control plane lands. Keep these as `null`
-// so the existing UI guards (&& killWorkflowTask) short-circuit gracefully.
-const killWorkflowTask: ((taskId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
-const skipWorkflowAgent: ((taskId: string, agentId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
-const retryWorkflowAgent: ((taskId: string, agentId: string, setAppState: (updater: (prev: any) => any) => void) => void) | null = null;
+// Lifecycle helpers (killWorkflowTask, skipWorkflowAgent, retryWorkflowAgent)
+// live in src/tasks/LocalWorkflowTask/lifecycle.ts. They're imported above
+// via the runtime control plane so the dialog can drive running workflows.
 import { MonitorMcpDetailDialog } from './MonitorMcpDetailDialog.js';
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
@@ -268,8 +269,8 @@ export function BackgroundTasksDialog({
         void killAgentTask(currentSelection_0.id);
       } else if (currentSelection_0.type === 'in_process_teammate' && currentSelection_0.status === 'running') {
         void killTeammateTask(currentSelection_0.id);
-      } else if (currentSelection_0.type === 'local_workflow' && currentSelection_0.status === 'running' && killWorkflowTask) {
-        killWorkflowTask(currentSelection_0.id, setAppState);
+      } else if (currentSelection_0.type === 'local_workflow' && currentSelection_0.status === 'running') {
+        killWorkflowTask(currentSelection_0.id);
       } else if (currentSelection_0.type === 'monitor_mcp' && currentSelection_0.status === 'running') {
         MonitorMcpTask.kill(currentSelection_0.id, setAppState);
       } else if (currentSelection_0.type === 'dream' && currentSelection_0.status === 'running') {
@@ -383,7 +384,7 @@ export function BackgroundTasksDialog({
         } : undefined} key={`teammate-${task_0.id}`} />;
       case 'local_workflow':
         if (!WorkflowDetailDialog) return null;
-        return <WorkflowDetailDialog workflow={task_0} onDone={onDone} onKill={task_0.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task_0.id, setAppState) : undefined} onSkipAgent={task_0.status === 'running' && skipWorkflowAgent ? agentId => skipWorkflowAgent(task_0.id, agentId, setAppState) : undefined} onRetryAgent={task_0.status === 'running' && retryWorkflowAgent ? agentId_0 => retryWorkflowAgent(task_0.id, agentId_0, setAppState) : undefined} onBack={goBackToList} key={`workflow-${task_0.id}`} />;
+        return <WorkflowDetailDialog workflow={task_0} onDone={onDone} onKill={task_0.status === 'running' ? () => killWorkflowTask(task_0.id) : undefined} onSkipAgent={task_0.status === 'running' ? agentId => skipWorkflowAgent(task_0.id, agentId) : undefined} onRetryAgent={task_0.status === 'running' ? agentId_0 => retryWorkflowAgent(task_0.id, agentId_0) : undefined} onBack={goBackToList} key={`workflow-${task_0.id}`} />;
       case 'monitor_mcp':
         if (!MonitorMcpDetailDialog) return null;
         return <MonitorMcpDetailDialog task={task_0} onKill={task_0.status === 'running' ? () => MonitorMcpTask.kill(task_0.id, setAppState) : undefined} onBack={goBackToList} key={`monitor-mcp-${task_0.id}`} />;
