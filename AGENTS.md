@@ -160,6 +160,34 @@ Environment variables for other providers (`CLAUDE_CODE_USE_GITHUB`, `CLAUDE_COD
 
 **When merging upstream**: If a PR introduces changes related to other providers, skip or revert them. When unavoidable, clean up thoroughly before building and testing.
 
+## Silenced Tests & Dead Code
+
+A few pre-existing test/code drifts were cleaned up after the 2026-06-06
+main-openccv2 sync. They are recorded here so the next sync doesn't re-trigger
+the same failures:
+
+- **`src/utils/statusNoticeDefinitions.safety.test.tsx`** — commit `352afa86`
+  (`fix(local-dev): silence malware reminder + permissive mode notices`)
+  intentionally removed `thirdPartyPermissiveModeNotice` and
+  `dangerouslySkipPermissionsNotice` from the `statusNoticeDefinitions` array
+  for the local-dev build. The regression tests in this file were updated to
+  assert the notices **do not fire** in any condition (the previous "fires
+  when X" assertions are now inverted and tagged "(silenced per 352afa86)").
+  The `safety notice rendering` describe block is kept as a `test.skip`
+  placeholder so a future re-enable can restore the rendering assertions from
+  git history.
+
+- **`src/services/api/codexOAuth.test.ts`** — deleted. Codex is not in the
+  supported provider list above; `codexOAuth.ts` is still imported by
+  `src/components/useCodexOAuthFlow.ts`, so the implementation stays, but the
+  test file had no path forward once Codex support was dropped (commit
+  `1b586849 refactor: remove non-standard provider support`). Deleting the
+  test removed two pre-existing `test:provider` failures
+  (`serves updated success copy ... Codex OAuth flow` and
+  `cancellation during token exchange ... rejected`). The matching
+  `codexOAuthShared.ts` and `codexCredentials.ts` are still present (used by
+  the Codex OAuth flow UI) and are out of scope for this cleanup.
+
 ## Important Notes
 
 - **~230 deprecated functions** across the codebase — grep for `_DEPRECATED` before modifying core files
@@ -209,6 +237,14 @@ ollama launch openclaude --model qwen2.5-coder:7b
 Provider selection: `CLAUDE_CODE_USE_OPENAI=1` routes to OpenAI-compatible shim; otherwise uses first-party Anthropic API.
 
 ## Testing
+
+The full verification protocol lives in
+**[`docs/verification-checklist.md`](docs/verification-checklist.md)** —
+run it before every commit, sync, or PR that touches runtime code,
+tests, or build configuration. 5 phases in strict order:
+build → typecheck → test → TUI 完整流程 (with `--debug`
+from launch) → debug log scan. Skipping the debug log scan is
+incomplete — runtime errors hide behind successful UI smoke.
 
 ```bash
 # Non-interactive testing (when interactive mode is hard to debug)

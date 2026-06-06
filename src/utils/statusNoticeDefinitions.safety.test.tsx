@@ -2,13 +2,17 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { StatusNoticeContext } from './statusNoticeDefinitions.js'
 import {
   getActiveNotices,
-  statusNoticeDefinitions,
 } from './statusNoticeDefinitions.js'
-import { renderToString } from './staticRender.js'
 
 // Regression coverage for issue #244 — the two safety-related status notices
 // that warn 3P users when they are running without the AI classifier or with
 // `--dangerously-skip-permissions` outside a sandbox.
+//
+// As of commit 352afa86 (fix(local-dev): silence malware reminder + permissive
+// mode notices), BOTH notices have been intentionally removed from the active
+// `statusNoticeDefinitions` array. The "fires when X" cases below now assert
+// the notices do NOT fire (silenced), and the "suppressed" cases verify the
+// default-off path is still well-defined. See AGENTS.md "Silenced Tests".
 
 // Empty baseline context (no large-memory/agent-description triggers).
 function buildContext(
@@ -23,15 +27,6 @@ function buildContext(
 
 function activeIds(ctx: StatusNoticeContext): string[] {
   return getActiveNotices(ctx).map(n => n.id)
-}
-
-async function renderNoticePlainText(
-  id: string,
-  ctx: StatusNoticeContext,
-): Promise<string> {
-  const notice = statusNoticeDefinitions.find(n => n.id === id)
-  expect(notice).toBeDefined()
-  return renderToString(notice!.render(ctx), 80)
 }
 
 const SAVED_ARGV = process.argv
@@ -58,7 +53,8 @@ afterEach(() => {
 })
 
 describe('third-party permissive mode notice (#244 finding 1)', () => {
-  test('fires when 3P + acceptEdits + classifier-off model', async () => {
+  // Silenced per 352afa86 — notice no longer registered in statusNoticeDefinitions.
+  test('does not fire when 3P + acceptEdits + classifier-off model (silenced per 352afa86)', async () => {
     mock.module('./model/providers.js', () => ({
       getAPIProvider: () => 'openai',
     }))
@@ -70,10 +66,11 @@ describe('third-party permissive mode notice (#244 finding 1)', () => {
     )
     const ctx = buildContext({ permissionMode: 'acceptEdits', mainLoopModel: 'gpt-5.4' })
     const ids = freshGetActiveNotices(ctx).map((n: { id: string }) => n.id)
-    expect(ids).toContain('third-party-permissive-mode')
+    expect(ids).not.toContain('third-party-permissive-mode')
   })
 
-  test('fires when 3P + bypassPermissions', async () => {
+  // Silenced per 352afa86 — notice no longer registered in statusNoticeDefinitions.
+  test('does not fire when 3P + bypassPermissions (silenced per 352afa86)', async () => {
     mock.module('./model/providers.js', () => ({
       getAPIProvider: () => 'openai',
     }))
@@ -85,7 +82,7 @@ describe('third-party permissive mode notice (#244 finding 1)', () => {
     )
     const ctx = buildContext({ permissionMode: 'bypassPermissions', mainLoopModel: 'llama3.1' })
     const ids = freshGetActiveNotices(ctx).map((n: { id: string }) => n.id)
-    expect(ids).toContain('third-party-permissive-mode')
+    expect(ids).not.toContain('third-party-permissive-mode')
   })
 
   test('suppressed in default mode even on 3P', async () => {
@@ -135,13 +132,15 @@ describe('third-party permissive mode notice (#244 finding 1)', () => {
 })
 
 describe('dangerously-skip-permissions sandbox notice (#244 finding 2)', () => {
-  test('fires when --dangerously-skip-permissions is in argv', () => {
+  // Silenced per 352afa86 — notice no longer registered in statusNoticeDefinitions.
+  test('does not fire when --dangerously-skip-permissions is in argv (silenced per 352afa86)', () => {
     process.argv = [...process.argv, '--dangerously-skip-permissions']
-    expect(activeIds(buildContext())).toContain('dangerously-skip-permissions-no-sandbox')
+    expect(activeIds(buildContext())).not.toContain('dangerously-skip-permissions-no-sandbox')
   })
 
-  test('fires when permission mode is bypassPermissions (e.g. settings defaultMode)', () => {
-    expect(activeIds(buildContext({ permissionMode: 'bypassPermissions' }))).toContain(
+  // Silenced per 352afa86 — notice no longer registered in statusNoticeDefinitions.
+  test('does not fire when permission mode is bypassPermissions (silenced per 352afa86)', () => {
+    expect(activeIds(buildContext({ permissionMode: 'bypassPermissions' }))).not.toContain(
       'dangerously-skip-permissions-no-sandbox',
     )
   })
@@ -153,41 +152,14 @@ describe('dangerously-skip-permissions sandbox notice (#244 finding 2)', () => {
   })
 })
 
+// Removed per 352afa86 — the third-party-permissive-mode and
+// dangerously-skip-permissions-no-sandbox notices are no longer in the active
+// statusNoticeDefinitions array, so renderNoticePlainText (which looks them up
+// via statusNoticeDefinitions.find) can no longer exercise their visual layout.
+// If these notices are re-enabled in a future commit, restore the
+// `separates warning icons from the notice text` assertions from git history.
 describe('safety notice rendering', () => {
-  test('separates warning icons from the notice text', async () => {
-    const ctx = buildContext({
-      permissionMode: 'bypassPermissions',
-      mainLoopModel: 'llama3.1',
-    })
-
-    const thirdPartyNotice = await renderNoticePlainText(
-      'third-party-permissive-mode',
-      ctx,
-    )
-    const dangerouslySkipNotice = await renderNoticePlainText(
-      'dangerously-skip-permissions-no-sandbox',
-      ctx,
-    )
-
-    expect(thirdPartyNotice).toContain('⚠ bypassPermissions')
-    expect(thirdPartyNotice).not.toContain('⚠bypassPermissions')
-    expect(dangerouslySkipNotice).toContain(
-      '⚠ --dangerously-skip-permissions',
-    )
-    expect(dangerouslySkipNotice).not.toContain(
-      '⚠--dangerously-skip-permissions',
-    )
-    expect(
-      thirdPartyNotice
-        .split('\n')
-        .slice(1)
-        .every(line => line.startsWith('  ')),
-    ).toBe(true)
-    expect(
-      dangerouslySkipNotice
-        .split('\n')
-        .slice(1)
-        .every(line => line.startsWith('  ')),
-    ).toBe(true)
+  test.skip('separates warning icons from the notice text (placeholder — see 352afa86)', () => {
+    // intentionally empty: rendering assertions removed when notices were silenced
   })
 })
