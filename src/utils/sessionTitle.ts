@@ -114,12 +114,13 @@ export async function generateSessionTitle(
 
     // @ts-ignore - content type mismatch
     const text = extractTextContent(result.message.content)
-    // M2.7-highspeed (and other small models) wrap their JSON output in
-    // markdown code fences, sometimes with leading prose or whitespace
-    // before the fence. A simple leading/trailing strip misses those —
-    // fall back to extracting the first JSON object/array from anywhere
-    // in the response. See docs/verification-checklist.md Class I.
-    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+    // Extract from the first `{` to the last `}`. M2.7-highspeed (and other
+    // small models) wrap their JSON in markdown code fences, prefix with
+    // prose, or add trailing commentary. We don't care about strict JSON
+    // structure here — safeParseJSON handles invalid input gracefully and
+    // the zod schema validates the result. See docs/verification-checklist.md
+    // Class I.
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
     const candidate = jsonMatch ? jsonMatch[0] : text
     const parsed = titleSchema().safeParse(safeParseJSON(candidate))
     const title = parsed.success ? parsed.data.title.trim() || null : null

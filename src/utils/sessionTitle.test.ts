@@ -100,3 +100,18 @@ test('generateSessionTitle extracts JSON object from prose without fence', async
 
   expect(title).toBe('Prose Only')
 })
+
+test('generateSessionTitle extracts first { to last } even with trailing commentary', async () => {
+  // Model returns the JSON object followed by prose with a stray `}`.
+  // Greedy match `{...}` extracts the full object; zod schema then
+  // validates the result.
+  haikuMock.mockImplementation(async () =>
+    makeAssistantMessage(
+      '{"title":"With Tail"} Hope this helps! Use it as needed :)',
+    ),
+  )
+
+  const title = await runGenerateSessionTitle('add a save button')
+
+  expect(title).toBe('With Tail')
+})
