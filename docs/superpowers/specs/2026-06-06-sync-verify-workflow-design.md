@@ -3,11 +3,7 @@
 **Date:** 2026-06-06
 **Status:** Draft (pending user review)
 **Author:** brainstorming session
-<<<<<<< HEAD
 **Target branch:** `main-opencc` (was `main-openccv2` until 2026-06-08 rebrand; line 269 still mentions the old name as one of `/sync-verify` base-branch options — keep for backward-compat parsing or update when the command is implemented)
-=======
-**Target branch:** `main-opencc` (was `main-openccv2` until 2026-06-08 rebrand; line 269 still mentions the old name as one of `/sync-verify` base-branch options — keep for backward-compat parsing or update when the command is implemented)
->>>>>>> d11d1c20 (docs(workflows): add sync-verify workflow design spec)
 **Implementation file:** `.claude/workflows/sync-verify.js` (project-level, git-committable)
 
 ---
@@ -96,12 +92,8 @@ export const meta = {
   ],
 }
 
-<<<<<<< HEAD
 // 可选：覆盖默认 30 分钟超时（TUI 验证可能慢）。
 // 默认 30 分钟已够；如下游 TUI 启动变慢，取消下一行注释提升到 60 分钟。
-=======
-// 可选：覆盖默认 30 分钟超时（TUI 验证可能慢）
->>>>>>> d11d1c20 (docs(workflows): add sync-verify workflow design spec)
 // export const timeout = 60 * 60_000
 
 const RESULT_SCHEMA = {
