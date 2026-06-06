@@ -10,9 +10,12 @@ describe('getWorkflowCommands', () => {
     tmp = mkdtempSync(join(tmpdir(), 'wf-cmds-'))
   })
 
-  test('returns /workflows list command even with no user workflows', async () => {
+  test('returns no user-workflow slash commands when none are registered', async () => {
+    // The /workflows builtin is now a local-jsx command registered through
+    // the standard src/commands/ scan path; getWorkflowCommands() is
+    // strictly for user-workflow files.
     const cmds = await getWorkflowCommands(tmp)
-    expect(cmds.find(c => c.name === 'workflows')).toBeDefined()
+    expect(cmds.find(c => c.name === 'workflows')).toBeUndefined()
   })
 
   test('returns a slash command for a freshly-written user workflow', async () => {

@@ -1,5 +1,4 @@
 import type { Command } from '../../types/command.js'
-import { workflowsListCommand } from '../../commands/workflows/listCommand.js'
 import { getWorkflowRegistry } from './singleton.js'
 import type { Workflow } from './types.js'
 
@@ -47,12 +46,14 @@ function workflowToCommand(workflow: Workflow): Command {
 }
 
 /**
- * Returns the dynamic-workflow slash commands available in this build.
+ * Returns the user-workflow slash commands available in this build.
  *
- * Always exposes /workflows (list/manage runs in this session). On top
- * of that, it asks the WorkflowRegistry for the workflows visible in
- * `cwd` and converts each non-bundled one into a `type: 'prompt'`
- * Command so it shows up in the TUI's `/` autocomplete.
+ * Asks the WorkflowRegistry for the workflows visible in `cwd` and
+ * converts each non-bundled one into a `type: 'prompt'` Command so it
+ * shows up in the TUI's `/` autocomplete. The builtin `/workflows`
+ * command (list/manage runs in this session) is NOT returned here —
+ * it's a separate `local-jsx` command registered through the standard
+ * src/commands/ scan path.
  *
  * Bundled workflows (e.g. /deep-research) are filtered out because
  * they have their own registration path via `registerBundled()` and
@@ -76,5 +77,5 @@ export async function getWorkflowCommands(cwd: string): Promise<Command[]> {
   const userCommands = all
     .filter(w => w.source !== 'bundled')
     .map(workflowToCommand)
-  return [workflowsListCommand, ...userCommands]
+  return userCommands
 }
