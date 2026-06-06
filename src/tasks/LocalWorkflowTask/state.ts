@@ -1,5 +1,8 @@
 import type { TaskStateBase } from '../../Task.js'
-import type { WorkflowAgentState } from '../../tools/WorkflowTool/types.js'
+import type {
+  WorkflowAgentState,
+  WorkflowPhaseMeta,
+} from '../../tools/WorkflowTool/types.js'
 
 /**
  * State for a single in-process workflow task run. Extends TaskStateBase so
@@ -10,6 +13,8 @@ import type { WorkflowAgentState } from '../../tools/WorkflowTool/types.js'
  * - `args`: positional string args from /<workflow> invocation
  * - `script`: the JS source being executed (set by start())
  * - `agents`: per-spawn-subagent UI state (one entry per spawnSubagent() call)
+ * - `currentPhase`: title of the most recently announced phase (from \`phase()\`)
+ * - `meta`: workflow metadata declared via \`__setMeta()\` at script start
  * - `result` / `error` / `totalCostUsd`: run outputs
  */
 export type LocalWorkflowTaskState = TaskStateBase & {
@@ -20,6 +25,8 @@ export type LocalWorkflowTaskState = TaskStateBase & {
   startedAt: number
   completedAt?: number
   agents: WorkflowAgentState[]
+  currentPhase?: string
+  meta?: WorkflowPhaseMeta
   result?: string
   error?: { message: string; stack?: string }
   totalCostUsd: number

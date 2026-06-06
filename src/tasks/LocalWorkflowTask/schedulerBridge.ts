@@ -9,6 +9,7 @@ import type {
   WorkerOutbound,
 } from '../../tools/WorkflowTool/types.js'
 import { logError } from '../../utils/log.js'
+import { findWorkflowTask } from './lifecycle.js'
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000 // 30 min
 const SCHEDULER_OPTS = { maxConcurrent: 16, maxTotal: 1000 }
@@ -26,6 +27,13 @@ export type RunArgs = {
   spawnSubagent?: SpawnSubagentFn
   signal?: AbortSignal
   timeoutMs?: number
+  /**
+   * The LocalWorkflowTask id (e.g. "wf_a1b2c3d4"). Used to route phase/meta
+   * messages back to the right task instance via findWorkflowTask(). If
+   * omitted, phase/meta messages are dropped silently (the script is
+   * running but the caller didn't wire it through the lifecycle registry).
+   */
+  runId?: string
 }
 
 /**
@@ -99,6 +107,25 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
     }
 
     worker.on('message', (msg: WorkerOutbound) => {
+      if (msg.kind === 'phase') {
+        // Route to the LocalWorkflowTask instance identified by runId. If
+        // runId wasn't provided (script ran without lifecycle wiring), the
+        // phase event is dropped — the dialog can still function off the
+        // meta block alone, and we don't want a stray phase to crash
+        // main just because no listener exists.
+        if (args.runId) {
+          const task = findWorkflowTask(args.runId)
+          if (task) task.state.currentPhase = msg.title
+        }
+        return
+      }
+      if (msg.kind === 'meta') {
+        if (args.runId) {
+          const task = findWorkflowTask(args.runId)
+          if (task) task.state.meta = msg.meta
+        }
+        return
+      }
       if (msg.kind === 'spawnSubagent') {
         if (!args.spawnSubagent) {
           try {
@@ -195,13 +222,14 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
       reject(new Error(`Workflow timed out after ${timeoutMs}ms`))
     }, timeoutMs)
 
-    // Kick off the script. init.runId is a placeholder; the bridge doesn't
-    // track runs in main (that's Task 6's job, which wires LocalWorkflowTask
-    // to the bridge).
+    // Kick off the script. init.runId is the LocalWorkflowTask id when
+    // wired through the lifecycle registry; the worker doesn't currently
+    // echo it back, but the bridge uses args.runId directly to route
+    // phase/meta events to the right task instance.
     worker.postMessage({
       kind: 'init',
       args: initArgs,
-      runId: 'pending',
+      runId: args.runId ?? 'pending',
     } satisfies WorkerInbound)
   })
 }

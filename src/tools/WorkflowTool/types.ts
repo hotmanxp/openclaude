@@ -88,11 +88,20 @@ export type WorkerInbound =
       error?: string
     }
 
+/** Metadata declared via `__setMeta({...})` from inside a workflow script. */
+export type WorkflowPhaseMeta = {
+  name?: string
+  description?: string
+  phases?: { title: string }[]
+}
+
 export type WorkerOutbound =
   | { kind: 'spawnSubagent'; callId: string; prompt: string; opts?: SpawnOpts }
   | { kind: 'report'; value: string }
   | { kind: 'error'; message: string; stack?: string }
   | { kind: 'log'; level: 'info' | 'warn' | 'error'; message: string }
+  | { kind: 'phase'; title: string }
+  | { kind: 'meta'; meta: WorkflowPhaseMeta }
 
 /** Zod schema for SpawnOpts (runtime validation in spawnSubagent). */
 export const SpawnOptsSchema = z.object({
