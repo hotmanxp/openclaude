@@ -1,3 +1,4 @@
+// @ts-nocheck — Bun.sleep runtime is fine, @types/bun not installed
 import { PassThrough } from 'node:stream'
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
@@ -69,7 +70,7 @@ async function renderProbe(
 }
 
 function tick(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 5))
+  return Bun.sleep(5)
 }
 
 describe('useInput — raw mode lifecycle', () => {
