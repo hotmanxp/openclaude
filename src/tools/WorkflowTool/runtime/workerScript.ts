@@ -43,13 +43,6 @@ export function buildWorkerScript(userScript: string): string {
   return `
 const { parentPort } = require('node:worker_threads');
 
-const process = undefined;
-const require = undefined;
-const globalThis = undefined;
-const Buffer = undefined;
-const eval = undefined;
-const Function = undefined;
-
 let cancelled = false;
 parentPort.on('message', (msg) => {
   if (msg && msg.kind === 'cancel') {
