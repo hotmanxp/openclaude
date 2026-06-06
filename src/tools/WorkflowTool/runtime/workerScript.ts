@@ -84,26 +84,40 @@ function phase(title) {
 }
 
 // agent(prompt, opts) — wraps spawnSubagent and returns a structured
-// result so scripts can do \`if (!r.ok) return { aborted: '...', details: r.error }\`.
+// result so scripts can do early-exit on failure.
 // Never rejects: errors from spawnSubagent are normalized to
 // { ok: false, error } so the call site can pattern-match on ok cleanly.
 // The legacy spawnSubagent(prompt, opts) stays unchanged for backward
 // compatibility with scripts that destructure { agentId, report }.
-// \`label\` is a UI-only field; \`agentType\` is forwarded into SpawnOpts so
-// the main-process handler can route through the agent registry when set
-// (otherwise the LLM is called directly with the schema prompt).
+// label and phase are UI/grouping metadata that should pass through
+// into SpawnOpts so the WorkflowDetailDialog can group agents.
+// agentType is forwarded into SpawnOpts so the main-process handler
+// can route through the agent registry when set (otherwise the LLM
+// is called directly with the schema prompt).
 function agent(prompt, opts) {
-  const { label, agentType, ...spawnOpts } = opts || {};
-  const finalOpts = agentType ? { ...spawnOpts, agentType } : spawnOpts;
+  const { label, phase, agentType, ...spawnOpts } = opts || {};
+  const finalOpts = {
+    ...(label !== undefined ? { label } : {}),
+    ...(phase !== undefined ? { phase } : {}),
+    ...spawnOpts,
+    ...(agentType ? { agentType } : {}),
+  };
   return spawnSubagent(prompt, finalOpts).then(
     function (r) {
-      return { ok: true, agentId: r.agentId, report: r.report, label: label };
+      return {
+        ok: true,
+        agentId: r.agentId,
+        report: r.report,
+        label: label,
+        phase: phase,
+      };
     },
     function (err) {
       return {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         label: label,
+        phase: phase,
       };
     },
   );
@@ -122,6 +136,32 @@ function parallel(fns) {
   return Promise.all(fns.map(function (fn) { return fn(); }));
 }
 
+// log(msg) — posts a structured log message to main. Surfaces phase
+// progress in the WorkflowDetailDialog without leaking console output
+// to the worker's stdout. The WorkerOutbound.log message kind already
+// existed (used for runtime error routing in schedulerBridge) — this
+// just exposes a global in the wrapper that posts the same kind.
+// Level defaults to 'info'; the second-arg level override is reserved
+// for a future expansion (currently all messages are 'info').
+function log(msg) {
+  parentPort.postMessage({ kind: 'log', level: 'info', message: String(msg ?? '') });
+}
+
+// budget — token budget snapshot injected at init. budget.total is 0
+// when no budget is configured; scripts should guard with
+// |if (budget.total)| before reading. budget.remaining() and
+// budget.used are computed on each call (not cached) so the LLM can
+// poll them mid-script to track spend. The underlying __budgetTotal
+// and __budgetUsed are module-level lets so the init handler can
+// mutate them; the getters expose them through a frozen-shape object.
+let __budgetTotal = 0;
+let __budgetUsed = 0;
+const budget = {
+  get total() { return __budgetTotal; },
+  get used() { return __budgetUsed; },
+  remaining() { return Math.max(0, __budgetTotal - __budgetUsed); }
+};
+
 async function userScript(args) {
   'use strict';
 ${cleaned
@@ -131,6 +171,10 @@ ${cleaned
 }
 
 parentPort.on('message', async (msg) => {
+  if (msg && msg.kind === 'init') {
+    __budgetTotal = Number(msg.budgetTotal ?? 0);
+    __budgetUsed = Number(msg.budgetUsed ?? 0);
+  }
   if (!msg || msg.kind !== 'init') return;
   try {
     if (typeof userScript !== 'function') {

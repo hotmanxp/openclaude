@@ -44,6 +44,22 @@ export type SpawnOpts = {
    * type currently expresses — actual registry lookup is a follow-up.
    */
   agentType?: string
+  /**
+   * Optional UI label. Display-only — doesn't affect dispatch. The
+   * `agent()` wrapper forwards this onto the WorkflowAgentState entry so
+   * the WorkflowDetailDialog can show short readable names (e.g.
+   * "finder F1: Error handling 黑洞") instead of the first ~80 chars of
+   * the prompt.
+   */
+  label?: string
+  /**
+   * Optional phase tag. Set by the script via `phase('Title')` and
+   * forwarded through `agent({ phase: 'Title', ... })`. The LocalWorkflow
+   * Task records the phase on each WorkflowAgentState entry so the dialog
+   * can group agents by phase and show "Discovery: 6 lens 扫描 · 6
+   * agents" headings.
+   */
+  phase?: string
 }
 
 /** Result of spawnSubagent() — final report from the subagent. */
@@ -87,7 +103,7 @@ export type WorkflowRun = {
 
 /** Worker ↔ main process message protocol. */
 export type WorkerInbound =
-  | { kind: 'init'; args: string[]; runId: string }
+  | { kind: 'init'; args: string[]; runId: string; budgetTotal: number }
   | { kind: 'cancel' }
   | {
       kind: 'spawnSubagentResult'
@@ -117,6 +133,8 @@ export const SpawnOptsSchema = z.object({
   model: z.string().optional(),
   tools: z.array(z.string()).optional(),
   signal: z.instanceof(AbortSignal).optional(),
+  label: z.string().optional(),
+  phase: z.string().optional(),
   agentType: z.string().optional(),
 })
 
@@ -133,6 +151,15 @@ export type WorkflowToolInput = z.infer<typeof WorkflowToolInputSchema>
 export type WorkflowAgentState = {
   id: string
   prompt: string
+  /** Optional human-readable label (e.g. "finder F1: Error handling")
+   *  — copied from SpawnOpts.label. */
+  label?: string
+  /** Optional phase tag (e.g. "Discovery: 6 lens 扫描") — copied from
+   *  SpawnOpts.phase. WorkflowDetailDialog groups agents by this. */
+  phase?: string
+  /** Optional model name used (e.g. "MiniMax-M3") — surfaced in the
+   *  dialog's per-agent line. */
+  model?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
   startedAt?: number
   completedAt?: number
