@@ -1,5 +1,6 @@
 // src/tools/WorkflowTool/WorkflowTool.ts
 import { readFileSync } from 'fs'
+import type React from 'react'
 import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
 import type { LocalWorkflowParentContext, LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
@@ -81,6 +82,16 @@ export const WorkflowTool = {
   },
   userFacingName(): string {
     return 'Run Workflow'
+  },
+
+  // Required by the Tool interface — without this, the runtime throws
+  // "renderToolUseMessage is not a function" when the LLM's tool_use
+  // block is rendered in the conversation tree. Returns a one-line
+  // description that fits alongside the workflow name in the chat UI.
+  // See src/tools/McpAuthTool/McpAuthTool.ts:72 for the same pattern.
+  renderToolUseMessage(input: { workflowName?: string }): React.ReactNode {
+    const name = input?.workflowName
+    return name ? `Run workflow: ${name}` : 'Run workflow'
   },
 
   mapToolResultToToolResultBlockParam(output, toolUseID) {
