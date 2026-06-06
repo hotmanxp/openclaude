@@ -92,7 +92,8 @@ export const meta = {
   ],
 }
 
-// 可选：覆盖默认 30 分钟超时（TUI 验证可能慢）
+// 可选：覆盖默认 30 分钟超时（TUI 验证可能慢）。
+// 默认 30 分钟已够；如下游 TUI 启动变慢，取消下一行注释提升到 60 分钟。
 // export const timeout = 60 * 60_000
 
 const RESULT_SCHEMA = {
