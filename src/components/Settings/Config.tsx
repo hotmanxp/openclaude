@@ -1001,6 +1001,23 @@ export function Config({
       }));
     }
   }] : []),
+  // Dynamic workflows (always shown — feature is fully enabled)
+  ...(true ? [{
+    id: 'disableWorkflows',
+    label: '禁用动态工作流',
+    description: '开启后 Claude 不能再使用 WorkflowTool 运行多 agent 脚本。',
+    value: settingsData?.disableWorkflows ?? false,
+    type: 'boolean' as const,
+    onChange(disableWorkflows: boolean) {
+      updateSettingsForSource('userSettings', {
+        disableWorkflows
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        disableWorkflows
+      }));
+    }
+  }] : []),
   // Remote at startup toggle — gated on build flag + GrowthBook + policy
   ...(feature('BRIDGE_MODE') && isBridgeEnabled() ? [{
     id: 'remoteControlAtStartup',
