@@ -25,6 +25,24 @@ export const meta = {
 // the bare local `meta` would otherwise be unreachable.)
 __setMeta(meta)
 
+// ============== Helpers ==============
+// Subagent reports come back as a raw JSON string from the LLM (the
+// `schema` field on `agent()` is documentation that we hand to the
+// model — it isn't enforced by the worker). Parse it defensively
+// so a single bad response doesn't crash the whole workflow.
+function safeParse(s) {
+  if (!s) return null
+  // Strip ```json ... ``` fences if the LLM wrapped the output.
+  const fenced = String(s).match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+  const raw = fenced ? fenced[1] : s
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    log(`safeParse: failed to parse report (${e.message}). First 120 chars: ${String(s).slice(0, 120)}`)
+    return null
+  }
+}
+
 // ============== Schemas (强约束 subagent 输出) ==============
 const FINDING_SCHEMA = {
   type: 'object',
@@ -258,7 +276,16 @@ const discovery = await parallel(LENSES.map(lens => () =>
   })
 ))
 
-const validCandidates = discovery.filter(Boolean).flatMap(r => r.candidates)
+// Each agent() result is { ok, report, ... } where report is a raw
+// JSON string. Parse each and extract the candidates array. Drop
+// results that fail to parse or are missing the candidates field —
+// the parallel() pattern means one bad finder can't take down the
+// whole discovery phase.
+const validCandidates = discovery
+  .filter(Boolean)
+  .map(r => safeParse(r.report))
+  .filter(parsed => parsed && Array.isArray(parsed.candidates))
+  .flatMap(parsed => parsed.candidates)
 log(`共回收 ${validCandidates.length} 条原始 candidate`)
 
 // ============== Phase 2: TRIAGE ==============
@@ -284,11 +311,20 @@ const triagePrompt = `
   输出严格按 schema。
 `
 
-const triage = await agent(triagePrompt, {
+const triageRes = await agent(triagePrompt, {
   label: 'judge: severity 排序',
   phase: 'Triage: 严重性排序',
   schema: TRIAGE_SCHEMA
 })
+const triage = safeParse(triageRes.report)
+if (!triage || !Array.isArray(triage.ranked)) {
+  log('Triage subagent returned invalid JSON; aborting with empty triage')
+  return {
+    bugs: [],
+    top3: [],
+    notes: `Triage subagent failed: ${triageRes.error || 'parse error'}. Discovery collected ${validCandidates.length} candidates but no ranked output.`,
+  }
+}
 
 log(`Top 10 已排序，前 3 准备 deep-dive`)
 
@@ -334,7 +370,10 @@ const deepDives = await parallel(top3.map(bug => () => {
   })
 }))
 
-const validDeepDives = deepDives.filter(Boolean)
+const validDeepDives = deepDives
+  .filter(Boolean)
+  .map(r => safeParse(r.report))
+  .filter(parsed => parsed && parsed.title)
 log(`完成 ${validDeepDives.length}/${top3.length} 个 deep-dive`)
 
 // ============== Phase 4: SYNTHESIS ==============
@@ -358,10 +397,16 @@ const synthPrompt = `
   输出严格按 schema。
 `
 
-const finalReport = await agent(synthPrompt, {
+const finalReportRes = await agent(synthPrompt, {
   label: 'synthesizer: final report',
   phase: 'Synthesis: 最终报告',
   schema: FINAL_SCHEMA
 })
+const finalReport = safeParse(finalReportRes.report) || {
+  bugs: triage.ranked,
+  top3: validDeepDives,
+  notes: `Synthesizer parse failed: ${finalReportRes.error || 'parse error'}. Returning raw triage + deep-dives.`,
+}
+log(`Synthesizer produced ${(finalReport.bugs || []).length} bugs + ${(finalReport.top3 || []).length} deep-dive summaries`)
 
 return finalReport
