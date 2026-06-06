@@ -45,7 +45,7 @@ export function WorkflowDetailDialog({ state }: Props) {
   const argsDisplay = state.args.length > 0 ? state.args.join(' ') : '(no args)'
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="ansi:cyan" paddingX={1}>
       <Box flexDirection="column">
         <Text>
           <Text bold>{state.name}</Text>{' '}
