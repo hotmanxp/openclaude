@@ -23,7 +23,6 @@ const FORBIDDEN_PATTERNS: { pattern: RegExp; name: string }[] = [
 ]
 
 export function buildWorkerScript(userScript: string): string {
-  // 1. Static audit — reject forbidden patterns
   for (const { pattern, name } of FORBIDDEN_PATTERNS) {
     if (pattern.test(userScript)) {
       throw new Error(
@@ -32,16 +31,17 @@ export function buildWorkerScript(userScript: string): string {
     }
   }
 
-  // 2. Strip the `export default` keyword if present
   const cleaned = userScript
     .replace(/export\s+default\s+async\s+function/g, 'async function')
     .replace(/export\s+default\s+function/g, 'function')
     .replace(/export\s+default\s+/g, '')
 
-  // 3. Build the wrapper as a string of JS
+  // parentPort must be captured before the require shadow takes effect.
+  // The module-level wrapper is trusted code (not user-supplied), so we
+  // omit 'use strict' here — it would forbid 'const eval' which we need
+  // to shadow. User code inside userScript() is still wrapped in strict.
   return `
-// === workflow runtime wrapper ===
-'use strict';
+const { parentPort } = require('node:worker_threads');
 
 const process = undefined;
 const require = undefined;
@@ -49,8 +49,6 @@ const globalThis = undefined;
 const Buffer = undefined;
 const eval = undefined;
 const Function = undefined;
-
-const { parentPort } = require('node:worker_threads');
 
 let cancelled = false;
 parentPort.on('message', (msg) => {
@@ -75,6 +73,7 @@ function spawnSubagent(prompt, opts) {
 }
 
 async function userScript(args) {
+  'use strict';
 ${cleaned
   .split('\n')
   .map(line => '  ' + line)
