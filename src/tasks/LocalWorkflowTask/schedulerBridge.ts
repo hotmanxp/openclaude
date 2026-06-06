@@ -1,9 +1,3 @@
-// @ts-nocheck — runAgent's deep signature (agentDefinition/promptMessages/toolUseContext/...)
-// is intentionally not wired here. The bridge forwards spawnSubagent through a Scheduler
-// (16 concurrent / 1000 total), then invokes the caller-supplied `spawnSubagent` fn
-// (or a default that calls runAgent). Wiring the full subagent context (toolUseContext,
-// canUseTool, availableTools, agentDefinition lookup) is Task 6's job — it has access
-// to the parent task's context that the bridge intentionally doesn't carry.
 import { Worker } from 'node:worker_threads'
 import { buildWorkerScript } from '../../tools/WorkflowTool/runtime/workerScript.js'
 import { Scheduler } from '../../tools/WorkflowTool/runtime/scheduler.js'
@@ -14,8 +8,6 @@ import type {
   WorkerInbound,
   WorkerOutbound,
 } from '../../tools/WorkflowTool/types.js'
-import { runAgent } from '../../tools/AgentTool/runAgent.js'
-import { getAgentModel } from '../../utils/model/agent.js'
 import { logError } from '../../utils/log.js'
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000 // 30 min
@@ -38,12 +30,18 @@ export type RunArgs = {
 
 /**
  * Run a workflow script in a Worker thread. Returns a Promise that resolves
- * to the userScript's final report string. The Worker → main protocol is
+ * to the userScript's final report string. The Worker ↔ main protocol is
  * defined in `src/tools/WorkflowTool/types.ts` (WorkerInbound / WorkerOutbound).
  *
  * The buildWorkerScript static audit throws synchronously for forbidden
  * tokens (require, process, eval, etc.) — that throw is surfaced as a
  * rejected Promise so callers can use `await ... .catch()` ergonomics.
+ *
+ * spawnSubagent routing: calls from the script flow through a Scheduler
+ * (16 concurrent / 1000 total per run). If no `spawnSubagent` is supplied
+ * and the script invokes it, the call rejects with a "not wired" error —
+ * wiring runAgent() requires toolUseContext / canUseTool / availableTools
+ * that only the parent task can provide (Task 6).
  */
 export function runWorkflowInWorker(args: RunArgs): Promise<string> {
   // buildWorkerScript throws synchronously on forbidden tokens; convert
@@ -68,21 +66,6 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
       ? [args.args]
       : []
 
-  // Default spawnSubagent: routes through the AgentTool's runAgent.
-  // Task 6 will likely override this with a context-aware implementation.
-  const defaultSpawn: SpawnSubagentFn = async (prompt, opts) => {
-    const result = await runAgent({
-      prompt,
-      agentType: 'general-purpose',
-      model: opts?.model ?? getAgentModel(),
-      tools: opts?.tools ?? [],
-      acceptEditsInherited: true,
-      signal: opts?.signal ?? externalSignal,
-    })
-    return { report: result.text ?? '' }
-  }
-  const spawnSubagent = args.spawnSubagent ?? defaultSpawn
-
   return new Promise<string>((resolve, reject) => {
     const worker = new Worker(wrapper, { eval: true, workerData: {} })
     let settled = false
@@ -97,14 +80,6 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
       }
     }
 
-    const cleanup = (err?: Error) => {
-      if (settled) return
-      settled = true
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      void worker.terminate().catch(() => {})
-      if (err) reject(err)
-    }
-
     // Bridge the external AbortSignal → cancel.
     const onExternalAbort = () => {
       cancel()
@@ -115,13 +90,35 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
       else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
     }
 
+    const cleanup = (err?: Error) => {
+      if (settled) return
+      settled = true
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      void worker.terminate().catch(() => {})
+      if (err) reject(err)
+    }
+
     worker.on('message', (msg: WorkerOutbound) => {
       if (msg.kind === 'spawnSubagent') {
+        if (!args.spawnSubagent) {
+          try {
+            worker.postMessage({
+              kind: 'spawnSubagentResult',
+              callId: msg.callId,
+              error:
+                'spawnSubagent() invoked but no spawnSubagent fn was supplied to runWorkflowInWorker. ' +
+                'Task 6 wires the real runAgent() call from the parent task context.',
+            } satisfies WorkerInbound)
+          } catch {
+            // Worker may have terminated; drop the result silently.
+          }
+          return
+        }
         // Run through the Scheduler (16 concurrent / 1000 total). Each call
         // increments the global total before queuing, so a flood of
         // spawnSubagent() calls from a runaway script gets capped.
         scheduler
-          .run(() => spawnSubagent(msg.prompt, msg.opts))
+          .run(() => args.spawnSubagent!(msg.prompt, msg.opts))
           .then(
             (r) => {
               try {
