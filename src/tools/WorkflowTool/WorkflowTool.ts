@@ -6,6 +6,13 @@ import type { LocalWorkflowParentContext, LocalSpawner } from '../../tasks/Local
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
 import { getWorkflowRegistry } from './singleton.js'
+import { listWorkflowRuns } from './workflowRunStore.js'
+
+/**
+ * List all workflow runs in this session. Newest-first.
+ * Exposed here so the /workflows slash command can call it.
+ */
+export const listRuns = listWorkflowRuns
 
 export const workflowInputSchema = z.object({
   workflowName: z
@@ -76,7 +83,19 @@ export const WorkflowTool = {
     return 'Run Workflow'
   },
 
-  async *call(
+  mapToolResultToToolResultBlockParam(output, toolUseID) {
+    const msg =
+      typeof output === 'object' && output !== null && 'message' in output
+        ? String((output as { message: string }).message)
+        : String(output ?? '')
+    return {
+      tool_use_id: toolUseID,
+      type: 'tool_result',
+      content: msg,
+    }
+  },
+
+  async call(
     { workflowName, args }: z.infer<typeof workflowInputSchema>,
     toolUseCtx?: { abortController?: AbortController; [k: string]: unknown },
     _canUseTool?: unknown,
@@ -85,11 +104,11 @@ export const WorkflowTool = {
       const registry = getWorkflowRegistry()
       const workflow = await registry.get(workflowName)
       if (!workflow) {
-        yield {
-          type: 'error',
-          message: `Unknown workflow: ${workflowName}. Run /workflows to see available.`,
+        return {
+          data: {
+            message: `Unknown workflow: ${workflowName}. Run /workflows to see available.`,
+          },
         }
-        return
       }
 
       // For bundled workflows, source is held in the bundled registry.
@@ -98,24 +117,24 @@ export const WorkflowTool = {
       if (workflow.source === 'bundled') {
         const src = getBundledSource(workflowName)
         if (!src) {
-          yield {
-            type: 'error',
-            message: `Bundled workflow has no source: ${workflowName}`,
+          return {
+            data: {
+              message: `Bundled workflow has no source: ${workflowName}`,
+            },
           }
-          return
         }
         script = src
       } else {
         try {
           script = readFileSync(workflow.path, 'utf-8')
         } catch (e) {
-          yield {
-            type: 'error',
-            message: `Cannot read workflow source at ${workflow.path}: ${
-              e instanceof Error ? e.message : String(e)
-            }`,
+          return {
+            data: {
+              message: `Cannot read workflow source at ${workflow.path}: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            },
           }
-          return
         }
       }
 
@@ -158,8 +177,17 @@ export const WorkflowTool = {
       })
       task.start(script).catch(e => logError(e))
 
-      yield {
-        type: 'result',
+      // Return Promise<ToolResult<Output>>. The Tool interface declares
+      // call() as `async (...args) => Promise<ToolResult>`, and the
+      // runtime at src/services/tools/toolExecution.ts:1294 does
+      // `await tool.call(...)` then reads `result.data`. An async-
+      // generator signature would have caused `await` to resolve to
+      // the AsyncGenerator object itself, leaving result.data
+      // undefined and the LLM receiving an empty tool_result block
+      // (the original "功能似乎不行" bug). The shape here matches
+      // mapToolResultToToolResultBlockParam above, which extracts
+      // .message from an object payload.
+      return {
         data: {
           taskId: task.id,
           workflowName,
@@ -168,9 +196,10 @@ export const WorkflowTool = {
         },
       }
     } catch (e) {
-      yield {
-        type: 'error',
-        message: e instanceof Error ? e.message : String(e),
+      return {
+        data: {
+          message: e instanceof Error ? e.message : String(e),
+        },
       }
     }
   },
