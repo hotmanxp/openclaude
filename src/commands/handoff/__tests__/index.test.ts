@@ -109,8 +109,8 @@ describe('handoff command', () => {
     expect(text).toContain('does not exist')
   })
 
-  test('generate mode (N=4) returns generate prompt with TaskList', async () => {
-    const ctx = makeContext(4, {
+  test('generate mode (N=11) returns generate prompt with TaskList', async () => {
+    const ctx = makeContext(11, {
       '1': {
         id: '1',
         type: 'local_bash',
@@ -122,14 +122,24 @@ describe('handoff command', () => {
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Generate a handoff document')
     expect(text).toContain('[pending] #1 local_bash do thing')
-    expect(text).toContain('messageCount: `4`')
+    expect(text).toContain('messageCount: `11`')
   })
 
-  test('generate mode (N=10) with empty task list', async () => {
-    const ctx = makeContext(10)
+  test('generate mode (N=15) with empty task list', async () => {
+    const ctx = makeContext(15)
     const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
+  })
+
+  test('pickup mode boundary (N=10) is still pickup', async () => {
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'a.md'), '# a')
+    const ctx = makeContext(10)
+    const blocks = await cmd.getPromptForCommand('', ctx)
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+    expect(text).toContain('# Task: Resume from a handoff document')
+    expect(text).toContain('a.md')
   })
 })

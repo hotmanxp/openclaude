@@ -59,7 +59,7 @@ const handoff: Command = {
     const today = new Date().toISOString().slice(0, 10)
     const pickArg = /--pick\s+(\S+)/.exec(args)?.[1]
 
-    if (N <= 3) {
+    if (N <= 10) {
       // ---- PICKUP ----
       const rootExists = !!(await fs.stat(root).catch(() => null))
       const all = rootExists ? await listHandoffs(root) : []
