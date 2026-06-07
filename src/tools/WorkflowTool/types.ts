@@ -60,6 +60,26 @@ export type SpawnOpts = {
    * agents" headings.
    */
   phase?: string
+  /**
+   * Optional live progress callback. Invoked by the real runAgent-backed
+   * spawner each time a streamed message or tool_use block is processed,
+   * so the caller can update its own state store for live UI rendering
+   * (e.g. ticking up the tokens counter while the agent is still
+   * running, instead of waiting for the final SpawnResult).
+   *
+   * The legacy no-op and stub spawners never call this callback, so
+   * callers that depend on it for UX should fall back to the final
+   * SpawnResult fields if no progress arrives.
+   *
+   * The spawner may fire onProgress many times per run (once per
+   * assistant message); callers should debounce expensive re-renders.
+   */
+  onProgress?: (progress: {
+    tokensUsed?: number
+    toolsUsed?: number
+    toolCalls?: ToolCallRecord[]
+    model?: string
+  }) => void
 }
 
 /** A single tool_use invocation captured during a subagent run. */

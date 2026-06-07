@@ -495,6 +495,140 @@ describe('buildRealSpawner', () => {
     const result = await spawner('anything', {})
     expect(result.model).toBeUndefined()
   })
+
+  // Live progress: opts.onProgress is invoked once per assistant
+  // message in the stream so callers (e.g. LocalWorkflowTask) can
+  // tick up tokensUsed / toolsUsed in their own state store while
+  // the agent is still running — the /workflows panel otherwise
+  // shows "unknown" / "—" for the entire duration of an in-flight
+  // agent (the data only lands in SpawnResult after the loop
+  // completes).
+  test('invokes onProgress once per assistant message with cumulative counters', async () => {
+    const progress: Array<{
+      tokensUsed?: number
+      toolsUsed?: number
+      toolCalls?: unknown[]
+      model?: string
+    }> = []
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'a ' },
+            { type: 'tool_use', name: 'Read', input: { file_path: '/x' } },
+          ],
+          usage: { input_tokens: 10, output_tokens: 5 },
+          model: 'MiniMax-M3',
+        },
+      }
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'b' },
+            { type: 'tool_use', name: 'Bash', input: { command: 'ls' } },
+          ],
+          usage: { input_tokens: 20, output_tokens: 7 },
+        },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('p', {
+      onProgress: p => progress.push(p),
+    })
+    // Two assistant messages → at least two progress events (the
+    // post-loop final event is a bonus; the contract here is "at
+    // least once per assistant message").
+    expect(progress.length).toBeGreaterThanOrEqual(2)
+    // First progress event after the first assistant message
+    expect(progress[0]!.tokensUsed).toBe(15) // 10+5
+    expect(progress[0]!.toolsUsed).toBe(1)
+    expect(progress[0]!.toolCalls).toHaveLength(1)
+    expect(progress[0]!.model).toBe('MiniMax-M3')
+    // Second progress event after the second assistant message
+    expect(progress[1]!.tokensUsed).toBe(42) // 15+20+7
+    expect(progress[1]!.toolsUsed).toBe(2)
+    expect(progress[1]!.toolCalls).toHaveLength(2)
+  })
+
+  // After the post-loop usage re-read (which captures the SDK's
+  // mutate-after-yield pattern on the last assistant message),
+  // onProgress is called ONE MORE TIME with the corrected final
+  // token count. This lets the UI converge to the authoritative
+  // value rather than the in-loop estimate.
+  test('invokes onProgress after post-loop usage re-read with corrected tokensUsed', async () => {
+    const progress: Array<{ tokensUsed?: number }> = []
+    // Simulate SDK's mutate-after-yield pattern
+    const first = {
+      type: 'assistant' as const,
+      message: { content: [{ type: 'text', text: 'a' }] },
+    }
+    const second = {
+      type: 'assistant' as const,
+      message: { content: [{ type: 'text', text: 'b' }] },
+    }
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield first
+      yield second
+      // Mutate AFTER yield (the SDK pattern)
+      ;(first.message as typeof first.message & { usage?: { input_tokens: number; output_tokens: number } }).usage = { input_tokens: 10, output_tokens: 5 }
+      ;(second.message as typeof second.message & { usage?: { input_tokens: number; output_tokens: number } }).usage = { input_tokens: 999, output_tokens: 999 }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('p', { onProgress: p => progress.push(p) })
+    // The last progress event must reflect the post-loop correction
+    // (999+999=1998, not the in-loop estimate of 15).
+    const last = progress[progress.length - 1]!
+    expect(last.tokensUsed).toBe(1998)
+  })
+
+  // onProgress is optional — callers that don't pass it (legacy
+  // no-op, ad-hoc LocalSpawner implementations) must not crash.
+  test('does not throw when onProgress is omitted', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    // No onProgress at all
+    const result = await spawner('p', {})
+    expect(result.report).toBe('ok')
+  })
+
+  // When the stream has no assistant messages, onProgress should
+  // never be called (no data to report).
+  test('does not invoke onProgress when no assistant messages were streamed', async () => {
+    let calls = 0
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield { type: 'progress', content: 'thinking' }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('p', { onProgress: () => calls++ })
+    expect(calls).toBe(0)
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor
