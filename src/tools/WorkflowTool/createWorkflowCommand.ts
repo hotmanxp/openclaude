@@ -38,7 +38,24 @@ function workflowToCommand(workflow: Workflow): Command {
             `Use the WorkflowTool with input: ` +
             `workflowName: "${name}", args: ${argListJson}. ` +
             `Pass any descriptive summary of the user's intent as the ` +
-            `description field.`,
+            `description field. ` +
+            `\n\n` +
+            `The WorkflowTool result message includes the Run ID in ` +
+            `the form \`(Run ID: wf_xxx)\`. The user's mental model ` +
+            `depends on this — they correlate later results to the ` +
+            `launch via Run ID. So in your reply, paste the Run ID ` +
+            `verbatim (do NOT paraphrase it as "wf_xxx" or "the run" — ` +
+            `the exact token). Also surface the current Claude Task ` +
+            `ID, and a one-line summary of the workflow's stages ` +
+            `(read the workflow's description). Use your own voice; ` +
+            `do not pad with greetings or follow-up questions. ` +
+            `\n\n` +
+            `When the run finishes, a system task-notification will ` +
+            `arrive carrying the result. Treat that notification as ` +
+            `a user message and produce a user-facing summary in ` +
+            `response. The notification is the user's only signal ` +
+            `that the workflow ended — without your summary they ` +
+            `won't know the outcome.`,
         },
       ]
     },

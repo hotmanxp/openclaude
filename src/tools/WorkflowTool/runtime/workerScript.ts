@@ -37,6 +37,20 @@ export function buildWorkerScript(userScript: string): string {
     .replace(/export\s+default\s+/g, '')
     .replace(/export\s+const\s+/g, 'const ')
     .replace(/export\s+(let|var)\s+/g, '$1 ')
+    // The user script uses the `export const meta = {...}` ES-module
+    // pattern (per the project's documented style). After stripping
+    // `export`, the `meta` binding ends up as a function-local
+    // variable inside the wrapped `userScript()` — invisible to
+    // the parent process. To keep the `__setMeta(meta)` channel
+    // working, we hoist a capture call to the top of the function
+    // body so the parent's WorkflowDetailDialog can render the
+    // declared phases. (The `meta` reference is TDZ-safe because
+    // we inject the capture call AFTER the variable's declaration
+    // line — see `reorderMetaCapture` below.)
+    .replace(
+      /^(const\s+meta\s*=\s*[\s\S]*?;\s*)$/m,
+      '$1\n  if (typeof __setMeta === "function") __setMeta(meta);',
+    )
 
   // parentPort must be captured before the require shadow takes effect.
   // The module-level wrapper is trusted code (not user-supplied), so we

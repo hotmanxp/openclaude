@@ -247,11 +247,9 @@ export const WorkflowTool = {
         spawner,
         abortController: toolUseCtx?.abortController ?? new AbortController(),
         // Pass the app-state setter so LocalWorkflowTask can
-        // (a) trigger re-renders of the /workflows dialog on
-        // live subagent progress and (b) push a system message
-        // into the chat when the run reaches a terminal state.
-        // Both are best-effort and degrade to a no-op if the
-        // caller didn't wire a setAppState (e.g. tests).
+        // trigger re-renders of the /workflows dialog on live
+        // subagent progress. Best-effort and degrades to a no-op
+        // if the caller didn't wire a setAppState (e.g. tests).
         setAppState: (toolUseCtx as unknown as {
           setAppState?: (updater: (prev: unknown) => unknown) => void
         })?.setAppState,
@@ -314,12 +312,26 @@ export const WorkflowTool = {
       // (the original "功能似乎不行" bug). The shape here matches
       // mapToolResultToToolResultBlockParam above, which extracts
       // .message from an object payload.
+      //
+      // CRITICAL: `taskId` is the Run ID the user/WorkflowTool
+      // exchange depends on. `mapToolResultToToolResultBlockParam`
+      // (line 119-130) only forwards `output.message` to the LLM,
+      // so we must inline the taskId into the message — otherwise
+      // the LLM's tool result wouldn't carry the Run ID and the
+      // user's LLM would have no way to surface it. (The LLM saw
+      // "Run ID wasn't returned in the start result" before this
+      // fix because the `data` object was silently dropped.)
+      const runId = task.id
+      const message =
+        `Workflow ${workflowName} started (Run ID: ${runId}). ` +
+        `Run /workflows to see progress; completion will arrive as ` +
+        `a system task-notification.`
       return {
         data: {
-          taskId: task.id,
+          taskId: runId,
           workflowName,
           status: 'running',
-          message: `Workflow ${workflowName} started. Run /workflows to see progress.`,
+          message,
         },
       }
     } catch (e) {
