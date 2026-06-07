@@ -234,6 +234,96 @@ describe('buildRealSpawner', () => {
     await spawner('anything', {})
     expect(captured.availableTools).toEqual([])
   })
+
+  // The real spawner accumulates token / tool counts across the
+  // runAgent stream so the /workflows panel can render real numbers
+  // instead of "—". tokensUsed sums input_tokens + output_tokens
+  // from each assistant message's `usage` field (cache tokens
+  // excluded — see comments in realSpawner.ts). toolsUsed counts
+  // tool_use blocks.
+  test('accumulates tokensUsed across assistant messages', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'first' }],
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }
+      yield {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: ' second' }],
+          usage: { input_tokens: 200, output_tokens: 75 },
+        },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.report).toBe('first second')
+    // 100+50 + 200+75 = 425
+    expect(result.tokensUsed).toBe(425)
+  })
+
+  test('counts tool_use blocks as toolsUsed', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'thinking' },
+            { type: 'tool_use', id: 't1', name: 'Read' },
+            { type: 'tool_use', id: 't2', name: 'Bash' },
+          ],
+        },
+      }
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: ' more' },
+            { type: 'tool_use', id: 't3', name: 'Edit' },
+          ],
+        },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.report).toBe('thinking more')
+    expect(result.toolsUsed).toBe(3)
+  })
+
+  test('returns 0 tokensUsed/toolsUsed when stream has no usage info', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'no usage' }] },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    // Counters stay at 0 (not undefined) so the UI can render
+    // "0 tok · 0 tools" rather than "—". This is a deliberate
+    // divergence from the SpawnResult's optional fields: a real
+    // runAgent call always produces these counters, even if zero.
+    expect(result.tokensUsed).toBe(0)
+    expect(result.toolsUsed).toBe(0)
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor

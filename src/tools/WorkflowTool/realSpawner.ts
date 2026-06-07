@@ -105,6 +105,16 @@ export async function buildRealSpawner(
       }
     }
     let report = ''
+    // Token / tool usage accumulated across the streamed run.
+    // - tokensUsed: sum of input_tokens + output_tokens from each
+    //   assistant message's `usage` field (Anthropic SDK shape).
+    //   Cache tokens (cache_creation_input_tokens, cache_read_input_tokens)
+    //   are intentionally excluded — they're free for the user and would
+    //   distort the "X tok" display in the panel.
+    // - toolsUsed: count of `tool_use` blocks across all assistant
+    //   messages (each block = one tool invocation the agent made).
+    let tokensUsed = 0
+    let toolsUsed = 0
     try {
       for await (const msg of runAgent({
         agentDefinition: agentDef,
@@ -127,18 +137,36 @@ export async function buildRealSpawner(
         availableTools:
           (toolUseCtx.options as { tools?: unknown[] } | undefined)?.tools ?? [],
       })) {
-        // Collect the final assistant text from streamed messages.
-        // The message shape is `{ type, message: { content: [{ type, text }] } }`
+        // Collect the final assistant text + usage stats from
+        // streamed messages. The Anthropic SDK message shape is
+        // `{ type, message: { content: [{ type, text, ... }], usage } }`
         // for assistant messages.
         const m = msg as {
           type?: string
-          message?: { content?: Array<{ type?: string; text?: string }> }
-        }
-        if (m.type === 'assistant' && Array.isArray(m.message?.content)) {
-          for (const block of m.message.content) {
-            if (block.type === 'text' && typeof block.text === 'string') {
-              report += block.text
+          message?: {
+            content?: Array<{ type?: string; text?: string }>
+            usage?: {
+              input_tokens?: number
+              output_tokens?: number
             }
+          }
+        }
+        if (m.type === 'assistant') {
+          const content = m.message?.content
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === 'text' && typeof block.text === 'string') {
+                report += block.text
+              } else if (block.type === 'tool_use') {
+                toolsUsed++
+              }
+            }
+          }
+          const usage = m.message?.usage
+          if (usage) {
+            const inT = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0
+            const outT = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0
+            tokensUsed += inT + outT
           }
         }
       }
@@ -150,7 +178,12 @@ export async function buildRealSpawner(
         }`,
       }
     }
-    return { agentId, report: report || '(empty response from subagent)' }
+    return {
+      agentId,
+      report: report || '(empty response from subagent)',
+      tokensUsed,
+      toolsUsed,
+    }
   }
 }
 

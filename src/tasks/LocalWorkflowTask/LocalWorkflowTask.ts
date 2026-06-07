@@ -191,6 +191,11 @@ export class LocalWorkflowTask implements Task {
         agent.status = 'completed'
         agent.completedAt = Date.now()
         agent.result = result.report
+        // Propagate usage stats from the real runAgent-backed spawner.
+        // The legacy no-op and other ad-hoc LocalSpawner implementations
+        // don't provide these; the UI renders "—" when undefined.
+        if (result.tokensUsed !== undefined) agent.tokensUsed = result.tokensUsed
+        if (result.toolsUsed !== undefined) agent.toolsUsed = result.toolsUsed
         return result
       } catch (err) {
         agent.status = 'failed'
