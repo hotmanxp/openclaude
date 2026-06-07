@@ -107,6 +107,16 @@ export type SpawnResult = {
    * with a "+N more" indicator.
    */
   toolCalls?: ToolCallRecord[]
+  /**
+   * Model the subagent actually used (e.g. "MiniMax-M3",
+   * "claude-3-5-sonnet-..."). The real runAgent-backed spawner
+   * captures this from the assistant message's `model` field, so
+   * the workflow script doesn't have to pass it explicitly. The
+   * /workflows panel surfaces it in the per-agent row and detail
+   * pane. Leave undefined for callers that don't track model
+   * (the legacy no-op).
+   */
+  model?: string
 }
 
 /** Function injected into the Worker as `spawnSubagent` global. */
