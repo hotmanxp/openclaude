@@ -27,12 +27,27 @@ describe('renderPickupPrompt', () => {
       errorNote: 'Directory `/p/.agent_working_dir/handoff` is empty',
       cwd: '/p',
       root: '/p/.agent_working_dir/handoff',
-      availableFiles: [],
+      availableFiles: ['old-2026-06-06.md', 'new-2026-06-07.md'],
     })
     expect(text).toContain('Warning')
     expect(text).toContain('Directory `/p/.agent_working_dir/handoff` is empty')
     expect(text).toContain('AskUserQuestion')
+    expect(text).toContain('`old-2026-06-06.md`')
+    expect(text).toContain('`new-2026-06-07.md`')
     expect(text).not.toContain('Pre-read handoff')
+  })
+
+  test('error block uses the current slash command name (regression for /handon rename)', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: null,
+      pickContent: null,
+      errorNote: 'Directory `/p` is empty',
+      cwd: '/p',
+      root: '/p',
+      availableFiles: [],
+    })
+    expect(text).toContain('/handoff')
+    expect(text).not.toContain('/handon')
   })
 
   test('renders specific --pick error when file is missing', async () => {

@@ -19,8 +19,12 @@ ${errorNote}
 
 **Do not** give up. Use **AskUserQuestion** to ask the user:
 - the actual handoff file path (could be from another project, copied elsewhere, or hand-written)
-- or instruct the user to run /handon in another session to generate one
-`
+- or instruct the user to run /handoff in another session to generate one
+${
+        input.availableFiles.length
+          ? `\nExisting handoff files in the default directory (in case the user meant one of these):\n${input.availableFiles.map(f => `- \`${f}\``).join('\n')}\n`
+          : ''
+      }`
     : ''
 
   const preReadBlock = pickPath

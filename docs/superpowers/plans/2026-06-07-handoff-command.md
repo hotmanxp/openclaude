@@ -14,13 +14,13 @@
 
 | File | Responsibility |
 |---|---|
-| `src/commands/handoff/handoff.ts` | Command implementation; reads app state, dispatches to renderers |
+| `src/commands/handoff/index.ts` | Command implementation; reads app state, dispatches to renderers |
 | `src/commands/handoff/handoff.ts` | Pure file utilities: `listHandoffs`, `getLatestHandoff`, `buildHandoffPath` |
 | `src/commands/handoff/prompts/generate.ts` | Returns the generate-mode prompt text (English) |
 | `src/commands/handoff/prompts/pickup.ts` | Returns the pickup-mode prompt text (English) |
-| `src/commands/handoff/__tests__/handoff.test.ts` | Unit tests for utility functions |
-| `src/commands/handoff/__tests__/handoff.test.ts` | Tests for `getPromptForCommand` mode dispatch |
-| `src/commands.ts` | (modified) Add `import handoff` and inject into `COMMANDS` array |
+| `src/commands/handoff/__tests__/handoff.test.ts` | Unit tests for utility functions (`handoff.ts`) |
+| `src/commands/handoff/__tests__/index.test.ts` | Tests for `getPromptForCommand` mode dispatch (`index.ts`) |
+| `src/commands.ts` | (modified) Add `import handoff from './commands/handoff/index.js'` and inject into `COMMANDS` array |
 
 ---
 
@@ -619,7 +619,9 @@ const handoff: Command = {
   ): Promise<ContentBlockParam[]> {
     const cwd = getOriginalCwd()
     const appState = context.getAppState()
-    const messages = appState.messages ?? []
+    // NOTE: messages live on ToolUseContext, NOT on the public AppState type.
+    // Use context.messages?.length, not context.getAppState().messages
+    const messages = context.messages ?? []
     const N = messages.length
     const root = handoffRoot(cwd)
     const today = new Date().toISOString().slice(0, 10)

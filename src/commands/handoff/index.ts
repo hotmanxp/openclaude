@@ -9,7 +9,7 @@ import {
   type TaskListEntry,
 } from './prompts/generate.js'
 import { renderPickupPrompt } from './prompts/pickup.js'
-import { listHandoffs } from './handoff.js'
+import { listHandoffs, getLatestHandoff } from './handoff.js'
 
 const HANDON_DIR_PARTS = ['.agent_working_dir', 'handoff']
 function handoffRoot(cwd: string): string {
@@ -65,8 +65,10 @@ const handoff: Command = {
           errorNote = `Specified file \`${path.basename(candidate)}\` does not exist`
         }
       } else if (all.length > 0) {
-        pickPath = all[0]!
-        pickContent = await fs.readFile(pickPath, 'utf8').catch(() => null)
+        pickPath = await getLatestHandoff(root)
+        pickContent = pickPath
+          ? await fs.readFile(pickPath, 'utf8').catch(() => null)
+          : null
       } else {
         errorNote = rootExists
           ? `Directory \`${root}\` is empty, no handoff document to resume`

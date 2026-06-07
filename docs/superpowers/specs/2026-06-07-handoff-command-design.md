@@ -39,7 +39,7 @@
 │  getPromptForCommand(args, context)                       │
 │  1. const cwd = getOriginalCwd()                          │
 │  2. const appState = context.getAppState()                │
-│  3. const N = appState.messages.length                    │
+│  3. const N = context.messages.length   (NOT appState!)  │
 │  4. const root = path.join(cwd, '.agent_working_dir',     │
 │                              'handoff')                    │
 │  5. if (N <= 3) → renderPickupPrompt(...)                 │
@@ -115,7 +115,9 @@ const handoff: Command = {
   async getPromptForCommand(args, context): Promise<ContentBlockParam[]> {
     const cwd = getOriginalCwd()
     const appState = context.getAppState()
-    const N = appState.messages.length
+    // NOTE: messages live on ToolUseContext, NOT on the public AppState type.
+    // Use context.messages?.length, not context.getAppState().messages
+    const N = context.messages.length
     const root = handoffRoot(cwd)
     const today = new Date().toISOString().slice(0, 10)
     const pickArg = /--pick\s+(\S+)/.exec(args)?.[1]
