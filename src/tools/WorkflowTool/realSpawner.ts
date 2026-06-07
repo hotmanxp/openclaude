@@ -117,9 +117,25 @@ export async function buildRealSpawner(
     // - toolCalls: ordered list of (name, inputSummary) for the
     //   most recent tool_use blocks. Capped at TOOL_CALL_HISTORY_CAP
     //   entries so a long-running agent doesn't blow up memory.
+    // - model: the actual model the API call used (from the
+    //   assistant message's `m.message.model` field). Surfaced in
+    //   the /workflows panel so the user can see which model each
+    //   subagent used even when the workflow script didn't pass
+    //   `model` explicitly in opts.
+    //
+    // CRITICAL timing note: the Anthropic SDK sets `usage` via a
+    // direct property MUTATION on the last yielded message, in the
+    // `message_delta` event handler (claude.ts:2259). That handler
+    // runs AFTER the message has been yielded to us. So if we read
+    // `usage` during the for-await loop, we always see undefined.
+    // The fix: keep a reference to the last assistant message and
+    // re-read its `usage` field AFTER the loop completes, by which
+    // point the delta has fired and mutated the field in place.
     let tokensUsed = 0
     let toolsUsed = 0
     const toolCalls: ToolCallRecord[] = []
+    let lastAssistantMessage: unknown = null
+    let model: string | undefined
     try {
       for await (const msg of runAgent({
         agentDefinition: agentDef,
@@ -144,8 +160,10 @@ export async function buildRealSpawner(
       })) {
         // Collect the final assistant text + usage stats from
         // streamed messages. The Anthropic SDK message shape is
-        // `{ type, message: { content: [{ type, text, ... }], usage } }`
-        // for assistant messages.
+        // `{ type, message: { content: [{ type, text, ... }], usage,
+        // model } }` for assistant messages. `usage` may be unset on
+        // this message (see CRITICAL timing note above) — we'll
+        // re-read it after the loop.
         const m = msg as {
           type?: string
           message?: {
@@ -159,9 +177,16 @@ export async function buildRealSpawner(
               input_tokens?: number
               output_tokens?: number
             }
+            model?: string
           }
         }
         if (m.type === 'assistant') {
+          lastAssistantMessage = m
+          // Capture the model as soon as we see it (any assistant
+          // message's model field is the model for the whole run).
+          if (typeof m.message?.model === 'string' && !model) {
+            model = m.message.model
+          }
           const content = m.message?.content
           if (Array.isArray(content)) {
             for (const block of content) {
@@ -179,12 +204,32 @@ export async function buildRealSpawner(
               }
             }
           }
+          // Best-effort usage read here too: if the SDK happened
+          // to set usage on an earlier assistant message (not just
+          // the last), the loop catches it. The post-loop read below
+          // handles the last-message case.
           const usage = m.message?.usage
           if (usage) {
             const inT = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0
             const outT = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0
             tokensUsed += inT + outT
           }
+        }
+      }
+      // Post-loop: re-read the last assistant message's usage field
+      // now that the SDK has fired message_delta and mutated it
+      // in place. Overwrite the in-loop accumulation with the
+      // final (cumulative) value, since the last message's usage
+      // is the authoritative count for the whole run.
+      if (lastAssistantMessage) {
+        const lastUsage = (lastAssistantMessage as {
+          message?: { usage?: { input_tokens?: number; output_tokens?: number } }
+        }).message?.usage
+        if (lastUsage) {
+          const inT = typeof lastUsage.input_tokens === 'number' ? lastUsage.input_tokens : 0
+          const outT = typeof lastUsage.output_tokens === 'number' ? lastUsage.output_tokens : 0
+          const finalTotal = inT + outT
+          if (finalTotal > tokensUsed) tokensUsed = finalTotal
         }
       }
     } catch (e) {
@@ -201,6 +246,7 @@ export async function buildRealSpawner(
       tokensUsed,
       toolsUsed,
       toolCalls,
+      model,
     }
   }
 }

@@ -197,6 +197,13 @@ export class LocalWorkflowTask implements Task {
         if (result.tokensUsed !== undefined) agent.tokensUsed = result.tokensUsed
         if (result.toolsUsed !== undefined) agent.toolsUsed = result.toolsUsed
         if (result.toolCalls !== undefined) agent.toolCalls = result.toolCalls
+        // Auto-inject the model the subagent actually used (captured
+        // by the real runAgent-backed spawner from the streamed
+        // assistant message). Overrides opts.model if both are set;
+        // the spawned model is more accurate than the script-declared
+        // one because the API may have routed to a different model
+        // (e.g. via agentRouting).
+        if (result.model !== undefined) agent.model = result.model
         return result
       } catch (err) {
         agent.status = 'failed'

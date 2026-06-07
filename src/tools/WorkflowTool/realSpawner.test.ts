@@ -410,6 +410,91 @@ describe('buildRealSpawner', () => {
     // because the tool name isn't in the known switch.
     expect(result.toolCalls![0]!.inputSummary).toBe('foo bar')
   })
+
+  // Regression: the Anthropic SDK mutates `m.message.usage` on the
+  // LAST yielded message in the `message_delta` event handler
+  // (claude.ts:2259). The mutation runs AFTER the message has
+  // been yielded. If the spawner reads `usage` during the for-await
+  // loop, it always sees undefined and the /workflows panel shows
+  // "0 tok" for completed agents (e.g. opencc-bug-hunt F3: 18 tools
+  // but 0 tokens). The fix: keep a ref to the last assistant
+  // message and re-read its usage field AFTER the loop completes.
+  test('captures tokensUsed from the last assistant message after the stream ends', async () => {
+    // Simulate the SDK's mutate-after-yield pattern: we yield
+    // messages first, then mutate their usage fields in the order
+    // the SDK would (assistant message_delta fires AFTER the
+    // message has been yielded to consumers).
+    const first: {
+      type: 'assistant'
+      message: {
+        content: Array<{ type: string; text: string }>
+        usage?: { input_tokens?: number; output_tokens?: number }
+      }
+    } = {
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'hello ' }] },
+    }
+    const second: typeof first = {
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'world' }] },
+    }
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield first
+      yield second
+      // Now mutate (as the SDK would have done during message_delta).
+      first.message.usage = { input_tokens: 50, output_tokens: 10 }
+      second.message.usage = { input_tokens: 200, output_tokens: 75 }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.report).toBe('hello world')
+    // The post-loop read picks up the LAST message's usage
+    // (200+75=275). The in-loop reads picked up the first
+    // message's usage (50+10=60) earlier, but the guard
+    // `if (finalTotal > tokensUsed)` keeps the higher value.
+    expect(result.tokensUsed).toBe(275)
+  })
+
+  // Captures the model from the streamed assistant message. The
+  // /workflows panel shows the model in the per-agent row; without
+  // this the user only ever sees "unknown" for scripts that don't
+  // pass `model` explicitly in agent() opts (opencc-bug-hunt.js
+  // is one such script).
+  test('captures model from the streamed assistant message', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'hi' }], model: 'MiniMax-M3' },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.model).toBe('MiniMax-M3')
+  })
+
+  test('leaves model undefined when no assistant message has one', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield { type: 'progress', content: 'thinking' }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.model).toBeUndefined()
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor
