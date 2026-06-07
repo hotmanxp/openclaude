@@ -63,4 +63,19 @@ describe('renderGeneratePrompt', () => {
     expect(text).toContain('review the conversation')
     expect(text).toContain('Skip this section entirely')
   })
+
+  test('final user-facing message section requires path confirmation', async () => {
+    const text = await renderGeneratePrompt({
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      today: '2026-06-07',
+      messageCount: 4,
+      taskList: [],
+    })
+    expect(text).toContain('## Final user-facing message (REQUIRED)')
+    expect(text).toContain('✅ Handoff document written:')
+    expect(text).toContain('<relative-path>')
+    // Strong language: must not be skipped
+    expect(text).toMatch(/Do\s+\*\*not\*\*\s+skip this step/)
+  })
 })

@@ -68,7 +68,20 @@ ${taskListBlock}
 - Use paths **relative to cwd**
 - Task slug must be semantic (e.g. \`add-handoff-command\`, NOT \`task-12345\`)
 - After writing, run \`ls -la \`<dir>\`\` to confirm the file exists on disk
-- Finish with a single line to the user: "✅ Handoff document written: \`<path>\`"
+
+## Final user-facing message (REQUIRED)
+
+Your last action before stopping MUST be a single line addressed to the user, in **plain text** (not a tool call). This is the only way the user learns the handoff succeeded and where to find it.
+
+Required format:
+
+\`\`\`
+✅ Handoff document written: \`<relative-path>\`
+\`\`\`
+
+- \`<relative-path>\` is the path of the file you wrote, relative to cwd (e.g. \`.agent_working_dir/handoff/add-foo-2026-06-07.md\`)
+- Do **not** wrap this in a code block, list, or extra prose
+- Do **not** skip this step — without it the user has no confirmation
 
 Start now.
 `
