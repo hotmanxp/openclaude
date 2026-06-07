@@ -136,6 +136,22 @@ export async function buildRealSpawner(
     const toolCalls: ToolCallRecord[] = []
     let lastAssistantMessage: unknown = null
     let model: string | undefined
+    // Fire onProgress with a snapshot of the current stats. Captured
+    // here so the in-loop emission and the post-loop correction both
+    // share the same payload shape.
+    const fireProgress = () => {
+      if (opts?.onProgress) {
+        // Snapshot toolCalls so a slow listener can't see the
+        // array mutate underneath them mid-iteration.
+        const toolCallsSnapshot = toolCalls.slice()
+        opts.onProgress({
+          tokensUsed,
+          toolsUsed,
+          toolCalls: toolCallsSnapshot,
+          model,
+        })
+      }
+    }
     try {
       for await (const msg of runAgent({
         agentDefinition: agentDef,
@@ -214,6 +230,11 @@ export async function buildRealSpawner(
             const outT = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0
             tokensUsed += inT + outT
           }
+          // Live progress: fire after every assistant message so
+          // callers (LocalWorkflowTask → dialog) can tick the UI
+          // up as the agent runs, instead of waiting for the final
+          // SpawnResult.
+          fireProgress()
         }
       }
       // Post-loop: re-read the last assistant message's usage field
@@ -231,6 +252,11 @@ export async function buildRealSpawner(
           const finalTotal = inT + outT
           if (finalTotal > tokensUsed) tokensUsed = finalTotal
         }
+        // Final onProgress with the corrected token count so the
+        // UI converges to the authoritative value rather than the
+        // in-loop estimate (which undercounts when the SDK mutates
+        // usage after yielding).
+        fireProgress()
       }
     } catch (e) {
       return {

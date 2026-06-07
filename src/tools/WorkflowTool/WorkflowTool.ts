@@ -246,6 +246,15 @@ export const WorkflowTool = {
       task.setParentContext({
         spawner,
         abortController: toolUseCtx?.abortController ?? new AbortController(),
+        // Pass the app-state setter so LocalWorkflowTask can
+        // (a) trigger re-renders of the /workflows dialog on
+        // live subagent progress and (b) push a system message
+        // into the chat when the run reaches a terminal state.
+        // Both are best-effort and degrade to a no-op if the
+        // caller didn't wire a setAppState (e.g. tests).
+        setAppState: (toolUseCtx as unknown as {
+          setAppState?: (updater: (prev: unknown) => unknown) => void
+        })?.setAppState,
       })
 
       // Start the task. The task wraps its own start() promise — we

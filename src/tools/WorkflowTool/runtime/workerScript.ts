@@ -185,7 +185,20 @@ parentPort.on('message', async (msg) => {
       parentPort.postMessage({ kind: 'error', message: 'Cancelled' });
       return;
     }
-    parentPort.postMessage({ kind: 'report', value: String(result ?? '') });
+    parentPort.postMessage({
+      kind: 'report',
+      // Serialize objects as JSON so structured reports (e.g. the
+      // opencc-bug-hunt final report: { bugs, top3, notes }) survive
+      // the Worker boundary intact. Strings pass through as-is (no
+      // extra quotes) so script authors can return either a string
+      // or a JSON-serializable object.
+      value:
+        typeof result === 'string'
+          ? result
+          : result === undefined || result === null
+            ? ''
+            : JSON.stringify(result, null, 2),
+    });
   } catch (err) {
     parentPort.postMessage({
       kind: 'error',
