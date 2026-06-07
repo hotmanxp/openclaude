@@ -1,52 +1,81 @@
+export interface HandoffEntry {
+  basename: string
+  fullPath: string
+  mtime: string // human-readable, e.g. "2026-06-07 14:30"
+}
+
 export interface PickupPromptInput {
-  pickPath: string | null
+  pickPath: string | null // user explicitly provided --pick (skip listing)
   pickContent: string | null
   errorNote: string | null
   cwd: string
   root: string
-  availableFiles: string[]
+  recent: HandoffEntry[] // newest first, up to 5 entries
+  userOptionCount: number // how many of the recent to surface as AskUserQuestion options
 }
 
 export async function renderPickupPrompt(
   input: PickupPromptInput,
 ): Promise<string> {
-  const { pickPath, pickContent, errorNote, cwd } = input
+  const { pickPath, pickContent, errorNote, cwd, recent } = input
 
-  const warningBlock = errorNote
-    ? `## ⚠️ Warning
+  // 1. Listing block — give LLM up to 5 most recent with basename + date + preview
+  const listingBlock = recent.length
+    ? `## Recent handoff documents (newest first)
 
-${errorNote}
+Found ${recent.length} handoff file(s) in \`${input.root}\`:
 
-**Do not** give up. Use **AskUserQuestion** to ask the user:
-- the actual handoff file path (could be from another project, copied elsewhere, or hand-written)
-- or instruct the user to run /handoff in another session to generate one
-${
-        input.availableFiles.length
-          ? `\nExisting handoff files in the default directory (in case the user meant one of these):\n${input.availableFiles.map(f => `- \`${f}\``).join('\n')}\n`
+${recent
+  .map(
+    (h, i) =>
+      `${i + 1}. **${h.basename}** — _${h.mtime}_\n   → full path: \`${h.fullPath}\``,
+  )
+  .join('\n\n')}
+
+Use **AskUserQuestion** to ask the user which handoff to resume. Surface the **top ${input.userOptionCount}** as question options (label = basename).${
+        recent.length > input.userOptionCount
+          ? ` The other ${recent.length - input.userOptionCount} entr${recent.length - input.userOptionCount === 1 ? 'y is' : 'ies are'} provided as context but should NOT be shown as options.`
           : ''
-      }`
-    : ''
+      } After they choose, use the **Read** tool on the chosen file's full path to load it in full.
+`
+    : `## No handoff documents found
 
-  const preReadBlock = pickPath
-    ? `## Pre-read handoff
+Directory \`${input.root}\` is empty (or does not exist).
+`
+
+  // 2. Explicit --pick block — user told us which file, no need to ask
+  const explicitPickBlock =
+    pickPath && !errorNote
+      ? `## User explicitly selected
 
 Path: \`${pickPath}\`
+
+Read it with the **Read** tool to begin resuming.
 
 \`\`\`markdown
 ${pickContent ?? '(failed to read)'}
 \`\`\`
 `
+      : ''
+
+  // 3. Error/warning block — prepended if --pick failed or no handoffs
+  const warningBlock = errorNote
+    ? `## ⚠️ Warning
+
+${errorNote}
+
+Use **AskUserQuestion** to ask the user for the actual handoff file path (could be from another project, copied elsewhere, or hand-written), or instruct them to run /handoff in another session to generate one.
+`
     : ''
 
   return `# Task: Resume from a handoff document
 
-${warningBlock}${preReadBlock}## Resume flow
+${warningBlock}${listingBlock}${explicitPickBlock}## After loading the handoff (via Read tool)
 
-1. **${errorNote ? 'Once you have the correct path,' : ''} Read the handoff document in full with the Read tool**
-2. **Re-activate the previously useful skills** — scan the doc's \`## Skills Used\` section and re-invoke each listed skill with the **Skill** tool (e.g. \`Skill(skill: "commit", ...)\`). Skills don't persist across sessions; without re-invoking them, the next-step guidance from each skill is missing.
-3. **Restore the TaskList using TaskCreate / TaskUpdate**
-4. **Verify cwd, dependencies, and intermediate artifacts are in place**
-5. **Tell the user:** "Resumed \`<task>\`. Current progress: X. Next step: Y. Continue?"
+1. **Re-activate the previously useful skills** — scan the doc's \`## Skills Used\` section and re-invoke each listed skill with the **Skill** tool (e.g. \`Skill(skill: "commit", ...)\`). Skills don't persist across sessions; without re-invoking them, the next-step guidance from each skill is missing.
+2. **Restore the TaskList using TaskCreate / TaskUpdate**
+3. **Verify cwd, dependencies, and intermediate artifacts are in place**
+4. **Tell the user:** "Resumed \`<task>\`. Current progress: X. Next step: Y. Continue?"
 
 ## cwd
 

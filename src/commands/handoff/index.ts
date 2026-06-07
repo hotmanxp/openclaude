@@ -9,11 +9,25 @@ import {
   type TaskListEntry,
 } from './prompts/generate.js'
 import { renderPickupPrompt } from './prompts/pickup.js'
-import { listHandoffs, getLatestHandoff } from './handoff.js'
+import { listHandoffs } from './handoff.js'
 
 const HANDON_DIR_PARTS = ['.agent_working_dir', 'handoff']
+const RECENT_FOR_LLM = 5 // entries given to the LLM in context
+const RECENT_FOR_USER = 3 // entries shown in AskUserQuestion options
+
 function handoffRoot(cwd: string): string {
   return path.join(cwd, ...HANDON_DIR_PARTS)
+}
+
+// Format a mtimeMs timestamp as "YYYY-MM-DD HH:MM" in local time.
+function formatMtime(mtimeMs: number): string {
+  if (!mtimeMs) return '(unknown date)'
+  const d = new Date(mtimeMs)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  )
 }
 
 // Test seam: HANDON_TEST_CWD overrides getOriginalCwd() for unit tests.
@@ -64,16 +78,27 @@ const handoff: Command = {
         } else {
           errorNote = `Specified file \`${path.basename(candidate)}\` does not exist`
         }
-      } else if (all.length > 0) {
-        pickPath = await getLatestHandoff(root)
-        pickContent = pickPath
-          ? await fs.readFile(pickPath, 'utf8').catch(() => null)
-          : null
-      } else {
+      } else if (all.length === 0) {
         errorNote = rootExists
           ? `Directory \`${root}\` is empty, no handoff document to resume`
           : `Directory \`${root}\` does not exist`
       }
+      // If no --pick and handoffs exist: don't pick one, show the list
+      // and let the LLM ask the user via AskUserQuestion.
+
+      // Build the "recent N" listing. Pass only filename + path + mtime to
+      // the LLM — do NOT read the handoff content here. The LLM will Read
+      // the chosen file with the Read tool after the user picks.
+      const topN = await Promise.all(
+        all.slice(0, RECENT_FOR_LLM).map(async fullPath => {
+          const st = await fs.stat(fullPath).catch(() => null)
+          return {
+            basename: path.basename(fullPath),
+            fullPath,
+            mtime: formatMtime(st?.mtimeMs ?? 0),
+          }
+        }),
+      )
 
       const text = await renderPickupPrompt({
         pickPath,
@@ -81,7 +106,8 @@ const handoff: Command = {
         errorNote,
         cwd,
         root,
-        availableFiles: all.map(p => path.basename(p)),
+        recent: topN,
+        userOptionCount: RECENT_FOR_USER,
       })
       return [{ type: 'text', text }]
     } else {

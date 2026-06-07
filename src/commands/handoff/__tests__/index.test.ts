@@ -73,15 +73,20 @@ describe('handoff command', () => {
     expect(text).toContain('AskUserQuestion')
   })
 
-  test('pickup mode (N=2) loads latest handoff when available', async () => {
+  test('pickup mode (N=2) lists recent handoffs (no file content)', async () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'old-2026-06-06.md'), '# old')
     await writeFile(join(root, 'new-2026-06-07.md'), '# new')
     const ctx = makeContext(2)
     const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
+    // Filenames + full paths in the listing
+    expect(text).toContain('old-2026-06-06.md')
     expect(text).toContain('new-2026-06-07.md')
-    expect(text).toContain('# new')
+    expect(text).toContain('Recent handoff documents (newest first)')
+    // BUT: file bodies are NOT inlined (LLM will Read after user picks)
+    expect(text).not.toContain('# old')
+    expect(text).not.toContain('# new')
     expect(text).not.toContain('Warning')
   })
 
