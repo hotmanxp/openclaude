@@ -23,6 +23,14 @@ export type RunAgentFn = (opts: {
   querySource: unknown
   model?: unknown
   transcriptSubdir?: string
+  /**
+   * Required by runAgent (it destructures this and crashes with
+   * `Cannot read properties of undefined (reading 'filter')` if
+   * missing). Real spawner MUST pass the parent's tool pool here
+   * (or an empty array). The regression test in realSpawner.test.ts
+   * pins this contract.
+   */
+  availableTools: unknown[]
 }) => AsyncGenerator<unknown, void>
 
 export type CreateUserMessageFn = (args: { content: string }) => unknown
@@ -110,6 +118,14 @@ export async function buildRealSpawner(
         querySource: 'workflow_subagent',
         model: opts?.model,
         transcriptSubdir: `workflows/${taskId}`,
+        // runAgent() destructures `availableTools` (required) and
+        // crashes with `Cannot read properties of undefined (reading
+        // 'filter')` if it's missing. Fall back to the parent's
+        // tool pool; an empty array is acceptable because the agent
+        // definition's `tools` field narrows it further inside
+        // resolveAgentTools().
+        availableTools:
+          (toolUseCtx.options as { tools?: unknown[] } | undefined)?.tools ?? [],
       })) {
         // Collect the final assistant text from streamed messages.
         // The message shape is `{ type, message: { content: [{ type, text }] } }`
