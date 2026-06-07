@@ -62,9 +62,89 @@ async function drainAsyncGenerator<T>(generator: AsyncGenerator<unknown, T>): Pr
     if (result.done) return result.value
   }
 }
+
+describe('retry configuration', () => {
+  test('uses default retry attempts when env var is absent', async () => {
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(10)
+  })
+
+  test('reads retry attempts from OPENCC_MAX_RETRIES', async () => {
+    process.env.OPENCC_MAX_RETRIES = '4'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(4)
+  })
+
+  test('allows zero retry attempts', async () => {
+    process.env.OPENCC_MAX_RETRIES = '0'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(0)
+  })
+
+  test('falls back to legacy CLAUDE_CODE_MAX_RETRIES when new env var is absent', async () => {
+    process.env.CLAUDE_CODE_MAX_RETRIES = '0'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(0)
+  })
+
+  test('prefers OPENCC_MAX_RETRIES over legacy CLAUDE_CODE_MAX_RETRIES', async () => {
+    process.env.OPENCC_MAX_RETRIES = '3'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '0'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(3)
+  })
+
+  test('falls back to default retry attempts for invalid values', async () => {
+    process.env.OPENCC_MAX_RETRIES = 'nope'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(10)
+  })
+
+  test('caps retry attempts to a bounded value', async () => {
+    process.env.OPENCC_MAX_RETRIES = '1000'
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    expect(getDefaultMaxRetries()).toBe(100)
+  })
+
+  test('uses default retry delay when env var is absent', async () => {
+    const { getDefaultRetryDelayMs } = await importFreshWithRetryModule()
+    expect(getDefaultRetryDelayMs()).toBe(500)
+  })
+
+  test('reads retry delay from OPENCC_RETRY_DELAY_MS', async () => {
+    process.env.OPENCC_RETRY_DELAY_MS = '1500'
+    const { getDefaultRetryDelayMs } = await importFreshWithRetryModule()
+    expect(getDefaultRetryDelayMs()).toBe(1500)
+  })
+
+  test('falls back to default retry delay for invalid values', async () => {
+    process.env.OPENCC_RETRY_DELAY_MS = '-1'
+    const { getDefaultRetryDelayMs } = await importFreshWithRetryModule()
+    expect(getDefaultRetryDelayMs()).toBe(500)
+  })
+
+  test('uses configured retry delay as exponential backoff base', async () => {
+    process.env.OPENCC_RETRY_DELAY_MS = '2000'
+    const originalRandom = Math.random
+    Math.random = () => 0
+    try {
+      const { getRetryDelay } = await importFreshWithRetryModule()
+      expect(getRetryDelay(1)).toBe(2000)
+      expect(getRetryDelay(2)).toBe(4000)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+
+  test('retry-after header takes precedence over configured delay', async () => {
+    process.env.OPENCC_RETRY_DELAY_MS = '2000'
+    const { getRetryDelay } = await importFreshWithRetryModule()
+    expect(getRetryDelay(1, '3')).toBe(3000)
+  })
+})
 describe('OpenAI-compatible retry classification', () => {
   test('does not retry marked non-retryable auth failures', async () => {
-    process.env.OPENCLAUDE_RETRY_DELAY_MS = '1'
+    process.env.OPENCC_RETRY_DELAY_MS = '1'
     const { CannotRetryError, withRetry } =
       await importFreshWithRetryModule('openai')
     const error = APIError.generate(
@@ -96,7 +176,7 @@ describe('OpenAI-compatible retry classification', () => {
   })
 
   test('keeps parseable 402 affordability errors on the max_tokens retry path', async () => {
-    process.env.OPENCLAUDE_RETRY_DELAY_MS = '1'
+    process.env.OPENCC_RETRY_DELAY_MS = '1'
     const { withRetry } = await importFreshWithRetryModule('openai')
     const error = APIError.generate(
       402,
@@ -141,7 +221,7 @@ describe('OpenAI-compatible retry classification', () => {
   })
 
   test('does not keep retrying repeated 402 affordability errors after one max_tokens adjustment', async () => {
-    process.env.OPENCLAUDE_RETRY_DELAY_MS = '1'
+    process.env.OPENCC_RETRY_DELAY_MS = '1'
     const { CannotRetryError, withRetry } =
       await importFreshWithRetryModule('openai')
     const error = APIError.generate(
@@ -183,7 +263,7 @@ describe('OpenAI-compatible retry classification', () => {
   })
 
   test('keeps parseable marked context-overflow errors on the max_tokens retry path', async () => {
-    process.env.OPENCLAUDE_RETRY_DELAY_MS = '1'
+    process.env.OPENCC_RETRY_DELAY_MS = '1'
     const { withRetry } = await importFreshWithRetryModule('openai')
     const error = APIError.generate(
       400,
