@@ -102,6 +102,23 @@ describe('renderPickupPrompt', () => {
     expect(text).not.toContain('NOT be shown as options')
   })
 
+  test('single handoff uses plain-text ask (not AskUserQuestion) to avoid min-2 options', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: null,
+      pickContent: null,
+      errorNote: null,
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      recent: [makeEntry('only.md')],
+      userOptionCount: 3,
+    })
+    expect(text).toContain('Only one handoff found')
+    expect(text).toContain('only.md')
+    // Should explicitly tell the LLM NOT to use AskUserQuestion (min 2 options)
+    expect(text).toMatch(/Do\s+\*\*not\*\*\s+use\s+AskUserQuestion/)
+    expect(text).toMatch(/require.*at least 2/i)
+  })
+
   test('empty recent renders the "no handoffs" block', async () => {
     const text = await renderPickupPrompt({
       pickPath: null,

@@ -19,9 +19,24 @@ export async function renderPickupPrompt(
 ): Promise<string> {
   const { pickPath, pickContent, errorNote, cwd, recent } = input
 
-  // 1. Listing block — give LLM up to 5 most recent with basename + date + preview
+  // 1. Listing block — adapt to count.
+  //    - 0 handoffs: error (no listing)
+  //    - 1 handoff:  tell LLM to ask in plain text (AskUserQuestion requires
+  //                 min 2 options; can't pad with "Other" since the tool
+  //                 auto-adds it but the schema's min(2) is on YOUR options)
+  //    - 2+ handoffs: use AskUserQuestion with the explicit JSON shape
   const listingBlock = recent.length
-    ? `## Recent handoff documents (newest first)
+    ? recent.length === 1
+      ? `## Only one handoff found
+
+The only handoff document in \`${input.root}\` is:
+
+- **${recent[0]!.basename}** — _${recent[0]!.mtime}_\n  → full path: \`${recent[0]!.fullPath}\`
+
+Ask the user in plain text whether to resume it (e.g. "Found 1 handoff document \`${recent[0]!.basename}\` (${recent[0]!.mtime}). Resume it?"). Do **not** use AskUserQuestion for this — the tool requires at least 2 explicit options but we only have 1 handoff.
+After the user confirms, use the **Read** tool on the full path to load it.
+`
+      : `## Recent handoff documents (newest first)
 
 Found ${recent.length} handoff file(s) in \`${input.root}\`:
 
@@ -48,7 +63,7 @@ Use **AskUserQuestion** to ask the user which handoff to resume. Call it with **
 }
 \`\`\`
 
-Surface the **top ${input.userOptionCount}** from the list above as options.${
+You MUST provide **2 to 4** explicit options (the tool schema rejects fewer than 2). Surface the **top ${input.userOptionCount}** from the list above as options.${
         recent.length > input.userOptionCount
           ? ` The other ${recent.length - input.userOptionCount} entr${recent.length - input.userOptionCount === 1 ? 'y is' : 'ies are'} provided as context but should NOT be shown as options.`
           : ''
