@@ -1,10 +1,10 @@
-# `/handon` Built-in Handoff Command Implementation Plan
+# `/handoff` Built-in Handoff Command Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `/handon` built-in slash command that auto-detects mode (generate when N > 3, pickup when N ≤ 3) and produces / consumes handoff markdown files at `<project>/.agent_working_dir/handoff/<task>-<date>.md`.
+**Goal:** Add a `/handoff` built-in slash command that auto-detects mode (generate when N > 3, pickup when N ≤ 3) and produces / consumes handoff markdown files at `<project>/.agent_working_dir/handoff/<task>-<date>.md`.
 
-**Architecture:** Single `type: 'prompt'` command following the `/dream` pattern. The command's `getPromptForCommand` reads `context.getAppState().messages.length` to pick mode, then injects either a generate or pickup prompt for the LLM. Three small modules: `handon.ts` (command), `handoff.ts` (pure file utilities), and two prompt-renderer files. The LLM does the heavy lifting (writing the handoff file via Bash, restoring TaskList via TaskCreate/TaskUpdate).
+**Architecture:** Single `type: 'prompt'` command following the `/dream` pattern. The command's `getPromptForCommand` reads `context.getAppState().messages.length` to pick mode, then injects either a generate or pickup prompt for the LLM. Three small modules: `handoff.ts` (command), `handoff.ts` (pure file utilities), and two prompt-renderer files. The LLM does the heavy lifting (writing the handoff file via Bash, restoring TaskList via TaskCreate/TaskUpdate).
 
 **Tech Stack:** TypeScript, Bun, OpenCC built-in command registry (`src/commands.ts`), `node:fs/promises`, `node:path`.
 
@@ -14,26 +14,26 @@
 
 | File | Responsibility |
 |---|---|
-| `src/commands/handon/handon.ts` | Command implementation; reads app state, dispatches to renderers |
-| `src/commands/handon/handoff.ts` | Pure file utilities: `listHandoffs`, `getLatestHandoff`, `buildHandoffPath` |
-| `src/commands/handon/prompts/generate.ts` | Returns the generate-mode prompt text (English) |
-| `src/commands/handon/prompts/pickup.ts` | Returns the pickup-mode prompt text (English) |
-| `src/commands/handon/__tests__/handoff.test.ts` | Unit tests for utility functions |
-| `src/commands/handon/__tests__/handon.test.ts` | Tests for `getPromptForCommand` mode dispatch |
-| `src/commands.ts` | (modified) Add `import handon` and inject into `COMMANDS` array |
+| `src/commands/handoff/handoff.ts` | Command implementation; reads app state, dispatches to renderers |
+| `src/commands/handoff/handoff.ts` | Pure file utilities: `listHandoffs`, `getLatestHandoff`, `buildHandoffPath` |
+| `src/commands/handoff/prompts/generate.ts` | Returns the generate-mode prompt text (English) |
+| `src/commands/handoff/prompts/pickup.ts` | Returns the pickup-mode prompt text (English) |
+| `src/commands/handoff/__tests__/handoff.test.ts` | Unit tests for utility functions |
+| `src/commands/handoff/__tests__/handoff.test.ts` | Tests for `getPromptForCommand` mode dispatch |
+| `src/commands.ts` | (modified) Add `import handoff` and inject into `COMMANDS` array |
 
 ---
 
 ## Task 1: handoff.ts utility functions (TDD)
 
 **Files:**
-- Create: `src/commands/handon/handoff.ts`
-- Create: `src/commands/handon/__tests__/handoff.test.ts`
+- Create: `src/commands/handoff/handoff.ts`
+- Create: `src/commands/handoff/__tests__/handoff.test.ts`
 
 - [ ] **Step 1.1: Write the failing test**
 
 ```typescript
-// src/commands/handon/__tests__/handoff.test.ts
+// src/commands/handoff/__tests__/handoff.test.ts
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, rm, writeFile, utimes, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -47,7 +47,7 @@ import {
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'handon-test-'))
+  root = await mkdtemp(join(tmpdir(), 'handoff-test-'))
 })
 
 afterEach(async () => {
@@ -121,13 +121,13 @@ describe('buildHandoffPath', () => {
 
 - [ ] **Step 1.2: Run tests to verify they fail**
 
-Run: `bun test src/commands/handon/__tests__/handoff.test.ts`
+Run: `bun test src/commands/handoff/__tests__/handoff.test.ts`
 Expected: FAIL with `Cannot find module '../handoff.js'`
 
 - [ ] **Step 1.3: Implement handoff.ts**
 
 ```typescript
-// src/commands/handon/handoff.ts
+// src/commands/handoff/handoff.ts
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -173,14 +173,14 @@ export function buildHandoffPath(
 
 - [ ] **Step 1.4: Run tests to verify they pass**
 
-Run: `bun test src/commands/handon/__tests__/handoff.test.ts`
+Run: `bun test src/commands/handoff/__tests__/handoff.test.ts`
 Expected: PASS — all 7 tests green
 
 - [ ] **Step 1.5: Commit**
 
 ```bash
-git add src/commands/handon/handoff.ts src/commands/handon/__tests__/handoff.test.ts
-git commit -m "feat(handon): add handoff file utility functions"
+git add src/commands/handoff/handoff.ts src/commands/handoff/__tests__/handoff.test.ts
+git commit -m "feat(handoff): add handoff file utility functions"
 ```
 
 ---
@@ -188,13 +188,13 @@ git commit -m "feat(handon): add handoff file utility functions"
 ## Task 2: prompts/pickup.ts renderer (TDD)
 
 **Files:**
-- Create: `src/commands/handon/prompts/pickup.ts`
-- Create: `src/commands/handon/__tests__/pickup.test.ts`
+- Create: `src/commands/handoff/prompts/pickup.ts`
+- Create: `src/commands/handoff/__tests__/pickup.test.ts`
 
 - [ ] **Step 2.1: Write the failing test**
 
 ```typescript
-// src/commands/handon/__tests__/pickup.test.ts
+// src/commands/handoff/__tests__/pickup.test.ts
 import { describe, test, expect } from 'bun:test'
 import { renderPickupPrompt } from '../prompts/pickup.js'
 
@@ -249,13 +249,13 @@ describe('renderPickupPrompt', () => {
 
 - [ ] **Step 2.2: Run tests to verify they fail**
 
-Run: `bun test src/commands/handon/__tests__/pickup.test.ts`
+Run: `bun test src/commands/handoff/__tests__/pickup.test.ts`
 Expected: FAIL with `Cannot find module '../prompts/pickup.js'`
 
 - [ ] **Step 2.3: Implement pickup.ts**
 
 ```typescript
-// src/commands/handon/prompts/pickup.ts
+// src/commands/handoff/prompts/pickup.ts
 export interface PickupPromptInput {
   pickPath: string | null
   pickContent: string | null
@@ -275,7 +275,7 @@ ${errorNote}
 
 **Do not** give up. Use **AskUserQuestion** to ask the user:
 - the actual handoff file path (could be from another project, copied elsewhere, or hand-written)
-- or instruct the user to run /handon in another session to generate one
+- or instruct the user to run /handoff in another session to generate one
 `
     : ''
 
@@ -310,14 +310,14 @@ ${cwd}
 
 - [ ] **Step 2.4: Run tests to verify they pass**
 
-Run: `bun test src/commands/handon/__tests__/pickup.test.ts`
+Run: `bun test src/commands/handoff/__tests__/pickup.test.ts`
 Expected: PASS — all 3 tests green
 
 - [ ] **Step 2.5: Commit**
 
 ```bash
-git add src/commands/handon/prompts/pickup.ts src/commands/handon/__tests__/pickup.test.ts
-git commit -m "feat(handon): add pickup-mode prompt renderer"
+git add src/commands/handoff/prompts/pickup.ts src/commands/handoff/__tests__/pickup.test.ts
+git commit -m "feat(handoff): add pickup-mode prompt renderer"
 ```
 
 ---
@@ -325,13 +325,13 @@ git commit -m "feat(handon): add pickup-mode prompt renderer"
 ## Task 3: prompts/generate.ts renderer (TDD)
 
 **Files:**
-- Create: `src/commands/handon/prompts/generate.ts`
-- Create: `src/commands/handon/__tests__/generate.test.ts`
+- Create: `src/commands/handoff/prompts/generate.ts`
+- Create: `src/commands/handoff/__tests__/generate.test.ts`
 
 - [ ] **Step 3.1: Write the failing test**
 
 ```typescript
-// src/commands/handon/__tests__/generate.test.ts
+// src/commands/handoff/__tests__/generate.test.ts
 import { describe, test, expect } from 'bun:test'
 import { renderGeneratePrompt } from '../prompts/generate.js'
 
@@ -374,13 +374,13 @@ describe('renderGeneratePrompt', () => {
 
 - [ ] **Step 3.2: Run tests to verify they fail**
 
-Run: `bun test src/commands/handon/__tests__/generate.test.ts`
+Run: `bun test src/commands/handoff/__tests__/generate.test.ts`
 Expected: FAIL with `Cannot find module '../prompts/generate.js'`
 
 - [ ] **Step 3.3: Implement generate.ts**
 
 ```typescript
-// src/commands/handon/prompts/generate.ts
+// src/commands/handoff/prompts/generate.ts
 import type { TaskStatus, TaskType } from '../../../Task.js'
 
 export interface TaskListEntry {
@@ -455,33 +455,33 @@ Start now.
 
 - [ ] **Step 3.4: Run tests to verify they pass**
 
-Run: `bun test src/commands/handon/__tests__/generate.test.ts`
+Run: `bun test src/commands/handoff/__tests__/generate.test.ts`
 Expected: PASS — all 2 tests green
 
 - [ ] **Step 3.5: Commit**
 
 ```bash
-git add src/commands/handon/prompts/generate.ts src/commands/handon/__tests__/generate.test.ts
-git commit -m "feat(handon): add generate-mode prompt renderer"
+git add src/commands/handoff/prompts/generate.ts src/commands/handoff/__tests__/generate.test.ts
+git commit -m "feat(handoff): add generate-mode prompt renderer"
 ```
 
 ---
 
-## Task 4: handon.ts main command (TDD)
+## Task 4: handoff.ts main command (TDD)
 
 **Files:**
-- Create: `src/commands/handon/handon.ts`
-- Create: `src/commands/handon/__tests__/handon.test.ts`
+- Create: `src/commands/handoff/handoff.ts`
+- Create: `src/commands/handoff/__tests__/handoff.test.ts`
 
 - [ ] **Step 4.1: Write the failing test**
 
 ```typescript
-// src/commands/handon/__tests__/handon.test.ts
+// src/commands/handoff/__tests__/handoff.test.ts
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import handon from '../handon.js'
+import handoff from '../handoff.js'
 import type { ToolUseContext } from '../../../Tool.js'
 import type { AppState } from '../../../state/AppState.js'
 
@@ -489,7 +489,7 @@ let root: string
 let fakeCwd: string
 
 beforeEach(async () => {
-  fakeCwd = await mkdtemp(join(tmpdir(), 'handon-cwd-'))
+  fakeCwd = await mkdtemp(join(tmpdir(), 'handoff-cwd-'))
   root = join(fakeCwd, '.agent_working_dir', 'handoff')
 })
 
@@ -510,15 +510,15 @@ function makeContext(
   } as unknown as ToolUseContext
 }
 
-describe('handon command', () => {
-  test('exports a Command with name=handon and type=prompt', () => {
-    expect(handon.name).toBe('handon')
-    expect(handon.type).toBe('prompt')
+describe('handoff command', () => {
+  test('exports a Command with name=handoff and type=prompt', () => {
+    expect(handoff.name).toBe('handoff')
+    expect(handoff.type).toBe('prompt')
   })
 
   test('pickup mode (N=1, empty dir) returns prompt with warning', async () => {
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     expect(blocks).toHaveLength(1)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Resume from a handoff document')
@@ -531,7 +531,7 @@ describe('handon command', () => {
     await writeFile(join(root, 'old-2026-06-06.md'), '# old')
     await writeFile(join(root, 'new-2026-06-07.md'), '# new')
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('new-2026-06-07.md')
     expect(text).toContain('# new')
@@ -542,7 +542,7 @@ describe('handon command', () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'custom.md'), '# custom')
     const ctx = makeContext(2)
-    const blocks = await handon.getPromptForCommand('--pick custom', ctx)
+    const blocks = await handoff.getPromptForCommand('--pick custom', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('custom.md')
     expect(text).toContain('# custom')
@@ -551,7 +551,7 @@ describe('handon command', () => {
   test('pickup mode with --pick arg pointing to missing file', async () => {
     await mkdir(root, { recursive: true })
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('--pick nope', ctx)
+    const blocks = await handoff.getPromptForCommand('--pick nope', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('nope.md')
     expect(text).toContain('does not exist')
@@ -561,7 +561,7 @@ describe('handon command', () => {
     const ctx = makeContext(4, {
       '1': { id: '1', type: 'local_bash', status: 'pending', description: 'do thing' },
     })
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Generate a handoff document')
     expect(text).toContain('[pending] #1 local_bash do thing')
@@ -570,7 +570,7 @@ describe('handon command', () => {
 
   test('generate mode (N=10) with empty task list', async () => {
     const ctx = makeContext(10)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
@@ -580,15 +580,15 @@ describe('handon command', () => {
 
 - [ ] **Step 4.2: Run tests to verify they fail**
 
-Run: `bun test src/commands/handon/__tests__/handon.test.ts`
-Expected: FAIL with `Cannot find module '../handon.js'`
+Run: `bun test src/commands/handoff/__tests__/handoff.test.ts`
+Expected: FAIL with `Cannot find module '../handoff.js'`
 
-- [ ] **Step 4.3: Implement handon.ts**
+- [ ] **Step 4.3: Implement handoff.ts**
 
 The implementation must read the cwd from `bootstrap/state.ts` — but for testability, we want a seam to inject cwd. Use a helper `getOriginalCwd()` and assume the production wiring works. For tests, the cwd resolution will be replaced by mocking `bootstrap/state.js` (use `bun:test` mock).
 
 ```typescript
-// src/commands/handon/handon.ts
+// src/commands/handoff/handoff.ts
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
@@ -604,9 +604,9 @@ function handoffRoot(cwd: string): string {
   return path.join(cwd, ...HANDON_DIR_PARTS)
 }
 
-const handon: Command = {
+const handoff: Command = {
   type: 'prompt',
-  name: 'handon',
+  name: 'handoff',
   description:
     'Hand off the current session: generate a handoff document (when many messages) or resume the latest handoff (when few messages).',
   argumentHint: '[--pick <filename>]',
@@ -684,12 +684,12 @@ const handon: Command = {
   },
 }
 
-export default handon
+export default handoff
 ```
 
 - [ ] **Step 4.4: Make tests pass by mocking `bootstrap/state.js`**
 
-Add at the top of `__tests__/handon.test.ts` (replace the existing imports if any):
+Add at the top of `__tests__/handoff.test.ts` (replace the existing imports if any):
 
 ```typescript
 // Mock bootstrap/state to control cwd
@@ -699,12 +699,12 @@ mock.module('../../../bootstrap/state.js', () => ({
 }))
 ```
 
-This mock must be declared BEFORE the import of `handon.js`. Bun's `mock.module` is hoisted when used with the import form, so the cleanest approach is to use `await import()` dynamically inside the test, OR use a separate test file. **Use a separate test file approach** to keep things simple.
+This mock must be declared BEFORE the import of `handoff.js`. Bun's `mock.module` is hoisted when used with the import form, so the cleanest approach is to use `await import()` dynamically inside the test, OR use a separate test file. **Use a separate test file approach** to keep things simple.
 
 Restructure the test file to use dynamic import:
 
 ```typescript
-// src/commands/handon/__tests__/handon.test.ts (REPLACE the earlier version)
+// src/commands/handoff/__tests__/handoff.test.ts (REPLACE the earlier version)
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -717,14 +717,14 @@ mock.module('../../../bootstrap/state.js', () => ({
 }))
 
 // Dynamic import AFTER mock setup
-const { default: handon } = await import('../handon.js')
+const { default: handoff } = await import('../handoff.js')
 import type { ToolUseContext } from '../../../Tool.js'
 import type { AppState } from '../../../state/AppState.js'
 
 let root: string
 
 beforeEach(async () => {
-  fakeCwd = await mkdtemp(join(tmpdir(), 'handon-cwd-'))
+  fakeCwd = await mkdtemp(join(tmpdir(), 'handoff-cwd-'))
   root = join(fakeCwd, '.agent_working_dir', 'handoff')
 })
 
@@ -745,15 +745,15 @@ function makeContext(
   } as unknown as ToolUseContext
 }
 
-describe('handon command', () => {
-  test('exports a Command with name=handon and type=prompt', () => {
-    expect(handon.name).toBe('handon')
-    expect(handon.type).toBe('prompt')
+describe('handoff command', () => {
+  test('exports a Command with name=handoff and type=prompt', () => {
+    expect(handoff.name).toBe('handoff')
+    expect(handoff.type).toBe('prompt')
   })
 
   test('pickup mode (N=1, missing dir) returns prompt with warning', async () => {
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     expect(blocks).toHaveLength(1)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Resume from a handoff document')
@@ -766,7 +766,7 @@ describe('handon command', () => {
     await writeFile(join(root, 'old-2026-06-06.md'), '# old')
     await writeFile(join(root, 'new-2026-06-07.md'), '# new')
     const ctx = makeContext(2)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('new-2026-06-07.md')
     expect(text).toContain('# new')
@@ -777,7 +777,7 @@ describe('handon command', () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'custom.md'), '# custom')
     const ctx = makeContext(2)
-    const blocks = await handon.getPromptForCommand('--pick custom', ctx)
+    const blocks = await handoff.getPromptForCommand('--pick custom', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('custom.md')
     expect(text).toContain('# custom')
@@ -786,7 +786,7 @@ describe('handon command', () => {
   test('pickup mode with --pick arg pointing to missing file', async () => {
     await mkdir(root, { recursive: true })
     const ctx = makeContext(1)
-    const blocks = await handon.getPromptForCommand('--pick nope', ctx)
+    const blocks = await handoff.getPromptForCommand('--pick nope', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('nope.md')
     expect(text).toContain('does not exist')
@@ -796,7 +796,7 @@ describe('handon command', () => {
     const ctx = makeContext(4, {
       '1': { id: '1', type: 'local_bash', status: 'pending', description: 'do thing' },
     })
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Generate a handoff document')
     expect(text).toContain('[pending] #1 local_bash do thing')
@@ -805,7 +805,7 @@ describe('handon command', () => {
 
   test('generate mode (N=10) with empty task list', async () => {
     const ctx = makeContext(10)
-    const blocks = await handon.getPromptForCommand('', ctx)
+    const blocks = await handoff.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
@@ -815,25 +815,25 @@ describe('handon command', () => {
 
 - [ ] **Step 4.5: Run tests to verify they pass**
 
-Run: `bun test src/commands/handon/__tests__/handon.test.ts`
+Run: `bun test src/commands/handoff/__tests__/handoff.test.ts`
 Expected: PASS — all 7 tests green
 
 If `mock.module` doesn't take effect, fall back to injecting cwd via a `getOriginalCwd` re-export:
 
 ```typescript
-// In handon.ts — add a seam
+// In handoff.ts — add a seam
 export const __test__ = { handoffRoot }
 
 // In test
-mock.module('../handon.js', () => ({
-  default: { ...handon, getPromptForCommand: ... }
+mock.module('../handoff.js', () => ({
+  default: { ...handoff, getPromptForCommand: ... }
 }))
 ```
 
 If that still fails, use **manual cwd via `process.cwd()` swap** by changing the production code:
 
 ```typescript
-// In handon.ts — read cwd from env var with fallback
+// In handoff.ts — read cwd from env var with fallback
 function getCwd(): string {
   return process.env.HANDON_TEST_CWD ?? getOriginalCwd()
 }
@@ -844,8 +844,8 @@ And in the test setup, set `process.env.HANDON_TEST_CWD = fakeCwd`. This is the 
 - [ ] **Step 4.6: Commit**
 
 ```bash
-git add src/commands/handon/handon.ts src/commands/handon/__tests__/handon.test.ts
-git commit -m "feat(handon): implement main command with mode dispatch"
+git add src/commands/handoff/handoff.ts src/commands/handoff/__tests__/handoff.test.ts
+git commit -m "feat(handoff): implement main command with mode dispatch"
 ```
 
 ---
@@ -857,33 +857,33 @@ git commit -m "feat(handon): implement main command with mode dispatch"
 
 - [ ] **Step 5.1: Add the import**
 
-Open `src/commands.ts`. Find the import block (search for `import dream` and add the handon import nearby):
+Open `src/commands.ts`. Find the import block (search for `import dream` and add the handoff import nearby):
 
 ```typescript
-import handon from './commands/handon/handon.js'
+import handoff from './commands/handoff/handoff.js'
 ```
 
 - [ ] **Step 5.2: Add to COMMANDS array**
 
-Find the `COMMANDS = memoize(...)` array (search for `dream,` or `goal,`). Add `handon,` as a new entry — recommended location: right after `dream,` (which is the closest analog: a `type: 'prompt'` command).
+Find the `COMMANDS = memoize(...)` array (search for `dream,` or `goal,`). Add `handoff,` as a new entry — recommended location: right after `dream,` (which is the closest analog: a `type: 'prompt'` command).
 
 - [ ] **Step 5.3: Run typecheck to verify registration compiles**
 
 Run: `bun run typecheck`
 Expected: 0 errors
 
-If typecheck fails with a path error, verify the import path `./commands/handon/handon.js` resolves to the right file relative to `src/commands.ts` (i.e. `src/commands/handon/handon.ts`).
+If typecheck fails with a path error, verify the import path `./commands/handoff/handoff.js` resolves to the right file relative to `src/commands.ts` (i.e. `src/commands/handoff/handoff.ts`).
 
-- [ ] **Step 5.4: Re-run the full handon test suite**
+- [ ] **Step 5.4: Re-run the full handoff test suite**
 
-Run: `bun test src/commands/handon/__tests__/`
+Run: `bun test src/commands/handoff/__tests__/`
 Expected: PASS — all tests from Tasks 1-4 still green
 
 - [ ] **Step 5.5: Commit**
 
 ```bash
 git add src/commands.ts
-git commit -m "feat(handon): register /handon in built-in command list"
+git commit -m "feat(handoff): register /handoff in built-in command list"
 ```
 
 ---
@@ -892,7 +892,7 @@ git commit -m "feat(handon): register /handon in built-in command list"
 
 **Files:** none (manual checklist)
 
-- [ ] **Step 6.1: Verify /handon appears in slash-command autocomplete**
+- [ ] **Step 6.1: Verify /handoff appears in slash-command autocomplete**
 
 Start TUI in a fresh session:
 
@@ -900,26 +900,26 @@ Start TUI in a fresh session:
 node dist/cli.mjs -p "/help" 2>&1 | head -50
 ```
 
-OR launch the TUI normally and type `/`, look for `handon` in the list.
+OR launch the TUI normally and type `/`, look for `handoff` in the list.
 
-Expected: `/handon` is listed in the autocomplete with description "Hand off the current session..."
+Expected: `/handoff` is listed in the autocomplete with description "Hand off the current session..."
 
 - [ ] **Step 6.2: Verify pickup mode in a fresh session**
 
-Start a fresh session (no prior messages), then immediately run `/handon`:
+Start a fresh session (no prior messages), then immediately run `/handoff`:
 
 ```bash
-node dist/cli.mjs -p "/handon" 2>&1
+node dist/cli.mjs -p "/handoff" 2>&1
 ```
 
 Expected output: the model receives a pickup prompt with `Warning: Directory <cwd>/.agent_working_dir/handoff does not exist`, and the model uses `AskUserQuestion` to ask the user for the actual handoff path.
 
 - [ ] **Step 6.3: Verify generate mode in a mid-session**
 
-After ≥ 4 user+assistant messages, run `/handon`:
+After ≥ 4 user+assistant messages, run `/handoff`:
 
 ```bash
-node dist/cli.mjs -p "/handon" 2>&1
+node dist/cli.mjs -p "/handoff" 2>&1
 ```
 
 Expected: the model receives a generate prompt with the current TaskList context, and uses the Bash tool to write a markdown file at `<cwd>/.agent_working_dir/handoff/<task>-2026-06-07.md`.
@@ -934,7 +934,7 @@ Expected: one new `.md` file with the date in the filename.
 
 - [ ] **Step 6.4: Round-trip pickup test**
 
-After Step 6.3, exit the session, start a new one, run `/handon` again. Verify it picks up the file just generated.
+After Step 6.3, exit the session, start a new one, run `/handoff` again. Verify it picks up the file just generated.
 
 Expected: pickup mode loads the file, model calls TaskCreate to restore todos, and asks user "Resume `<task>`?"
 

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import handon from '../handon.js'
+import handoff from '../index.js'
 import type { ToolUseContext } from '../../../Tool.js'
 import type { AppState } from '../../../state/AppState.js'
 import type { TaskStatus, TaskType } from '../../../Task.js'
@@ -12,7 +12,7 @@ let fakeCwd: string
 let root: string
 
 beforeEach(async () => {
-  fakeCwd = await mkdtemp(join(tmpdir(), 'handon-cwd-'))
+  fakeCwd = await mkdtemp(join(tmpdir(), 'handoff-cwd-'))
   process.env.HANDON_TEST_CWD = fakeCwd
   root = join(fakeCwd, '.agent_working_dir', 'handoff')
 })
@@ -53,14 +53,14 @@ function makeContext(
   } as unknown as ToolUseContext
 }
 
-describe('handon command', () => {
-  test('exports a Command with name=handon and type=prompt', () => {
-    expect(handon.name).toBe('handon')
-    expect(handon.type).toBe('prompt')
+describe('handoff command', () => {
+  test('exports a Command with name=handoff and type=prompt', () => {
+    expect(handoff.name).toBe('handoff')
+    expect(handoff.type).toBe('prompt')
   })
 
   // Cast to PromptCommand so TS narrows the discriminated union
-  const cmd = handon as unknown as PromptCommand
+  const cmd = handoff as unknown as PromptCommand
 
   test('pickup mode (N=1, missing dir) returns prompt with warning', async () => {
     const ctx = makeContext(1)

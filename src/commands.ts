@@ -21,7 +21,7 @@ import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import dream from './commands/dream/index.js'
 import goal from './commands/goal/index.js'
-import handon from './commands/handon/handon.js'
+import handoff from './commands/handoff/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import onboardGithub from './commands/onboard-github/index.js'
@@ -338,7 +338,7 @@ const COMMANDS = memoize((): Command[] => [
   fast,
   files,
   goal,
-  handon,
+  handoff,
   heapDump,
   help,
   ide,

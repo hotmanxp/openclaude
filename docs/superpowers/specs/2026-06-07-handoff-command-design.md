@@ -1,4 +1,4 @@
-# `/handon` 内置交接指令 — 设计文档
+# `/handoff` 内置交接指令 — 设计文档
 
 **日期**: 2026-06-07
 **状态**: Draft (brainstorming 完成,等待 writing-plans)
@@ -8,7 +8,7 @@
 
 在多会话协作场景中,经常需要把一个长任务从「上下文将满 / 模型快降智」的会话交接给一个新的会话。OpenCC 现有 `/dream`(记忆合并)与 `/goal`(目标跟踪)都偏向纵向沉淀,但缺少**显式的、机器可读的、可恢复 todo 列表的横向会话交接**能力。
 
-`/handon` 的目标:一个 slash 命令,根据当前会话所处阶段,自动切换为:
+`/handoff` 的目标:一个 slash 命令,根据当前会话所处阶段,自动切换为:
 
 1. **生成模式**(消息数 > 3) — 把当前会话的原始任务、目标、中间产物、发现、踩坑、TaskList 蒸馏成一份 markdown 文档
 2. **接手模式**(消息数 ≤ 3) — 读取最新(或指定的)handoff 文档,恢复 TaskList,继续工作
@@ -29,8 +29,8 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  /handon                                                  │
-│  src/commands/handon/handon.ts                            │
+│  /handoff                                                  │
+│  src/commands/handoff/handoff.ts                            │
 │  type: 'prompt' (Command)                                 │
 └──────────────────────────────────────────────────────────┘
                           │
@@ -66,18 +66,18 @@ LLM 在 prompt 驱动下用 **Bash 工具**写文件,用 **Read 工具**读 hand
 
 ## 文件结构
 
-新增(全部在 `src/commands/handon/` 下):
+新增(全部在 `src/commands/handoff/` 下):
 
 ```
-src/commands/handon/
-├── handon.ts                    # Command 主体
+src/commands/handoff/
+├── handoff.ts                    # Command 主体
 ├── handoff.ts                   # 工具函数(listHandoffs / getLatestHandoff / buildHandoffPath)
 ├── prompts/
 │   ├── generate.ts              # 生成模式 prompt 渲染器
 │   └── pickup.ts                # 接手模式 prompt 渲染器
 └── __tests__/
     ├── handoff.test.ts          # 工具函数单元测试
-    └── handon.test.ts           # getPromptForCommand 集成测试
+    └── handoff.test.ts           # getPromptForCommand 集成测试
 ```
 
 修改:
@@ -86,7 +86,7 @@ src/commands/handon/
 src/commands.ts                  # 加 import + 注入 COMMANDS 数组
 ```
 
-## 主命令实现 (`handon.ts`)
+## 主命令实现 (`handoff.ts`)
 
 ```typescript
 import path from 'node:path'
@@ -104,9 +104,9 @@ function handoffRoot(cwd: string): string {
   return path.join(cwd, ...HANDON_DIR)
 }
 
-const handon: Command = {
+const handoff: Command = {
   type: 'prompt',
-  name: 'handon',
+  name: 'handoff',
   description: '交接当前会话:生成 handoff 文档(消息多)或接手上次 handoff(消息少)',
   argumentHint: '[--pick <filename>]',
   progressMessage: 'preparing handoff',
@@ -178,7 +178,7 @@ const handon: Command = {
   },
 }
 
-export default handon
+export default handoff
 ```
 
 ## Prompt 模板
@@ -250,7 +250,7 @@ ${errorNote}
 
 **Do not** give up. Use **AskUserQuestion** to ask the user:
 - the actual handoff file path (could be from another project, copied elsewhere, or hand-written)
-- or instruct the user to run /handon in another session to generate one
+- or instruct the user to run /handoff in another session to generate one
 `
   : ''}
 ${pickPath
@@ -330,10 +330,10 @@ export function buildHandoffPath(
 在 `src/commands.ts` 顶部加 import:
 
 ```typescript
-import handon from './commands/handon/handon.js'
+import handoff from './commands/handoff/handoff.js'
 ```
 
-在 `COMMANDS` 数组(在 `dream` 或 `goal` 之后)加 `handon,`。
+在 `COMMANDS` 数组(在 `dream` 或 `goal` 之后)加 `handoff,`。
 
 ## 测试
 
@@ -349,7 +349,7 @@ import handon from './commands/handon/handon.js'
 - `buildHandoffPath`:
   - 拼接正确
 
-### 集成测试 `handon.test.ts`
+### 集成测试 `handoff.test.ts`
 
 mock `context.getAppState()` 返回不同 message 数:
 
@@ -391,12 +391,12 @@ mock `context.getAppState()` 返回不同 message 数:
 
 ## 验收标准
 
-1. 在 worktree 上创建 `src/commands/handon/` 目录,实现上述文件
+1. 在 worktree 上创建 `src/commands/handoff/` 目录,实现上述文件
 2. `bun run typecheck` 0 errors
-3. `bun test src/commands/handon/__tests__/` 全绿
+3. `bun test src/commands/handoff/__tests__/` 全绿
 4. 手动 TUI 验证:
-   - 新会话(消息数 = 1)运行 `/handon` → 看到「交接文档目录为空」提示 + LLM 询问用户
-   - 旧会话(消息数 = 20)运行 `/handon` → 看到 prompt 让 LLM 写文件
-   - `/handon --pick <file>` 走指定文件路径
-5. 在 `src/commands.ts` 注册后,`/handon` 在 slash command 自动补全里出现
+   - 新会话(消息数 = 1)运行 `/handoff` → 看到「交接文档目录为空」提示 + LLM 询问用户
+   - 旧会话(消息数 = 20)运行 `/handoff` → 看到 prompt 让 LLM 写文件
+   - `/handoff --pick <file>` 走指定文件路径
+5. 在 `src/commands.ts` 注册后,`/handoff` 在 slash command 自动补全里出现
 6. 无回归:其他命令 `/dream` `/goal` 等仍正常工作

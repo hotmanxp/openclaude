@@ -25,9 +25,9 @@ function getCwd(): string {
   return getOriginalCwd()
 }
 
-const handon: Command = {
+const handoff: Command = {
   type: 'prompt',
-  name: 'handon',
+  name: 'handoff',
   description:
     'Hand off the current session: generate a handoff document (when many messages) or resume the latest handoff (when few messages).',
   argumentHint: '[--pick <filename>]',
@@ -104,4 +104,4 @@ const handon: Command = {
   },
 }
 
-export default handon
+export default handoff
