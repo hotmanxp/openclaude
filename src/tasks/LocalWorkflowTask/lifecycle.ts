@@ -1,6 +1,7 @@
 import type { LocalWorkflowTask } from './LocalWorkflowTask.js'
 import type { SetAppState } from '../../Task.js'
 import type { AppState } from '../../state/AppStateStore.js'
+import { registerTask } from '../../utils/task/framework.js'
 
 /**
  * Module-level registry of in-process LocalWorkflowTask instances, keyed by
@@ -31,12 +32,22 @@ export function findWorkflowTask(id: string): LocalWorkflowTask | null {
 }
 
 /**
- * Register a workflow's state in appState.workflows so the /workflows
- * panel can discover it. The setAppState is captured at registration time
- * (the caller — WorkflowTool.call — has it via toolUseCtx). Returns an
- * unregister function that the caller should invoke when the task reaches
- * a terminal state (the bridge already does this for the in-process
- * registry; this is the parallel cleanup for the app-state slice).
+ * Register a workflow's state in BOTH `appState.workflows` and
+ * `appState.tasks`. The dual registration matters:
+ *
+ *  - `appState.workflows` is the slice the /workflows panel reads to
+ *    list runs in the current session.
+ *  - `appState.tasks` is the slice the framework-level machinery
+ *    (BackgroundTasksDialog, app:interrupt / Ctrl+C, lifecycle hooks,
+ *    `getRunningTasks`, eviction, notifications) iterates over. Without
+ *    this registration, the workflow is invisible to all of those.
+ *    LocalAgentTask and LocalShellTask both register via the standard
+ *    `registerTask` path; this helper does the same for workflows plus
+ *    the workflows-specific slice for the panel.
+ *
+ * Returns an unregister function the caller should invoke when the
+ * task reaches a terminal state (the bridge handles the in-process
+ * registry separately; this is the parallel cleanup for both slices).
  *
  * Pattern mirrors `registerAsyncAgent` in src/tasks/LocalAgentTask/.
  */
@@ -45,16 +56,29 @@ export function registerWorkflowInAppState(
   setAppState: SetAppState,
 ): () => void {
   const id = task.state.id
+  // 1) Framework-level: makes the workflow a first-class task. Ctrl+C
+  //    in useCancelRequest, BackgroundTasksDialog, and lifecycle
+  //    hooks all read this slice.
+  registerTask(task.state, setAppState)
+  // 2) Workflows slice: the /workflows panel reads this directly.
   setAppState((prev: AppState) => ({
     ...prev,
     workflows: { ...prev.workflows, [id]: task.state },
   }))
   return () => {
     setAppState((prev: AppState) => {
-      if (!(id in (prev.workflows ?? {}))) return prev
-      const next = { ...prev.workflows }
-      delete next[id]
-      return { ...prev, workflows: next }
+      let next = prev
+      // Evict from appState.tasks (mirror registerTask's contract)
+      if (id in (next.tasks ?? {})) {
+        const { [id]: _removed, ...rest } = next.tasks
+        next = { ...next, tasks: rest }
+      }
+      // Evict from appState.workflows
+      if (id in (next.workflows ?? {})) {
+        const { [id]: _removedW, ...restW } = next.workflows
+        next = { ...next, workflows: restW }
+      }
+      return next === prev ? prev : next
     })
   }
 }
