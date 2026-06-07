@@ -13,18 +13,23 @@ export interface GeneratePromptInput {
   today: string
   messageCount: number
   taskList: TaskListEntry[]
+  skillsUsed: string[]
 }
 
 export async function renderGeneratePrompt(
   input: GeneratePromptInput,
 ): Promise<string> {
-  const { cwd, today, messageCount, taskList } = input
+  const { cwd, today, messageCount, taskList, skillsUsed } = input
 
   const taskListBlock = taskList.length
     ? taskList
         .map(t => `- [${t.status}] #${t.id} ${t.type} ${t.description}`)
         .join('\n')
     : '(empty)'
+
+  const skillsBlock = skillsUsed.length
+    ? skillsUsed.map(s => `- \`${s}\``).join('\n')
+    : '(none)'
 
   return `# Task: Generate a handoff document for the current session
 
@@ -49,6 +54,10 @@ You are generating a handoff document for the next session. **Do not** reply dir
 \`\`\`
 ${taskListBlock}
 \`\`\`
+- skills used in this session (extracted from \`Skill\` tool calls):
+\`\`\`
+${skillsBlock}
+\`\`\`
 
 ## Document structure (write in this order)
 
@@ -60,6 +69,7 @@ ${taskListBlock}
 6. **## Pitfalls** — failed attempts, root causes, fixes (so the next session doesn't repeat them)
 7. **## Current TaskList** — full copy of the task list above (status + type + description)
 8. **## Next Steps** — where the next session should start, what's still open
+9. **## Skills Used** — list the skills (from the context above) that were relevant to this task, with a one-line note per skill on how it was used (skip if none)
 
 ## Writing rules
 

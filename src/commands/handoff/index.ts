@@ -10,6 +10,7 @@ import {
 } from './prompts/generate.js'
 import { renderPickupPrompt } from './prompts/pickup.js'
 import { listHandoffs } from './handoff.js'
+import { extractSkillsUsed } from './extract-skills.js'
 
 const HANDON_DIR_PARTS = ['.agent_working_dir', 'handoff']
 function handoffRoot(cwd: string): string {
@@ -98,6 +99,7 @@ const handoff: Command = {
         today,
         messageCount: N,
         taskList,
+        skillsUsed: extractSkillsUsed(context.messages ?? []),
       })
       return [{ type: 'text', text }]
     }
