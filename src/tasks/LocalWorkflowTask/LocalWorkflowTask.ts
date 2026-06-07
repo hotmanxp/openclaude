@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { Task } from '../../Task.js'
+import type { Task, TaskStatus } from '../../Task.js'
 import type {
   SpawnOpts,
   SpawnResult,
@@ -10,7 +10,7 @@ import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.j
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
-import { createSystemMessage } from '../../utils/messages.js'
+import { enqueuePendingNotification } from '../../utils/messageQueueManager.js'
 
 // Re-export so consumers (notably src/tasks/types.ts) can import
 // LocalWorkflowTaskState from this entrypoint.
@@ -139,7 +139,22 @@ export class LocalWorkflowTask implements Task {
         message: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       }
-      this.state.status = 'failed'
+      // If `stop()` was called (user-initiated kill), it set
+      // `state.status = 'killed'` before the abort cascaded. Don't
+      // clobber that with `'failed'` — the user explicitly killed
+      // this run, and the chat transcript + `/workflows` panel
+      // both render `'killed'` distinctly from `'failed'`
+      // (different verb in formatCompletionMessage, different
+      // status text). Without this guard, killing a workflow
+      // would show up as "failed in 7s · Error: ..." which is
+      // misleading.
+      //
+      // Cast widens the narrowed type — TS sees only
+      // 'completed' | 'running' here, but `stop()` can set
+      // 'killed' before the await rejects.
+      if ((this.state.status as TaskStatus) !== 'killed') {
+        this.state.status = 'failed'
+      }
     } finally {
       this.state.completedAt = Date.now()
       // Terminal state reached — drop from the lifecycle registry so the
@@ -163,19 +178,30 @@ export class LocalWorkflowTask implements Task {
   }
 
   /**
-   * Build and push a system message describing the terminal state
-   * of the workflow into the chat. The message includes:
-   *   - Workflow name + duration + agent count
-   *   - For success: a short preview of the result (first ~500 chars)
-   *     with a pointer to /workflows for the full report
-   *   - For failure: the error message
-   *   - For kill: a "killed by user" line
+   * Build and push a task-notification message into the framework's
+   * pending-notification queue when the workflow reaches a terminal
+   * state. The REPL main loop drains the queue and injects each
+   * notification as a user-facing prompt so the LLM can process
+   * the workflow result and respond to the user.
    *
-   * No-op if the parent context didn't provide a setAppState
-   * (tests, standalone callers) or if the chat slice doesn't exist.
+   * This is the right mechanism (vs. `appendSystemMessage`):
+   *   - `appendSystemMessage` only writes to the chat transcript; it
+   *     does NOT trigger a new LLM turn. The user would see a
+   *     system message but the LLM would have no way to process
+   *     the result.
+   *   - `enqueuePendingNotification({ mode: 'task-notification' })`
+   *     goes through the same path as LocalAgentTask /
+   *     LocalShellTask completion (see those files for examples).
+   *     The framework wraps the value in `<task_notification>` XML,
+   *     enqueues it as a user message, and the LLM sees the
+   *     workflow result in its next turn and can summarize for
+   *     the user.
+   *
+   * The body is the same human-readable summary that the previous
+   * (broken) `appendSystemMessage` approach tried to push — we
+   * just deliver it through the right channel now.
    */
   private pushCompletionMessage(): void {
-    if (!this.parentContext?.setAppState) return
     const content = formatCompletionMessage({
       workflowName: this.workflow.name,
       status: this.state.status,
@@ -185,13 +211,9 @@ export class LocalWorkflowTask implements Task {
       result: this.state.result,
       error: this.state.error?.message,
     })
-    this.parentContext.setAppState((prev: unknown) => {
-      const p = prev as { messages?: unknown[] }
-      if (!Array.isArray(p.messages)) return prev
-      return {
-        ...p,
-        messages: [...p.messages, createSystemMessage(content, statusToLevel(this.state.status))],
-      }
+    enqueuePendingNotification({
+      value: content,
+      mode: 'task-notification',
     })
   }
 

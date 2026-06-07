@@ -24,8 +24,10 @@ import type { Screen } from '../screens/REPL.js'
 import { exitTeammateView } from '../state/teammateViewHelpers.js'
 import {
   killAllRunningAgentTasks,
+  killAsyncAgent,
   markAgentsNotified,
 } from '../tasks/LocalAgentTask/LocalAgentTask.js'
+import { killWorkflowTask } from '../tasks/LocalWorkflowTask/lifecycle.js'
 import type { PromptInputMode, VimMode } from '../types/textInputTypes.js'
 import {
   clearCommandQueue,
@@ -154,28 +156,67 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     !isViewingTeammate
 
   // Ctrl+C (app:interrupt): when viewing a teammate, stops everything and
-  // returns to main thread. Otherwise just handleCancel. Must NOT claim
-  // ctrl+c when main is idle at the prompt — that blocks the copy-selection
-  // handler and double-press-to-exit from ever seeing the keypress.
+  // returns to main thread. Otherwise just handleCancel.
+  //
+  // The gate includes `hasRunningBackgroundTask` so a workflow (or
+  // background agent) that is running in the background — with no
+  // LLM turn in flight, no queued commands, no teammate view —
+  // can still be aborted with Ctrl+C. Without this, the user
+  // would have to know the chat:killAgents chord (ctrl+x ctrl+k)
+  // just to stop a workflow — a discoverability gap the user
+  // explicitly flagged ("ctrl+c 需要检查是否有任务在进行").
+  // The kill path itself already handles workflows
+  // (killWorkflowTask in killAllAgentsAndNotify), we just need
+  // to keep the binding active.
+  //
+  // The single hard constraint that we still respect: do NOT
+  // claim ctrl+c when the main is idle at the prompt AND nothing
+  // is running. That would block the copy-selection handler and
+  // double-press-to-exit from ever seeing the keypress.
+  const hasRunningBackgroundTask = Object.values(store.getState().tasks ?? {}).some(
+    t =>
+      (t.type === 'local_agent' || t.type === 'local_workflow') &&
+      t.status === 'running',
+  )
   const isCtrlCActive =
     isContextActive &&
-    (canCancelRunningTask || hasQueuedCommands || isViewingTeammate)
+    (canCancelRunningTask ||
+      hasQueuedCommands ||
+      isViewingTeammate ||
+      hasRunningBackgroundTask)
 
   useKeybinding('chat:cancel', handleCancel, {
     context: 'Chat',
     isActive: isEscapeActive,
   })
 
-  // Shared kill path: stop all agents, suppress per-agent notifications,
-  // emit SDK events, enqueue a single aggregate model-facing notification.
-  // Returns true if anything was killed.
+  // Shared kill path: stop all background tasks (agents AND workflows),
+  // suppress per-task notifications, emit SDK events, enqueue a single
+  // aggregate model-facing notification. Returns true if anything was
+  // killed. Workflows (LocalWorkflowTaskState) are treated as first-
+  // class background tasks since they also register in appState.tasks
+  // (see registerWorkflowInAppState in
+  // src/tasks/LocalWorkflowTask/lifecycle.ts).
   const killAllAgentsAndNotify = useCallback((): boolean => {
     const tasks = store.getState().tasks
     const running = Object.entries(tasks).filter(
-      ([, t]) => t.type === 'local_agent' && t.status === 'running',
+      ([, t]) =>
+        (t.type === 'local_agent' || t.type === 'local_workflow') &&
+        t.status === 'running',
     )
     if (running.length === 0) return false
-    killAllRunningAgentTasks(tasks, setAppState)
+    // For agents, defer to the canonical kill helper (handles
+    // per-agent status transitions and sub-state cleanup).
+    // For workflows, the kill path is just `task.stop()` which we
+    // route through killWorkflowTask for symmetry with the rest
+    // of the system.
+    for (const [taskId, task] of running) {
+      if (task.type === 'local_agent') {
+        killAsyncAgent(taskId, setAppState)
+      } else if (task.type === 'local_workflow') {
+        killWorkflowTask(taskId)
+      }
+    }
     const descriptions: string[] = []
     for (const [taskId, task] of running) {
       markAgentsNotified(taskId, setAppState)
@@ -186,27 +227,41 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
       })
     }
     const summary =
-      descriptions.length === 1
-        ? `Background agent "${descriptions[0]}" was stopped by the user.`
-        : `${descriptions.length} background agents were stopped by the user: ${descriptions.map(d => `"${d}"`).join(', ')}.`
+      running.length === 1
+        ? `Background task "${descriptions[0]}" was stopped by the user.`
+        : `${running.length} background tasks were stopped by the user: ${descriptions.map(d => `"${d}"`).join(', ')}.`
     enqueuePendingNotification({ value: summary, mode: 'task-notification' })
     onAgentsKilled()
     return true
   }, [store, setAppState, onAgentsKilled])
 
-  // Ctrl+C (app:interrupt). Scoped to teammate-view: killing agents from the
-  // main prompt stays a deliberate gesture (chat:killAgents), not a
-  // side-effect of cancelling a turn.
+  // Ctrl+C (app:interrupt).
+  //
+  //  - isViewingTeammate: kill all background tasks AND exit the
+  //    teammate view. Two-press chord still required for chat:killAgents
+  //    confirmation, but Ctrl+C is the heavyweight "stop everything"
+  //    gesture in this context.
+  //  - hasRunningBackgroundTask (no teammate view): kill all
+  //    background tasks (agents + workflows). This is the path the
+  //    user expects: "Ctrl+C while a workflow is running" should
+  //    actually stop the workflow. Without this branch, the binding
+  //    is active but the handler is a no-op (this was the original
+  //    gap: isCtrlCActive became true but no kill fired).
+  //  - canCancelRunningTask || hasQueuedCommands: cancel the LLM
+  //    turn in flight (if any). Independent of the kill branch.
   const handleInterrupt = useCallback(() => {
     if (isViewingTeammate) {
       killAllAgentsAndNotify()
       exitTeammateView(setAppState)
+    } else if (hasRunningBackgroundTask) {
+      killAllAgentsAndNotify()
     }
     if (canCancelRunningTask || hasQueuedCommands) {
       handleCancel()
     }
   }, [
     isViewingTeammate,
+    hasRunningBackgroundTask,
     killAllAgentsAndNotify,
     setAppState,
     canCancelRunningTask,
@@ -221,11 +276,14 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
   // chat:killAgents uses a two-press pattern: first press shows a
   // confirmation hint, second press within the window actually kills all
-  // agents. Reads tasks from the store directly to avoid stale closures.
+  // agents (and workflows — they're first-class background tasks now).
+  // Reads tasks from the store directly to avoid stale closures.
   const handleKillAgents = useCallback(() => {
     const tasks = store.getState().tasks
     const hasRunningAgents = Object.values(tasks).some(
-      t => t.type === 'local_agent' && t.status === 'running',
+      t =>
+        (t.type === 'local_agent' || t.type === 'local_workflow') &&
+        t.status === 'running',
     )
     if (!hasRunningAgents) {
       addNotification({

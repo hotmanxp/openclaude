@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import type { SetAppState } from '../../Task.js'
+import type { AppState } from '../../state/AppStateStore.js'
 import type { WorkflowAgentState } from '../../tools/WorkflowTool/types.js'
 import { LocalWorkflowTask } from './LocalWorkflowTask.js'
 import {
   findWorkflowTask,
   killWorkflowTask,
+  registerWorkflowInAppState,
   registerWorkflowTask,
   retryWorkflowAgent,
   skipWorkflowAgent,
@@ -188,5 +191,75 @@ describe('LocalWorkflowTask lifecycle', () => {
 
   test('unregisterWorkflowTask is a no-op for unknown id', () => {
     expect(() => unregisterWorkflowTask('wf_never_seen')).not.toThrow()
+  })
+})
+
+/**
+ * Helper: build a minimal mock AppState + SetAppState. The state lives
+ * in a closure so the test can inspect it after a register/unregister
+ * cycle without needing a full React tree. The mock actually persists
+ * the updated state into the closure (matches the React setState
+ * contract: re-renders see the new reference).
+ */
+function makeMockAppState(): {
+  state: AppState
+  setAppState: SetAppState
+} {
+  const state: AppState = {
+    tasks: {},
+    workflows: {},
+  } as unknown as AppState
+  const setAppState: SetAppState = updater => {
+    // Apply the updater to the state object, mutating slices in place
+    // so the test's reference to `state` stays valid.
+    const next = updater(state)
+    if (next.tasks) state.tasks = next.tasks
+    if (next.workflows) state.workflows = next.workflows
+    return state
+  }
+  return { state, setAppState }
+}
+
+describe('LocalWorkflowTask appState registration', () => {
+  test('registerWorkflowInAppState adds the task to BOTH appState.workflows AND appState.tasks', () => {
+    const task = makeFakeTask({ id: 'wf_dual_aaaa', status: 'running' })
+    const { state, setAppState } = makeMockAppState()
+    const unregister = registerWorkflowInAppState(task, setAppState)
+    // Both slices must see the task so BackgroundTasksDialog,
+    // Ctrl+C, and lifecycle hooks all work.
+    expect((state.tasks as Record<string, unknown>)['wf_dual_aaaa']).toBeDefined()
+    expect((state.workflows as Record<string, unknown>)['wf_dual_aaaa']).toBeDefined()
+    expect((state.workflows as Record<string, unknown>)['wf_dual_aaaa']).toBe(
+      (state.tasks as Record<string, unknown>)['wf_dual_aaaa'],
+    )
+    unregister()
+  })
+
+  test('unregister clears BOTH appState.workflows and appState.tasks', () => {
+    const task = makeFakeTask({ id: 'wf_dual_bbbb', status: 'running' })
+    const { state, setAppState } = makeMockAppState()
+    const unregister = registerWorkflowInAppState(task, setAppState)
+    // Sanity: both slices populated
+    expect((state.tasks as Record<string, unknown>)['wf_dual_bbbb']).toBeDefined()
+    expect((state.workflows as Record<string, unknown>)['wf_dual_bbbb']).toBeDefined()
+    unregister()
+    expect((state.tasks as Record<string, unknown>)['wf_dual_bbbb']).toBeUndefined()
+    expect((state.workflows as Record<string, unknown>)['wf_dual_bbbb']).toBeUndefined()
+  })
+
+  test('unregister on a never-registered id is a no-op (does not corrupt other slices)', () => {
+    const task = makeFakeTask({ id: 'wf_dual_keep' })
+    const other = makeFakeTask({ id: 'wf_dual_other' })
+    const { state, setAppState } = makeMockAppState()
+    registerWorkflowInAppState(other, setAppState)
+    // Now unregister a third task that was never registered — should
+    // be a no-op without affecting `other`.
+    const unregister = registerWorkflowInAppState(task, setAppState)
+    // Manually call unregister twice (idempotent / safe to call again)
+    unregister()
+    unregister()
+    // `other` should still be there in both slices
+    expect((state.tasks as Record<string, unknown>)['wf_dual_other']).toBeDefined()
+    expect((state.workflows as Record<string, unknown>)['wf_dual_other']).toBeDefined()
   })
 })
