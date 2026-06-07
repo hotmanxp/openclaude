@@ -47,4 +47,19 @@ describe('renderPickupPrompt', () => {
     expect(text).toContain('missing.md')
     expect(text).toContain('does not exist')
   })
+
+  test('resume flow includes re-activate skills step', async () => {
+    const text = await renderPickupPrompt({
+      pickPath: '/p/.agent_working_dir/handoff/foo-2026-06-07.md',
+      pickContent: '## Skills Used\n- commit\n- review-pr',
+      errorNote: null,
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      availableFiles: [],
+    })
+    expect(text).toContain('Re-activate the previously useful skills')
+    expect(text).toContain('Skills Used')
+    expect(text).toContain('Skill** tool')
+    expect(text).toContain('Skills don')
+  })
 })

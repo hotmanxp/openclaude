@@ -28,7 +28,7 @@ export async function renderGeneratePrompt(
 
   return `# Task: Generate a handoff document for the current session
 
-You are generating a handoff document for the next session. **Do not** reply directly to the user — write the file with the **Bash** tool.
+You are generating a handoff document for the next session. **Do not** reply directly to the user — write the handoff docs directly.
 
 ## Output path
 
@@ -64,7 +64,7 @@ ${taskListBlock}
 
 ## Writing rules
 
-- Use English, clear and concise, max 5 short paragraphs per section
+- Clear and concise, max 5 short paragraphs per section
 - Use paths **relative to cwd**
 - Task slug must be semantic (e.g. \`add-handoff-command\`, NOT \`task-12345\`)
 - After writing, run \`ls -la \`<dir>\`\` to confirm the file exists on disk

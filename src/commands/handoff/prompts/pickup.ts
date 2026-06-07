@@ -39,9 +39,10 @@ ${pickContent ?? '(failed to read)'}
 ${warningBlock}${preReadBlock}## Resume flow
 
 1. **${errorNote ? 'Once you have the correct path,' : ''} Read the handoff document in full with the Read tool**
-2. **Restore the TaskList using TaskCreate / TaskUpdate**
-3. **Verify cwd, dependencies, and intermediate artifacts are in place**
-4. **Tell the user:** "Resumed \`<task>\`. Current progress: X. Next step: Y. Continue?"
+2. **Re-activate the previously useful skills** — scan the doc's \`## Skills Used\` section and re-invoke each listed skill with the **Skill** tool (e.g. \`Skill(skill: "commit", ...)\`). Skills don't persist across sessions; without re-invoking them, the next-step guidance from each skill is missing.
+3. **Restore the TaskList using TaskCreate / TaskUpdate**
+4. **Verify cwd, dependencies, and intermediate artifacts are in place**
+5. **Tell the user:** "Resumed \`<task>\`. Current progress: X. Next step: Y. Continue?"
 
 ## cwd
 
