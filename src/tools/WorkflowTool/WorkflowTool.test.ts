@@ -1,4 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { getWorkflowRegistry } from './singleton.js'
+import type { Workflow } from './types.js'
 import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 
 // The runtime tool has a no-arg prompt()/description() that returns the
@@ -110,6 +115,53 @@ describe('WorkflowTool default spawner (regression for no-op fallback)', () => {
     // verify the public surface (the tool's name, prompt, etc.)
     // is intact, which the tests above already cover.
     expect(typeof WorkflowTool.call).toBe('function')
+  })
+
+  // Regression: WorkflowTool must honor the disableWorkflows kill
+  // switch (env var or settings). Without this check, the toggle
+  // exposed in /config UI is dead code — the tool would still run
+  // the worker even when the user has explicitly disabled workflows.
+  // (The setting was committed in 2026-06 but never consumed; this
+  // test pins the wire-up.)
+  //
+  // We exercise the OPENCC_DISABLE_WORKFLOWS env var path because
+  // it's the easiest to flip from a test (no need to mutate the
+  // settings file). The settings path goes through the same
+  // isWorkflowsDisabled() function.
+  test('returns a clear refusal when OPENCC_DISABLE_WORKFLOWS=1', async () => {
+    // Register the workflow first — otherwise call() short-circuits
+    // at the registry lookup with "Unknown workflow" before it ever
+    // reaches the disabled check.
+    const tmp = mkdtempSync(join(tmpdir(), 'wf-disabled-'))
+    const scriptPath = join(tmp, 'echo.js')
+    writeFileSync(scriptPath, `return 'unreachable'`)
+    getWorkflowRegistry().registerBundled({
+      name: 'echo',
+      source: 'project',
+      path: scriptPath,
+      run: async () => 'unreachable',
+    } satisfies Workflow)
+
+    const prev = process.env.OPENCC_DISABLE_WORKFLOWS
+    process.env.OPENCC_DISABLE_WORKFLOWS = '1'
+    try {
+      const result = await (WorkflowTool as unknown as {
+        call: (input: unknown, ctx: unknown) => Promise<{
+          data: { message?: string; taskId?: string }
+        }>
+      }).call(
+        { workflowName: 'echo' },
+        { setAppState: undefined },
+      )
+      expect(result.data.message).toMatch(/Workflows are disabled/)
+      expect(result.data.taskId).toBeUndefined()
+    } finally {
+      if (prev === undefined) {
+        delete process.env.OPENCC_DISABLE_WORKFLOWS
+      } else {
+        process.env.OPENCC_DISABLE_WORKFLOWS = prev
+      }
+    }
   })
 })
 
