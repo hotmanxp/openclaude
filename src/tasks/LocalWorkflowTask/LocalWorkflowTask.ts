@@ -196,6 +196,7 @@ export class LocalWorkflowTask implements Task {
         // don't provide these; the UI renders "—" when undefined.
         if (result.tokensUsed !== undefined) agent.tokensUsed = result.tokensUsed
         if (result.toolsUsed !== undefined) agent.toolsUsed = result.toolsUsed
+        if (result.toolCalls !== undefined) agent.toolCalls = result.toolCalls
         return result
       } catch (err) {
         agent.status = 'failed'

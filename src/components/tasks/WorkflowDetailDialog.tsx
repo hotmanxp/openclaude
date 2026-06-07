@@ -53,6 +53,7 @@ type RightMode = 'list' | 'detail'
 const RESULT_PREVIEW_LIMIT = 1200
 const LABEL_TRUNCATE_LIMIT = 36
 const PHASE_PANE_WIDTH = 34
+const ACTIVITY_PREVIEW_LIMIT = 3
 
 function agentStatusIcon(status: WorkflowAgentState['status']): string {
   switch (status) {
@@ -344,9 +345,69 @@ function AgentDetailPane({
         </Box>
       )}
 
+      {/* Activity: most recent N tool_use calls the subagent made.
+          Shown collapsed by default (most recent 3 + "+N more") so
+          the detail pane stays scannable. Click to expand the full
+          history. The history is bounded by realSpawner at 50
+          entries; if the agent made more, the older ones are gone
+          forever. That's an acceptable trade — the panel is a
+          recent-activity glance, not a full transcript. */}
+      {agent.toolCalls && agent.toolCalls.length > 0 && (
+        <ActivitySection toolCalls={agent.toolCalls} />
+      )}
+
       <Box marginTop={1}>
         <Text dimColor>← / esc back to list</Text>
       </Box>
+    </Box>
+  )
+}
+
+/**
+ * Renders the per-agent tool-call history. Shows the most recent
+ * `ACTIVITY_PREVIEW_LIMIT` entries by default; click to expand the
+ * full list. Renders the tool name in cyan, the input summary in
+ * dim, and a "+N more" indicator when there are more entries than
+ * the preview cap.
+ */
+function ActivitySection({
+  toolCalls,
+}: {
+  toolCalls: { name: string; inputSummary: string }[]
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const total = toolCalls.length
+  // Show the most recent N (the array is in yield-order, so the
+  // last entries are the most recent).
+  const preview = toolCalls.slice(-ACTIVITY_PREVIEW_LIMIT)
+  const visible = expanded ? toolCalls : preview
+  const hidden = total - visible.length
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Box flexDirection="row">
+        <Text bold>Activity</Text>
+        <Text dimColor>{' · last '}</Text>
+        <Text>{visible.length}</Text>
+        <Text dimColor>{' of '}</Text>
+        <Text>{total}</Text>
+        <Text dimColor>{' tool calls'}</Text>
+        {total > ACTIVITY_PREVIEW_LIMIT && (
+          <Text dimColor>
+            {' · '}
+            <Text color="cyan" onClick={() => setExpanded(v => !v)}>
+              {expanded ? '⊟ collapse' : `⊞ +${hidden} more`}
+            </Text>
+          </Text>
+        )}
+      </Box>
+      {visible.map((tc, i) => (
+        <Text key={i}>
+          <Text color="cyan">  {tc.name}</Text>
+          {tc.inputSummary && (
+            <Text dimColor>{'  '}{tc.inputSummary}</Text>
+          )}
+        </Text>
+      ))}
     </Box>
   )
 }
