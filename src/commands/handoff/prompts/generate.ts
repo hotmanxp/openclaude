@@ -13,23 +13,18 @@ export interface GeneratePromptInput {
   today: string
   messageCount: number
   taskList: TaskListEntry[]
-  skillsUsed: string[]
 }
 
 export async function renderGeneratePrompt(
   input: GeneratePromptInput,
 ): Promise<string> {
-  const { cwd, today, messageCount, taskList, skillsUsed } = input
+  const { cwd, today, messageCount, taskList } = input
 
   const taskListBlock = taskList.length
     ? taskList
         .map(t => `- [${t.status}] #${t.id} ${t.type} ${t.description}`)
         .join('\n')
     : '(empty)'
-
-  const skillsBlock = skillsUsed.length
-    ? skillsUsed.map(s => `- \`${s}\``).join('\n')
-    : '(none)'
 
   return `# Task: Generate a handoff document for the current session
 
@@ -54,10 +49,6 @@ You are generating a handoff document for the next session. **Do not** reply dir
 \`\`\`
 ${taskListBlock}
 \`\`\`
-- skills used in this session (extracted from \`Skill\` tool calls):
-\`\`\`
-${skillsBlock}
-\`\`\`
 
 ## Document structure (write in this order)
 
@@ -69,7 +60,7 @@ ${skillsBlock}
 6. **## Pitfalls** — failed attempts, root causes, fixes (so the next session doesn't repeat them)
 7. **## Current TaskList** — full copy of the task list above (status + type + description)
 8. **## Next Steps** — where the next session should start, what's still open
-9. **## Skills Used** — list the skills (from the context above) that were relevant to this task, with a one-line note per skill on how it was used (skip if none)
+9. **## Skills Used** — review the conversation and list only the skills YOU invoked that were **actually useful** to this task (e.g. \`commit\`, \`review-pr\`, \`pick-upstream\`). For each, add a one-line note on how it helped. **Skip this section entirely if no skill was useful** — do not list every skill you happened to call.
 
 ## Writing rules
 

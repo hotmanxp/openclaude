@@ -127,35 +127,4 @@ describe('handoff command', () => {
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
   })
-
-  test('generate mode includes skills used in messages', async () => {
-    const messages = [
-      {
-        message: {
-          content: [
-            { type: 'tool_use', name: 'Skill', input: { skill: 'commit' } },
-          ],
-        },
-      },
-      {
-        message: {
-          content: [
-            {
-              type: 'tool_use',
-              name: 'Skill',
-              input: { skill: 'review-pr' },
-            },
-          ],
-        },
-      },
-      { message: {} },
-      {},
-    ]
-    const ctx = makeContext(4, {}, messages)
-    const blocks = await cmd.getPromptForCommand('', ctx)
-    const text = (blocks[0] as { type: 'text'; text: string }).text
-    expect(text).toContain('skills used in this session')
-    expect(text).toContain('`commit`')
-    expect(text).toContain('`review-pr`')
-  })
 })

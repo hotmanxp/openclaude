@@ -22,7 +22,6 @@ describe('renderGeneratePrompt', () => {
           description: 'Run bar',
         },
       ],
-      skillsUsed: ['commit', 'review-pr'],
     })
     expect(text).toContain(
       '# Task: Generate a handoff document for the current session',
@@ -38,9 +37,6 @@ describe('renderGeneratePrompt', () => {
     expect(text).toContain('1. **# Task title**')
     expect(text).toContain('8. **## Next Steps**')
     expect(text).toContain('9. **## Skills Used**')
-    expect(text).toContain('skills used in this session')
-    expect(text).toContain('`commit`')
-    expect(text).toContain('`review-pr`')
   })
 
   test('renders empty TaskList when none exist', async () => {
@@ -50,11 +46,21 @@ describe('renderGeneratePrompt', () => {
       today: '2026-06-07',
       messageCount: 4,
       taskList: [],
-      skillsUsed: [],
     })
     expect(text).toContain('current TaskList:')
     expect(text).toContain('(empty)')
-    expect(text).toContain('skills used in this session')
-    expect(text).toContain('(none)')
+  })
+
+  test('Skills Used section tells LLM to decide which to include', async () => {
+    const text = await renderGeneratePrompt({
+      cwd: '/p',
+      root: '/p/.agent_working_dir/handoff',
+      today: '2026-06-07',
+      messageCount: 4,
+      taskList: [],
+    })
+    expect(text).toContain('## Skills Used')
+    expect(text).toContain('review the conversation')
+    expect(text).toContain('Skip this section entirely')
   })
 })
