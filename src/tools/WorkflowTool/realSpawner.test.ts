@@ -173,6 +173,67 @@ describe('buildRealSpawner', () => {
     await spawner('find bugs', { agentType: 'Explore' })
     expect(captured.agentType).toBe('Explore')
   })
+
+  // Regression: realSpawner MUST pass `availableTools` to runAgent.
+  // runAgent() destructures `availableTools` (required) and crashes
+  // with `Cannot read properties of undefined (reading 'filter')` if
+  // it's missing. The crash surfaces as an error report, the
+  // script's safeParse() returns null, and every agent() call in
+  // opencc-bug-hunt returns 0 candidates — same end-user symptom as
+  // the original no-op spawner (panel 0 total). Without this test
+  // a future refactor of realSpawner can silently remove the field
+  // and the unit suite stays green (the existing tests use a
+  // mocked runAgent that doesn't validate the call shape).
+  test('passes availableTools to runAgent (regression for availableTools=undefined crash)', async () => {
+    let captured: { availableTools?: unknown } = {}
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      captured = opts as { availableTools?: unknown }
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const parentTools = [{ name: 'Bash' }, { name: 'Read' }]
+    // Use the helper but add `tools` to the existing options
+    // (don't replace the whole options object — the agent lookup
+    // would then fail and runAgent would never be called).
+    const baseCtx = makeToolUseCtx([{ agentType: 'general-purpose' }])
+    const ctx = {
+      ...baseCtx,
+      options: { ...baseCtx.options, tools: parentTools },
+    }
+    const spawner = await buildRealSpawner(
+      ctx as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('anything', {})
+    // Must be the parent's tool pool (or an empty array if the
+    // parent didn't provide one). Never undefined.
+    expect(captured.availableTools).toBeDefined()
+    expect(captured.availableTools).toEqual(parentTools)
+  })
+
+  test('falls back to empty array when toolUseContext.options.tools is missing', async () => {
+    let captured: { availableTools?: unknown } = {}
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      captured = opts as { availableTools?: unknown }
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const ctx = makeToolUseCtx([{ agentType: 'general-purpose' }])
+    const spawner = await buildRealSpawner(
+      ctx as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('anything', {})
+    expect(captured.availableTools).toEqual([])
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor
