@@ -226,11 +226,12 @@ function AgentsPane({
         const label = rawLabel.length > LABEL_TRUNCATE_LIMIT
           ? rawLabel.slice(0, LABEL_TRUNCATE_LIMIT - 1) + '…'
           : rawLabel
-        // Token / tool counts aren't yet tracked per subagent (the LocalSpawner
-        // is a stub) — show "—" rather than fabricate numbers. Duration is
-        // computed from startedAt / completedAt.
-        const tok = formatTokens(undefined)
-        const tools = '—'
+        // Token / tool counts come from the real runAgent-backed
+        // spawner via SpawnResult.tokensUsed / .toolsUsed. The UI
+        // shows "—" if the count is undefined (e.g. the no-op legacy
+        // spawner or a stub LocalSpawner that doesn't report usage).
+        const tok = formatTokens(a.tokensUsed)
+        const tools = a.toolsUsed === undefined ? '—' : String(a.toolsUsed)
         return (
           <Box key={a.id} flexDirection="column">
             <Text inverse={isSelected} onClick={() => onSelect(i)}>

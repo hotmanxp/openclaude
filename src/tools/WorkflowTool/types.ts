@@ -66,6 +66,22 @@ export type SpawnOpts = {
 export type SpawnResult = {
   agentId: string
   report: string
+  /**
+   * Optional cumulative API token usage for the subagent run. The
+   * real runAgent-backed spawner extracts this from the streamed
+   * messages' `usage` field (sum of input_tokens + output_tokens
+   * across assistant turns). The legacy no-op and any caller that
+   * doesn't pass through real LLM output leaves this undefined,
+   * which the UI renders as "—".
+   */
+  tokensUsed?: number
+  /**
+   * Optional count of tool_use blocks the subagent emitted. The
+   * real spawner counts these across all assistant messages in the
+   * stream. Used by the /workflows panel to show "X tools" next
+   * to each subagent row.
+   */
+  toolsUsed?: number
 }
 
 /** Function injected into the Worker as `spawnSubagent` global. */
@@ -165,4 +181,16 @@ export type WorkflowAgentState = {
   completedAt?: number
   result?: string
   error?: string
+  /**
+   * Cumulative API tokens used by the subagent run. Populated by
+   * LocalWorkflowTask.buildSpawnSubagent from the spawner's
+   * SpawnResult.tokensUsed. UI shows "—" if undefined.
+   */
+  tokensUsed?: number
+  /**
+   * Number of tool_use blocks the subagent emitted. Populated by
+   * LocalWorkflowTask.buildSpawnSubagent from the spawner's
+   * SpawnResult.toolsUsed. UI shows "—" if undefined.
+   */
+  toolsUsed?: number
 }
