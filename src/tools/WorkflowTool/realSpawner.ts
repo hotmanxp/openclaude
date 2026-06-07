@@ -10,6 +10,7 @@
 // without running a real Worker thread.
 
 import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+import type { ToolCallRecord } from './types.js'
 
 // Loose shape of `runAgent` (it's @ts-nocheck so we re-declare the
 // surface we use). Lets us pass `toolUseContext` / `canUseTool` etc.
@@ -113,8 +114,12 @@ export async function buildRealSpawner(
     //   distort the "X tok" display in the panel.
     // - toolsUsed: count of `tool_use` blocks across all assistant
     //   messages (each block = one tool invocation the agent made).
+    // - toolCalls: ordered list of (name, inputSummary) for the
+    //   most recent tool_use blocks. Capped at TOOL_CALL_HISTORY_CAP
+    //   entries so a long-running agent doesn't blow up memory.
     let tokensUsed = 0
     let toolsUsed = 0
+    const toolCalls: ToolCallRecord[] = []
     try {
       for await (const msg of runAgent({
         agentDefinition: agentDef,
@@ -144,7 +149,12 @@ export async function buildRealSpawner(
         const m = msg as {
           type?: string
           message?: {
-            content?: Array<{ type?: string; text?: string }>
+            content?: Array<{
+              type?: string
+              text?: string
+              name?: string
+              input?: unknown
+            }>
             usage?: {
               input_tokens?: number
               output_tokens?: number
@@ -157,8 +167,15 @@ export async function buildRealSpawner(
             for (const block of content) {
               if (block.type === 'text' && typeof block.text === 'string') {
                 report += block.text
-              } else if (block.type === 'tool_use') {
+              } else if (block.type === 'tool_use' && typeof block.name === 'string') {
                 toolsUsed++
+                if (toolCalls.length < TOOL_CALL_HISTORY_CAP) {
+                  toolCalls.push({
+                    name: block.name,
+                    inputSummary: summarizeToolInput(block.name, block.input),
+                    at: Date.now(),
+                  })
+                }
               }
             }
           }
@@ -183,8 +200,84 @@ export async function buildRealSpawner(
       report: report || '(empty response from subagent)',
       tokensUsed,
       toolsUsed,
+      toolCalls,
     }
   }
+}
+
+/** Cap on tool-call records stored per agent. Long-running agents
+ *  (e.g. opencc-bug-hunt finders doing many codegraph + Read + Glob
+ *  calls) would otherwise grow unbounded. 50 covers a 5-minute run
+ *  with one tool call every 6s; the UI shows the most recent 3. */
+const TOOL_CALL_HISTORY_CAP = 50
+
+/**
+ * Pick the most informative field from a tool_use `input` object and
+ * render a one-line summary. Heuristic per known tool name:
+ *   - Read / Write / Edit → file_path
+ *   - Bash → command
+ *   - Grep → pattern (+ optional -A/-B/-C context flag)
+ *   - Glob → pattern
+ *   - WebFetch → url
+ *   - WebSearch → query
+ *   - Agent / Task → description
+ *   - fallback → JSON.stringify the first 80 chars
+ *
+ * The summary is for the /workflows panel "Activity" section, where
+ * the user wants a glance of "what is this agent doing?" — not a
+ * full reproducer. Keep it short.
+ */
+function summarizeToolInput(name: string, input: unknown): string {
+  if (!input || typeof input !== 'object') {
+    return ''
+  }
+  const obj = input as Record<string, unknown>
+  const pickString = (k: string): string | undefined => {
+    const v = obj[k]
+    return typeof v === 'string' ? v : undefined
+  }
+  let summary: string | undefined
+  switch (name) {
+    case 'Read':
+    case 'Write':
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      summary = pickString('file_path') ?? pickString('notebook_path')
+      break
+    case 'Bash':
+      summary = pickString('command') ?? pickString('cmd')
+      break
+    case 'Grep':
+      summary = pickString('pattern')
+      if (summary && pickString('path')) summary = `${summary} in ${pickString('path')}`
+      break
+    case 'Glob':
+      summary = pickString('pattern')
+      break
+    case 'WebFetch':
+      summary = pickString('url')
+      break
+    case 'WebSearch':
+      summary = pickString('query')
+      break
+    case 'Agent':
+    case 'Task':
+      summary = pickString('description') ?? pickString('prompt')
+      break
+  }
+  if (!summary) {
+    // Fallback: first string-typed field, truncated
+    for (const v of Object.values(obj)) {
+      if (typeof v === 'string') {
+        summary = v
+        break
+      }
+    }
+    if (!summary) return JSON.stringify(input).slice(0, 80)
+  }
+  if (summary.length > 80) summary = summary.slice(0, 79) + '…'
+  return summary
 }
 
 /**

@@ -324,6 +324,92 @@ describe('buildRealSpawner', () => {
     expect(result.tokensUsed).toBe(0)
     expect(result.toolsUsed).toBe(0)
   })
+
+  // Activity section: each tool_use block is captured as a
+  // { name, inputSummary, at } record. The summary picks the most
+  // informative field from the tool's `input` object (file_path for
+  // Read, command for Bash, pattern for Grep, etc.).
+  test('captures tool_use blocks as toolCalls with picked summary', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'reading source' },
+            { type: 'tool_use', name: 'Read', input: { file_path: '/src/foo.ts' } },
+          ],
+        },
+      }
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', name: 'Bash', input: { command: 'ls -la' } },
+            { type: 'tool_use', name: 'Grep', input: { pattern: 'TODO', path: 'src/' } },
+          ],
+        },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    expect(result.toolsUsed).toBe(3)
+    expect(result.toolCalls).toEqual([
+      { name: 'Read', inputSummary: '/src/foo.ts', at: expect.any(Number) },
+      { name: 'Bash', inputSummary: 'ls -la', at: expect.any(Number) },
+      { name: 'Grep', inputSummary: 'TODO in src/', at: expect.any(Number) },
+    ])
+  })
+
+  test('caps toolCalls history at 50 entries', async () => {
+    // Build 60 tool_use blocks; only the first 50 should be kept
+    // (the cap protects against long-running agents blowing up memory).
+    const blocks = Array.from({ length: 60 }, (_, i) => ({
+      type: 'tool_use',
+      name: 'Read',
+      input: { file_path: `/src/file-${i}.ts` },
+    }))
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield { type: 'assistant', message: { content: blocks } }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    // The cap is 50, not 60; toolsUsed is the true count (60).
+    expect(result.toolsUsed).toBe(60)
+    expect(result.toolCalls).toHaveLength(50)
+  })
+
+  test('falls back to first-string-field for unknown tool names', async () => {
+    const fakeRunAgent: RunAgentFn = async function* () {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', name: 'codegraph_search', input: { query: 'foo bar' } },
+          ],
+        },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([{ agentType: 'general-purpose' }]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    const result = await spawner('anything', {})
+    // The summary picks the first string field ("query" → "foo bar")
+    // because the tool name isn't in the known switch.
+    expect(result.toolCalls![0]!.inputSummary).toBe('foo bar')
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor

@@ -62,6 +62,22 @@ export type SpawnOpts = {
   phase?: string
 }
 
+/** A single tool_use invocation captured during a subagent run. */
+export type ToolCallRecord = {
+  /** Tool name (e.g. "Read", "Bash", "Grep", "codegraph_search"). */
+  name: string
+  /**
+   * Brief one-line summary of the tool's input (e.g. file path for
+   * Read, command for Bash, pattern for Grep). Computed by the
+   * real spawner from the tool_use block's `input` field; the
+   * heuristic picks the most useful field per known tool.
+   */
+  inputSummary: string
+  /** ISO-ish timestamp from when the tool_use block was yielded
+   *  (Date.now() in the main process). Used for ordering only. */
+  at: number
+}
+
 /** Result of spawnSubagent() — final report from the subagent. */
 export type SpawnResult = {
   agentId: string
@@ -82,6 +98,15 @@ export type SpawnResult = {
    * to each subagent row.
    */
   toolsUsed?: number
+  /**
+   * Optional ordered list of tool_use invocations the subagent
+   * made. The real spawner captures these as they're yielded;
+   * capped at 50 entries to keep memory bounded for agents that
+   * fan out heavily (e.g. opencc-bug-hunt finders running codegraph
+   * + Read + Glob for hours). UI shows the most recent 3 by default
+   * with a "+N more" indicator.
+   */
+  toolCalls?: ToolCallRecord[]
 }
 
 /** Function injected into the Worker as `spawnSubagent` global. */
@@ -193,4 +218,12 @@ export type WorkflowAgentState = {
    * SpawnResult.toolsUsed. UI shows "—" if undefined.
    */
   toolsUsed?: number
+  /**
+   * Ordered list of tool_use invocations the subagent made.
+   * Populated by LocalWorkflowTask.buildSpawnSubagent from the
+   * spawner's SpawnResult.toolCalls. Capped at 50 entries by the
+   * real spawner. Drives the "Activity" section in the per-agent
+   * detail pane.
+   */
+  toolCalls?: ToolCallRecord[]
 }
