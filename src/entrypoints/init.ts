@@ -1,11 +1,8 @@
 import { profileCheckpoint } from '../utils/startupProfiler.js'
 import '../bootstrap/state.js'
 import '../utils/config.js'
-import type { Attributes, MetricOptions } from '@opentelemetry/api'
 import memoize from 'lodash-es/memoize.js'
 import { getIsNonInteractiveSession } from 'src/bootstrap/state.js'
-import type { AttributedCounter } from '../bootstrap/state.js'
-import { getSessionCounter, setMeter } from '../bootstrap/state.js'
 import { shutdownLspServerManager } from '../services/lsp/manager.js'
 import { populateOAuthAccountInfoIfNeeded } from '../services/oauth/client.js'
 import {
@@ -41,12 +38,15 @@ import {
   ensureScratchpadDir,
   isScratchpadEnabled,
 } from '../utils/permissions/filesystem.js'
-// initializeTelemetry is loaded lazily via import() in setMeterState() to defer
+// bootstrapTelemetry is loaded lazily via import() in setMeterState() to defer
 // ~400KB of OpenTelemetry + protobuf modules until telemetry is actually initialized.
+// In the open build, telemetry is stubbed at source (instrumentation.ts exports
+// only bootstrapTelemetry() with no meter), so setMeter() is never called and
+// STATE.* counters stay at their default `null` — `getSessionCounter()?.add(...)`
+// call sites elsewhere are safe no-ops via optional chaining.
 // gRPC exporters (~700KB via @grpc/grpc-js) are further lazy-loaded within instrumentation.ts.
 import { configureGlobalAgents } from '../utils/proxy.js'
 import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
-import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/windowsPaths.js'
 
 // initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
@@ -303,39 +303,14 @@ async function doInitializeTelemetry(): Promise<void> {
 }
 
 async function setMeterState(): Promise<void> {
-  // Lazy-load instrumentation to defer ~400KB of OpenTelemetry + protobuf
+  // Lazy-load instrumentation to defer ~400KB of OpenTelemetry + protobuf.
+  // In the OpenCC open build, telemetry is stubbed at source — instrumentation.ts
+  // exports only bootstrapTelemetry() (no meter), so the metric counters in
+  // bootstrap/state.ts stay at their default `null` and all `getSessionCounter()?.add(...)`
+  // call sites are no-ops via optional chaining.
   // @ts-ignore
-  const { initializeTelemetry } = await import(
+  const { bootstrapTelemetry } = await import(
     '../utils/telemetry/instrumentation.js'
   )
-  // Initialize customer OTLP telemetry (metrics, logs, traces)
-  const meter = await initializeTelemetry()
-  if (meter) {
-    // Create factory function for attributed counters
-    const createAttributedCounter = (
-      name: string,
-      options: MetricOptions,
-    ): AttributedCounter => {
-      const counter = meter?.createCounter(name, options)
-
-      return {
-        add(value: number, additionalAttributes: Attributes = {}) {
-          // Always fetch fresh telemetry attributes to ensure they're up to date
-          const currentAttributes = getTelemetryAttributes()
-          const mergedAttributes = {
-            ...currentAttributes,
-            ...additionalAttributes,
-          }
-          counter?.add(value, mergedAttributes)
-        },
-      }
-    }
-
-    setMeter(meter, createAttributedCounter)
-
-    // Increment session counter here because the startup telemetry path
-    // runs before this async initialization completes, so the counter
-    // would be null there.
-    getSessionCounter()?.add(1)
-  }
+  await bootstrapTelemetry()
 }

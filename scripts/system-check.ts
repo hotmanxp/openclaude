@@ -592,7 +592,6 @@ function serializeSafeEnvSummary(): Record<string, string | boolean> {
     OPENAI_MODEL: process.env.OPENAI_MODEL ?? '(unset)',
     OPENAI_BASE_URL: request.baseUrl,
     OPENAI_API_KEY_SET: Boolean(process.env.OPENAI_API_KEY),
-    CODEX_API_KEY_SET: Boolean(resolveCodexApiCredentials(process.env).apiKey),
   }
 }
 
