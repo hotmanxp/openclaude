@@ -32,11 +32,27 @@ ${recent
   )
   .join('\n\n')}
 
-Use **AskUserQuestion** to ask the user which handoff to resume. Surface the **top ${input.userOptionCount}** as question options (label = basename).${
+Use **AskUserQuestion** to ask the user which handoff to resume. Call it with **exactly this shape** (replace the placeholders per option):
+
+\`\`\`json
+{
+  "questions": [{
+    "question": "Which handoff do you want to resume?",
+    "header": "Resume",
+    "multiSelect": false,
+    "options": [
+      { "label": "<basename>", "description": "<mtime> — <full path>" },
+      ...up to ${input.userOptionCount} options
+    ]
+  }]
+}
+\`\`\`
+
+Surface the **top ${input.userOptionCount}** from the list above as options.${
         recent.length > input.userOptionCount
           ? ` The other ${recent.length - input.userOptionCount} entr${recent.length - input.userOptionCount === 1 ? 'y is' : 'ies are'} provided as context but should NOT be shown as options.`
           : ''
-      } After they choose, use the **Read** tool on the chosen file's full path to load it in full.
+      } After the user chooses, use the **Read** tool on the chosen file's full path to load it in full.
 `
     : `## No handoff documents found
 

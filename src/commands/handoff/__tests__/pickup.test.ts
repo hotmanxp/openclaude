@@ -35,6 +35,13 @@ describe('renderPickupPrompt', () => {
     expect(text).toContain('top 3')
     expect(text).toContain('AskUserQuestion')
     expect(text).toContain('full path: `/p/.agent_working_dir/handoff/a-2026-06-07.md`')
+    // The prompt now embeds an explicit AskUserQuestion JSON shape so the
+    // LLM doesn't have to guess `header` / `options` / `multiSelect`.
+    expect(text).toContain('"question": "Which handoff do you want to resume?"')
+    expect(text).toContain('"header": "Resume"')
+    expect(text).toContain('"multiSelect": false')
+    expect(text).toContain('"label": "<basename>"')
+    expect(text).toContain('"description": "<mtime>')
     expect(text).not.toContain('No handoff documents found')
   })
 
