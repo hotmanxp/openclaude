@@ -73,14 +73,15 @@ That doc captures:
 
 - the exact sync method (commands, conflict resolution, rename policy)
 - the 20 commits already synced (`5a9b7e3c → e3d89b0c` on
-  `main-openccv2`)
+  `main-opencc` — was `main-openccv2` until 2026-06-08 rebrand)
 - which commit classes are deliberately skipped (mistral / codex /
   gemini / nvidia-nim / vertex / release chore / SDK bundle)
 - a per-commit verification checklist
 - the daily cron job that reports new upstream SHAs for human review
 
-Whenever you touch `main-openccv2`, skim the sync doc first so you
+Whenever you touch `main-opencc`, skim the sync doc first so you
 don't duplicate or undo work the cron has already inventoried.
+The legacy `origin/main-openccv2` ref is deprecated and NOT a sync target.
 
 ## Architecture
 
@@ -163,7 +164,8 @@ Environment variables for other providers (`CLAUDE_CODE_USE_GITHUB`, `CLAUDE_COD
 ## Silenced Tests & Dead Code
 
 A few pre-existing test/code drifts were cleaned up after the 2026-06-06
-main-openccv2 sync. They are recorded here so the next sync doesn't re-trigger
+main-opencc sync (then called `main-openccv2`; renamed 2026-06-08).
+They are recorded here so the next sync doesn't re-trigger
 the same failures:
 
 - **`src/utils/statusNoticeDefinitions.safety.test.tsx`** — commit `352afa86`

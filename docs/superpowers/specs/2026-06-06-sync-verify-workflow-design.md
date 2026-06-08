@@ -3,7 +3,7 @@
 **Date:** 2026-06-06
 **Status:** Draft (pending user review)
 **Author:** brainstorming session
-**Target branch:** `main-openccv2`
+**Target branch:** `main-opencc` (was `main-openccv2` until 2026-06-08 rebrand; line 269 still mentions the old name as one of `/sync-verify` base-branch options — keep for backward-compat parsing or update when the command is implemented)
 **Implementation file:** `.claude/workflows/sync-verify.js` (project-level, git-committable)
 
 ---

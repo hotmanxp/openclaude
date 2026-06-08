@@ -1,7 +1,7 @@
 # Upstream Sync Log — opencc
 
 This document tracks the manual sync of `upstream/main` (Gitlawb/openclaude)
-into the OpenCC fork's `main-openccv2` branch. OpenCC is a provider-policy
+into the OpenCC fork's `main-opencc` branch. OpenCC is a provider-policy
 fork: only **anthropic / ollama / openai-compatible** providers are kept, and
 all user-facing strings are renamed to "OpenCC" / `bin/opencc` /
 `MiniMax-M3`-class defaults.
@@ -9,6 +9,28 @@ all user-facing strings are renamed to "OpenCC" / `bin/opencc` /
 The sync policy is enforced by `AGENTS.md` ("Provider Policy" + "When merging
 upstream" rules) and the sync method (per-file `git apply --3way`, never
 `cherry-pick`) is fixed in this file so the daily cron job can replicate it.
+
+---
+
+## Branch naming (2026-06-08 rebrand)
+
+As of 2026-06-08 the canonical development branch is **`main-opencc`** —
+the `v2` suffix has been dropped. The local branch was recreated from
+`main-openccv2`'s tip (`6ccd2a6e`) and the same commit was pushed to
+`origin/main-opencc` (after the old `origin/main-opencc` ref was
+deleted). Going forward:
+
+- **Canonical local + remote:** `main-opencc` @ `6ccd2a6e` (synced)
+- **Legacy remote alias:** `origin/main-openccv2` still exists at
+  `e1989e97` (2 commits behind, deprecated). It is NOT a sync target —
+  the cron's dedup compares against `origin/main-opencc` instead.
+- **Local `main-openccv2`:** deleted. All commands below use
+  `main-opencc` as the branch name.
+
+Historical sync entries below are kept with their original
+`main-openccv2` name to preserve the date-accurate record of what
+happened on which branch on which day. The rename is a pure
+label-swap — the underlying commit history is identical.
 
 ---
 
@@ -23,14 +45,15 @@ the place we push to:
 | **上游**    | `upstream` | `Gitlawb/openclaude` — the official source we forked from |
 | **远程**    | `remote` / `origin` | `hotmanxp/openclaude` — our own GitHub fork (the remote we push to) |
 | **本地**    | `local`    | `~/code/opencc` — the working directory on this machine |
+| **dev 分支** | `main-opencc` | canonical dev branch (formerly `main-openccv2`, renamed 2026-06-08) |
 
 Implications for the commands below:
 
 - "拉上游" = `git fetch upstream main`
-- "推远程" = `git push origin main-openccv2`
+- "推远程" = `git push origin main-opencc`
 - "sync 上游" = porting commits from `upstream/main` into our local branch
 - A `git show <SHA>` in the sync flow should always be of an **upstream**
-  commit (i.e. from `upstream/main`), never from `origin/main-openccv2`.
+  commit (i.e. from `upstream/main`), never from `origin/main-opencc`.
 
 ---
 
@@ -44,7 +67,7 @@ cd ~/code/opencc
 git fetch upstream main          # adds upstream/main to ref list
 
 # 2. Find new upstream commits since the last sync
-NEW=$(git log --oneline origin/main-openccv2..upstream/main)
+NEW=$(git log --oneline origin/main-opencc..upstream/main)
 
 # 3. For each commit, classify by AGENTS.md policy:
 #    - S / A / Tier 2: high value, sync the code changes
@@ -72,7 +95,7 @@ node bin/opencc -p "..."    # smoke-test the binary with MiniMax-M3
 
 # 6. Commit, then push
 git commit -m "<upstream subject> (#<PR>)"
-git push origin main-openccv2
+git push origin main-opencc
 ```
 
 For test files where upstream types diverge from our local shim
@@ -200,7 +223,8 @@ cron's job is just "tell me what's new on upstream in the last 5 days
 so I can decide whether to act today."
 
 Dedup note: the cron compares upstream commit subjects to those on
-`origin/main-openccv2`. Sync-fixup commits (e.g. "fix(typecheck):
+`origin/main-opencc` (renamed from `origin/main-openccv2` on 2026-06-08;
+the legacy v2 ref at `e1989e97` is NOT used for dedup). Sync-fixup commits (e.g. "fix(typecheck):
 bypass upstream type drift") don't dedup against the upstream commit
 they backport, which is fine — the report's job is to flag *upstream*
 activity, not audit our fixups.
@@ -637,7 +661,7 @@ came out of the 2026-06-05 sync verification:
 - TUI smoke: `node bin/opencc -p "say 'ok' and stop"` → "ok" (via
   MiniMax-M3 profile); debug log shows real `tokens_in=36876,
   tokens_out=24, first_token_ms=837, total_chunks=2` (the bug fix)
-- `git push origin main-openccv2` → `05140554..1e6140e8`
+- `git push origin main-opencc` → `05140554..1e6140e8` (was `main-openccv2` at the time of this push)
 
 ### Cron dedup TODO update
 
