@@ -291,7 +291,7 @@ async function launchOpenCC(options = {}) {
 
   if (!installed) {
     const action = await vscode.window.showErrorMessage(
-      `OpenCC command not found: ${executable}. Install it with: npm install -g @gitlawb/openclaude`,
+      `OpenCC command not found: ${executable}. Install it with: npm install -g @hotmanxp/opencc`,
       'Open Setup Guide',
       'Open Repository',
     );

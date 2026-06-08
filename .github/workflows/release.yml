@@ -84,7 +84,7 @@ jobs:
           {
             echo "## Released ${{ needs.release-please.outputs.tag_name }}"
             echo
-            echo "- npm: https://www.npmjs.com/package/@gitlawb/openclaude"
+            echo "- npm: https://www.npmjs.com/package/@hotmanxp/opencc"
             echo "- GitHub: https://github.com/Gitlawb/openclaude/releases/tag/${{ needs.release-please.outputs.tag_name }}"
           } >> "$GITHUB_STEP_SUMMARY"
 

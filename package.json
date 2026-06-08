@@ -1,5 +1,5 @@
 {
-  "name": "@gitlawb/openclaude",
+  "name": "@hotmanxp/opencc",
   "version": "0.16.1",
   "description": "OpenClaude opens coding-agent workflows to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
@@ -20,7 +20,8 @@
     "dist/sdk.mjs",
     "src/entrypoints/sdk.d.ts",
     "src/entrypoints/sdk/coreTypes.generated.ts",
-    "README.md"
+    "README.md",
+    "vendor/"
   ],
   "scripts": {
     "build": "bun run scripts/build.ts",
