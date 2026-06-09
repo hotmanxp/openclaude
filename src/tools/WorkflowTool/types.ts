@@ -144,9 +144,10 @@ export type SpawnResult = {
    * tool pool, captures whatever the subagent passed to it, and
    * validates the data against the bound JSON Schema.
    *
-   *   - On success: `{ ok: true, value }` from schemaValidator.
-   *   - On subagent failure to call the tool: `{ ok: false, error: '...' }`.
-   *   - On validation failure: `{ ok: false, error: '...' }` (schema errors).
+   *   - On success: the raw validated value (already validated by the
+   *     bound StructuredOutputTool when subagent called it).
+   *   - On subagent never calling StructuredOutput: `{ok:false, error: '...'}`.
+   *   - On validation failure: `{ok:false, error: '...'}` envelope (defense-in-depth re-validation in realSpawner post-loop).
    *
    * Undefined for non-schema callers (backward compat with all
    * existing agent() invocations that don't pass a schema).
