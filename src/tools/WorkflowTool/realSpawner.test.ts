@@ -739,6 +739,53 @@ describe('schema handling', () => {
       error: expect.stringMatching(/without calling StructuredOutput/i),
     })
   })
+
+  test('returns ok:false envelope when subagent calls StructuredOutput with data violating schema', async () => {
+    const schema = {
+      type: 'object',
+      properties: { summary: { type: 'string' } },
+      required: ['summary'],
+    }
+
+    const runAgentCalls: Array<{ availableTools: Array<{ name: string }> }> = []
+    const fakeRunAgent = async function* (opts: { availableTools: Array<{ name: string }> }) {
+      runAgentCalls.push({ availableTools: opts.availableTools })
+      const bound = opts.availableTools.find(t => t.name.startsWith('StructuredOutput_'))
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: bound?.name ?? 'StructuredOutput_unknown',
+              // Pass wrong type (number instead of string) to violate schema
+              input: { data: { summary: 42 } },
+            },
+          ],
+          model: 'claude-sonnet-4-6',
+        },
+      }
+    } as unknown as AsyncGenerator<unknown, void>
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+      },
+    }
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never, {}, 'task-1',
+      {
+        runAgent: fakeRunAgent as never,
+        createUserMessage: (a: { content: string }) => ({ type: 'user', content: a.content }),
+      },
+    )
+    const result = await spawner('test', { schema } as never)
+    expect(result.structuredOutput).toEqual({
+      ok: false,
+      error: expect.stringMatching(/must be string|invalid type/i),
+    })
+  })
 })
 
 // Pin down the LocalSpawner return-type contract so a future refactor

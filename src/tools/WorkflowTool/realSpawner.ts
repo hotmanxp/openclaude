@@ -146,7 +146,6 @@ export async function buildRealSpawner(
     let structuredOutputToolName: string | undefined = undefined
     // Pre-resolve the agent definition / available tools so we can
     // append the bound StructuredOutput tool when schema is set.
-    let agentDefinitionForRun = agentDef
     let availableToolsForRun =
       (toolUseCtx.options as { tools?: unknown[] } | undefined)?.tools ?? []
     if (opts && typeof opts === 'object' && 'schema' in opts && opts.schema) {
@@ -177,7 +176,7 @@ export async function buildRealSpawner(
     }
     try {
       for await (const msg of runAgent({
-        agentDefinition: agentDefinitionForRun,
+        agentDefinition: agentDef,
         promptMessages: [createUserMessage({ content: prompt })],
         // All `unknown` because runAgent is @ts-nocheck and accepts
         // the full ToolUseContext shape; we can't reconstruct the
