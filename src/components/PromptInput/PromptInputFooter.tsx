@@ -193,11 +193,11 @@ function BridgeStatusIndicator({
 }
 
 function GoalStatusIndicator(): React.ReactNode {
-  const goalState = useAppState(s => s.goalState);
+  const goal = useAppState(s => s.goal);
 
-  if (!goalState || goalState.status !== 'active') return null;
+  if (!goal || goal.status !== 'active') return null;
 
-  const durationSeconds = Math.floor((Date.now() - Date.parse(goalState.startedAt)) / 1000);
+  const durationSeconds = Math.floor((Date.now() - Date.parse(goal.startedAt)) / 1000);
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = durationSeconds % 60;
   const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
