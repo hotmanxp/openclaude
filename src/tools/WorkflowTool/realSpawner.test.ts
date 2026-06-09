@@ -631,6 +631,116 @@ describe('buildRealSpawner', () => {
   })
 })
 
+// Schema handling: when opts.schema is set, the spawner injects a
+// StructuredOutputTool (bound to that schema) into the subagent's tool
+// pool, then validates whatever the subagent passed as the `data` arg.
+// The bound tool's name is `StructuredOutput_<8chars>` (random per call)
+// — we capture the actual name by inspecting availableTools rather than
+// hard-coding it.
+describe('schema handling', () => {
+  test('injects StructuredOutputTool and validates result when opts.schema is set', async () => {
+    const schema = {
+      type: 'object',
+      properties: { summary: { type: 'string' } },
+      required: ['summary'],
+    }
+
+    const runAgentCalls: Array<{ availableTools: unknown[] }> = []
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      const tools = (opts as { availableTools: Array<{ name: string }> }).availableTools
+      runAgentCalls.push({ availableTools: tools })
+      // Find the actual bound tool name (random per call) and call it
+      const boundTool = tools.find(t => t.name.startsWith('StructuredOutput_'))
+      yield {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              name: boundTool?.name ?? 'StructuredOutput_unknown',
+              input: { data: { summary: 'hello' } },
+            },
+          ],
+          model: 'claude-sonnet-4-6',
+        },
+      }
+    }
+
+    const fakeCreateUserMessage: CreateUserMessageFn = args => ({
+      type: 'user',
+      content: args.content,
+    })
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: {
+          allAgents: [{ agentType: 'general-purpose' }],
+        },
+      },
+    }
+
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never,
+      {},
+      'task-1',
+      {
+        runAgent: fakeRunAgent,
+        createUserMessage: fakeCreateUserMessage,
+      },
+    )
+
+    const result = await spawner('test prompt', { schema } as never)
+    // On success, result.structuredOutput is the raw value the
+    // subagent emitted (already schema-validated). Not the
+    // `{ok,value}` envelope — only the failure path uses the
+    // envelope shape.
+    expect(result.structuredOutput).toEqual({ summary: 'hello' })
+    expect(runAgentCalls[0]?.availableTools.length).toBeGreaterThan(0)
+    // The tool pool should contain a StructuredOutput_* tool
+    const injectedTool = (
+      runAgentCalls[0]?.availableTools as Array<{ name: string }>
+    ).find(t => t.name.startsWith('StructuredOutput_'))
+    expect(injectedTool).toBeDefined()
+  })
+
+  test('returns ok:false result when subagent never called StructuredOutput', async () => {
+    const schema = { type: 'object', properties: { x: { type: 'string' } } }
+
+    const fakeRunAgent: RunAgentFn = async function* () {
+      // Subagent writes answer as plain text, no tool_use
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'plain answer' }], model: 'm' },
+      }
+    }
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+      },
+    }
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never,
+      {},
+      'task-1',
+      {
+        runAgent: fakeRunAgent,
+        createUserMessage: (a: { content: string }) => ({
+          type: 'user',
+          content: a.content,
+        }),
+      },
+    )
+    const result = await spawner('test', { schema } as never)
+    expect(result.structuredOutput).toEqual({
+      ok: false,
+      error: expect.stringMatching(/without calling StructuredOutput/i),
+    })
+  })
+})
+
 // Pin down the LocalSpawner return-type contract so a future refactor
 // can't accidentally widen it (the LocalWorkflowTask wrapper
 // specifically expects { agentId, report }).

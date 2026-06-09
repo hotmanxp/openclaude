@@ -136,6 +136,29 @@ export async function buildRealSpawner(
     const toolCalls: ToolCallRecord[] = []
     let lastAssistantMessage: unknown = null
     let model: string | undefined
+    // Schema path: when opts.schema is set we inject a StructuredOutputTool
+    // (bound to that schema) into the subagent's tool pool. The tool's
+    // name is randomized per call (StructuredOutput_<8chars>); we
+    // capture the actual name here so we can recognize the subagent's
+    // tool_use block in the stream and pull the `data` field out for
+    // validation.
+    let structuredOutput: unknown = undefined
+    let structuredOutputToolName: string | undefined = undefined
+    // Pre-resolve the agent definition / available tools so we can
+    // append the bound StructuredOutput tool when schema is set.
+    let agentDefinitionForRun = agentDef
+    let availableToolsForRun =
+      (toolUseCtx.options as { tools?: unknown[] } | undefined)?.tools ?? []
+    if (opts && typeof opts === 'object' && 'schema' in opts && opts.schema) {
+      const { StructuredOutputTool } = await import(
+        '../StructuredOutputTool/StructuredOutputTool.js'
+      )
+      const bound = StructuredOutputTool.withSchema(
+        opts.schema as Record<string, unknown>,
+      )
+      structuredOutputToolName = bound.name
+      availableToolsForRun = [...availableToolsForRun, bound]
+    }
     // Fire onProgress with a snapshot of the current stats. Captured
     // here so the in-loop emission and the post-loop correction both
     // share the same payload shape.
@@ -154,7 +177,7 @@ export async function buildRealSpawner(
     }
     try {
       for await (const msg of runAgent({
-        agentDefinition: agentDef,
+        agentDefinition: agentDefinitionForRun,
         promptMessages: [createUserMessage({ content: prompt })],
         // All `unknown` because runAgent is @ts-nocheck and accepts
         // the full ToolUseContext shape; we can't reconstruct the
@@ -170,9 +193,10 @@ export async function buildRealSpawner(
         // 'filter')` if it's missing. Fall back to the parent's
         // tool pool; an empty array is acceptable because the agent
         // definition's `tools` field narrows it further inside
-        // resolveAgentTools().
-        availableTools:
-          (toolUseCtx.options as { tools?: unknown[] } | undefined)?.tools ?? [],
+        // resolveAgentTools(). When `opts.schema` is set, we inject
+        // the bound StructuredOutputTool here so the subagent can
+        // call it.
+        availableTools: availableToolsForRun,
       })) {
         // Collect the final assistant text + usage stats from
         // streamed messages. The Anthropic SDK message shape is
@@ -216,6 +240,18 @@ export async function buildRealSpawner(
                     inputSummary: summarizeToolInput(block.name, block.input),
                     at: Date.now(),
                   })
+                }
+                // Schema path: capture the subagent's StructuredOutput
+                // call so we can validate the `data` field after the
+                // stream finishes.
+                if (
+                  structuredOutputToolName &&
+                  block.name === structuredOutputToolName &&
+                  block.input &&
+                  typeof block.input === 'object' &&
+                  'data' in block.input
+                ) {
+                  structuredOutput = (block.input as { data: unknown }).data
                 }
               }
             }
@@ -266,6 +302,39 @@ export async function buildRealSpawner(
         }`,
       }
     }
+    // Schema path: validate whatever the subagent emitted via the
+    // bound StructuredOutputTool. If the subagent never called the
+    // tool, surface a {ok:false, error} envelope so the caller can
+    // distinguish "I forgot" from "the data is bad". On validation
+    // success we keep the raw captured value (the structured output
+    // payload the subagent emitted) so the caller can use it
+    // directly without unwrapping a `{ok,value}` envelope.
+    if (opts && typeof opts === 'object' && 'schema' in opts && opts.schema) {
+      if (structuredOutput === undefined) {
+        structuredOutput = {
+          ok: false,
+          error:
+            'subagent completed without calling StructuredOutput ' +
+            `(expected a tool_use to "${structuredOutputToolName}")`,
+        }
+      } else {
+        const { validateStructuredOutput } = await import(
+          '../StructuredOutputTool/schemaValidator.js'
+        )
+        const v = validateStructuredOutput(
+          opts.schema as Record<string, unknown>,
+          structuredOutput,
+        )
+        if (!v.ok) {
+          // Schema mismatch: surface as {ok:false, error} envelope
+          // so the caller can distinguish "the data is bad" from
+          // "the subagent forgot to call the tool".
+          structuredOutput = v
+        }
+        // On success, keep `structuredOutput` as the raw value the
+        // subagent emitted (already validated).
+      }
+    }
     return {
       agentId,
       report: report || '(empty response from subagent)',
@@ -273,6 +342,7 @@ export async function buildRealSpawner(
       toolsUsed,
       toolCalls,
       model,
+      structuredOutput,
     }
   }
 }

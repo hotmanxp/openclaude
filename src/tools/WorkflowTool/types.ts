@@ -137,6 +137,21 @@ export type SpawnResult = {
    * (the legacy no-op).
    */
   model?: string
+  /**
+   * Optional validated structured output, populated only when the
+   * caller invoked `agent({ schema })`. The real runAgent-backed
+   * spawner injects a bound StructuredOutputTool into the subagent's
+   * tool pool, captures whatever the subagent passed to it, and
+   * validates the data against the bound JSON Schema.
+   *
+   *   - On success: `{ ok: true, value }` from schemaValidator.
+   *   - On subagent failure to call the tool: `{ ok: false, error: '...' }`.
+   *   - On validation failure: `{ ok: false, error: '...' }` (schema errors).
+   *
+   * Undefined for non-schema callers (backward compat with all
+   * existing agent() invocations that don't pass a schema).
+   */
+  structuredOutput?: unknown
 }
 
 /** Function injected into the Worker as `spawnSubagent` global. */
