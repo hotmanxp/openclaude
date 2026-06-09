@@ -20,7 +20,6 @@ import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js'
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js'
 import type { AllowedPrompt } from '../tools/ExitPlanModeTool/ExitPlanModeV2Tool.js'
 import type { AgentId } from '../types/ids.js'
-import type { GoalState } from '../types/goal.js'
 import type { Message, UserMessage } from '../types/message.js'
 import type { LoadedPlugin, PluginError } from '../types/plugin.js'
 import type { DeepImmutable } from '../types/utils.js'
@@ -39,6 +38,7 @@ import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
 import { shouldEnableThinkingByDefault } from '../utils/thinking.js'
 import type { Store } from './store.js'
+import type { GoalState } from '../services/goal/types.js'
 
 export type CompletionBoundary =
   | { type: 'complete'; completedAt: number; outputTokens: number }
@@ -429,6 +429,8 @@ export type AppState = DeepImmutable<{
   activeOverlays: ReadonlySet<string>
   // Fast mode
   fastMode?: boolean
+  // Session-scoped auto-continuation goal.
+  goal: GoalState | null
   // Advisor model for server-side advisor tool (undefined = disabled).
   advisorModel?: string
   // Effort value
@@ -570,5 +572,6 @@ export function getDefaultAppState(): AppState {
     effortValue: undefined,
     activeOverlays: new Set<string>(),
     fastMode: false,
+    goal: null,
   }
 }

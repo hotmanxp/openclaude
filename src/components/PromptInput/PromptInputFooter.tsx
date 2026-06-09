@@ -197,7 +197,7 @@ function GoalStatusIndicator(): React.ReactNode {
 
   if (!goalState || goalState.status !== 'active') return null;
 
-  const durationSeconds = Math.floor((Date.now() - goalState.startTime) / 1000);
+  const durationSeconds = Math.floor((Date.now() - Date.parse(goalState.startedAt)) / 1000);
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = durationSeconds % 60;
   const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;

@@ -113,7 +113,6 @@ import {
   createToolFailureLoopGuardState,
   updateToolFailureLoopGuard,
 } from './query/toolFailureLoopGuard.js'
-import { evaluateGoalAfterTurn } from './services/goal/goalService.js'
 import { buildQueryConfig } from './query/config.js'
 import { getGlobalConfig } from './utils/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
@@ -1575,45 +1574,12 @@ async function* queryLoop(
         toolUseContext,
         querySource,
         stopHookActive,
+        deps.goalEvaluationDeps,
+        deps.stopHookExecutionDeps,
       )
 
       if (stopHookResult.preventContinuation) {
         return { reason: 'stop_hook_prevented' }
-      }
-
-      // Evaluate goal after stop hooks pass
-      const goalResult = await evaluateGoalAfterTurn(
-        [...messagesForQuery, ...assistantMessages],
-        toolUseContext.abortController.signal,
-        toolUseContext.getAppState,
-        toolUseContext.setAppState,
-      )
-
-      if (goalResult !== null) {
-        if (goalResult.goalComplete) {
-          return { reason: 'goal_completed' }
-        }
-        if (goalResult.continueMessages !== null) {
-          const next: State = {
-            messages: [
-              ...messagesForQuery,
-              ...assistantMessages,
-              ...goalResult.continueMessages,
-            ],
-            toolUseContext,
-            autoCompactTracking: tracking,
-            maxOutputTokensRecoveryCount: 0,
-            hasAttemptedReactiveCompact,
-            maxOutputTokensOverride: undefined,
-            pendingToolUseSummary: undefined,
-            stopHookActive: true,
-            turnCount,
-            continuationNudgeCount: state.continuationNudgeCount,
-            transition: { reason: 'goal_not_satisfied' },
-          }
-          state = next
-          continue
-        }
       }
 
       if (stopHookResult.blockingErrors.length > 0) {
@@ -1638,7 +1604,7 @@ async function* queryLoop(
           hasAttemptedProviderFallback,
           maxOutputTokensOverride: undefined,
           pendingToolUseSummary: undefined,
-          stopHookActive: true,
+          stopHookActive: stopHookResult.stopHookActive,
           turnCount,
           continuationNudgeCount: state.continuationNudgeCount,
           transition: { reason: 'stop_hook_blocking' },
