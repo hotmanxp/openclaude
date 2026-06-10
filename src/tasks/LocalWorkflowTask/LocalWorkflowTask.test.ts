@@ -87,7 +87,13 @@ describe('LocalWorkflowTask.start (wiring)', () => {
       argsJson: [],
       parentContext: ctx,
     })
-    const script = `return 'workflow result: ' + String(args[0] ?? 'no args');`
+    // VM-backed start() needs the script wrapped in `async function
+    // userScript(args) {...}` so vmRunner can extract the body and
+    // invoke it. Returns a string; vmRunner auto-stringifies
+    // non-string results (matching the old worker bridge).
+    const script = `async function userScript(args) {
+      return 'workflow result: ' + String(args[0] ?? 'no args');
+    }`
     await task.start(script)
     expect(task.state.status).toBe('completed')
     expect(task.state.result).toBe('workflow result: no args')
@@ -103,7 +109,9 @@ describe('LocalWorkflowTask.start (wiring)', () => {
       argsJson: ['first', 'second'],
       parentContext: ctx,
     })
-    const script = `return 'got: ' + args.join(',');`
+    const script = `async function userScript(args) {
+      return 'got: ' + args.join(',');
+    }`
     await task.start(script)
     expect(task.state.status).toBe('completed')
     expect(task.state.result).toBe('got: first,second')
@@ -116,31 +124,32 @@ describe('LocalWorkflowTask.start (wiring)', () => {
       argsJson: [],
       parentContext: ctx,
     })
-    // A script that throws — the worker sends an 'error' message and the
-    // bridge rejects with an Error. The task should record the failure
-    // and stay in 'failed' state.
-    const script = `throw new Error('intentional failure');`
+    // A script that throws — the VM runner re-throws the script
+    // error and the task records the failure with status='failed'.
+    const script = `async function userScript() {
+      throw new Error('intentional failure');
+    }`
     await task.start(script)
     expect(task.state.status).toBe('failed')
     expect(task.state.error?.message).toContain('intentional failure')
     expect(task.state.completedAt).toBeDefined()
   })
 
-  test('start() records subagent runs from spawnSubagent callbacks', async () => {
+  test('start() records subagent runs from agent() callbacks', async () => {
     const { ctx, calls } = makeParentContext('subagent result')
     const task = new LocalWorkflowTask({
       workflow: sampleWorkflow,
       argsJson: [],
       parentContext: ctx,
     })
-    // Call spawnSubagent twice; the worker doesn't get the parent's tools
-    // (it's a Worker thread) so the bridge's spawner (i.e. ctx.spawner) is
-    // what actually runs. The script returns the second report.
-    const script = `
-      const a = await spawnSubagent('first prompt', { model: 'sonnet' });
-      const b = await spawnSubagent('second prompt');
+    // Call agent() twice; in the VM path, `agent()` is the global that
+    // maps to ctx.spawner (replacing the old worker's `spawnSubagent`
+    // global). The script returns the second report.
+    const script = `async function userScript() {
+      const a = await agent('first prompt', { model: 'sonnet' });
+      const b = await agent('second prompt');
       return 'final: ' + a.report + ' | ' + b.report;
-    `
+    }`
     await task.start(script)
     expect(task.state.status).toBe('completed')
     expect(task.state.result).toBe('final: subagent result | subagent result')
@@ -169,14 +178,14 @@ describe('LocalWorkflowTask.start (wiring)', () => {
       argsJson: [],
       parentContext: ctx,
     })
-    const script = `
+    const script = `async function userScript() {
       try {
-        await spawnSubagent('doomed prompt');
+        await agent('doomed prompt');
         return 'no error';
       } catch (e) {
         return 'caught: ' + e.message;
       }
-    `
+    }`
     await task.start(script)
     expect(task.state.status).toBe('completed')
     expect(task.state.result).toBe('caught: spawner exploded')
@@ -191,8 +200,43 @@ describe('LocalWorkflowTask.start (wiring)', () => {
     const task = new LocalWorkflowTask({ workflow: sampleWorkflow, argsJson: [] })
     const { ctx } = makeParentContext('unused')
     task.setParentContext(ctx)
-    await task.start(`return 'late context';`)
+    await task.start(`async function userScript() { return 'late context'; }`)
     expect(task.state.status).toBe('completed')
     expect(task.state.result).toBe('late context')
+  })
+
+  test('start() uses VM-based runner instead of Worker thread', async () => {
+    // Test seam: replace vmRunner with a spy that records the call and
+    // returns a fixed report, so we can assert start() wires the
+    // WorkflowApi correctly without spinning up a real Node vm.Context
+    // on every CI run. The default vmRunner is `runWorkflowInVm`; this
+    // test would not pass against the prior Worker-based start().
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    const calls: Array<{ script: string; args: unknown; api: unknown }> = []
+    task.setVmRunner((async (opts: { script: string; args: unknown; api: unknown }) => {
+      calls.push({ script: opts.script, args: opts.args, api: opts.api })
+      return { report: 'vm-result', events: [], budgetSpent: 0 }
+    }) as never)
+    await task.start(`async function userScript() { return 'unused'; }`)
+    expect(calls).toHaveLength(1)
+    expect(task.state.status).toBe('completed')
+    expect(task.state.result).toBe('vm-result')
+    // The API passed to the runner exposes agent/parallel/pipeline/
+    // workflow/args/budget/log/phase/timers, mirroring the old worker
+    // wrapper's globals.
+    const api = calls[0]!.api as Record<string, unknown>
+    expect(typeof api.agent).toBe('function')
+    expect(typeof api.parallel).toBe('function')
+    expect(typeof api.pipeline).toBe('function')
+    expect(typeof api.workflow).toBe('function')
+    expect(typeof api.log).toBe('function')
+    expect(typeof api.phase).toBe('function')
+    expect(typeof api.setTimeout).toBe('function')
+    expect(typeof api.clearTimeout).toBe('function')
   })
 })
