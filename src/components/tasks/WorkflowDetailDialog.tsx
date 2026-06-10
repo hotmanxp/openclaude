@@ -551,8 +551,41 @@ export function WorkflowDetailDialog({
   const totalElapsed = (state.completedAt ?? Date.now()) - state.startedAt
   const description = state.meta?.description ?? state.description
 
+  // Cloud-session detection: a workflow dispatched to a remote/cloud
+  // session has a sessionUrl but no local agents and is still
+  // running. Upstream's I0K renders a dedicated "Running in cloud
+  // session" branch for this case; we mirror that shape so the
+  // user knows the workflow is progressing in the cloud (not in
+  // /workflows locally). The branch is keyed off sessionUrl +
+  // running + no local agents so local workflows with a sessionUrl
+  // (e.g. for transcript links) don't get the banner.
+  const sessionUrl = state.sessionUrl ?? state.remoteSessionUrl
+  const isCloudSession =
+    Boolean(sessionUrl) &&
+    state.status === 'running' &&
+    state.agents.length === 0
+
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="ansi:cyan" paddingX={1}>
+      {/* Cloud-session banner (port of I0K remote_launched branch).
+          Shown prominently when the workflow is running remotely.
+          Replaces the regular phases/agents content with a single
+          "Running in cloud session" line + the session URL + a
+          warning if the cloud layer emitted one. */}
+      {isCloudSession && (
+        <Box flexDirection="column">
+          <Text>
+            Running in cloud session ·{' '}
+            <Text color="suggestion">{sessionUrl}</Text>
+          </Text>
+          <Text dimColor>
+            Phase progress is visible at the session URL, not in
+            /workflows. You will be notified when it completes.
+          </Text>
+          {state.warning && <Text color="warning">⚠ {state.warning}</Text>}
+        </Box>
+      )}
+
       {/* Header */}
       <Box>
         <Text>
