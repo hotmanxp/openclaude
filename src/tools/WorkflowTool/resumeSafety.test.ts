@@ -47,4 +47,25 @@ describe('assertResumeSafe (port of upstream 2.1.170)', () => {
     const script = 'const s = `Date.now()`\nasync function userScript() { return s }'
     expect(() => assertResumeSafe(script)).not.toThrow()
   })
+
+  test('rejects Date.now() inside a template interpolation (Plan14 code review regression)', () => {
+    const script = 'const s = `${Date.now()}`\nasync function userScript() { return s }'
+    expect(() => assertResumeSafe(script)).toThrow(
+      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume). Stamp results after the workflow returns, or pass timestamps via args.',
+    )
+  })
+
+  test('rejects new Date() inside a template interpolation', () => {
+    const script = 'const s = `${new Date()}`\nasync function userScript() { return s }'
+    expect(() => assertResumeSafe(script)).toThrow(
+      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume). Stamp results after the workflow returns, or pass timestamps via args.',
+    )
+  })
+
+  test('rejects Math.random() inside a template interpolation', () => {
+    const script = 'const s = `${Math.random()}`\nasync function userScript() { return s }'
+    expect(() => assertResumeSafe(script)).toThrow(
+      'Math.random() is unavailable in workflow scripts (breaks resume). For N independent samples, include the index in the agent label or prompt.',
+    )
+  })
 })
