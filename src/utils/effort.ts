@@ -279,6 +279,9 @@ export function getEffortSuffix(
   effortValue: EffortValue | undefined,
 ): string {
   if (effortValue === undefined) return ''
+  if (effortValue === 'ultracode') {
+    return ' with ultracode orchestration'
+  }
   const resolved = resolveAppliedEffort(model, effortValue)
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
