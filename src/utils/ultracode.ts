@@ -9,23 +9,8 @@ import { getInitialSettings } from './settings/settings.js'
  * This module tracks the boolean session toggle that gates ultracode
  * behavior across the runtime.
  */
-export function parseUltracodeFlag(value: string | undefined | null): boolean {
-  return value === 'ultracode' || value === 'true' || value === 'on'
-}
-
 export function isUltracodeActive(): boolean {
   return getInitialSettings().ultracode === true
-}
-
-export function getUltracodeSettings(): {
-  active: boolean
-  source: 'settings' | 'default'
-} {
-  const active = isUltracodeActive()
-  return {
-    active,
-    source: active ? 'settings' : 'default',
-  }
 }
 
 /**
@@ -35,7 +20,7 @@ export function getUltracodeSettings(): {
  * the ultracode block or revert to the opt-in rule — matching upstream
  * claude-code v2.1.170 behavior.
  */
-export function formatUltracodeReminder(active: boolean): string {
+function formatUltracodeReminder(active: boolean): string {
   return `<system-reminder>ultracode is ${active ? 'on' : 'off'}</system-reminder>`
 }
 
