@@ -83,6 +83,35 @@ export async function buildRealSpawner(
 
   return async (prompt, opts) => {
     const agentId = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    // Plan12 Task 3: auto-replay for resumeFromRunId. When the caller
+    // passed `resumeRunId` (a string set by the wrapper before the
+    // spawner is invoked), check the resume cache first; if we have
+    // a result for this exact (prompt, opts) tuple, return it
+    // instantly instead of running another LLM call.
+    if (opts && typeof opts === 'object' && 'resumeRunId' in opts) {
+      const resumeRunId = (opts as { resumeRunId?: unknown }).resumeRunId
+      if (typeof resumeRunId === 'string' && resumeRunId.length > 0) {
+        try {
+          const { getCachedAgentResult } = await import(
+            './workflowResumeStore.js'
+          )
+          const cached = getCachedAgentResult(resumeRunId, { prompt, opts })
+          if (cached !== undefined) {
+            const c = cached as { report?: string; agentId?: string }
+            return {
+              agentId: c.agentId ?? `cached-${Date.now()}`,
+              report: String(c.report ?? ''),
+              tokensUsed: 0,
+              toolsUsed: 0,
+              toolCalls: [],
+              model: undefined,
+            }
+          }
+        } catch {
+          // Cache lookup is best-effort; fall through to real runAgent.
+        }
+      }
+    }
     if (!runAgent || !createUserMessage) {
       return {
         agentId,
@@ -380,6 +409,28 @@ export async function buildRealSpawner(
         }
         // On success, keep `structuredOutput` as the raw value the
         // subagent emitted (already validated).
+      }
+    }
+    // Plan12 Task 3: best-effort cache write. When the caller set
+    // `resumeRunId`, persist this (prompt, opts, result) tuple so a
+    // later resume can replay it. The cache key includes opts
+    // (model, tools, etc.) so changing them correctly invalidates the
+    // cached entry.
+    if (opts && typeof opts === 'object' && 'resumeRunId' in opts) {
+      const resumeRunId = (opts as { resumeRunId?: unknown }).resumeRunId
+      if (typeof resumeRunId === 'string' && resumeRunId.length > 0) {
+        try {
+          const { saveAgentResult } = await import(
+            './workflowResumeStore.js'
+          )
+          saveAgentResult(
+            resumeRunId,
+            { prompt, opts },
+            { report: finalReport, agentId },
+          )
+        } catch {
+          // Cache write is best-effort.
+        }
       }
     }
     return {
