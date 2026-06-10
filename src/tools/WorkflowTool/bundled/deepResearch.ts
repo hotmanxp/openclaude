@@ -127,125 +127,142 @@ async function userScript(args) {
   );
 
   // --- Phase 3: Fetch ---------------------------------------------------
-  // Each search result points to candidate sources; one fetch agent per
-  // lens pulls the full content of the most useful 2-3 URLs.
+  // Dedup URLs from all search results and dispatch one fetcher per URL
+  // in parallel. Each fetcher runs in its own worktree (isolation) so it
+  // cannot be biased by sibling fetches' context.
   phase('Fetch');
-  const fetched = await parallel(
-    searchResults.map(function (r, i) {
-      return function () {
-        if (!r.ok) {
-          return Promise.resolve({ ok: false, error: r.error, label: 'fetch:' + angles[i].label });
-        }
-        return agent(
-          \`From the following search summary, identify the 2-3 most authoritative sources for the angle "\${angles[i].label}" and fetch their full content. Return a structured { sources: [{ url, title, content }] } list.\n\nQuestion: \${question}\n\nSearch summary (\${angles[i].label}):\n\${r.report}\`,
-          {
-            label: 'fetch:' + angles[i].label,
-            phase: 'Fetch',
-            schema: {
-              type: 'object',
-              properties: {
-                sources: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      url: { type: 'string' },
-                      title: { type: 'string' },
-                      content: { type: 'string' },
-                    },
-                    required: ['url', 'title', 'content'],
-                    additionalProperties: false,
+  const allUrls = searchResults.flatMap(function (r) {
+    if (!r.ok) return [];
+    // searchResults are unstructured (no schema); extract URLs from the
+    // report text via a simple line scan. This keeps Search cheap.
+    var urls = [];
+    var re = /https?:\\/\\/[^\\s)]+/g;
+    var match;
+    while ((match = re.exec(r.report)) !== null) {
+      urls.push(match[0]);
+    }
+    return urls;
+  });
+  var uniqueUrls = Array.from(new Set(allUrls)).slice(0, 15);
+  var fetches = await parallel(uniqueUrls.map(function (url, i) {
+    return function () {
+      return agent(
+        \`Fetch this URL and extract any falsifiable factual claims (assertions about specific numbers, dates, people, or events that could be verified or refuted). Skip opinions. Return a JSON array of {claim, quote} objects (the quote should be the exact text supporting the claim).
+
+URL: \${url}\`,
+        {
+          label: 'fetch:' + i,
+          phase: 'Fetch',
+          isolation: 'worktree',
+          tools: ['WebFetch'],
+          schema: {
+            type: 'object',
+            properties: {
+              claims: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    claim: { type: 'string' },
+                    quote: { type: 'string' },
+                    url: { type: 'string' },
                   },
+                  required: ['claim', 'quote'],
                 },
               },
-              required: ['sources'],
-              additionalProperties: false,
             },
+            required: ['claims'],
+            additionalProperties: false,
           },
-        );
-      };
-    }),
-  );
-
-  // --- Phase 4: Verify --------------------------------------------------
-  // A dedicated verifier subagent, isolated in a worktree so it cannot
-  // be biased by the fetchers' framing, cross-checks claims against
-  // the verification spec.
-  phase('Verify');
-  const verify = await agent(
-    \`Independently verify the following research findings for the question "\${question}".\n\nFocus on these claim types: \${verificationFocus.join(', ')}.\n\nFindings to verify:\n\${searchResults.map(function (r, i) {
-      if (!r.ok) return '## ' + angles[i].label + ' (FAILED: ' + r.error + ')';
-      return '## ' + angles[i].label + '\n' + r.report;
-    }).join('\n\n')}\n\nFetched sources:\n\${fetched.map(function (r, i) {
-      if (!r.ok || !r.structuredOutput || !r.structuredOutput.sources) return '## ' + angles[i].label + ' (no sources)';
-      return '## ' + angles[i].label + '\n' + r.structuredOutput.sources.map(function (s) {
-        return '- ' + s.title + ' (' + s.url + ')';
-      }).join('\n');
-    }).join('\n\n')}\n\nReturn structured output: { verified: [{ claim, status: 'ok'|'unsupported'|'contested', evidence }], overall: 'reliable'|'mixed'|'unreliable' }\`,
-    {
-      label: 'verifier',
-      phase: 'Verify',
-      isolation: 'worktree',
-      schema: {
-        type: 'object',
-        properties: {
-          verified: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                claim: { type: 'string' },
-                status: { type: 'string' },
-                evidence: { type: 'string' },
-              },
-              required: ['claim', 'status', 'evidence'],
-              additionalProperties: false,
-            },
-          },
-          overall: { type: 'string' },
-        },
-        required: ['verified', 'overall'],
-        additionalProperties: false,
-      },
-    },
-  );
-
-  // --- Phase 5: Synthesize ---------------------------------------------
-  // Final synthesis — combines all phases into a cited markdown report.
-  phase('Synthesize');
-  const lines = [
-    '# Deep research: ' + question,
-    '',
-    '## Scope',
-    'Lens angles: ' + angles.map(function (a) { return a.label; }).join(', '),
-    'Verification focus: ' + (verificationFocus.length ? verificationFocus.join(', ') : '(none specified)'),
-    '',
-    '## Findings',
-  ];
-
-  searchResults.forEach(function (r, i) {
-    lines.push('');
-    lines.push('### ' + angles[i].label);
-    if (r.ok) {
-      lines.push(r.report);
-    } else {
-      lines.push('_(search failed: ' + r.error + ')_');
+        }
+      );
+    };
+  }));
+  var allClaims = [];
+  fetches.forEach(function (f) {
+    if (f.ok && f.structuredOutput && f.structuredOutput.claims) {
+      f.structuredOutput.claims.forEach(function (cl) {
+        allClaims.push({ claim: cl.claim, quote: cl.quote, url: cl.url || '' });
+      });
     }
   });
+  log('fetch: ' + allClaims.length + ' claims extracted from ' + uniqueUrls.length + ' URLs');
 
-  lines.push('');
-  lines.push('## Cross-verification');
-  if (verify.ok && verify.structuredOutput) {
-    lines.push('Overall reliability: **' + verify.structuredOutput.overall + '**');
+  // --- Phase 4: Verify --------------------------------------------------
+  // 3-vote adversarial per claim: three independent fact-checker agents
+  // each vote SUPPORTED/REFUTED/UNCERTAIN. 2+ REFUTED kills the claim.
+  // No isolation here — verifier bias comes from sibling context, not the
+  // worker tree, and the verify agents should share the corpus.
+  phase('Verify');
+  var verifiedClaims = await parallel(allClaims.slice(0, 30).map(function (c, i) {
+    return function () {
+      return (async function () {
+        var votes = await parallel([0, 1, 2].map(function (v) {
+          return function () {
+            return agent(
+              \`You are a skeptical fact-checker. Vote on whether this claim is SUPPORTED, REFUTED, or UNCERTAIN based on the quote and your knowledge.
+
+Claim: "\${c.claim}"
+Quote: "\${c.quote}"
+
+Use WebSearch if needed. Return JSON: {vote: "SUPPORTED"|"REFUTED"|"UNCERTAIN", reason: "<1 sentence>"}\`,
+              {
+                label: 'verify:' + i + '.v' + v,
+                phase: 'Verify',
+                tools: ['WebSearch'],
+                schema: {
+                  type: 'object',
+                  properties: {
+                    vote: { type: 'string', enum: ['SUPPORTED', 'REFUTED', 'UNCERTAIN'] },
+                    reason: { type: 'string' },
+                  },
+                  required: ['vote', 'reason'],
+                  additionalProperties: false,
+                },
+              }
+            );
+          };
+        }));
+        var counts = { SUPPORTED: 0, REFUTED: 0, UNCERTAIN: 0 };
+        votes.forEach(function (vote) {
+          if (vote.ok && vote.structuredOutput && vote.structuredOutput.vote && counts.hasOwnProperty(vote.structuredOutput.vote)) {
+            counts[vote.structuredOutput.vote]++;
+          }
+        });
+        // 2/3 refutes kills the claim
+        var killed = counts.REFUTED >= 2;
+        return { claim: c.claim, quote: c.quote, url: c.url, votes: counts, killed: killed };
+      })();
+    };
+  }));
+  var surviving = verifiedClaims.filter(function (v) { return !v.killed; });
+  log('verify: ' + surviving.length + '/' + verifiedClaims.length + ' claims survived');
+
+  // --- Phase 5: Synthesize ---------------------------------------------
+  // Sort surviving claims by net support (SUPPORTED - REFUTED) and emit
+  // a cited report. Vote counts are included inline so the reader can
+  // see the adversarial verdict per claim.
+  phase('Synthesize');
+  var sorted = surviving.slice().sort(function (a, b) {
+    var aNet = a.votes.SUPPORTED - a.votes.REFUTED;
+    var bNet = b.votes.SUPPORTED - b.votes.REFUTED;
+    return bNet - aNet;
+  });
+  var lines = [
+    '# Deep research: ' + question,
+    '',
+    '## Summary',
+    'Verified ' + sorted.length + ' claims across ' + uniqueUrls.length + ' sources (out of ' + allClaims.length + ' extracted, ' + (verifiedClaims.length - sorted.length) + ' killed by adversarial verification).',
+    '',
+    '## Verified claims',
+  ];
+  sorted.forEach(function (v, i) {
+    lines.push('### ' + (i + 1) + '. ' + v.claim);
+    lines.push('> ' + v.quote);
+    lines.push('— ' + v.url + ' (votes: ' + v.votes.SUPPORTED + 'S/' + v.votes.REFUTED + 'R/' + v.votes.UNCERTAIN + 'U)');
     lines.push('');
-    verify.structuredOutput.verified.forEach(function (v) {
-      lines.push('- [' + v.status + '] ' + v.claim + (v.evidence ? ' — ' + v.evidence : ''));
-    });
-  } else {
-    lines.push('_(verification failed: ' + (verify.error || 'no structured output') + ')_');
-  }
-
-  return lines.join('\n');
+  });
+  return lines.join('\\n');
 }
 `
 
