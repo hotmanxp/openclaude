@@ -1,5 +1,4 @@
 import { describe, expect, test, beforeEach, mock, afterEach } from 'bun:test';
-import * as M from './effort.js';
 import { executeEffort, setEffortValue } from './effort.js';
 
 // Complete mock of `settings.js` — must include EVERY export the production
