@@ -1,18 +1,16 @@
 // Top-level await user workflow fixture.
 // Mirrors the pattern used by .claude/workflows/*.js which do
 // `const x = await someAsyncFn()` at top level (no `userScript`
-// wrapper). The current vmRunner runs the source verbatim inside
-// `(async () => {...})()`, but the body contains a bare top-level
-// `return` AND the IIFE wrap can trip on the `return` when not
-// actually inside a function in some edge cases. More importantly
-// this locks down the contract that a script's top-level awaited
-// value reaches `result.report` (currently broken because the
-// `return result` line is treated as a top-level return in a
-// script body, not inside the IIFE that the user wrote).
+// wrapper). This test pins the contract that a script's top-level
+// awaited value reaches `result.report`.
 //
-// This file must be loaded as a path so `existsSync` reads it from
-// disk; the test asserts that the awaited promise's resolved value
-// shows up in the report.
+// NOTE: This test is GREEN (not RED) after Plan5 VM migration because
+// vmContext.ts already wraps source in `(async () => {...})()` before
+// runInContext. The top-level `await` is legal inside that async IIFE.
+// This test serves as a regression guard: it must not break if the
+// wrapping is ever removed or refactored. See Plan6 Task3.
+//
+// Plan6: commit 57887ab7 removed the legacy export-stripper.
 
 const result = await new Promise((resolve) => resolve('tla-success'))
 return result

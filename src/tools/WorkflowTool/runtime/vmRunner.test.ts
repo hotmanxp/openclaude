@@ -85,18 +85,21 @@ async function userScript(args) {
   })
 
   // Plan6 regression: 4 of 6 user workflows in .claude/workflows/ start
-  // with `export const meta = {...}` plus a top-level `phase('...')` /
-  // `await agent('...', {})` / `return {...}`. The Plan5 VM migration
-  // (commit 57887ab7) did not preserve the legacy `workerScript.ts`
-  // `export` stripper, so all four crash with
-  // `SyntaxError: Unexpected token 'export'`. These tests pin that
-  // failure so Task2 (stripEsmExports) and Task3 (async IIFE wrap) can
-  // turn them green.
+  // with `export const meta = {...}` plus top-level `phase()` /
+  // `await agent()` / `return`. The Plan5 VM migration (commit 57887ab7)
+  // did not preserve the legacy workerScript.ts `export` stripper, so
+  // all four crash with `SyntaxError: Unexpected token 'export'`.
+  //
+  // Test 1 is RED (fails before fix, green after Task2 stripEsmExports).
+  // Test 2 pins the TLA contract; it is GREEN from the start because
+  // vmContext.ts already wraps source in `(async () => {...})()` — Task3
+  // is a no-op for this fixture, kept as a regression guard only.
   it('runs scripts that use export const meta', async () => {
     const scriptPath = join(FIXTURES_DIR, 'workflow-with-export.js')
 
     const phaseCalls: string[] = []
     const agentCalls: Array<{ prompt: string; opts: unknown }> = []
+    const metaEvents: unknown[] = []
     const result = await runWorkflowInVm({
       script: scriptPath,
       args: undefined,
