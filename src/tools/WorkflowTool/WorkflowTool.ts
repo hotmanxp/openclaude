@@ -45,10 +45,27 @@ export const workflowInputSchema = z
       .string()
       .optional()
       .describe('Optional: free-form task description if running an ad-hoc workflow'),
+    // Plan12 Task 2: port of upstream's resumeFromRunId. Re-uses cached
+    // agent results from a prior run; only new/edited calls re-run.
+    // Caller MUST stop the prior run first.
+    resumeFromRunId: z
+      .string()
+      .regex(
+        /^wf_[a-z0-9-]{6,}$/,
+        'Run ID must match ^wf_[a-z0-9-]{6,}$',
+      )
+      .optional()
+      .describe(
+        'Run ID of a prior Workflow invocation to resume from. Cached agent() calls with same (prompt, opts) return instantly; only edited/new calls re-run. Stop the prior run first before resuming.',
+      ),
   })
   .refine(d => !(d.workflowName && d.scriptPath), {
     message: 'workflowName and scriptPath are mutually exclusive',
   })
+  .refine(
+    d => d.workflowName || d.scriptPath || d.resumeFromRunId,
+    { message: 'Must provide workflowName, scriptPath, or resumeFromRunId' },
+  )
 
 /**
  * WorkflowTool — the LLM-facing entry point for running a dynamic workflow.
@@ -201,7 +218,12 @@ export const WorkflowTool = {
   },
 
   async call(
-    { workflowName: inputWorkflowName, scriptPath, args }: z.infer<typeof workflowInputSchema>,
+    {
+      workflowName: inputWorkflowName,
+      scriptPath,
+      args,
+      resumeFromRunId,
+    }: z.infer<typeof workflowInputSchema>,
     toolUseCtx?: { abortController?: AbortController; setAppState?: (updater: (prev: unknown) => unknown) => void; [k: string]: unknown },
     _canUseTool?: unknown,
   ) {
@@ -216,6 +238,39 @@ export const WorkflowTool = {
           data: {
             message: 'workflowName and scriptPath are mutually exclusive — pass one or the other, not both.',
           },
+        }
+      }
+
+      // Plan12 Task 2: resumeFromRunId. If the caller provided a prior
+      // run's ID, refuse to resume if that run is still going (cache
+      // would race against the in-flight worker). The full cache-driven
+      // replay wiring is in Task 3 (workflowResumeStore + realSpawner);
+      // this branch only handles the input-validation side and falls
+      // through to the normal scriptPath/registry lookup so a future
+      // task can re-use the prior script + args.
+      if (resumeFromRunId) {
+        // Lazy-load to avoid the pre-existing settings.ts ↔ envUtils.ts
+        // circular TDZ.
+        const { listWorkflowRuns } = await import('./workflowRunStore.js')
+        const prior = listWorkflowRuns().find(r => r.id === resumeFromRunId)
+        if (prior && prior.status === 'running') {
+          return {
+            data: {
+              message: `Workflow ${resumeFromRunId} is still running. Stop it first before resuming.`,
+            },
+          }
+        }
+        // If we have a prior run with a non-empty workflowPath, fall
+        // through using its path so the normal launcher re-reads the
+        // script. (For bundled workflows workflowPath is '' — the
+        // caller must re-supply workflowName in that case.)
+        if (prior && prior.workflowPath && !scriptPath && !inputWorkflowName) {
+          scriptPath = prior.workflowPath
+        }
+        // If a prior run was found, also carry forward its args when
+        // the caller didn't supply fresh ones.
+        if (prior && prior.args && prior.args.length > 0 && args === undefined) {
+          args = prior.args
         }
       }
 
@@ -284,7 +339,8 @@ export const WorkflowTool = {
       } else {
         return {
           data: {
-            message: 'Either workflowName or scriptPath is required.',
+            message:
+              'Either workflowName, scriptPath, or resumeFromRunId (with a prior scriptPath) is required.',
           },
         }
       }

@@ -412,3 +412,26 @@ describe('WorkflowTool.checkPermissions', () => {
     expect(result.behavior).toBe('ask')
   })
 })
+
+describe('WorkflowTool resumeFromRunId (Plan12 Task2: port upstream)', () => {
+  test('rejects resumeFromRunId that does not match upstream regex', () => {
+    // Schema-level validation: malformed run IDs are caught by the
+    // Zod refine() before the tool body runs. The pattern is
+    // `^wf_[a-z0-9-]{6,}$` (matches upstream).
+    const schema = (
+      WorkflowTool as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean; error?: { issues?: unknown[] } } } }
+    ).inputSchema
+    const badResult = schema.safeParse({ resumeFromRunId: 'nope' })
+    expect(badResult.success).toBe(false)
+  })
+
+  test('accepts well-formed resumeFromRunId at the schema level', () => {
+    const schema = (
+      WorkflowTool as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean; error?: { issues?: unknown[] } } } }
+    ).inputSchema
+    const goodResult = schema.safeParse({
+      resumeFromRunId: 'wf_abcdef1',
+    })
+    expect(goodResult.success).toBe(true)
+  })
+})
