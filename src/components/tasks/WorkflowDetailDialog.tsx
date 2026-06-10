@@ -59,9 +59,9 @@ const ACTIVITY_PREVIEW_LIMIT = 3
 function agentStatusIcon(status: WorkflowAgentState['status']): string {
   switch (status) {
     case 'completed':
-      return '✓'
+      return '✔'
     case 'running':
-      return '▶'
+      return '⏺'
     case 'failed':
       return '✗'
     case 'skipped':

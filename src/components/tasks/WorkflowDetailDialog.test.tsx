@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { PassThrough } from 'node:stream';
+import { stripVTControlCharacters as stripAnsi } from 'node:util';
+import React from 'react';
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/state.js';
+import { createRoot } from '../../ink.js';
 import { WorkflowDetailDialog } from './WorkflowDetailDialog.js';
 import { DEEP_RESEARCH_PHASES } from '../../tools/WorkflowTool/bundled/deepResearch.js';
 
@@ -357,5 +361,103 @@ describe('WorkflowDetailDialog (render smoke)', () => {
     expect(() => (
       <WorkflowDetailDialog state={deepResearch} onDone={() => {}} />
     )).not.toThrow();
+  });
+});
+
+// Helper: render the dialog via Ink's createRoot over PassThrough
+// streams (same pattern as StartupHeader.test.tsx) and extract the
+// last rendered frame stripped of ANSI. This lets the icon/footer
+// tests assert on actual rendered text without depending on
+// ink-testing-library.
+const SYNC_START = '\x1B[?2026h';
+const SYNC_END = '\x1B[?2026l';
+function extractLastFrame(output: string): string {
+  let lastFrame: string | null = null;
+  let cursor = 0;
+  while (cursor < output.length) {
+    const start = output.indexOf(SYNC_START, cursor);
+    if (start === -1) break;
+    const contentStart = start + SYNC_START.length;
+    const end = output.indexOf(SYNC_END, contentStart);
+    if (end === -1) break;
+    const frame = output.slice(contentStart, end);
+    if (frame.trim().length > 0) lastFrame = frame;
+    cursor = end + SYNC_END.length;
+  }
+  return lastFrame ?? output;
+}
+function createTestStreams(columns: number) {
+  let output = '';
+  const stdout = new PassThrough();
+  const stdin = new PassThrough() as PassThrough & {
+    isTTY: boolean;
+    setRawMode: (mode: boolean) => void;
+    ref: () => void;
+    unref: () => void;
+  };
+  stdin.isTTY = true;
+  stdin.setRawMode = () => {};
+  stdin.ref = () => {};
+  stdin.unref = () => {};
+  (stdout as unknown as { columns: number }).columns = columns;
+  stdout.on('data', chunk => {
+    output += chunk.toString();
+  });
+  return { stdout, stdin, getOutput: () => output };
+}
+async function renderDialog(
+  state: LocalWorkflowTaskState,
+  props: Partial<React.ComponentProps<typeof WorkflowDetailDialog>> = {},
+): Promise<string> {
+  const { stdout, stdin, getOutput } = createTestStreams(120);
+  const root = await createRoot({ stdout, stdin });
+  await root.render(<WorkflowDetailDialog state={state} onDone={() => {}} {...props} />);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  root.unmount();
+  return stripAnsi(extractLastFrame(getOutput()));
+}
+
+describe('WorkflowDetailDialog (Plan11: status icons ⏺/✔/✗ — port upstream)', () => {
+  test('agent status icons use upstream ⏺ (running) and ✔ (completed)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'completed',
+          startedAt: Date.now() - 5000,
+          completedAt: Date.now() - 3000,
+        },
+        {
+          id: 'w_abc-1',
+          prompt: 'Find critic',
+          phase,
+          status: 'running',
+          startedAt: Date.now() - 2000,
+        },
+        {
+          id: 'w_abc-2',
+          prompt: 'Verify',
+          phase,
+          status: 'failed',
+          startedAt: Date.now() - 1000,
+          completedAt: Date.now(),
+        },
+      ],
+    };
+    const frame = await renderDialog(state);
+    expect(frame).toContain('⏺');
+    expect(frame).toContain('✔');
+    expect(frame).toContain('✗');
   });
 });
