@@ -104,16 +104,64 @@ export const WorkflowTool = {
   // calls this before tool.call; if it's missing the tool never
   // executes and the workflow never reaches registerWorkflowInAppState
   // — which is why /workflows panel was empty for the user.
-  // Workflows already gate themselves via spawnSubagent's permission
-  // surface (each sub-agent call is permission-checked), so we just
-  // allow the workflow-tool itself at the entry point. Pattern
-  // mirrors src/tools/McpAuthTool/McpAuthTool.ts:checkPermissions.
+  //
+  // Permission gating strategy for dynamic workflows:
+  //   1. If the user previously answered `yes-always` for this
+  //      workflowName, short-circuit to `allow` so the dialog never
+  //      re-fires. The consent file lives in
+  //      `~/.claude/workflow-consents.json` (see workflowConsent.ts).
+  //   2. Otherwise, return `ask` with the WorkflowPermissionDialog
+  //      prompt. The runtime permission system is responsible for
+  //      rendering the dialog and calling `onPermissionAnswer` with
+  //      the user's choice (`yes` / `yes-always` / `no`).
+  //
+  // We deliberately do NOT pre-analyze the script here — the dialog
+  // itself reads from the bundled registry on demand, so a missing
+  // or renamed workflow still surfaces the dialog (and the user can
+  // cancel cleanly) instead of failing inside checkPermissions.
   async checkPermissions(input: {
     workflowName?: string
     args?: unknown
     description?: string
-  }): Promise<{ behavior: 'allow'; updatedInput: typeof input }> {
-    return { behavior: 'allow', updatedInput: input }
+  }): Promise<
+    | { behavior: 'allow'; updatedInput: typeof input }
+    | { behavior: 'ask'; message: string; updatedInput?: typeof input }
+  > {
+    if (input.workflowName) {
+      const { getWorkflowConsent } = await import('./workflowConsent.js')
+      if (await getWorkflowConsent(input.workflowName)) {
+        return { behavior: 'allow', updatedInput: input }
+      }
+    }
+    return {
+      behavior: 'ask',
+      message: 'Run a dynamic workflow?',
+      updatedInput: input,
+    }
+  },
+
+  /**
+   * Called by the runtime permission system after the user answers
+   * the WorkflowPermissionDialog. Persists `yes-always` and `no`
+   * decisions to disk so future calls of the same workflow can
+   * short-circuit. `yes` (one-shot) is intentionally not persisted.
+   *
+   * Not part of the Tool interface — this is the hook the
+   * WorkflowPermissionDialog hands its answer to. Wrapped on the
+   * WorkflowTool plain object so callers don't need to import
+   * workflowConsent.ts directly.
+   */
+  async onPermissionAnswer(
+    input: { workflowName?: string },
+    answer: 'yes' | 'yes-always' | 'no',
+  ): Promise<void> {
+    if (!input.workflowName) return
+    const { setWorkflowConsent } = await import('./workflowConsent.js')
+    if (answer === 'yes-always') {
+      await setWorkflowConsent(input.workflowName, true)
+    } else if (answer === 'no') {
+      await setWorkflowConsent(input.workflowName, false)
+    }
   },
 
   mapToolResultToToolResultBlockParam(output, toolUseID) {
