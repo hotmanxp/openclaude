@@ -25,7 +25,7 @@ export type SubagentStatus =
 export type Workflow = {
   name: string
   description?: string
-  source: 'project' | 'user' | 'bundled'
+  source: 'project' | 'user' | 'bundled' | 'plugin'
   path: string
   run: (args: string[]) => Promise<string>
 }
