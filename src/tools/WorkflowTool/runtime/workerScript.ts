@@ -73,7 +73,7 @@ function spawnSubagent(prompt, opts) {
       if (msg && msg.kind === 'spawnSubagentResult' && msg.callId === callId) {
         parentPort.off('message', onMessage);
         if (msg.error) reject(new Error(msg.error));
-        else resolve({ agentId: msg.agentId, report: msg.report });
+        else resolve({ agentId: msg.agentId, report: msg.report, structuredOutput: msg.structuredOutput });
       }
     };
     parentPort.on('message', onMessage);
@@ -108,11 +108,17 @@ function phase(title) {
 // agentType is forwarded into SpawnOpts so the main-process handler
 // can route through the agent registry when set (otherwise the LLM
 // is called directly with the schema prompt).
+// schema is forwarded so realSpawner can inject StructuredOutputTool
+// (validated by the LLM and returned as structuredOutput on success).
+// isolation is forwarded so downstream tasks can opt into a per-call
+// worktree (e.g. for repos that must not be mutated by sibling agents).
 function agent(prompt, opts) {
-  const { label, phase, agentType, ...spawnOpts } = opts || {};
+  const { label, phase, agentType, schema, isolation, ...spawnOpts } = opts || {};
   const finalOpts = {
     ...(label !== undefined ? { label } : {}),
     ...(phase !== undefined ? { phase } : {}),
+    ...(schema !== undefined ? { schema } : {}),
+    ...(isolation !== undefined ? { isolation } : {}),
     ...spawnOpts,
     ...(agentType ? { agentType } : {}),
   };
@@ -122,6 +128,7 @@ function agent(prompt, opts) {
         ok: true,
         agentId: r.agentId,
         report: r.report,
+        structuredOutput: r.structuredOutput,
         label: label,
         phase: phase,
       };

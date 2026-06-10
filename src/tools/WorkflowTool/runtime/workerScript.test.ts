@@ -131,6 +131,44 @@ describe('buildWorkerScript', () => {
     expect(script).toMatch(/agentType/)
   })
 
+  test('forwards schema and isolation through to spawnSubagent', () => {
+    // The agent(prompt, opts) wrapper must destructure schema and
+    // isolation and forward them into the spawnSubagent call so the
+    // realSpawner can pick them up (e.g. opts.schema triggers
+    // StructuredOutputTool injection in realSpawner).
+    const script = buildWorkerScript(`
+      await agent('p', { schema: { type: 'object' }, isolation: 'worktree', label: 'L', phase: 'P', agentType: 'Explore' });
+    `)
+    // The destructure must pull schema + isolation out of opts
+    expect(script).toMatch(/const\s*\{\s*label\s*,\s*phase\s*,\s*agentType\s*,\s*schema\s*,\s*isolation\s*,\s*\.\.\.spawnOpts\s*\}\s*=\s*opts/)
+    // The finalOpts build must conditionally include schema and
+    // isolation (matches the `!== undefined` guard pattern)
+    expect(script).toMatch(/schema\s*!==\s*undefined\s*\?\s*\{\s*schema\s*\}\s*:\s*\{\s*\}/)
+    expect(script).toMatch(/isolation\s*!==\s*undefined\s*\?\s*\{\s*isolation\s*\}\s*:\s*\{\s*\}/)
+    // And both must end up in the finalOpts object that spawnSubagent receives
+    // (extract the finalOpts block by index — finalOpts is the only
+    // top-level const named finalOpts in the wrapper)
+    const finalOptsIdx = script.indexOf('const finalOpts')
+    expect(finalOptsIdx).toBeGreaterThan(-1)
+    const finalOptsBlock = script.slice(finalOptsIdx, finalOptsIdx + 600)
+    expect(finalOptsBlock).toMatch(/schema/)
+    expect(finalOptsBlock).toMatch(/isolation/)
+    expect(finalOptsBlock).toMatch(/label/)
+    expect(finalOptsBlock).toMatch(/phase/)
+    expect(finalOptsBlock).toMatch(/agentType/)
+    // And spawnSubagent must be called with finalOpts (not raw opts)
+    expect(script).toMatch(/spawnSubagent\(prompt,\s*finalOpts\)/)
+  })
+
+  test('agent wrapper returns structuredOutput on success', () => {
+    // The agent() wrapper should pass through structuredOutput from the
+    // spawnSubagent result so scripts can read the validated schema
+    // payload (used by downstream agent() calls that need to consume
+    // a structured report from an upstream phase).
+    const script = buildWorkerScript(`return args;`)
+    expect(script).toMatch(/structuredOutput:\s*r\.structuredOutput/)
+  })
+
   test('parallel wrapper uses Promise.all', () => {
     const script = buildWorkerScript(`return args;`)
     expect(script).toMatch(/Promise\.all\s*\(\s*fns/)
