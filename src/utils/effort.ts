@@ -78,6 +78,18 @@ export function modelSupportsMaxEffort(model: string): boolean {
   return false
 }
 
+// xhigh is the "deepest" effort tier marker. Currently the opus-4-6 family.
+// Used to gate ultracode (which requires xhigh effort + workflow orchestration).
+function modelSupportsXhighEffort(model: string): boolean {
+  return model.toLowerCase().includes('opus-4-6')
+}
+
+// Ultracode requires an xhigh-capable model + workflow support. Mirror
+// upstream: opus-4-6 family only — the same models that surface 'max' effort.
+export function modelSupportsUltracode(model: string): boolean {
+  return modelSupportsEffort(model) && modelSupportsXhighEffort(model)
+}
+
 export function isEffortLevel(value: string): value is EffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
 }
@@ -101,6 +113,9 @@ export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIE
   const levels: EffortLevel[] = ['low', 'medium', 'high']
   if (modelSupportsMaxEffort(model)) {
     levels.push('max')
+  }
+  if (modelSupportsUltracode(model)) {
+    levels.push('ultracode')
   }
   return levels
 }
@@ -308,7 +323,7 @@ export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel
     case 'xhigh':
       return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
     case 'ultracode':
-      return 'xhigh effort with standing dynamic-workflow orchestration'
+      return 'xhigh effort + standing dynamic-workflow orchestration. Requires workflows to be enabled and an xhigh-capable model.'
   }
 }
 
