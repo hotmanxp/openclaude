@@ -5,9 +5,11 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelSupportsUltracode, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
 import { EffortPicker } from '../../components/EffortPicker.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
+import { isWorkflowsDisabled } from '../../utils/envUtils.js';
+import { getMainLoopModel } from '../../utils/model/model.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
   message: string;
@@ -21,6 +23,21 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   // The 'ultracode' marker is also returned as effortUpdate.value so the
   // AppState + spinner reflect the current mode.
   if (effortValue === 'ultracode') {
+    // Validation 1: workflows must be enabled — ultracode is meaningless
+    // without dynamic-workflow orchestration.
+    if (isWorkflowsDisabled()) {
+      return {
+        message: 'Ultracode needs dynamic workflows enabled (see /config). Valid options are: low, medium, high, xhigh, max, auto',
+      };
+    }
+    // Validation 2: model must support ultracode (xhigh effort + opus-4-6
+    // family). Surface the model so the user knows what to change to.
+    const model = getMainLoopModel();
+    if (!modelSupportsUltracode(model)) {
+      return {
+        message: `Ultracode runs at xhigh effort, which requires an opus-4-6+ family model. Current model: ${model}. Valid options are: low, medium, high, xhigh, max, auto`,
+      };
+    }
     const ultracodeResult = updateSettingsForSource('userSettings', {
       ultracode: true
     });

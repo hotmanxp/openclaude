@@ -45,6 +45,16 @@ describe('effort (import smoke)', () => {
 describe('effort /ultracode', () => {
   beforeEach(() => {
     mock.restore();
+    // setEffortValue("ultracode") now validates workflows-enabled + model
+    // supports ultracode before writing settings. These tests exercise the
+    // happy path / settings-write path, so default both checks to "pass".
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
   });
 
   afterEach(() => {
@@ -101,6 +111,82 @@ describe('effort /ultracode', () => {
       const result = mod.setEffortValue('ultracode');
       expect(result.message).toContain('disk full');
       expect(result.effortUpdate).toBeUndefined();
+    });
+  });
+});
+
+describe('effort /ultracode validation', () => {
+  beforeEach(() => {
+    mock.restore();
+    // Default to "everything valid" so individual tests can flip the bits
+    // they care about. Tests that exercise validation override these.
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('returns validation error when workflows are disabled', () => {
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => true,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      const result = mod.setEffortValue('ultracode');
+      expect(result.message.toLowerCase()).toContain('dynamic workflows');
+      expect(result.effortUpdate).toBeUndefined();
+    });
+  });
+
+  test('returns validation error when model does not support ultracode', () => {
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-haiku-4-5',
+      getDefaultMainLoopModelSetting: () => 'haiku',
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      const result = mod.setEffortValue('ultracode');
+      // The error must surface a xhigh / opus-4-6 hint to be actionable.
+      expect(result.message).toMatch(/xhigh|opus/i);
+      expect(result.effortUpdate).toBeUndefined();
+    });
+  });
+
+  test('succeeds when workflows enabled and model supports ultracode', () => {
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      const result = mod.setEffortValue('ultracode');
+      expect(result.effortUpdate?.value).toBe('ultracode');
     });
   });
 });
