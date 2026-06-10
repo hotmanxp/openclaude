@@ -17,7 +17,14 @@ describe('bundled workflow registration', () => {
   test('getBundledSource returns the deep-research script for "deep-research"', () => {
     const src = getBundledSource('deep-research')
     expect(src).toContain('userScript')
-    expect(src).toContain('spawnSubagent')
+    // The 5-phase redesign (Scope→Search→Fetch→Verify→Synthesize) uses
+    // the agent() wrapper (Plan1) and __setMeta() for the phase list.
+    // spawnSubagent is still injected by the worker prelude — no need
+    // for the script to call it directly.
+    expect(src).toContain('agent(')
+    expect(src).toContain('__setMeta')
+    expect(src).toContain("title: 'Scope'")
+    expect(src).toContain("title: 'Synthesize'")
   })
 
   test('getBundledSource returns undefined for unknown workflow', () => {
