@@ -62,6 +62,12 @@ export type Workflow = {
    * `pluginInfo: { pluginManifest: H.pluginManifest, repository: H.plugin }`.
    * Upstream's binary reads them as `H.pluginManifest` and `H.plugin`
    * directly on the Workflow, not nested.
+   *
+   * Intentionally typed as `unknown` (not a stricter manifest shape):
+   * upstream's manifest schema is plugin-defined and varies, so we
+   * preserve full fidelity through `createWorkflowCommand` rather than
+   * narrow it. Tighten with care — would reject manifests with extra
+   * fields that today's `unknown` accepts.
    */
   pluginManifest?: unknown
   plugin?: string
