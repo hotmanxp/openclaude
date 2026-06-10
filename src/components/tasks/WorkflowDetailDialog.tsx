@@ -310,6 +310,12 @@ function AgentDetailPane({
       {agent.error && (
         <Text color="red">Error: {agent.error}</Text>
       )}
+      {agent.worktreePath && (
+        <Text dimColor>
+          worktree: {agent.worktreePath}
+          {agent.isolationRemoved ? ' (cleaned up)' : ' (kept)'}
+        </Text>
+      )}
 
       <Box marginTop={1} flexDirection="row">
         <Text bold>Prompt</Text>
