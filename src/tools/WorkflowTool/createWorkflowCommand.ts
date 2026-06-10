@@ -15,17 +15,49 @@ import type { Workflow } from './types.js'
  * not a fit here where the registry has already loaded the Workflow and
  * knows its real description (or has explicitly marked it absent).
  */
-function workflowToCommand(workflow: Workflow): Command {
-  const { name, description, source } = workflow
+export function workflowToCommand(workflow: Workflow): Command {
+  const { name, description, source, whenToUse, hasUserSpecifiedDescription, script, pluginManifest, plugin } = workflow
   const desc = description ?? `Run workflow: ${name}`
+
+  // Upstream `source` mapping (binary-verified, Jwq.createWorkflowCommand):
+  //   H.source === 'built-in' ? 'bundled' : H.source
+  // i.e. `'bundled'` becomes `'bundled'`, `'plugin'` becomes `'plugin'`,
+  // and `'project'`/`'user'` pass through unchanged. The OpenCC Command
+  // type only allows `'builtin'` today, so we cast for forward compat.
+  const commandSource: 'bundled' | 'plugin' | 'project' | 'user' =
+    source === 'bundled' ? 'bundled' : source === 'plugin' ? 'plugin' : source
+
+  // Upstream `loadedFrom` (binary-verified, same call site):
+  //   H.source === 'built-in' ? 'bundled' : H.source === 'plugin' ? 'plugin' : 'skills'
+  // i.e. bundled/plugin keep identity, everything else collapses to
+  // `'skills'`. We port this exactly — projects/user workflows show
+  // up in the slash-command table as `loadedFrom: 'skills'`.
+  const commandLoadedFrom: 'bundled' | 'plugin' | 'skills' =
+    source === 'bundled' ? 'bundled' : source === 'plugin' ? 'plugin' : 'skills'
+
   return {
     type: 'prompt',
     name,
     description: desc,
+    hasUserSpecifiedDescription: hasUserSpecifiedDescription ?? true,
+    ...(whenToUse ? { whenToUse } : {}),
+    progressMessage: 'running dynamic workflow',
+    contentLength: script?.length ?? 0,
+    source: commandSource as 'builtin', // Command.source enum only allows 'builtin' today; cast for forward compat
+    loadedFrom: commandLoadedFrom,
+    // Upstream `pluginInfo: { pluginManifest: H.pluginManifest, repository: H.plugin }`
+    // — built from the Workflow's top-level `pluginManifest` and `plugin`
+    // fields, NOT from a nested `workflow.pluginInfo` field.
+    // `Workflow.pluginManifest` is typed as `unknown` (intentionally
+    // loose to accept plugin-defined schemas), while
+    // `Command.pluginInfo.pluginManifest` is typed as the strict
+    // `PluginManifest` shape. `as never` widens through `unknown` at
+    // the assignment boundary without a forced `any`.
+    ...(source === 'plugin' && (pluginManifest !== undefined || plugin !== undefined)
+      ? { pluginInfo: { pluginManifest: pluginManifest as never, repository: plugin ?? '' } }
+      : {}),
+    kind: 'workflow',
     isHidden: false,
-    source: 'builtin',
-    progressMessage: `running workflow ${name}`,
-    contentLength: 0,
     async getPromptForCommand(args: string) {
       const argList = args.trim() ? args.trim().split(/\s+/) : []
       const argListJson = JSON.stringify(argList)

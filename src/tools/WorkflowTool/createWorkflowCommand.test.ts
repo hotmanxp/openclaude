@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { getWorkflowCommands } from './createWorkflowCommand.js'
+import { getWorkflowCommands, workflowToCommand } from './createWorkflowCommand.js'
 
 describe('getWorkflowCommands', () => {
   let tmp: string
@@ -42,5 +42,99 @@ describe('getWorkflowCommands', () => {
     // deep-research is bundled, should NOT appear as a slash command
     // (it has its own registration path via registerBundled)
     expect(cmds.find(c => c.name === 'deep-research')).toBeUndefined()
+  })
+})
+
+describe('workflowToCommand (Plan14 upstream parity)', () => {
+  test('forwards kind, progressMessage, whenToUse, hasUserSpecifiedDescription', () => {
+    const cmd = workflowToCommand({
+      name: 'sample',
+      description: 'sample desc',
+      whenToUse: 'use it for X',
+      hasUserSpecifiedDescription: true,
+      source: 'bundled',
+      loadedFrom: 'bundled',
+      script: 'export const meta = { name: "sample", description: "d" }',
+      path: '<bundled:sample>',
+      run: async () => '',
+    })
+    expect((cmd as any).kind).toBe('workflow')
+    expect((cmd as any).progressMessage).toBe('running dynamic workflow')
+    // whenToUse + hasUserSpecifiedDescription forwarded verbatim
+    expect((cmd as any).whenToUse).toBe('use it for X')
+    expect((cmd as any).hasUserSpecifiedDescription).toBe(true)
+  })
+
+  test('contentLength uses script length', () => {
+    const cmd = workflowToCommand({
+      name: 'sample',
+      description: 'sample desc',
+      source: 'bundled',
+      path: '<bundled:sample>',
+      script: 'a'.repeat(123),
+      run: async () => '',
+    })
+    expect((cmd as any).contentLength).toBe(123)
+  })
+
+  test('contentLength defaults to 0 when script is undefined', () => {
+    const cmd = workflowToCommand({
+      name: 'sample',
+      description: 'sample desc',
+      source: 'user',
+      path: '/tmp/sample.js',
+      run: async () => '',
+    })
+    expect((cmd as any).contentLength).toBe(0)
+  })
+
+  test('loadedFrom maps bundled/plugin/bundled; others become "skills"', () => {
+    const bundled = workflowToCommand({ name: 'b', source: 'bundled', path: 'p', run: async () => '' })
+    const plugin = workflowToCommand({ name: 'p', source: 'plugin', path: 'p', run: async () => '' })
+    const project = workflowToCommand({ name: 'pr', source: 'project', path: 'p', run: async () => '' })
+    const user = workflowToCommand({ name: 'u', source: 'user', path: 'p', run: async () => '' })
+    expect((bundled as any).loadedFrom).toBe('bundled')
+    expect((plugin as any).loadedFrom).toBe('plugin')
+    expect((project as any).loadedFrom).toBe('skills')
+    expect((user as any).loadedFrom).toBe('skills')
+  })
+
+  test('forwards pluginInfo (translated from top-level fields) when source is plugin', () => {
+    const cmd = workflowToCommand({
+      name: 'plug',
+      description: 'plug desc',
+      source: 'plugin',
+      loadedFrom: 'plugin',
+      pluginManifest: { name: 'plug' },
+      plugin: 'https://example.com',
+      path: '/tmp/plug.js',
+      run: async () => '',
+    })
+    expect((cmd as any).pluginInfo).toEqual({
+      pluginManifest: { name: 'plug' },
+      repository: 'https://example.com',
+    })
+  })
+
+  test('does not include pluginInfo when source is not plugin', () => {
+    const cmd = workflowToCommand({
+      name: 'local',
+      description: 'local desc',
+      source: 'user',
+      path: '/tmp/local.js',
+      run: async () => '',
+    })
+    expect((cmd as any).pluginInfo).toBeUndefined()
+  })
+
+  test('does not include whenToUse when undefined', () => {
+    const cmd = workflowToCommand({
+      name: 'sample',
+      description: 'sample desc',
+      source: 'user',
+      path: '/tmp/sample.js',
+      run: async () => '',
+    })
+    expect((cmd as any).whenToUse).toBeUndefined()
   })
 })
