@@ -233,6 +233,18 @@ export type WorkerInbound =
       error?: string
       structuredOutput?: unknown
     }
+  | {
+      /**
+       * Reply to a `kind: 'workflow'` request from the wrapper. Resolves
+       * (or rejects) the pending `workflow()` Promise in the worker.
+       * `result` is whatever the child script returned (string or JSON-
+       * serializable object). `error` is set on failure.
+       */
+      kind: 'workflowResult'
+      callId: number
+      result?: unknown
+      error?: string
+    }
 
 /** Metadata declared via `__setMeta({...})` from inside a workflow script. */
 export type WorkflowPhaseMeta = {
@@ -255,6 +267,20 @@ export type WorkerOutbound =
   | { kind: 'log'; level: 'info' | 'warn' | 'error'; message: string }
   | { kind: 'phase'; title: string }
   | { kind: 'meta'; meta: WorkflowPhaseMeta }
+  | {
+      /**
+       * A script called `workflow(nameOrRef, args)`. The bridge should
+       * resolve the workflow (by name or by reading the scriptPath),
+       * execute the child script in a fresh worker, and post back a
+       * `kind: 'workflowResult'` message with the same callId. Refs
+       * are normalized to a wire-friendly shape because functions over
+       * the worker boundary must be reduced to message passing.
+       */
+      kind: 'workflow'
+      callId: number
+      ref: { kind: 'name'; value: string } | { kind: 'scriptPath'; value: string }
+      args?: unknown
+    }
 
 /** Zod schema for SpawnOpts (runtime validation in spawnSubagent). */
 export const SpawnOptsSchema = z.object({

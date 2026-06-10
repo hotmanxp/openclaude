@@ -1,7 +1,8 @@
 // src/tools/WorkflowTool/singleton.ts
 import { homedir } from 'os'
+import { readFileSync } from 'fs'
 import { WorkflowRegistry } from './registry.js'
-import { initBundledWorkflows } from './bundled/index.js'
+import { initBundledWorkflows, getBundledSource } from './bundled/index.js'
 
 const instances = new Map<string, WorkflowRegistry>()
 
@@ -35,4 +36,39 @@ export function getWorkflowRegistry(projectDir?: string): WorkflowRegistry {
   initBundledWorkflows(instance)
   instances.set(dir, instance)
   return instance
+}
+
+/**
+ * Resolve a child workflow ref (the wire shape from the wrapper's
+ * `workflow(nameOrRef, args)` call) to the script source string.
+ * Bundled workflows (e.g. `deep-research`) read from the in-process
+ * `bundledSourceRegistry`; project + user workflows read from
+ * `.claude/workflows/<name>.js`; `scriptPath` refs read the file
+ * directly. Throws with a clear error if the name is unknown.
+ *
+ * Used by LocalWorkflowTask to wire `workflow()` calls to the actual
+ * child script source before running the child inline.
+ */
+export async function resolveChildScript(
+  ref:
+    | { kind: 'name'; value: string }
+    | { kind: 'scriptPath'; value: string },
+): Promise<string> {
+  if (ref.kind === 'name') {
+    const bundled = getBundledSource(ref.value)
+    if (bundled) return bundled
+    const wf = await getWorkflowRegistry().get(ref.value)
+    if (!wf) {
+      throw new Error(
+        `workflow('${ref.value}'): no workflow with that name. ` +
+          `Use a bundled name (deep-research) or place a .js file in ` +
+          `.claude/workflows/${ref.value}.js.`,
+      )
+    }
+    return readFileSync(wf.path, 'utf-8')
+  }
+  // scriptPath: read the file directly. Trust the caller — they
+  // explicitly opted in to a path. Path errors surface as exceptions
+  // with ENOENT/EACCES messages.
+  return readFileSync(ref.value, 'utf-8')
 }

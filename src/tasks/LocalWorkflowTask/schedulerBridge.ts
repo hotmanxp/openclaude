@@ -41,6 +41,20 @@ export type RunArgs = {
    * with `if (budget.total)` before reading `budget.remaining()`.
    */
   budgetTotal?: number
+  /**
+   * Handle a `workflow(nameOrRef, args)` call from the script. The
+   * ref is the wire-friendly shape posted by the worker (string name
+   * or {scriptPath}). The implementation should resolve the child
+   * script source, run it inline in a new Worker, and resolve with
+   * the child's return value. The one-level-nesting guard lives in
+   * the worker wrapper — this function only needs to start a fresh
+   * child. Optional: if omitted, `workflow()` calls reject with a
+   * "not wired" error (matching the spawnSubagent pattern).
+   */
+  runChildScript?: (
+    ref: { kind: 'name'; value: string } | { kind: 'scriptPath'; value: string },
+    args: unknown,
+  ) => Promise<unknown>
 }
 
 /**
@@ -171,6 +185,59 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
               try {
                 worker.postMessage({
                   kind: 'spawnSubagentResult',
+                  callId: msg.callId,
+                  error: err instanceof Error ? err.message : String(err),
+                } satisfies WorkerInbound)
+              } catch {
+                // Worker may have terminated; drop the result silently.
+              }
+            },
+          )
+      } else if (msg.kind === 'workflow') {
+        // Parent script called `workflow(nameOrRef, args)`. Resolve
+        // the child script source (from the registry or from the
+        // caller's scriptPath) and run it inline in a fresh Worker.
+        // The one-level-nesting guard is enforced by the
+        // createNestedWorkflowRunner in the worker (depth arg),
+        // not by the bridge — but the bridge additionally refuses
+        // to start a child whose parent is itself a child, because
+        // there is no runInline on a child task to call (children
+        // don't have a LocalWorkflowTask instance — the bridge
+        // calls the runInline directly). For now: if no
+        // runChildScript was supplied, the workflow() call rejects
+        // with a wiring error.
+        if (!args.runChildScript) {
+          try {
+            worker.postMessage({
+              kind: 'workflowResult',
+              callId: msg.callId,
+              error:
+                'workflow() invoked but no runChildScript was supplied to runWorkflowInWorker. ' +
+                'Task 5 wires the parent-side runInline().',
+            } satisfies WorkerInbound)
+          } catch {
+            // Worker may have terminated; drop the result silently.
+          }
+          return
+        }
+        args
+          .runChildScript(msg.ref, msg.args)
+          .then(
+            (result) => {
+              try {
+                worker.postMessage({
+                  kind: 'workflowResult',
+                  callId: msg.callId,
+                  result,
+                } satisfies WorkerInbound)
+              } catch {
+                // Worker may have terminated; drop the result silently.
+              }
+            },
+            (err) => {
+              try {
+                worker.postMessage({
+                  kind: 'workflowResult',
                   callId: msg.callId,
                   error: err instanceof Error ? err.message : String(err),
                 } satisfies WorkerInbound)

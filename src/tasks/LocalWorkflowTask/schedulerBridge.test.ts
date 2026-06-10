@@ -99,3 +99,54 @@ describe('runWorkflowInWorker — phase/meta wiring', () => {
     expect(task.state.id).toMatch(/^wf_[a-f0-9]{8}$/)
   })
 })
+
+describe('runWorkflowInWorker — workflow() RPC', () => {
+  const workflow: Workflow = {
+    name: 'child-test',
+    source: 'bundled',
+    path: '<bundled>',
+    run: async () => '',
+  }
+
+  test('child script runs and its return value flows back to the parent', async () => {
+    // The parent script calls workflow({scriptPath}, 'pass-arg').
+    // For the scriptPath ref, resolveChildScript reads the file
+    // directly. We use a real temp file so the registry path
+    // doesn't need to be set up.
+    const { writeFileSync, mkdtempSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const { join } = await import('path')
+    const tmp = mkdtempSync(join(tmpdir(), 'wf-child-'))
+    const childPath = join(tmp, 'child.js')
+    writeFileSync(childPath, `return 'child-returned: ' + String(args);`)
+
+    const task = new LocalWorkflowTask({ workflow, argsJson: [] })
+    task.setParentContext({
+      spawner: async () => ({ agentId: 'unused', report: 'unused' }),
+      abortController: new AbortController(),
+    })
+    const parentScript = `
+      const child = await workflow({ scriptPath: ${JSON.stringify(childPath)} }, 'pass-arg')
+      return 'parent-got: ' + child
+    `
+    await task.start(parentScript)
+    expect(task.state.status).toBe('completed')
+    expect(task.state.result).toBe('parent-got: child-returned: pass-arg')
+  })
+
+  test('rejects workflow() call when runChildScript is not supplied', async () => {
+    // Direct call to runWorkflowInWorker without runChildScript —
+    // the bridge should reject the workflow() call from the script.
+    const script = `
+      try {
+        await workflow('foo', null)
+        return 'should-not-reach'
+      } catch (e) {
+        return 'caught: ' + e.message
+      }
+    `
+    await expect(
+      runWorkflowInWorker({ workflow, script, args: undefined }),
+    ).resolves.toMatch(/^caught: workflow\(\) invoked but no runChildScript/)
+  })
+})
