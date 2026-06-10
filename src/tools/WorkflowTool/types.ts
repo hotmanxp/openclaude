@@ -21,10 +21,50 @@ export type SubagentStatus =
   | 'failed'
   | 'skipped'
 
-/** A workflow defined in a .js file. */
+/** A workflow defined in a .js file or registered programmatically. */
 export type Workflow = {
   name: string
   description?: string
+  /**
+   * Optional upstream-style `whenToUse` string — short usage hint
+   * shown next to the workflow in the slash-command autocomplete and
+   * surfaced through `createWorkflowCommand`. Matches upstream
+   * `QEK`/`whenToUse` field on `Workflow`.
+   */
+  whenToUse?: string
+  /**
+   * Optional verbatim script source. Used by
+   * `createWorkflowCommand` to set `contentLength: H.script.length`
+   * on the resulting slash command, matching upstream behavior.
+   * Bundled workflows (e.g. deepResearch) pass the script here.
+   */
+  script?: string
+  /**
+   * True when the workflow author wrote a custom `description` (vs
+   * the registry using a default fallback). Surfaced through
+   * `createWorkflowCommand` as `hasUserSpecifiedDescription:!0` so
+   * downstream consumers can tell user-written from auto-generated.
+   */
+  hasUserSpecifiedDescription?: boolean
+  /**
+   * Upstream `loadedFrom` discriminator — `'bundled' | 'plugin' |
+   * 'skills'`. Distinct from `source` (which is the OpenCC fork's
+   * `'project' | 'user' | 'bundled' | 'plugin'`); `loadedFrom`
+   * captures *how* the command was loaded into the slash-command
+   * table, `source` captures *where the script lives on disk*.
+   */
+  loadedFrom?: 'bundled' | 'plugin' | 'skills'
+  /**
+   * Upstream plugin provenance (top-level fields, NOT nested under
+   * `pluginInfo`): when `source === 'plugin'`, the manifest and
+   * repository URL of the plugin that contributed the workflow.
+   * Forwarded through `createWorkflowCommand` as
+   * `pluginInfo: { pluginManifest: H.pluginManifest, repository: H.plugin }`.
+   * Upstream's binary reads them as `H.pluginManifest` and `H.plugin`
+   * directly on the Workflow, not nested.
+   */
+  pluginManifest?: unknown
+  plugin?: string
   source: 'project' | 'user' | 'bundled' | 'plugin'
   path: string
   run: (args: string[]) => Promise<string>

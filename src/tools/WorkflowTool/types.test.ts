@@ -36,6 +36,39 @@ describe('Workflow types', () => {
   })
 })
 
+describe('Workflow type (Plan14 parity)', () => {
+  test('accepts whenToUse + script + hasUserSpecifiedDescription + loadedFrom + pluginManifest + plugin', () => {
+    const wf: Workflow = {
+      name: 'sample',
+      source: 'project',
+      path: '/tmp/sample.js',
+      run: async () => '',
+      whenToUse: 'use it for X',
+      script: 'export const meta = { name: "sample", description: "d" }',
+      hasUserSpecifiedDescription: true,
+      loadedFrom: 'skills',
+      pluginManifest: { name: 'sample' },
+      plugin: 'https://example.com/repo',
+    }
+    expect(wf.whenToUse).toBe('use it for X')
+    expect(wf.script).toContain('meta')
+    expect(wf.hasUserSpecifiedDescription).toBe(true)
+    expect(wf.loadedFrom).toBe('skills')
+    expect(wf.pluginManifest).toEqual({ name: 'sample' })
+    expect(wf.plugin).toBe('https://example.com/repo')
+  })
+
+  test('all new fields are optional (existing 4-field shape still compiles)', () => {
+    const wf: Workflow = {
+      name: 'sample',
+      source: 'user',
+      path: '/tmp/sample.js',
+      run: async () => '',
+    }
+    expect(wf.name).toBe('sample')
+  })
+})
+
 describe('WorkflowRun args typing', () => {
   test('WorkflowRun.args accepts string[]', () => {
     const run: WorkflowRun = {
