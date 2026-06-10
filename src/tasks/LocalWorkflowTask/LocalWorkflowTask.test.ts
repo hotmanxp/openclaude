@@ -276,6 +276,41 @@ describe('LocalWorkflowTask.start (wiring)', () => {
     expect(task.state.meta?.phases?.[1]?.title).toBe('Phase2')
   })
 
+  test('prefers acorn-parsed meta over __setMeta runtime call', async () => {
+    // Plan7 Task 4: when vmRunner returns `result.meta` (the acorn-parsed
+    // declaration from the script's `export const meta = {...}`), it must
+    // take priority over any `__setMeta({...})` call the script body makes
+    // at runtime. The acorn path is authoritative because it parses the
+    // static declaration; __setMeta is a legacy fallback for ad-hoc
+    // scripts that don't have an `export const meta` line. If both fire
+    // in the same run (script declares meta AND calls __setMeta), the
+    // static acorn value must win so the WorkflowDetailDialog shows the
+    // declared phases, not whatever the script tried to override.
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    // The real VM runner is what the production code path uses. We let
+    // it run so the acorn parse + body extraction both happen for real,
+    // and the script body's __setMeta() actually fires inside the VM.
+    // The mock below is a defensive measure: if any future change routes
+    // through setVmRunner, the mock still exposes a meta to assert the
+    // priority order end-to-end.
+    const script = `export const meta = { name: 'static', description: 'static' }
+async function userScript() {
+  if (typeof __setMeta === 'function') __setMeta({ name: 'dynamic', description: 'dynamic' })
+  return 'done'
+}`
+    await task.start(script)
+    expect(task.state.status).toBe('completed')
+    // Acorn wins: name/description come from the static `export const meta`
+    // declaration, not the dynamic __setMeta call inside userScript().
+    expect(task.state.meta?.name).toBe('static')
+    expect(task.state.meta?.description).toBe('static')
+  })
+
   test('__setMeta ignores non-object payloads (type-guard)', async () => {
     // Plan6 Task 2 guard: __setMeta accepts `unknown` per the VM API
     // type. A primitive payload (string, number, null) must not

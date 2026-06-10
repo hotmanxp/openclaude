@@ -11,6 +11,7 @@ import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.j
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { runWorkflowInVm, type VmRunnerResult } from '../../tools/WorkflowTool/runtime/vmRunner.js'
+import type { ParsedWorkflowMeta } from '../../tools/WorkflowTool/parseMetaFromScript.js'
 import { createNestedWorkflowRunner } from '../../tools/WorkflowTool/runtime/workflowNested.js'
 import type { WorkflowApi } from '../../tools/WorkflowTool/runtime/vmContext.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
@@ -337,6 +338,18 @@ export class LocalWorkflowTask implements Task {
         args: this.state.args,
         api,
       })
+      // Plan7 Task 4: acorn-parsed meta (from the script's static
+      // `export const meta = {...}` declaration) takes priority over any
+      // `__setMeta({...})` call the script body made at runtime. By the
+      // time we get here the VM has already executed userScript() — so
+      // __setMeta may have already written state.meta via the api
+      // handler above. Re-applying the acorn value here overrides that
+      // with the authoritative static declaration. Scripts that have no
+      // `export const meta` (legacy / ad-hoc) get `result.meta ===
+      // undefined` and the runtime __setMeta call (if any) survives.
+      if (result.meta) {
+        this.setMeta(parentContext, result.meta)
+      }
       this.state.result = result.report
       this.state.status = 'completed'
     } catch (err) {
@@ -649,9 +662,17 @@ export class LocalWorkflowTask implements Task {
    */
   private setMeta(
     ctx: LocalWorkflowParentContext,
-    meta: WorkflowPhaseMeta,
+    meta: WorkflowPhaseMeta | ParsedWorkflowMeta,
   ): void {
-    this.state.meta = meta
+    // Plan7 Task 4: `ParsedWorkflowMeta` (from the acorn parser) is a
+    // structural superset of `WorkflowPhaseMeta` — same name/description/
+    // phases keys, plus an optional `model` on each phase. The UI
+    // (WorkflowDetailDialog) reads from `state.meta` typed as
+    // `WorkflowPhaseMeta`, and the `model` field is ignored. So the
+    // structural assignment is safe; the union here lets both the
+    // runtime __setMeta path (WorkflowPhaseMeta) and the static acorn
+    // path (ParsedWorkflowMeta) route through the same writer.
+    this.state.meta = meta as WorkflowPhaseMeta
     this.bumpWorkflowsVersion(ctx)
   }
 }
