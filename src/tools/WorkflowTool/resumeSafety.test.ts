@@ -10,21 +10,21 @@ describe('assertResumeSafe (port of upstream 2.1.170)', () => {
   test('rejects Date.now() with upstream error string', () => {
     const script = `const t = Date.now()\nasync function userScript() { return t }`
     expect(() => assertResumeSafe(script)).toThrow(
-      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume).',
+      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume). Stamp results after the workflow returns, or pass timestamps via args.',
     )
   })
 
   test('rejects new Date() with upstream error string', () => {
     const script = `const d = new Date()\nasync function userScript() { return d.toISOString() }`
     expect(() => assertResumeSafe(script)).toThrow(
-      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume).',
+      'Date.now() / new Date() are unavailable in workflow scripts (breaks resume). Stamp results after the workflow returns, or pass timestamps via args.',
     )
   })
 
   test('rejects Math.random() with upstream error string', () => {
     const script = `const r = Math.random()\nasync function userScript() { return r }`
     expect(() => assertResumeSafe(script)).toThrow(
-      'Math.random() is unavailable in workflow scripts (breaks resume).',
+      'Math.random() is unavailable in workflow scripts (breaks resume). For N independent samples, include the index in the agent label or prompt.',
     )
   })
 
