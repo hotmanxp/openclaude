@@ -686,6 +686,37 @@ export function WorkflowDetailDialog({
         </Box>
       )}
 
+      {/* Plan12 Task 4: cross-phase progress bars (port upstream's
+          Z0K phase summary). Renders a compact one-line bar per
+          declared phase, each filled with ▰ for completed agents and
+          ▱ for in-flight/pending ones. Shown when the workflow has
+          more than one phase declared via __setMeta({phases}). The
+          per-agent phase tags from `state.agents` are matched
+          against the declared phase titles — agents without a phase
+          are not counted. */}
+      {phases.length > 1 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>Phases:</Text>
+          {phases.map(title => {
+            const inPhase = state.agents.filter(a => a.phase === title)
+            const done = inPhase.filter(a => a.status === 'completed').length
+            const total = inPhase.length
+            return (
+              <Box key={title} flexDirection="row">
+                <Text dimColor> {title} </Text>
+                <Text>
+                  {'▰'.repeat(done)}
+                  {'▱'.repeat(Math.max(0, total - done))}
+                </Text>
+                {total > 0 && (
+                  <Text dimColor> {done}/{total}</Text>
+                )}
+              </Box>
+            )
+          })}
+        </Box>
+      )}
+
       <Box marginTop={1} flexDirection="row">
         <PhasesPane
           phases={phases}

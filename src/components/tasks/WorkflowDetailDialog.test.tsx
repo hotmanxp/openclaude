@@ -736,3 +736,36 @@ describe('WorkflowDetailDialog (Plan11: verbose activity list — port upstream 
     }
   });
 });
+
+describe('WorkflowDetailDialog (Plan12 Task4: cross-phase progress bars — port upstream Z0K)', () => {
+  test('renders per-phase progress bars with done counts', async () => {
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      meta: {
+        name: 'deep-research',
+        description: 'multi-phase research',
+        phases: [
+          { title: 'Scope', detail: 'decompose' },
+          { title: 'Search', detail: 'find sources' },
+          { title: 'Fetch', detail: 'download' },
+        ],
+      },
+      agents: [
+        { id: 'a1', prompt: 'p1', status: 'completed', phase: 'Scope' },
+        { id: 'a2', prompt: 'p2', status: 'completed', phase: 'Scope' },
+        { id: 'a3', prompt: 'p3', status: 'running', phase: 'Search' },
+        { id: 'a4', prompt: 'p4', status: 'pending', phase: 'Search' },
+      ],
+    };
+    const frame = await renderDialog(state);
+    // Cross-phase progress header is rendered when > 1 phase.
+    expect(frame).toContain('Phases:');
+    // Per-phase progress text uses ▰/▱ fill chars.
+    expect(frame).toMatch(/Scope.*[▰▱]/);
+    // Each phase with agents gets a "done/total" fraction.
+    expect(frame).toContain('2/2');
+    // Search: 0 done of 2 total (one running, one pending).
+    expect(frame).toMatch(/Search.*0\/2/);
+  });
+});
