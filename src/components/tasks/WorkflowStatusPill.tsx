@@ -21,6 +21,7 @@
 import { Text } from '../../ink.js'
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/state.js'
 import { useAppState } from '../../state/AppState.js'
+import { formatDuration, formatAgentSummary } from './workflowActivityRenderers.js'
 
 type Props = {
   selected: boolean
@@ -47,11 +48,7 @@ function pickRunningWorkflow(
 }
 
 function formatElapsed(startedAt: number): string {
-  const sec = Math.max(0, Math.round((Date.now() - startedAt) / 1000))
-  if (sec < 60) return `${sec}s`
-  const min = Math.floor(sec / 60)
-  const remSec = sec % 60
-  return `${min}m${remSec.toString().padStart(2, '0')}s`
+  return formatDuration(Date.now() - startedAt)
 }
 
 export function WorkflowStatusPill({ selected, showHint: _showHint }: Props): React.ReactNode {
