@@ -676,7 +676,7 @@ export function WorkflowDetailDialog({
       {/* Footer: keyboard shortcuts */}
       <Box marginTop={1}>
         <Text dimColor>
-          ↑↓ select · tab/→ switch pane · enter inspect · x stop workflow · p pause · esc back · s save
+          {rightMode === 'detail' ? '↑↓ agent' : '↑↓ select'} · tab/→ switch pane · enter inspect · x stop workflow · p pause · esc back · s save
         </Text>
       </Box>
     </Box>

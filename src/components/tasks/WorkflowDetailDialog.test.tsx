@@ -417,6 +417,38 @@ async function renderDialog(
   return stripAnsi(extractLastFrame(getOutput()));
 }
 
+async function waitForOutput(
+  getOutput: () => string,
+  predicate: (frame: string) => boolean,
+): Promise<string> {
+  const startedAt = Date.now();
+  let frame = '';
+  while (Date.now() - startedAt < 2500) {
+    frame = stripAnsi(extractLastFrame(getOutput()));
+    if (predicate(frame)) return frame;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for output:\n${frame}`);
+}
+
+interface DialogRenderHandle {
+  root: Awaited<ReturnType<typeof createRoot>>;
+  stdin: PassThrough;
+  stdout: PassThrough;
+  getOutput: () => string;
+}
+
+async function mountDialog(
+  state: LocalWorkflowTaskState,
+  props: Partial<React.ComponentProps<typeof WorkflowDetailDialog>> = {},
+): Promise<DialogRenderHandle> {
+  const { stdout, stdin, getOutput } = createTestStreams(120);
+  const root = await createRoot({ stdout, stdin });
+  await root.render(<WorkflowDetailDialog state={state} onDone={() => {}} {...props} />);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  return { root, stdin, stdout, getOutput };
+}
+
 describe('WorkflowDetailDialog (Plan11: status icons ⏺/✔/✗ — port upstream)', () => {
   test('agent status icons use upstream ⏺ (running) and ✔ (completed)', async () => {
     const phase = 'Search';
@@ -459,5 +491,49 @@ describe('WorkflowDetailDialog (Plan11: status icons ⏺/✔/✗ — port upstre
     expect(frame).toContain('⏺');
     expect(frame).toContain('✔');
     expect(frame).toContain('✗');
+  });
+});
+
+describe('WorkflowDetailDialog (Plan11: footer label ↑↓ agent in detail mode — port upstream)', () => {
+  test('detail mode footer shows "↑↓ agent" (after pressing Tab + Enter to enter detail)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'completed',
+          startedAt: Date.now() - 5000,
+          completedAt: Date.now() - 3000,
+        },
+      ],
+    };
+    const handle = await mountDialog(state);
+    try {
+      // Wait for the initial frame to settle so useInput is registered.
+      await waitForOutput(handle.getOutput, f => f.includes('↑↓ select'));
+      // Default focus is 'phases' (left pane). Tab switches to the
+      // agents pane, then Enter opens the per-agent detail.
+      handle.stdin.write('\t');
+      await new Promise(r => setTimeout(r, 50));
+      handle.stdin.write('\r');
+      const frame = await waitForOutput(handle.getOutput, f =>
+        f.includes('↑↓ agent'),
+      );
+      expect(frame).toContain('↑↓ agent');
+    } finally {
+      handle.root.unmount();
+      handle.stdin.end();
+      handle.stdout.end();
+    }
   });
 });
