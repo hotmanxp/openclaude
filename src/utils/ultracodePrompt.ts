@@ -17,7 +17,7 @@
 // This file is the single source of truth for ultracode subagent text.
 // See Task 4 of docs/superpowers/plans/2026-06-10-plan9-ultracode-sync.md.
 
-import { isUltracodeActive } from './ultracode.js'
+import { getUltracodeReminder, isUltracodeActive } from './ultracode.js'
 
 export const ULTRACODE_SUBAGENT_PROMPT = `You are a subagent spawned by a workflow orchestration script. Use the tools available to complete the task.
 
@@ -70,4 +70,20 @@ export function withUltracodePrompt(
 ): readonly string[] {
   if (!isUltracodeActive()) return systemPrompt
   return [...systemPrompt, ULTRACODE_SUBAGENT_PROMPT]
+}
+
+/**
+ * Returns the system prompt array with the ultracode `<system-reminder>`
+ * appended. Unlike `withUltracodePrompt`, this helper ALWAYS appends the
+ * reminder (on or off) — matching upstream claude-code v2.1.170, which
+ * always emits the reminder so the subagent knows whether to follow the
+ * ultracode block or revert to the opt-in rule.
+ *
+ * Apply AFTER `withUltracodePrompt` so the reminder sits below the
+ * ultracode block in the prompt array.
+ */
+export function withUltracodeReminder(
+  systemPrompt: readonly string[],
+): string[] {
+  return [...systemPrompt, getUltracodeReminder()]
 }

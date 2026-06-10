@@ -10,6 +10,8 @@ import {
 
 import { getInitialSettings } from './settings/settings.js'
 import {
+  formatUltracodeReminder,
+  getUltracodeReminder,
   getUltracodeSettings,
   isUltracodeActive,
   parseUltracodeFlag,
@@ -115,6 +117,53 @@ describe('ultracode core utilities', () => {
           const result = mod.getUltracodeSettings()
           expect(result.active).toBe(false)
           expect(result.source).toBe('default')
+        },
+      )
+    })
+  })
+
+  describe('formatUltracodeReminder', () => {
+    it('returns the "on" reminder when active', () => {
+      const result = formatUltracodeReminder(true)
+      expect(result).toMatch(
+        /^<system-reminder>ultracode is on<\/system-reminder>$/,
+      )
+    })
+    it('returns the "off" reminder when inactive', () => {
+      const result = formatUltracodeReminder(false)
+      expect(result).toMatch(
+        /^<system-reminder>ultracode is off<\/system-reminder>$/,
+      )
+    })
+  })
+
+  describe('getUltracodeReminder', () => {
+    beforeEach(() => {
+      mock.restore()
+    })
+
+    afterEach(() => {
+      mock.restore()
+    })
+
+    it('returns "on" reminder when isUltracodeActive() is true', () => {
+      mock.module('./settings/settings.js', () => ({
+        getInitialSettings: () => ({ ultracode: true }),
+      }))
+      return import(`./ultracode.ts?ts=${Date.now()}-${Math.random()}`).then(
+        mod => {
+          expect(mod.getUltracodeReminder()).toMatch(/ultracode is on/)
+        },
+      )
+    })
+
+    it('returns "off" reminder when isUltracodeActive() is false', () => {
+      mock.module('./settings/settings.js', () => ({
+        getInitialSettings: () => ({ ultracode: false }),
+      }))
+      return import(`./ultracode.ts?ts=${Date.now()}-${Math.random()}`).then(
+        mod => {
+          expect(mod.getUltracodeReminder()).toMatch(/ultracode is off/)
         },
       )
     })

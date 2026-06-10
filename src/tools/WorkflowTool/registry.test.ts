@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { WorkflowRegistry } from './registry.js'
+import { clearPluginWorkflowsCache } from './pluginWorkflowLoader.js'
 
 describe('WorkflowRegistry user script loading', () => {
   let tmp: string
@@ -73,6 +74,36 @@ describe('WorkflowRegistry', () => {
     })
     const all = await r.list()
     expect(all.find(w => w.name === 'deep-research')).toBeDefined()
+  })
+
+  test('list() includes plugin workflows when plugins are passed via opts', async () => {
+    clearPluginWorkflowsCache()
+    const pluginDir = join(tmp, 'plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'p.js'),
+      `
+export const meta = { name: 'p', description: 'p' }
+async function userScript() { return 'p' }
+`,
+    )
+    const r = new WorkflowRegistry({
+      projectDir: tmp,
+      userDir: tmp,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      plugins: [
+        {
+          name: 'p1',
+          source: 'plugin',
+          manifest: {},
+          workflowsPath: pluginDir,
+          workflowsPaths: [],
+        },
+      ] as any,
+    })
+    const all = await r.list()
+    expect(all.find(w => w.name === 'p1:p')).toBeDefined()
+    expect(all.find(w => w.name === 'p1:p')?.source).toBe('plugin')
   })
 })
 

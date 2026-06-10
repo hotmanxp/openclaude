@@ -3,11 +3,20 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import chokidar, { type FSWatcher } from 'chokidar'
+import type { PluginLike } from './pluginWorkflowLoader.js'
 import type { Workflow } from './types.js'
 
 export type RegistryOpts = {
   projectDir: string
   userDir: string
+  /**
+   * Plan12 Task 5: optional plugin list. When provided, `list()` and
+   * `get()` will also include workflows loaded from each plugin's
+   * `workflowsPath` directory and `workflowsPaths[]` array (see
+   * `loadPluginWorkflows`). Optional so existing callers that don't
+   * use plugins can keep passing just `{ projectDir, userDir }`.
+   */
+  plugins?: PluginLike[]
 }
 
 /**
@@ -73,7 +82,19 @@ export class WorkflowRegistry {
    *  cold-scan if it hasn't run yet. */
   async list(): Promise<Workflow[]> {
     if (!this._diskScanned) await this.reload()
-    return [...this.merged().values()].sort((a, b) => a.name.localeCompare(b.name))
+    const out = this.merged()
+    // Plan12 Task 5: layer in plugin-loaded workflows. Plugins are
+    // queried async, so we await here. Plugin names use
+    // `<plugin>:<workflow>` (set by loadPluginWorkflows) so they
+    // can't collide with bundled/project/user names — the .set()
+    // below will simply overwrite a same-named entry (last wins),
+    // which matches the existing precedence order.
+    if (this.opts.plugins && this.opts.plugins.length > 0) {
+      const { loadPluginWorkflows } = await import('./pluginWorkflowLoader.js')
+      const pluginWorkflows = await loadPluginWorkflows(this.opts.plugins)
+      for (const wf of pluginWorkflows) out.set(wf.name, wf)
+    }
+    return [...out.values()].sort((a, b) => a.name.localeCompare(b.name))
   }
 
   /** Look up by name. Triggers the first cold-scan if it hasn't run yet. */

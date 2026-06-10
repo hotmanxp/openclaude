@@ -37,7 +37,7 @@ import { writeAgentMetadata } from '../../utils/sessionStorage.js';
 import { sleep } from '../../utils/sleep.js';
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
-import { withUltracodePrompt } from '../../utils/ultracodePrompt.js';
+import { withUltracodePrompt, withUltracodeReminder } from '../../utils/ultracodePrompt.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
@@ -521,7 +521,7 @@ export const AgentTool = buildTool({
     if (isForkPath) {
       if (toolUseContext.renderedSystemPrompt) {
         forkParentSystemPrompt = asSystemPrompt(
-          withUltracodePrompt(toolUseContext.renderedSystemPrompt),
+          withUltracodeReminder(withUltracodePrompt(toolUseContext.renderedSystemPrompt)),
         );
       } else {
         // Fallback: recompute. May diverge from parent's cached bytes if
@@ -530,13 +530,13 @@ export const AgentTool = buildTool({
         const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
         const defaultSystemPrompt = await getSystemPrompt(toolUseContext.options.tools, toolUseContext.options.mainLoopModel, additionalWorkingDirectories, toolUseContext.options.mcpClients);
         forkParentSystemPrompt = asSystemPrompt(
-          withUltracodePrompt(buildEffectiveSystemPrompt({
+          withUltracodeReminder(withUltracodePrompt(buildEffectiveSystemPrompt({
             mainThreadAgentDefinition,
             toolUseContext,
             customSystemPrompt: toolUseContext.options.customSystemPrompt,
             defaultSystemPrompt,
             appendSystemPrompt: toolUseContext.options.appendSystemPrompt
-          })),
+          }))),
         );
       }
       promptMessages = buildForkedMessages(prompt, assistantMessage);
