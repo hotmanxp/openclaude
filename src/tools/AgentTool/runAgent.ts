@@ -63,6 +63,7 @@ import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { resolveAgentRunModelRouting } from '../../services/api/agentRouting.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
+import { withUltracodePrompt } from '../../utils/ultracodePrompt.js'
 import {
   clearAgentTranscriptSubdir,
   recordSidechainTranscript,
@@ -540,14 +541,16 @@ export async function* runAgent({
   )
 
   const agentSystemPrompt = override?.systemPrompt
-    ? override.systemPrompt
+    ? asSystemPrompt(withUltracodePrompt(override.systemPrompt))
     : asSystemPrompt(
-        await getAgentSystemPrompt(
-          agentDefinition,
-          toolUseContext,
-          effectiveModel,
-          additionalWorkingDirectories,
-          resolvedTools,
+        withUltracodePrompt(
+          await getAgentSystemPrompt(
+            agentDefinition,
+            toolUseContext,
+            effectiveModel,
+            additionalWorkingDirectories,
+            resolvedTools,
+          ),
         ),
       )
 
