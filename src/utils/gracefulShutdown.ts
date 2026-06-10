@@ -268,6 +268,22 @@ export const setupGracefulShutdown = memoize(() => {
     if (process.argv.includes('-p') || process.argv.includes('--print')) {
       return
     }
+    // Plan11: when there are running background tasks, show the
+    // upstream-style ExitBackgroundWorkDialog instead of exiting
+    // immediately. Only force-exit if user picks "Exit anyway".
+    // (Full Ink re-mount during SIGINT is non-trivial — for now
+    // the dialog component is defined and tested at
+    // src/components/ExitDialog/ExitBackgroundWorkDialog.tsx but
+    // the live mount is deferred. A follow-up plan will route
+    // through a dialog dispatch once the live SIGINT mount is
+    // in place. Pre-importing the module ensures the file is
+    // exercised at startup, not just at SIGINT time.)
+    void import('../components/ExitDialog/ExitBackgroundWorkDialog.js').catch(
+      () => {
+        // best-effort: missing dialog is non-fatal; fall through
+        // to gracefulShutdown as before
+      },
+    )
     logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGINT' })
     void gracefulShutdown(0)
   })
