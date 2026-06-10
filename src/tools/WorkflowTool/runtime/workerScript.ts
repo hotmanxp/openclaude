@@ -183,6 +183,64 @@ const budget = {
   remaining() { return Math.max(0, __budgetTotal - __budgetUsed); }
 };
 
+// workflow(nameOrRef, args) — runs a named child workflow and returns
+// its result. One level of nesting is allowed: a workflow can call
+// workflow() to invoke a child, but a child workflow cannot call
+// workflow() again. The runner is lazy-bound on first call so scripts
+// that never invoke workflow() don't need a real resolveWorkflow /
+// runChildScript bound at init time.
+// resolveWorkflow(name) returns { name, script } or null. Resolving
+// from a {scriptPath} object is supported inline so callers can pass
+// either a registered name or a one-off path.
+// runChildScript(script, args) executes the child script in a fresh
+// worker and resolves with its return value. Task 5 wires the parent
+// to pass a closure that constructs a new Worker with depth+1.
+// Conceptually the runner is constructed with { nestingDepth: 0 } —
+// see createNestedWorkflowRunner in workflowNested.ts. We track depth
+// via the third arg of __runNestedWorkflow instead of a captured
+// closure constant for the same reason.
+// The runner is INLINED (not imported from workflowNested.ts) because
+// the worker wrapper string is loaded via node:worker_threads and has
+// no module system access. Inlining keeps the wrapper self-contained
+// and matches the pattern used by agent/parallel/log above.
+const __MAX_NESTING_DEPTH = 1;
+let __resolveWorkflow = async () => null;
+let __runChildScript = async () => {
+  throw new Error('workflow() called before runChildScript was bound by init');
+};
+async function __runNestedWorkflow(nameOrRef, args, depth) {
+  if (depth >= __MAX_NESTING_DEPTH) {
+    throw new Error(
+      'workflow() cannot be called from within a child workflow — ' +
+      'nesting is limited to one level. Inline the inner script or call its agents directly.'
+    );
+  }
+  let def;
+  if (typeof nameOrRef === 'string') {
+    def = await __resolveWorkflow(nameOrRef);
+    if (!def) {
+      throw new Error(
+        "workflow('" + nameOrRef + "'): no workflow with that name."
+      );
+    }
+  } else if (nameOrRef && typeof nameOrRef === 'object' && 'scriptPath' in nameOrRef) {
+    const { readFileSync } = await import('node:fs');
+    let script;
+    try {
+      script = readFileSync(nameOrRef.scriptPath, 'utf-8');
+    } catch (e) {
+      throw new Error("workflow({scriptPath:'" + nameOrRef.scriptPath + "'}): " + (e instanceof Error ? e.message : String(e)));
+    }
+    def = { name: '<inline>', script: script };
+  } else {
+    throw new TypeError('workflow() expects a workflow name (string) or {scriptPath: string}');
+  }
+  return __runChildScript(def.script, args);
+}
+function workflow(nameOrRef, args) {
+  return Promise.resolve(__runNestedWorkflow(nameOrRef, args, 0));
+}
+
 async function userScript(args) {
   'use strict';
 ${cleaned
@@ -195,6 +253,8 @@ parentPort.on('message', async (msg) => {
   if (msg && msg.kind === 'init') {
     __budgetTotal = Number(msg.budgetTotal ?? 0);
     __budgetUsed = Number(msg.budgetUsed ?? 0);
+    __resolveWorkflow = msg.resolveWorkflow ?? __resolveWorkflow;
+    __runChildScript = msg.runChildScript ?? __runChildScript;
   }
   if (!msg || msg.kind !== 'init') return;
   try {
