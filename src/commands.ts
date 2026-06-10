@@ -818,5 +818,15 @@ export function formatDescriptionWithSource(cmd: Command): string {
     return `${desc} (bundled)`
   }
 
+  // Workflow command sources — see createWorkflowCommand. Without
+  // these cases the function falls through to getSettingSourceName
+  // (which doesn't know these literals) and renders "(undefined)".
+  if (cmd.source === 'project') {
+    return `${desc} (project)`
+  }
+  if (cmd.source === 'user') {
+    return `${desc} (user)`
+  }
+
   return `${desc} (${getSettingSourceName(cmd.source)})`
 }

@@ -72,4 +72,42 @@ describe('formatDescriptionWithSource', () => {
 
     expect(formatDescriptionWithSource(command)).toBe('(MyPlugin) ')
   })
+
+  test('formats commands with project source as "(project)"', () => {
+    // Regression: Plan14 Task 3 (createWorkflowCommand) emits
+    // `source: 'project'` for project-tree workflows. The previous
+    // switch in formatDescriptionWithSource fell through to
+    // getSettingSourceName, which only knows the SettingSource union
+    // and returned `undefined` for 'project'/'user' — producing
+    // "Run workflow: foo (undefined)" in the TUI.
+    //
+    // We test the source switch directly (no `kind: 'workflow'`) so
+    // the test actually exercises the new `case 'project'` branch
+    // — workflow commands are short-circuited earlier by the
+    // `kind === 'workflow'` check and would render as "(workflow)"
+    // regardless of source.
+    const command = {
+      name: 'foo',
+      type: 'prompt',
+      source: 'project',
+      description: 'Run workflow: foo',
+    } as any
+
+    const result = formatDescriptionWithSource(command)
+    expect(result).toContain('(project)')
+    expect(result).not.toContain('undefined')
+  })
+
+  test('formats commands with user source as "(user)"', () => {
+    const command = {
+      name: 'foo',
+      type: 'prompt',
+      source: 'user',
+      description: 'Run workflow: foo',
+    } as any
+
+    const result = formatDescriptionWithSource(command)
+    expect(result).toContain('(user)')
+    expect(result).not.toContain('undefined')
+  })
 })

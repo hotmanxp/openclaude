@@ -43,7 +43,11 @@ export function workflowToCommand(workflow: Workflow): Command {
     ...(whenToUse ? { whenToUse } : {}),
     progressMessage: 'running dynamic workflow',
     contentLength: script?.length ?? 0,
-    source: commandSource as 'builtin', // Command.source enum only allows 'builtin' today; cast for forward compat
+    // `commandSource` is `'bundled' | 'plugin' | 'project' | 'user'`,
+    // all of which `Command.source` accepts. The previous
+    // `as 'builtin'` cast hid 'project'/'user' from downstream
+    // consumers — see formatDescriptionWithSource.
+    source: commandSource,
     loadedFrom: commandLoadedFrom,
     // Upstream `pluginInfo: { pluginManifest: H.pluginManifest, repository: H.plugin }`
     // — built from the Workflow's top-level `pluginManifest` and `plugin`

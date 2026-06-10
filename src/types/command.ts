@@ -32,7 +32,10 @@ export type PromptCommand = {
   argNames?: string[]
   allowedTools?: string[]
   model?: string
-  source: SettingSource | 'builtin' | 'mcp' | 'plugin' | 'bundled'
+  // 'project' | 'user' are workflow command sources emitted by
+  // createWorkflowCommand. Including them here keeps the type honest
+  // so downstream consumers don't need `as 'builtin'` casts.
+  source: SettingSource | 'builtin' | 'mcp' | 'plugin' | 'bundled' | 'project' | 'user'
   pluginInfo?: {
     pluginManifest: PluginManifest
     repository: string
