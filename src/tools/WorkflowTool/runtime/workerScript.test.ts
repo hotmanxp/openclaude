@@ -169,6 +169,17 @@ describe('buildWorkerScript', () => {
     expect(script).toMatch(/structuredOutput:\s*r\.structuredOutput/)
   })
 
+  test('exposes workflow() global that runs a named child workflow', () => {
+    const src = buildWorkerScript(`
+async function userScript(args) {
+  const childResult = await workflow('my-child', 'pass-through');
+  return childResult;
+}
+`)
+    expect(src).toMatch(/function workflow\(/)
+    expect(src).toMatch(/nestingDepth\s*[:=]\s*0/)
+  })
+
   test('parallel wrapper uses Promise.all', () => {
     const script = buildWorkerScript(`return args;`)
     expect(script).toMatch(/Promise\.all\s*\(\s*fns/)
