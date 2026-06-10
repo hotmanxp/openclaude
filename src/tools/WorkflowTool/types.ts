@@ -170,6 +170,22 @@ export type SpawnResult = {
    * existing agent() invocations that don't pass a schema).
    */
   structuredOutput?: unknown
+  /**
+   * Optional path to the git worktree the subagent ran in, populated
+   * only when the caller invoked `agent({ isolation: 'worktree' })`.
+   * The real runAgent-backed spawner wraps the subagent run in
+   * `withWorktreeIsolation({ ... })`; if the worktree was unchanged
+   * after the run, it's auto-removed (see `isolationRemoved`) and
+   * this path no longer exists on disk.
+   */
+  worktreePath?: string
+  /**
+   * True if the worktree was auto-removed because the subagent
+   * produced no file changes. Populated alongside `worktreePath`
+   * when `isolation: 'worktree'` is set. False (or undefined) means
+   * the worktree is still on disk for inspection / merge.
+   */
+  isolationRemoved?: boolean
 }
 
 /** Function injected into the Worker as `spawnSubagent` global. */

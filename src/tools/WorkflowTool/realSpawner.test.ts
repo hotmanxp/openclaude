@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 import {
   buildRealSpawner,
   type RunAgentFn,
@@ -785,6 +785,101 @@ describe('schema handling', () => {
       ok: false,
       error: expect.stringMatching(/must be string|invalid type/i),
     })
+  })
+})
+
+// isolation:worktree — when opts.isolation === 'worktree', the spawner
+// must wrap the subagent run in a fresh git worktree via
+// withWorktreeIsolation, expose the worktree path in SpawnResult, and
+// surface isolationRemoved (true when the helper auto-removed the
+// worktree because git diff was empty, false when it kept it). These
+// tests exercise the real git worktree flow against the actual repo
+// because there's no fs injection seam in realSpawner (we trust the
+// helper's behavior, which is itself unit-tested in
+// runtime/isolation.test.ts).
+describe('isolation:worktree', () => {
+  it('wraps the subagent in a worktree when opts.isolation=worktree', async () => {
+    const fakeRunAgent = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'worktree result' }], model: 'm' },
+      }
+    } as unknown as AsyncGenerator<unknown, void>
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+      },
+    }
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never, {}, 'task-1',
+      {
+        runAgent: fakeRunAgent as never,
+        createUserMessage: (a: { content: string }) => ({ type: 'user', content: a.content }),
+      },
+    )
+    const result = await spawner('p', { isolation: 'worktree' } as never)
+    // The worktree path is what we care about — the spawner must
+    // have wrapped the run in withWorktreeIsolation. The actual
+    // `isolationRemoved` value depends on git diff inside the
+    // worktree, which can be non-empty due to repo-level EOL
+    // rewrites (e.g. python/requirements.txt is text/CRLF) — that's
+    // a property of the test repo, not the spawner contract.
+    expect(result.worktreePath).toMatch(/^\/tmp\/opencc-worktree-/)
+    expect(typeof result.isolationRemoved).toBe('boolean')
+  })
+
+  it('exposes worktreePath in SpawnResult when isolation=worktree', async () => {
+    const fakeRunAgent = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'modified' }], model: 'm' },
+      }
+    } as unknown as AsyncGenerator<unknown, void>
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+      },
+    }
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never, {}, 'task-1',
+      {
+        runAgent: fakeRunAgent as never,
+        createUserMessage: (a: { content: string }) => ({ type: 'user', content: a.content }),
+      },
+    )
+    const result = await spawner('p', { isolation: 'worktree' } as never)
+    expect(result.worktreePath).toBeDefined()
+    expect(typeof result.worktreePath).toBe('string')
+  })
+
+  it('does not set worktreePath when isolation is omitted', async () => {
+    const fakeRunAgent = async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'no worktree' }], model: 'm' },
+      }
+    } as unknown as AsyncGenerator<unknown, void>
+
+    const toolUseCtx = {
+      options: {
+        tools: [],
+        agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+      },
+    }
+    const spawner = await buildRealSpawner(
+      toolUseCtx as never, {}, 'task-1',
+      {
+        runAgent: fakeRunAgent as never,
+        createUserMessage: (a: { content: string }) => ({ type: 'user', content: a.content }),
+      },
+    )
+    const result = await spawner('p', {} as never)
+    expect(result.worktreePath).toBeUndefined()
+    expect(result.isolationRemoved).toBeUndefined()
   })
 })
 
