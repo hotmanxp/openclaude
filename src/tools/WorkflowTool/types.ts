@@ -238,7 +238,14 @@ export type WorkerInbound =
 export type WorkflowPhaseMeta = {
   name?: string
   description?: string
-  phases?: { title: string }[]
+  /**
+   * Phase list declared by the workflow via __setMeta. `detail` is an
+   * optional human-readable one-liner (e.g. for the PermissionDialog
+   * tooltip and the WorkflowDetailDialog phase header). It is only
+   * required for bundled workflows like deep-research; legacy
+   * user/project scripts that just declare `{ title }` keep working.
+   */
+  phases?: { title: string; detail?: string }[]
 }
 
 export type WorkerOutbound =

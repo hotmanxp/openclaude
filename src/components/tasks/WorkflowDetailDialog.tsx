@@ -135,15 +135,31 @@ function pickInitialPhaseIdx(phases: string[], state: LocalWorkflowTaskState): n
 
 function PhasesPane({
   phases,
+  phaseDetails,
   state,
   selectedIdx,
   focused,
 }: {
   phases: string[]
+  /**
+   * Optional parallel array of phase metadata (declared via
+   * __setMeta({ phases: [...] })). Used to render a one-line `detail`
+   * per phase so the user can see what each bundled-workflow phase
+   * actually does (e.g. "Scope — Decompose the question into...").
+   * Lookup is by title so derived phases (from agents) without meta
+   * entries just render their title.
+   */
+  phaseDetails?: { title: string; detail?: string }[]
   state: LocalWorkflowTaskState
   selectedIdx: number
   focused: boolean
 }) {
+  // Index declared phase metadata by title for O(1) lookup.
+  const detailByTitle = useMemo(() => {
+    const m = new Map<string, string | undefined>()
+    for (const p of phaseDetails ?? []) m.set(p.title, p.detail)
+    return m
+  }, [phaseDetails])
   return (
     <Box
       flexDirection="column"
@@ -168,12 +184,19 @@ function PhasesPane({
         const tickColor =
           tick === '✓' ? 'green' : isCurrent ? 'cyan' : isSelected ? 'white' : undefined
         const num = `${i + 1}.`
+        const detail = detailByTitle.get(title)
         return (
           <Box key={title} flexDirection="column">
             <Text inverse={isSelected}>
               <Text color={tickColor}>{tick} {num} </Text>
               <Text>{title}</Text>
             </Text>
+            {detail && (
+              <Text dimColor wrap="wrap">
+                {'   '}
+                {detail}
+              </Text>
+            )}
             <Text dimColor>
               {'   '}
               {total > 0 ? `${done}/${total} agents` : '(no agents)'}
@@ -548,6 +571,7 @@ export function WorkflowDetailDialog({
       <Box marginTop={1} flexDirection="row">
         <PhasesPane
           phases={phases}
+          phaseDetails={state.meta?.phases}
           state={state}
           selectedIdx={selectedPhaseIdx}
           focused={focus === 'phases' && rightMode === 'list'}

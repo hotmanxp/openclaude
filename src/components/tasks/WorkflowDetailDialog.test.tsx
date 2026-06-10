@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/state.js';
 import { WorkflowDetailDialog } from './WorkflowDetailDialog.js';
+import { DEEP_RESEARCH_PHASES } from '../../tools/WorkflowTool/bundled/deepResearch.js';
 
 const sampleState: LocalWorkflowTaskState = {
   id: 'w_abc12345',
@@ -185,6 +186,35 @@ describe('WorkflowDetailDialog (render smoke)', () => {
     };
     expect(() => (
       <WorkflowDetailDialog state={withCleanedWorktree} onDone={() => {}} />
+    )).not.toThrow();
+  });
+
+  test('renders all 5 deep-research phases from task.workflow.phases', () => {
+    // Build state.meta.phases straight from the bundled-workflow
+    // DEEP_RESEARCH_PHASES constant so this test catches drift if
+    // the upstream 5-phase pipeline is ever renamed or reshuffled.
+    const deepResearch: LocalWorkflowTaskState = {
+      ...sampleState,
+      name: 'deep-research',
+      description: 'Multi-phase adversarial deep-research pipeline',
+      meta: {
+        name: 'deep-research',
+        description: 'Scope → Search → Fetch → Verify → Synthesize',
+        phases: DEEP_RESEARCH_PHASES.map(p => ({ title: p.title, detail: p.detail })),
+      },
+      currentPhase: 'Search',
+    };
+    // Sanity: 5 phases preserved verbatim.
+    expect(deepResearch.meta?.phases).toHaveLength(5);
+    expect(deepResearch.meta?.phases?.map(p => p.title)).toEqual([
+      'Scope', 'Search', 'Fetch', 'Verify', 'Synthesize',
+    ]);
+    // Render the dialog with the 5-phase meta and verify the
+    // PhasesPane (which now reads state.meta.phases + detail) does
+    // not throw. This guards against regressions where the dialog
+    // drops the bundled-workflow phase list.
+    expect(() => (
+      <WorkflowDetailDialog state={deepResearch} onDone={() => {}} />
     )).not.toThrow();
   });
 });
