@@ -789,6 +789,20 @@ export const SettingsSchema = lazySchema(() =>
             'Set per session via the `ultracode` settings key ' +
             '(--settings or apply_flag_settings).',
         ),
+      // Per-session toggle for the prompt keyword trigger that activates
+      // the Workflow tool. When false, detectUltracodeTrigger() in REPL.tsx
+      // does not strip the keyword from the input — the prefix is left
+      // intact and the model sees a literal "ultracode ..." prompt. Mirrors
+      // upstream claude-code v2.1.170 `workflowKeywordTriggerEnabled`
+      // (default true).
+      workflowKeywordTriggerEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable the "ultracode" keyword trigger: including the keyword ' +
+            'in a prompt opts that turn into the Workflow tool. Set to false ' +
+            'to disable the trigger. Default: true.',
+        ),
       advisorModel: z
         .string()
         .optional()

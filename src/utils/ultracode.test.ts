@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 
 import {
+  detectUltracodeTrigger,
   getUltracodeReminder,
   isUltracodeActive,
 } from './ultracode.js'
@@ -127,6 +128,44 @@ describe('ultracode core utilities', () => {
           expect(mod.getUltracodeReminder()).toMatch(/ultracode is off/)
         },
       )
+    })
+  })
+
+  describe('detectUltracodeTrigger', () => {
+    it('triggers when enabled=true and input starts with keyword', () => {
+      const result = detectUltracodeTrigger('ultracode fix the bug', 'ultracode', true)
+      expect(result.triggered).toBe(true)
+      expect(result.keyword).toBe('ultracode')
+      expect(result.rest).toBe('fix the bug')
+    })
+
+    it('does not trigger when enabled=false (does not strip keyword)', () => {
+      const result = detectUltracodeTrigger(
+        'ultracode fix the bug',
+        'ultracode',
+        false,
+      )
+      expect(result.triggered).toBe(false)
+      expect(result.rest).toBe('ultracode fix the bug')
+    })
+
+    it('triggers by default when enabled is omitted (back-compat)', () => {
+      const result = detectUltracodeTrigger('ultracode fix the bug', 'ultracode')
+      expect(result.triggered).toBe(true)
+      expect(result.rest).toBe('fix the bug')
+    })
+
+    it('does not trigger when input does not start with keyword (enabled=true)', () => {
+      const result = detectUltracodeTrigger('fix the bug', 'ultracode', true)
+      expect(result.triggered).toBe(false)
+      expect(result.rest).toBe('fix the bug')
+    })
+
+    it('does not trigger when keyword is the only word (no separator)', () => {
+      // The trigger requires at least one whitespace after the keyword.
+      const result = detectUltracodeTrigger('ultracode', 'ultracode', true)
+      expect(result.triggered).toBe(false)
+      expect(result.rest).toBe('ultracode')
     })
   })
 })

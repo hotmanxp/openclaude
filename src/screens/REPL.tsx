@@ -233,6 +233,8 @@ const UndercoverAutoCallout = "external" === 'ant' ? require('../components/Unde
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
+import { detectUltracodeTrigger } from '../utils/ultracode.js';
+import { getInitialSettings } from '../utils/settings/settings.js';
 import { MCPConnectionManager } from 'src/services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from 'src/components/FeedbackSurvey/useFeedbackSurvey.js';
 import { useMemorySurvey } from 'src/components/FeedbackSurvey/useMemorySurvey.js';
@@ -334,23 +336,9 @@ function median(values: number[]): number {
  *
  * Returns the keyword that matched and the rest of the prompt (after the
  * keyword + whitespace) so callers can strip the prefix and dispatch the
- * remainder as a workflow task description.
- *
- * Why a regex over `startsWith` + `slice`: the keyword can be overridden via
- * env var to a string of arbitrary length, and we want to require at least
- * one whitespace separator so a prompt that just *contains* the word
- * (e.g. "tell me about ultracode") is not misdetected.
+ * remainder as a workflow task description. Implementation lives in
+ * utils/ultracode.ts so it can be unit-tested without spinning up Ink.
  */
-function detectUltracodeTrigger(
-  input: string,
-  keyword: string,
-): { triggered: boolean; keyword: string; rest: string } {
-  const match = input.match(new RegExp(`^${keyword}\\s+([\\s\\S]+)$`));
-  if (!match) {
-    return { triggered: false, keyword, rest: input };
-  }
-  return { triggered: true, keyword, rest: match[1]! };
-}
 
 /**
  * Small component to display transcript mode footer with dynamic keybinding.
@@ -3465,7 +3453,11 @@ export function REPL({
     // upstream claude-code v2.1.160's behavior where the trigger is a pure
     // user-facing convention; the LLM-facing surface is the tool itself.
     {
-      const trigger = detectUltracodeTrigger(input, getWorkflowKeyword());
+      const trigger = detectUltracodeTrigger(
+        input,
+        getWorkflowKeyword(),
+        getInitialSettings().workflowKeywordTriggerEnabled !== false,
+      );
       if (trigger.triggered && !options?.fromKeybinding && !speculationAccept) {
         input = trigger.rest;
       }
