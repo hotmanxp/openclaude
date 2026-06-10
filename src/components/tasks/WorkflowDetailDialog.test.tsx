@@ -275,6 +275,32 @@ describe('WorkflowDetailDialog (render smoke)', () => {
     )).not.toThrow();
   });
 
+  test('renders per-phase model when meta declares one (port of upstream b0K)', () => {
+    // Plan7 acorn-parsed meta supplies phases[].model. The
+    // PhasesPane should render the model as a dim "(model)" chip
+    // next to the phase title so the user can see at-a-glance which
+    // model each phase uses. Smoke-render is the convention; this
+    // guards against schema drift in the meta.phases[].model field.
+    const withPhaseModel: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      startedAt: Date.now() - 5000,
+      agents: [],
+      meta: {
+        name: 'mixed',
+        description: 'mixed models across phases',
+        phases: [
+          { title: 'Search', detail: 'web search', model: 'claude-haiku-4-5' },
+          { title: 'Verify', detail: 'adversarial verify' },
+        ],
+      },
+      currentPhase: 'Search',
+    };
+    expect(() => (
+      <WorkflowDetailDialog state={withPhaseModel} onDone={() => {}} />
+    )).not.toThrow();
+  });
+
   test('renders all 5 deep-research phases from task.workflow.phases', () => {
     // Build state.meta.phases straight from the bundled-workflow
     // DEEP_RESEARCH_PHASES constant so this test catches drift if

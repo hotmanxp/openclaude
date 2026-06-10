@@ -257,7 +257,7 @@ export type WorkflowPhaseMeta = {
    * required for bundled workflows like deep-research; legacy
    * user/project scripts that just declare `{ title }` keep working.
    */
-  phases?: { title: string; detail?: string }[]
+  phases?: { title: string; detail?: string; model?: string }[]
 }
 
 export type WorkerOutbound =

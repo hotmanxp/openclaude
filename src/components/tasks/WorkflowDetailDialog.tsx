@@ -150,15 +150,15 @@ function PhasesPane({
    * Lookup is by title so derived phases (from agents) without meta
    * entries just render their title.
    */
-  phaseDetails?: { title: string; detail?: string }[]
+  phaseDetails?: { title: string; detail?: string; model?: string }[]
   state: LocalWorkflowTaskState
   selectedIdx: number
   focused: boolean
 }) {
   // Index declared phase metadata by title for O(1) lookup.
   const detailByTitle = useMemo(() => {
-    const m = new Map<string, string | undefined>()
-    for (const p of phaseDetails ?? []) m.set(p.title, p.detail)
+    const m = new Map<string, { detail?: string; model?: string }>()
+    for (const p of phaseDetails ?? []) m.set(p.title, { detail: p.detail, model: p.model })
     return m
   }, [phaseDetails])
   return (
@@ -185,12 +185,15 @@ function PhasesPane({
         const tickColor =
           tick === '✓' ? 'green' : isCurrent ? 'cyan' : isSelected ? 'white' : undefined
         const num = `${i + 1}.`
-        const detail = detailByTitle.get(title)
+        const meta = detailByTitle.get(title)
+        const detail = meta?.detail
+        const model = meta?.model
         return (
           <Box key={title} flexDirection="column">
             <Text inverse={isSelected}>
               <Text color={tickColor}>{tick} {num} </Text>
               <Text>{title}</Text>
+              {model && <Text dimColor> ({model})</Text>}
             </Text>
             {detail && (
               <Text dimColor wrap="wrap">
