@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import {
   LocalWorkflowTask,
   type LocalSpawner,
@@ -238,5 +238,69 @@ describe('LocalWorkflowTask.start (wiring)', () => {
     expect(typeof api.phase).toBe('function')
     expect(typeof api.setTimeout).toBe('function')
     expect(typeof api.clearTimeout).toBe('function')
+  })
+})
+
+afterEach(() => {
+  // mock.module() is process-global in bun:test and mock.restore()
+  // reverts any monkey-patched functions or modules installed during
+  // the test. Without this, a failing test that aborted before its
+  // own restore would leak the fake registry into the next test.
+  mock.restore()
+})
+
+describe('LocalWorkflowTask.start (nested workflow() on VM path)', () => {
+  test('exposes a working workflow() global that runs a child by name', async () => {
+    // Set up: register a child workflow that returns 'child-result'.
+    // We mock getWorkflowRegistry() so the child's name resolves to
+    // an inline source — no disk I/O, no real WorkflowRegistry.
+    const childSource = `async function userScript(args) { return 'child-result'; }`
+    const fakeRegistry = {
+      get: async (name: string) => {
+        if (name === 'echo-child') {
+          return {
+            name: 'echo-child',
+            source: 'bundled' as const,
+            path: '<inline>',
+            run: async () => '',
+          }
+        }
+        return undefined
+      },
+    }
+    mock.module('../../tools/WorkflowTool/singleton.js', () => ({
+      getWorkflowRegistry: () => fakeRegistry,
+      resolveChildScript: async (ref: { kind: 'name'; value: string }) => {
+        if (ref.kind === 'name' && ref.value === 'echo-child') return childSource
+        throw new Error(`unexpected ref: ${JSON.stringify(ref)}`)
+      },
+    }))
+    // The nested runner also imports getBundledSource; for our
+    // 'bundled' source child, we return the same source. The runner
+    // calls getBundledSource(name) only when def.source === 'bundled'.
+    mock.module('../../tools/WorkflowTool/bundled/index.js', () => ({
+      initBundledWorkflows: () => {},
+      getBundledSource: (name: string) => (name === 'echo-child' ? childSource : undefined),
+    }))
+
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    // Parent script invokes workflow('echo-child', 'hi') and concatenates
+    // the child's return value. The VM passes the script body to a
+    // wrapper; the runner returns the script's resolved value as the
+    // report (auto-stringified for non-string results).
+    const parentScript = `async function userScript() {
+      const result = await workflow('echo-child', 'hi');
+      return 'parent-saw:' + result;
+    }`
+    await task.start(parentScript)
+    expect(task.state.status).toBe('completed')
+    // The child returns 'child-result' verbatim (args are ignored in
+    // the inline fixture) so the parent reports parent-saw:child-result.
+    expect(task.state.result).toBe('parent-saw:child-result')
   })
 })

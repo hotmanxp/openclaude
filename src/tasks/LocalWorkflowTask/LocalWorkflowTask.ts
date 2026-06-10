@@ -10,6 +10,7 @@ import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.j
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { runWorkflowInVm, type VmRunnerResult } from '../../tools/WorkflowTool/runtime/vmRunner.js'
+import { createNestedWorkflowRunner } from '../../tools/WorkflowTool/runtime/workflowNested.js'
 import type { WorkflowApi } from '../../tools/WorkflowTool/runtime/vmContext.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js'
@@ -72,6 +73,10 @@ export class LocalWorkflowTask implements Task {
   // VM runner used by start() to execute the user script. Override via
   // setVmRunner() in tests to assert wiring without spawning a VM.
   private vmRunner: typeof runWorkflowInVm = runWorkflowInVm
+  // Depth counter handed to createNestedWorkflowRunner so a child
+  // workflow's `workflow()` call is rejected by the runner's own
+  // guard (nesting is limited to one level). 0 = parent, 1 = child.
+  private _childDepth = 0
 
   constructor(args: LocalWorkflowTaskOptions) {
     this.workflow = args.workflow
@@ -219,10 +224,56 @@ export class LocalWorkflowTask implements Task {
         for (const s of stages) out.push(await s())
         return out
       },
-      workflow: async () => {
-        throw new Error(
-          'workflow() not supported in LocalWorkflowTask — use Plan4 nested path',
+      workflow: async (
+        nameOrRef: string | { scriptPath: string },
+        args?: unknown,
+      ) => {
+        // Plan4 nested-workflow support on the VM path: wire the
+        // script's `workflow(name, args)` global through
+        // createNestedWorkflowRunner, which enforces upstream's
+        // "one level of nesting only" rule via its own nestingDepth
+        // guard. The child itself is run inline via runWorkflowInVm
+        // using buildVmApiForChild() — the same API surface as the
+        // parent, with `workflow()` overridden to a hard error so
+        // an attempt at deeper nesting throws a clear message
+        // (defence in depth — the runner's nestingDepth check
+        // should already reject it).
+        const { getWorkflowRegistry } = await import(
+          '../../tools/WorkflowTool/singleton.js'
         )
+        const { readFileSync } = await import('fs')
+        const { getBundledSource } = await import(
+          '../../tools/WorkflowTool/bundled/index.js'
+        )
+        const runner = createNestedWorkflowRunner({
+          resolveWorkflow: async (name: string) => {
+            const def = await getWorkflowRegistry().get(name)
+            if (!def) return null
+            const script = def.source === 'bundled'
+              ? (getBundledSource(name) ?? '')
+              : readFileSync(def.path, 'utf-8')
+            return { name: def.name, script }
+          },
+          runScript: async (script: string, childArgs: unknown) => {
+            // Run the child inline in its own VM context. Same
+            // API surface as the parent; one-level depth is
+            // enforced by createNestedWorkflowRunner itself when
+            // the child calls workflow() again. Return the
+            // stringified `report` so script-level callers get a
+            // value they can concatenate / log / return — the
+            // raw `{ report, events, budgetSpent }` envelope is
+            // an internal detail of runWorkflowInVm.
+            const result = await runWorkflowInVm({
+              script,
+              args: childArgs,
+              api: this.buildVmApiForChild(),
+              timeoutMs: 30000,
+            })
+            return result.report
+          },
+          nestingDepth: this._childDepth,
+        })
+        return runner(nameOrRef, args)
       },
       args: this.state.args,
       budget: {
@@ -472,6 +523,72 @@ export class LocalWorkflowTask implements Task {
         this.bumpWorkflowsVersion(ctx)
         throw err
       }
+    }
+  }
+
+  /**
+   * Build a WorkflowApi for a child workflow running inside
+   * `workflow()`. Mirrors the parent's API surface so the child
+   * can use the same globals (agent, parallel, pipeline, args,
+   * budget, log, phase, timers) — but overrides `workflow` to a
+   * hard error so a child that tries to call workflow() again
+   * throws a clear "nesting is limited to one level" message.
+   * (The runner's nestingDepth guard should already reject it
+   * before reaching this function, but the in-child override is
+   * defence in depth in case the runner is bypassed.)
+   *
+   * The parent task is reused: agent() still funnels through the
+   * same buildSpawnSubagent (so child subagents appear in
+   * state.agents alongside parent subagents), log/phase still
+   * update the same UI surface, and the same abort controller
+   * cascades. This keeps parent and child observable as one run
+   * for the WorkflowDetailDialog.
+   */
+  private buildVmApiForChild(): WorkflowApi {
+    return {
+      agent: async (prompt: string, opts?: Record<string, unknown>) => {
+        const result = await this.buildSpawnSubagent(this.parentContext!)(prompt, opts as SpawnOpts | undefined)
+        return {
+          ok: true as const,
+          agentId: result.agentId,
+          report: result.report,
+          structuredOutput: result.structuredOutput,
+        }
+      },
+      parallel: async <T,>(fns: Array<() => Promise<T>>): Promise<T[]> => {
+        return (await Promise.all(fns.map((f) => f()))) as T[]
+      },
+      pipeline: async <T,>(stages: Array<() => Promise<T>>): Promise<T[]> => {
+        const out: T[] = []
+        for (const s of stages) out.push(await s())
+        return out
+      },
+      workflow: async () => {
+        throw new Error(
+          'workflow() cannot be called from within a child workflow — ' +
+          'nesting is limited to one level. Inline the inner script or call its agents directly.',
+        )
+      },
+      args: this.state.args,
+      budget: {
+        total: this.state.budgetTotal ?? 0,
+        spent: () => 0,
+        remaining: () => this.state.budgetTotal ?? 0,
+      },
+      log: (...msgs: unknown[]) => {
+        // Reuse the parent's log sink so child logs surface in the
+        // same /errorlog feed.
+        const line = msgs.map((m) => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ')
+        logError(new Error(`[workflow] ${line}`))
+      },
+      phase: (title: string) => {
+        this.state.currentPhase = String(title ?? '')
+        if (this.parentContext) this.bumpWorkflowsVersion(this.parentContext)
+      },
+      setTimeout: ((...args: Parameters<typeof setTimeout>) =>
+        setTimeout(...args)) as typeof setTimeout,
+      clearTimeout: ((...args: Parameters<typeof clearTimeout>) =>
+        clearTimeout(...args)) as typeof clearTimeout,
     }
   }
 
