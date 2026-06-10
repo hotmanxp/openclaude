@@ -82,7 +82,17 @@ export function runWorkflowScript(
     }, timeoutMs)
     timer.unref?.()
     try {
-      const result = vm.runInContext(wrapped, ctx, { timeout: timeoutMs })
+      // Plan14 Task 1: block dynamic `import()` from workflow scripts.
+      // Mirrors upstream `vm.Script({ importModuleDynamically: () => { throw tq_(...) } })`.
+      // Date/Math.random are caught earlier in runWorkflowInVm via
+      // assertResumeSafe (pre-flight, host-side), so by the time we get
+      // here the source is already resume-safe.
+      const result = vm.runInContext(wrapped, ctx, {
+        timeout: timeoutMs,
+        importModuleDynamically: () => {
+          throw new Error('import() is not available in workflow scripts.')
+        },
+      })
       if (settled) return
       settled = true
       clearTimeout(timer)

@@ -3,6 +3,7 @@ import { sealForVmBoundary, isVmBoundaryError } from './vmSealer.js'
 import { createWorkflowVmContext, runWorkflowScript, type WorkflowApi } from './vmContext.js'
 import { stripStringsAndComments } from '../staticAnalyzer.js'
 import { parseMetaFromScript, type ParsedWorkflowMeta } from '../parseMetaFromScript.js'
+import { assertResumeSafe } from '../resumeSafety.js'
 
 export type VmRunnerOpts = {
   /** File path to a workflow script, OR inline source code. */
@@ -178,6 +179,13 @@ export function stripEsmExports(source: string): string {
  */
 export async function runWorkflowInVm(opts: VmRunnerOpts): Promise<VmRunnerResult> {
   const source = existsSync(opts.script) ? readFileSync(opts.script, 'utf-8') : opts.script
+
+  // Plan14 Task 1: reject Date.now() / new Date() / Math.random() at the
+  // source level so the user gets the upstream error string verbatim.
+  // (import() is caught separately via vm.runInContext's
+  // importModuleDynamically, see vmContext.ts.) Breaks resume because
+  // these globals make workflow output non-deterministic across replays.
+  assertResumeSafe(source)
 
   // Plan7 Task3: parse the script's `export const meta = {...}` declaration
   // up front so we can return a structured meta alongside the report.
