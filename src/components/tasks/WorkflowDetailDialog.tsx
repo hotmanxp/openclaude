@@ -31,6 +31,7 @@ import { Box, Text, useInput } from '../../ink.js'
 import { useMemo, useState } from 'react'
 import type { WorkflowAgentState } from '../../tools/WorkflowTool/types.js'
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/state.js'
+import { buildTerminalStatusLine } from './workflowActivityRenderers.js'
 
 type Props = {
   // Accept both prop names for back-compat:
@@ -567,6 +568,35 @@ export function WorkflowDetailDialog({
             : formatDuration(totalElapsed)}
         </Text>
       </Box>
+
+      {/* Terminal status row (port of upstream n73) — shown when
+          the workflow has reached a terminal state. Format:
+          "Completed in 12s · 5 agents · 1.2K tokens" etc. */}
+      {(state.status === 'completed' || state.status === 'failed' || state.status === 'killed') && (
+        <Box>
+          <Text dimColor>
+            {buildTerminalStatusLine({
+              status: state.status,
+              durationMs: (state.completedAt ?? Date.now()) - state.startedAt,
+              agentCount: state.agents.length,
+              totalTokens: 0,
+            })}
+          </Text>
+        </Box>
+      )}
+
+      {/* Running background hint (port of upstream n73 in-flight
+          branch). Tells the user this is a fire-and-forget workflow
+          and to use /workflows to monitor + save. */}
+      {state.status === 'running' && (
+        <Box>
+          <Text dimColor>
+            {'Running in background · '}
+            <Text color="suggestion">/workflows</Text>
+            {' to monitor and save'}
+          </Text>
+        </Box>
+      )}
 
       <Box marginTop={1} flexDirection="row">
         <PhasesPane
