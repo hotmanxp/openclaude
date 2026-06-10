@@ -1,4 +1,10 @@
 /**
+ * @deprecated Use vmRunner.ts (Task1-4 of Plan5) instead. Kept for
+ * the /create-workflow preview path which compiles a script locally
+ * without running it. Will be removed in 2026-Q3 once preview
+ * moves to a syntax-highlight-only renderer.
+ */
+/**
  * Build the wrapper script that's loaded into node:worker_threads.
  *
  * The wrapper:
