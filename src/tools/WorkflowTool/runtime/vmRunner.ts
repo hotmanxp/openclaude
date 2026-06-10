@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { sealForVmBoundary, isVmBoundaryError } from './vmSealer.js'
 import { createWorkflowVmContext, runWorkflowScript, type WorkflowApi } from './vmContext.js'
 import { stripStringsAndComments } from '../staticAnalyzer.js'
+import { parseMetaFromScript, type ParsedWorkflowMeta } from '../parseMetaFromScript.js'
 
 export type VmRunnerOpts = {
   /** File path to a workflow script, OR inline source code. */
@@ -15,6 +16,7 @@ export type VmRunnerResult = {
   report: string
   events: Array<{ kind: string; payload: unknown }>
   budgetSpent: number
+  meta?: ParsedWorkflowMeta
 }
 
 /**
@@ -177,6 +179,23 @@ export function stripEsmExports(source: string): string {
 export async function runWorkflowInVm(opts: VmRunnerOpts): Promise<VmRunnerResult> {
   const source = existsSync(opts.script) ? readFileSync(opts.script, 'utf-8') : opts.script
 
+  // Plan7 Task3: parse the script's `export const meta = {...}` declaration
+  // up front so we can return a structured meta alongside the report.
+  // The parser is strict (mirrors upstream's `OG()`): TS syntax, computed
+  // keys, spread, template interpolation, reserved keys (`__proto__` etc.),
+  // and missing/empty `name` or `description` are hard errors → refuse
+  // to run. Missing meta declaration falls through: legacy scripts may
+  // call `__setMeta()` at runtime, captured by the VM API below.
+  let parsedMeta: ParsedWorkflowMeta | undefined
+  const parseResult = parseMetaFromScript(source)
+  if (parseResult.ok) {
+    parsedMeta = parseResult.value.meta
+  } else if (!/FIRST statement/.test(parseResult.error)) {
+    // Hard error: TS type annotations, computed/spread/template,
+    // reserved keys, missing name, etc.
+    throw new Error(`Invalid workflow script: ${parseResult.error}`)
+  }
+
   const events: Array<{ kind: string; payload: unknown }> = []
 
   const ctx = createWorkflowVmContext({
@@ -242,7 +261,7 @@ export async function runWorkflowInVm(opts: VmRunnerOpts): Promise<VmRunnerResul
       : sealed === null || sealed === undefined
         ? ''
         : JSON.stringify(sealed, null, 2)
-    return { report, events, budgetSpent: opts.api.budget.spent() }
+    return { report, events, budgetSpent: opts.api.budget.spent(), meta: parsedMeta }
   } catch (e) {
     if (isVmBoundaryError(e)) {
       throw new Error(`VM boundary violation: ${e instanceof Error ? e.message : String(e)}`)

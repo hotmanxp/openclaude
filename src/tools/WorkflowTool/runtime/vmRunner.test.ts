@@ -131,6 +131,72 @@ async function userScript(args) {
     expect(result.report).toContain('export meta test')
   })
 
+  it('captures meta from export const meta declaration', async () => {
+    const script = `export const meta = { name: 'test', description: 'A test', phases: [{ title: 'A' }] }
+async function userScript() { return 'done'; }`
+    const r = await runWorkflowInVm({
+      script,
+      args: undefined,
+      api: {
+        agent: async () => ({ ok: false, error: 'x' }),
+        parallel: async () => [],
+        pipeline: async () => [],
+        workflow: async () => undefined,
+        args: undefined,
+        budget: { total: 0, spent: () => 0, remaining: () => 0 },
+        log: () => {},
+        phase: () => {},
+        setTimeout, clearTimeout,
+      },
+    })
+    expect(r.meta?.name).toBe('test')
+    expect(r.meta?.phases?.[0]?.title).toBe('A')
+    expect(r.report).toBe('done')
+  })
+
+  it('returns no meta when script lacks export const meta', async () => {
+    const script = `async function userScript() { return 'x'; }`
+    const r = await runWorkflowInVm({
+      script,
+      args: undefined,
+      api: {
+        agent: async () => ({ ok: false, error: 'x' }),
+        parallel: async () => [],
+        pipeline: async () => [],
+        workflow: async () => undefined,
+        args: undefined,
+        budget: { total: 0, spent: () => 0, remaining: () => 0 },
+        log: () => {},
+        phase: () => {},
+        setTimeout, clearTimeout,
+      },
+    })
+    expect(r.meta).toBeUndefined()
+    expect(r.report).toBe('x')
+  })
+
+  it('throws on invalid meta (TS type annotation)', async () => {
+    const script = `export const meta: { name: string } = { name: 'x', description: 'x' }
+async function userScript() {}`
+    await expect(
+      runWorkflowInVm({
+        script,
+        args: undefined,
+        api: {
+          agent: async () => ({ ok: false, error: 'x' }),
+          parallel: async () => [],
+          pipeline: async () => [],
+          workflow: async () => undefined,
+          args: undefined,
+          budget: { total: 0, spent: () => 0, remaining: () => 0 },
+          log: () => {},
+          phase: () => {},
+          setTimeout, clearTimeout,
+        },
+      }),
+    ).rejects.toThrow(/plain JavaScript|TypeScript/)
+  })
+
   it('supports top-level await', async () => {
     const scriptPath = join(FIXTURES_DIR, 'workflow-top-level-await.js')
 
