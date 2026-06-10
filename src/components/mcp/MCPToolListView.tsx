@@ -18,7 +18,7 @@ type Props = {
   onSelectTool: (tool: Tool, index: number) => void;
   onBack: () => void;
 };
-export function MCPToolListView(t0) {
+export function MCPToolListView(t0: Props): React.ReactNode {
   const $ = _c(21);
   const {
     server,

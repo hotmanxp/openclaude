@@ -90,7 +90,7 @@ function groupServersByScope(serverList: ServerInfo[]): Map<ConfigScope, ServerI
   }
   return groups;
 }
-export function MCPListPanel(t0) {
+export function MCPListPanel(t0: Props): React.ReactNode {
   const $ = _c(78);
   const {
     servers,
@@ -107,7 +107,7 @@ export function MCPListPanel(t0) {
   } else {
     t2 = $[1];
   }
-  const agentServers = t2;
+  const agentServers = t2 as AgentMcpServerInfo[];
   const [theme] = useTheme();
   const [selectedIndex, setSelectedIndex] = useState(0);
   let t3;
@@ -486,7 +486,7 @@ export function MCPListPanel(t0) {
   }
   return t32;
 }
-function _temp6(s_2) {
+function _temp6(s_2: AgentMcpServerInfo) {
   return s_2.sourceAgents;
 }
 function _temp5(s_1) {
