@@ -5,6 +5,7 @@ import type {
   SpawnResult,
   Workflow,
   WorkflowAgentState,
+  WorkflowPhaseMeta,
 } from '../../tools/WorkflowTool/types.js'
 import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.js'
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
@@ -298,6 +299,31 @@ export class LocalWorkflowTask implements Task {
         // reaching back to the bridge.
         this.state.currentPhase = String(title ?? '')
         this.bumpWorkflowsVersion(parentContext)
+      },
+      __setMeta: (meta: unknown) => {
+        // Plan6 Task 2: the old worker-thread bridge routed
+        // `__setMeta(meta)` into a `{ kind: 'meta', meta }` postMessage
+        // that the parent translated onto state.meta. The VM path
+        // previously had no `__setMeta` global, so the bundled
+        // `deep-research` script (which calls __setMeta at the top
+        // with the 5-phase list) appeared as a 0-phase workflow in
+        // WorkflowDetailDialog. This handler restores the channel:
+        // type-guard the unknown payload, write through to
+        // state.meta, and re-render so the panel sees the new
+        // phases. Per the VM API contract (__setMeta takes unknown)
+        // we cannot trust the shape — non-objects are dropped.
+        if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+          this.setMeta(parentContext, meta as WorkflowPhaseMeta)
+        } else {
+          // Noisy-but-rare: a buggy caller passing a primitive. The
+          // plan-audit showed that `as any` suppression here was a
+          // hotspot for type noise, so we type-guard at the boundary
+          // and leave state.meta untouched.
+          console.warn(
+            '[LocalWorkflowTask] __setMeta ignored: expected an object, got',
+            typeof meta,
+          )
+        }
       },
       setTimeout: ((...args: Parameters<typeof setTimeout>) =>
         setTimeout(...args)) as typeof setTimeout,
@@ -607,6 +633,26 @@ export class LocalWorkflowTask implements Task {
       if (!p.workflows) return prev
       return { ...p, workflows: { ...p.workflows } }
     })
+  }
+
+  /**
+   * Plan6 Task 2: persist workflow metadata declared via
+   * `__setMeta({...})` from inside a script. Mirrors the
+   * `{ kind: 'meta', meta }` bridge handler from the legacy
+   * worker path. The dialog uses state.meta.phases to render the
+   * declared phase list (5 phases for `deep-research`, etc).
+   *
+   * The plan spec also asks for a `recordEvent` audit hook here,
+   * but no such helper exists in this file (Plan5 did not land
+   * one) and the `phase()` sibling writes directly to state +
+   * bumps the version — we follow that pattern for consistency.
+   */
+  private setMeta(
+    ctx: LocalWorkflowParentContext,
+    meta: WorkflowPhaseMeta,
+  ): void {
+    this.state.meta = meta
+    this.bumpWorkflowsVersion(ctx)
   }
 }
 

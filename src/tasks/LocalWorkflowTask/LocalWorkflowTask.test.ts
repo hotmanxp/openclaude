@@ -238,6 +238,66 @@ describe('LocalWorkflowTask.start (wiring)', () => {
     expect(typeof api.phase).toBe('function')
     expect(typeof api.setTimeout).toBe('function')
     expect(typeof api.clearTimeout).toBe('function')
+    // Plan6 Task 2: __setMeta is now wired into the VM API so user
+    // scripts can declare UI-visible metadata (name, description,
+    // phases) the same way the old Worker-thread bridge did.
+    expect(typeof api.__setMeta).toBe('function')
+  })
+
+  test('captures __setMeta() calls into state.meta for VM scripts', async () => {
+    // Plan6 Task 2: scripts use __setMeta({name, description, phases})
+    // to declare UI-visible metadata. The VM API must capture the
+    // payload onto state.meta so WorkflowDetailDialog can render the
+    // declared phase list. (Previously the VM path silently dropped
+    // __setMeta — see the test.skip in schedulerBridge.test.ts that
+    // was disabled by the Plan5 worker→VM migration.)
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    const script = `async function userScript() {
+      if (typeof __setMeta === 'function') {
+        __setMeta({ name: 'test', description: 'test-desc', phases: [
+          { title: 'Phase1', detail: 'first' },
+          { title: 'Phase2', detail: 'second' },
+        ] });
+      }
+      return 'done';
+    }`
+    await task.start(script)
+    expect(task.state.status).toBe('completed')
+    expect(task.state.meta).toBeDefined()
+    expect(task.state.meta?.name).toBe('test')
+    expect(task.state.meta?.description).toBe('test-desc')
+    expect(task.state.meta?.phases).toHaveLength(2)
+    expect(task.state.meta?.phases?.[0]?.title).toBe('Phase1')
+    expect(task.state.meta?.phases?.[1]?.title).toBe('Phase2')
+  })
+
+  test('__setMeta ignores non-object payloads (type-guard)', async () => {
+    // Plan6 Task 2 guard: __setMeta accepts `unknown` per the VM API
+    // type. A primitive payload (string, number, null) must not
+    // clobber state.meta with garbage — we just log a warning and
+    // leave state.meta unchanged.
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    const script = `async function userScript() {
+      __setMeta('not-an-object');
+      __setMeta(null);
+      __setMeta(undefined);
+      __setMeta(42);
+      return 'done';
+    }`
+    await task.start(script)
+    expect(task.state.status).toBe('completed')
+    // state.meta is never set when only invalid payloads arrive.
+    expect(task.state.meta).toBeUndefined()
   })
 })
 

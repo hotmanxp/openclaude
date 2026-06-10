@@ -204,6 +204,20 @@ export async function runWorkflowInVm(opts: VmRunnerOpts): Promise<VmRunnerResul
         // Never let a logging failure mask the script's own
         // errors — events are already captured above.
       }
+      // Plan6 Task 2: also forward to the host's __setMeta so it
+      // can persist the payload to its own state. The pre-Plan6
+      // runner only logged the metadata, which meant a script
+      // calling `__setMeta({phases: [...]})` at the top never
+      // reached the LocalWorkflowTask state.meta slot. Host is
+      // optional (callers that only care about the events array
+      // can omit it), matching the agent/parallel/pipeline
+      // forwarding pattern a few lines above.
+      try {
+        opts.api.__setMeta?.(meta)
+      } catch {
+        // best-effort; never let a host forwarding failure
+        // mask the script's own errors
+      }
     },
   })
 
