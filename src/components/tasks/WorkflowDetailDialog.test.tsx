@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, expect, test } from 'bun:test';
 import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters as stripAnsi } from 'node:util';
