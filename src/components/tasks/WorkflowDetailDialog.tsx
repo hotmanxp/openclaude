@@ -100,8 +100,11 @@ function formatDuration(ms?: number): string {
 
 function formatTokens(tok?: number): string {
   if (tok === undefined) return '—'
-  if (tok >= 1000) return `${(tok / 1000).toFixed(1)}k`
-  return String(tok)
+  if (tok < 1000) return String(tok)
+  if (tok < 1_000_000) {
+    return `${Math.floor(tok / 1000)}K`
+  }
+  return `${Math.floor(tok / 1_000_000)}M`
 }
 
 /** Derive the ordered list of phases for a workflow run. */

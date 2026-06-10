@@ -587,3 +587,58 @@ describe('WorkflowDetailDialog (Plan11: r restart action — port upstream)', ()
     }
   });
 });
+
+describe('formatTokens (Plan11: Math.floor rounding — port upstream _4)', () => {
+  test('rounds 1500 down to 1K (not up to 2K)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'running',
+          startedAt: Date.now() - 5000,
+          tokensUsed: 1500,
+        },
+      ],
+    };
+    const frame = await renderDialog(state);
+    expect(frame).toContain('1K');
+    expect(frame).not.toContain('1.5k');
+  });
+
+  test('rounds 1499 down to 1K (not up to 2K)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'running',
+          startedAt: Date.now() - 5000,
+          tokensUsed: 1499,
+        },
+      ],
+    };
+    const frame = await renderDialog(state);
+    expect(frame).toContain('1K');
+  });
+});
