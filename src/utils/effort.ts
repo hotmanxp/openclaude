@@ -17,6 +17,7 @@ export const EFFORT_LEVELS = [
   'medium',
   'high',
   'max',
+  'ultracode', // session-scoped orchestration mode (xhigh + dynamic workflow)
 ] as const satisfies readonly EffortLevel[]
 
 export const OPENAI_EFFORT_LEVELS = [
@@ -162,7 +163,10 @@ export function toPersistableEffort(
   if (value === 'max') {
     return value
   }
-  if (value === 'xhigh') {
+  // OpenAI/Codex path may leak 'xhigh' through OpenAIEffortLevel at runtime
+  // even though EffortValue's type doesn't include it (see plan: xhigh stays
+  // in OPENAI_EFFORT_LEVELS, not in standard EffortLevel). Normalize to 'max'.
+  if ((value as string) === 'xhigh') {
     return 'max'
   }
   return undefined
@@ -303,6 +307,8 @@ export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel
       return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
     case 'xhigh':
       return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
+    case 'ultracode':
+      return 'xhigh effort with standing dynamic-workflow orchestration'
   }
 }
 
