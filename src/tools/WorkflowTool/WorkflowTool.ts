@@ -1,9 +1,11 @@
 // src/tools/WorkflowTool/WorkflowTool.ts
-import { readFileSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import type React from 'react'
 import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
 import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
 import { buildRealSpawner } from './realSpawner.js'
@@ -346,6 +348,55 @@ export const WorkflowTool = {
         // false-positive a disable.
       }
 
+      // Plan4 Task 2 — persist the script so the LLM can re-invoke
+      // it via `{ scriptPath }` for iterative editing. When the
+      // caller passed `scriptPath` directly, the on-disk file IS
+      // the persisted path — just echo it back. When the caller
+      // passed `workflowName`, the script came from either the
+      // bundled registry or a project/user `.js` file; we write a
+      // copy to the session's `workflows/` subdir so the LLM can
+      // see a stable path it can read (and later re-run) without
+      // re-resolving the registry.
+      //
+      // Placement: AFTER the disable check (a disabled call must
+      // not write to disk) and BEFORE the task spawn (so the
+      // persisted path is included in the result.data the LLM
+      // sees). The `script` and `workflowName` locals are already
+      // resolved by the earlier blocks — this block is the
+      // single source of truth for the final `persistedPath`.
+      //
+      // Session id source: `CLAUDE_SESSION_ID` env var is not
+      // currently set anywhere in OpenCC (verified via
+      // `process.env.CLAUDE_SESSION_ID` grep), and importing
+      // `getSessionId` from `bootstrap/state.ts` from this module
+      // risks the same pre-existing settings ↔ envUtils TDZ the
+      // rest of this file dodges. Falling back to `process.pid` is
+      // stable for the lifetime of a single CLI run and matches
+      // the "session-scoped dir per run" intent — different CLI
+      // invocations get different subdirs, and re-invoking the
+      // same script in the same session reuses the same dir.
+      let persistedPath: string
+      if (scriptPath) {
+        // Caller already owns the file. Don't re-write — just
+        // surface the path so the LLM gets a uniform `scriptPath`
+        // field on the result regardless of invocation mode.
+        persistedPath = scriptPath
+      } else {
+        const sessionId = process.env.CLAUDE_SESSION_ID ?? String(process.pid)
+        const sessionDir = join(
+          getClaudeConfigHomeDir(),
+          'sessions',
+          sessionId,
+          'workflows',
+        )
+        mkdirSync(sessionDir, { recursive: true })
+        persistedPath = join(
+          sessionDir,
+          `${workflowName.replace(/[^a-zA-Z0-9_-]/g, '_')}-${Date.now()}.js`,
+        )
+        writeFileSync(persistedPath, script)
+      }
+
       // Build a parent context. The real spawnSubagent() wiring
       // (calling runAgent() with the parent's toolUseContext / canUseTool)
       // is supplied by the parent caller via `toolUseCtx.callAgent` when
@@ -476,6 +527,12 @@ export const WorkflowTool = {
         data: {
           taskId: runId,
           workflowName,
+          // Plan4 Task 2: surface the persisted script path so the
+          // LLM can re-invoke the same workflow with `{ scriptPath }`
+          // for iterative editing (Read → Edit → re-run). For
+          // `scriptPath` invocations, this is the input path
+          // verbatim (see the persistence block above).
+          scriptPath: persistedPath,
           status: 'running',
           message,
         },
