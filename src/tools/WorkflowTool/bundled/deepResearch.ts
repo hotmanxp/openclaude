@@ -269,6 +269,7 @@ Use WebSearch if needed. Return JSON: {vote: "SUPPORTED"|"REFUTED"|"UNCERTAIN", 
 export const deepResearch: Workflow = {
   name: 'deep-research',
   description: '5-phase adversarial deep-research pipeline: Scope → Search → Fetch → Verify → Synthesize. Produces a cited report from multiple parallel lens agents with independent cross-verification.',
+  whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g. "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in.',
   source: 'bundled',
   path: '<bundled:deepResearch>',
   run: async () => '',  // not used — script source is read separately
