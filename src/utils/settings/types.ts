@@ -773,6 +773,22 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),
+      // Session-level ultracode toggle. When true, the runtime reads this
+      // via isUltracodeActive() (src/utils/ultracode.ts) and applies xhigh
+      // effort + dynamic-workflow orchestration for this session.
+      // Per-session — same shape as upstream 2.1.170 `ultracode: boolean`.
+      // The user-facing trigger word for activating a workflow in the
+      // prompt lives at `workflows.keyword` (env: OPENCC_WORKFLOW_KEYWORD,
+      // default "ultracode") — this boolean is the session-level gate.
+      ultracode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Whether ultracode (xhigh effort + standing dynamic-workflow ' +
+            'orchestration) is active for this session. ' +
+            'Set per session via the `ultracode` settings key ' +
+            '(--settings or apply_flag_settings).',
+        ),
       advisorModel: z
         .string()
         .optional()
