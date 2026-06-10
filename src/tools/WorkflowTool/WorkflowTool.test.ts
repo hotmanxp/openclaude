@@ -180,6 +180,67 @@ describe('WorkflowTool default spawner (regression for no-op fallback)', () => {
   })
 })
 
+// Plan4 Task 1: scriptPath mode lets the LLM run a workflow script that
+// was just written to disk (e.g. via Write/Edit) without registering it
+// in the registry. This is the foundation for the iterative "write a
+// workflow → run it → see results → tweak → re-run" loop.
+//
+// The contract under test:
+//   - scriptPath reads from disk, bypasses the registry, and tags the
+//     run as workflowName='<ad-hoc>' so the /workflows panel can label
+//     it differently from named workflows.
+//   - A missing file is a friendly error (not a Worker crash).
+//   - workflowName and scriptPath are mutually exclusive.
+describe('WorkflowTool.scriptPath mode', () => {
+  test('runs script from disk when scriptPath is provided', async () => {
+    const { writeFile, unlink } = await import('node:fs/promises')
+    const tmpScript = `/tmp/test-wf-${Date.now()}-${Math.random().toString(36).slice(2)}.js`
+    await writeFile(
+      tmpScript,
+      `return 'result: ' + (Array.isArray(args) && args.length > 0 ? args[0] : 'no-args');`,
+    )
+    try {
+      const result = await (WorkflowTool as unknown as {
+        call: (input: unknown, ctx: unknown) => Promise<{
+          data: { message?: string; workflowName?: string; taskId?: string }
+        }>
+      }).call(
+        { scriptPath: tmpScript, args: ['hello'] },
+        { setAppState: undefined },
+      )
+      expect(result.data.message).toContain('Run ID:')
+      expect(result.data.workflowName).toBe('<ad-hoc>')
+      expect(result.data.taskId).toBeDefined()
+    } finally {
+      await unlink(tmpScript).catch(() => {})
+    }
+  })
+
+  test('returns error message when scriptPath file does not exist', async () => {
+    const result = await (WorkflowTool as unknown as {
+      call: (input: unknown, ctx: unknown) => Promise<{
+        data: { message?: string }
+      }>
+    }).call(
+      { scriptPath: '/tmp/does-not-exist-12345-67890.js' },
+      { setAppState: undefined },
+    )
+    expect(result.data.message).toMatch(/Cannot read workflow source/i)
+  })
+
+  test('returns error when both workflowName and scriptPath are provided', async () => {
+    const result = await (WorkflowTool as unknown as {
+      call: (input: unknown, ctx: unknown) => Promise<{
+        data: { message?: string }
+      }>
+    }).call(
+      { workflowName: 'x', scriptPath: '/tmp/x.js' },
+      { setAppState: undefined },
+    )
+    expect(result.data.message).toMatch(/mutually exclusive/i)
+  })
+})
+
 // Sanity: the public tool must accept the workflowName + args input
 // shape and produce a structured result. The toolUseContext wiring
 // (callAgent override + default real spawner) is exercised end-to-end
