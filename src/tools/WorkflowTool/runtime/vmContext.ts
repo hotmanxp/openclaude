@@ -11,6 +11,14 @@ export type WorkflowApi = {
   phase: (title: string) => void
   setTimeout: typeof setTimeout
   clearTimeout: typeof clearTimeout
+  /**
+   * Optional channel for scripts to declare UI-visible metadata
+   * (name, description, phases). Mirrors the legacy
+   * `__setMeta` global from workerScript.ts. The host wires
+   * this to forward `{ kind: 'meta', payload }` events so the
+   * WorkflowDetailDialog can render the declared phases.
+   */
+  __setMeta?: (meta: unknown) => void
 }
 
 /**
@@ -40,6 +48,11 @@ export function createWorkflowVmContext(api: WorkflowApi): vm.Context {
     phase: api.phase,
     setTimeout: api.setTimeout,
     clearTimeout: api.clearTimeout,
+    // __setMeta is optional — the host may omit it (e.g. callers
+    // that don't care about workflow metadata). When present,
+    // expose it on the context as a no-throw global so the
+    // script's `__setMeta(meta)` call survives the VM boundary.
+    ...(api.__setMeta ? { __setMeta: api.__setMeta } : {}),
   }, {
     codeGeneration: { strings: false, wasm: false },
     name: 'workflow-vm-context',

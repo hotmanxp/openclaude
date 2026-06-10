@@ -47,6 +47,106 @@ function extractUserScriptBody(source: string): string | null {
 }
 
 /**
+ * Strip ESM `export` keywords from a workflow source so it parses as
+ * a plain script inside the VM. This is the regression fix for Plan6
+ * Task2: Plan5's VM migration (commit 57887ab7) dropped the legacy
+ * workerScript.ts stripper, so the 4 of 6 user workflows in
+ * `.claude/workflows/` that start with `export const meta = {...}`
+ * crashed with `SyntaxError: Unexpected token 'export'`.
+ *
+ * Mirrors the chain in `workerScript.ts` lines 41-45:
+ *   - `export default async function` → `async function`
+ *   - `export default function`        → `function`
+ *   - `export default `                → ``
+ *   - `export const `                  → `const `
+ *   - `export (let|var) `              → `$1 `
+ *
+ * Before applying the general strip, we special-case
+ * `export const meta = <obj>`: the `meta` binding becomes a
+ * function-local variable inside the wrapped `userScript()` —
+ * invisible to the parent. To keep the `__setMeta(meta)` channel
+ * working, we hoist a capture call onto the declaration line so the
+ * parent's WorkflowDetailDialog can render the declared phases.
+ *
+ * We use `stripStringsAndComments` to find safe boundaries (so a
+ * brace inside a string literal can't mislead the parser), but
+ * replacements always happen on the *original* source so string
+ * contents are preserved verbatim.
+ */
+export function stripEsmExports(source: string): string {
+  // Meta special case: locate `export const meta = <obj>` on the
+  // *stripped* source so strings/comments can't trick the regex,
+  // then slice back to the *original* source by offset (length
+  // is preserved by `stripStringsAndComments`).
+  const stripped = stripStringsAndComments(source)
+  const metaRe = /export\s+const\s+meta\s*=/g
+  let result = source
+  let m: RegExpExecArray | null
+  // Walk matches in reverse so splicing earlier matches doesn't
+  // invalidate later offsets. We only handle the first hit — the
+  // project style is one `meta` declaration per workflow.
+  const metaMatches: Array<{ start: number; afterEquals: number }> = []
+  while ((m = metaRe.exec(stripped))) {
+    const start = m.index
+    const afterEquals = metaRe.lastIndex
+    metaMatches.push({ start, afterEquals })
+  }
+  for (let k = metaMatches.length - 1; k >= 0; k--) {
+    const { start, afterEquals } = metaMatches[k]!
+    // Balance braces from `afterEquals` to find the closing `}` of
+    // the object literal. We work on the stripped buffer so strings/
+    // regex/comments can't mislead the depth count.
+    let i = afterEquals
+    // Skip whitespace to find the opening `{`.
+    while (i < stripped.length && /\s/.test(stripped[i]!)) i++
+    if (stripped[i] !== '{') continue
+    const open = i
+    let depth = 1
+    i = open + 1
+    let close = -1
+    while (i < stripped.length && depth > 0) {
+      const c = stripped[i]!
+      if (c === '{') depth++
+      else if (c === '}') {
+        depth--
+        if (depth === 0) {
+          close = i
+          break
+        }
+      }
+      i++
+    }
+    if (close < 0) continue
+    // Slice the original source: `export const meta = <obj>` plus
+    // a trailing `;` if present. The injected `__setMeta(meta);`
+    // call must be a separate statement — without a separator the
+    // parser would see `const meta = {...} __setMeta(meta);` and
+    // choke on the missing `;` after the variable declaration
+    // (V8 reports `Unexpected identifier '__setMeta'` here). When
+    // the source omits the semicolon (the fixture does), we add a
+    // newline separator; ASI would handle it, but a hard newline
+    // is unambiguous and matches the rest of the file's style.
+    const hasSemicolon = source[close + 1] === ';'
+    const endIdx = hasSemicolon ? close + 2 : close + 1
+    const originalDecl = result.slice(start, endIdx)
+    const sep = hasSemicolon ? ' ' : '\n'
+    const replaced = `${originalDecl}${sep}__setMeta(meta);`
+    result = result.slice(0, start) + replaced + result.slice(endIdx)
+  }
+
+  // General export-strip chain. Apply on the (possibly meta-mutated)
+  // result, in the same order as workerScript.ts so the
+  // `export default async function` arm is tried before the broader
+  // `export default ` arm.
+  return result
+    .replace(/export\s+default\s+async\s+function/g, 'async function')
+    .replace(/export\s+default\s+function/g, 'function')
+    .replace(/export\s+default\s+/g, '')
+    .replace(/export\s+const\s+/g, 'const ')
+    .replace(/export\s+(let|var)\s+/g, '$1 ')
+}
+
+/**
  * Run a workflow script in a Node `vm` context. Replaces the
  * worker_threads path with a faster, tighter sandbox.
  *
@@ -89,12 +189,36 @@ export async function runWorkflowInVm(opts: VmRunnerOpts): Promise<VmRunnerResul
       events.push({ kind: 'phase', payload: title })
       opts.api.phase(title)
     },
+    __setMeta: (meta: unknown) => {
+      // Mirror the legacy workerScript.ts wire shape: parent
+      // receives `{ kind: 'meta', payload: meta }` (the test
+      // asserts on this event, and WorkflowDetailDialog listens
+      // for the same kind upstream).
+      events.push({ kind: 'meta', payload: meta })
+      // Forward to the host so a log sink can surface the
+      // declared metadata even if the consumer doesn't iterate
+      // the events array.
+      try {
+        opts.api.log('[meta]', meta as unknown)
+      } catch {
+        // Never let a logging failure mask the script's own
+        // errors — events are already captured above.
+      }
+    },
   })
 
-  const body = extractUserScriptBody(source)
+  // Plan6 Task2: strip ESM `export` keywords before the body
+  // extractor runs. `export const meta = {...}` becomes
+  // `const meta = {...} __setMeta(meta);` so the parent's meta
+  // channel keeps working. Strip must run on the raw source —
+  // `extractUserScriptBody` and `runWorkflowScript` expect
+  // script-flavor code.
+  const cleanedSource = stripEsmExports(source)
+
+  const body = extractUserScriptBody(cleanedSource)
   const wrappedSource = body !== null
     ? `async function userScript(args) { 'use strict';\n${body}\n}\nreturn await userScript(args);`
-    : source
+    : cleanedSource
 
   try {
     const raw = await runWorkflowScript(wrappedSource, ctx, { timeout: opts.timeoutMs ?? 30000 })
