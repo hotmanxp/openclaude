@@ -7,6 +7,7 @@ import type {
   WorkflowAgentState,
 } from '../../tools/WorkflowTool/types.js'
 import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.js'
+import { resolveChildScript } from '../../tools/WorkflowTool/singleton.js'
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
@@ -104,6 +105,53 @@ export class LocalWorkflowTask implements Task {
   }
 
   /**
+   * Run a child workflow script inline (in a new Worker) and resolve
+   * with the userScript's return value. Used by the parent's
+   * schedulerBridge to handle a `kind: 'workflow'` message from a
+   * running workflow's wrapper.
+   *
+   * The child shares the parent's `parentContext.spawner`, so
+   * subagents invoked from the child still flow through the parent's
+   * runAgent pipeline. A parent's abort cascades to the child via
+   * the shared AbortController signal. Child tasks are NOT registered
+   * with the lifecycle registry and do NOT push completion
+   * notifications — they're an implementation detail of the parent.
+   *
+   * The synthetic workflow object is required by the Workflow type but
+   * never used by the bridge (which reads the script source directly
+   * from the `script` argument). Matches the bundled pattern in
+   * WorkflowTool.bundled.index.
+   */
+  async runInline(script: string, args: unknown): Promise<unknown> {
+    const report = await runWorkflowInWorker({
+      workflow: {
+        name: '<child>',
+        source: 'bundled',
+        path: '<inline>',
+        run: async () => '',
+      },
+      script,
+      args,
+      spawnSubagent: this.parentContext
+        ? (prompt, opts) => this.parentContext!.spawner(prompt, opts)
+        : undefined,
+      signal: this.abortController.signal,
+      // No runId — child phase/meta messages are dropped by the
+      // bridge because findWorkflowTask() returns undefined. The
+      // child's UI hooks are suppressed by design.
+      budgetTotal: this.state.budgetTotal ?? 0,
+    })
+    // Best-effort JSON-parse so the child can return a structured
+    // object, not just a string. The wrapper's report message
+    // JSON-stringifies non-string results; reverse that here.
+    try {
+      return JSON.parse(report)
+    } catch {
+      return report
+    }
+  }
+
+  /**
    * Run the workflow script in a Worker thread. The bridge handles the
    * Worker ↔ main protocol; this method wraps the call with state
    * tracking and subagent run bookkeeping.
@@ -122,6 +170,22 @@ export class LocalWorkflowTask implements Task {
 
     const spawnSubagent = this.buildSpawnSubagent(this.parentContext)
 
+    // Bridge function for child workflow() calls from the script.
+    // The worker posts a {kind:'workflow', callId, ref, args} message
+    // via parentPort; the bridge resolves the ref (registry lookup
+    // by name, or readFileSync for scriptPath) and runs the child
+    // inline. Resolved with the child's return value (or rejected
+    // with the child error).
+    const runChildScript = async (
+      ref:
+        | { kind: 'name'; value: string }
+        | { kind: 'scriptPath'; value: string },
+      args: unknown,
+    ): Promise<unknown> => {
+      const childScript = await resolveChildScript(ref)
+      return this.runInline(childScript, args)
+    }
+
     try {
       const report = await runWorkflowInWorker({
         workflow: this.workflow,
@@ -131,6 +195,7 @@ export class LocalWorkflowTask implements Task {
         signal: this.abortController.signal,
         runId: this.state.id,
         budgetTotal: this.state.budgetTotal ?? 0,
+        runChildScript,
       })
       this.state.result = report
       this.state.status = 'completed'
