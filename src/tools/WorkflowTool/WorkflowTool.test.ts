@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -16,6 +16,21 @@ const tool = WorkflowTool as unknown as {
   prompt: () => Promise<string>
   description: () => Promise<string>
   inputSchema: unknown
+}
+
+type CheckPermissionsFn = (input: unknown, ctx?: unknown) => Promise<
+  | { behavior: 'allow'; updatedInput: unknown }
+  | { behavior: 'ask'; message: string; updatedInput?: unknown }
+>
+
+type OnPermissionAnswerFn = (
+  input: { workflowName?: string },
+  answer: 'yes' | 'yes-always' | 'no',
+) => Promise<void>
+
+const typed = WorkflowTool as unknown as {
+  checkPermissions: CheckPermissionsFn
+  onPermissionAnswer: OnPermissionAnswerFn
 }
 
 describe('WorkflowTool', () => {
@@ -169,3 +184,85 @@ describe('WorkflowTool default spawner (regression for no-op fallback)', () => {
 // shape and produce a structured result. The toolUseContext wiring
 // (callAgent override + default real spawner) is exercised end-to-end
 // in src/tasks/LocalWorkflowTask/LocalWorkflowTask.test.ts.
+
+describe('WorkflowTool.checkPermissions', () => {
+  // Each test isolates the consent store by pointing
+  // CLAUDE_CONFIG_DIR at a fresh tmpdir so we never read or write
+  // the user's real ~/.claude/workflow-consents.json. The cache key
+  // for getClaudeConfigHomeDir is the env var, so flipping it
+  // before the call picks up a clean dir on the next read.
+  let consentDir: string
+  let prevConfigDir: string | undefined
+
+  beforeEach(() => {
+    consentDir = mkdtempSync(join(tmpdir(), 'wf-consent-'))
+    prevConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = consentDir
+  })
+
+  afterEach(() => {
+    if (prevConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = prevConfigDir
+  })
+
+  test('returns ask-permission behavior for new workflow invocations', async () => {
+    const result = await typed.checkPermissions(
+      { workflowName: 'unknown-wf' },
+      {},
+    )
+    expect(result.behavior).toBe('ask')
+    if (result.behavior !== 'ask') throw new Error('unreachable')
+    // Dialog message must mention the workflow so the user can tell
+    // which one is being requested.
+    expect(result.message).toContain('workflow')
+    // updatedInput is optional in PermissionAskDecision; we forward
+    // it so any args/description the LLM attached survive the round
+    // trip through the permission system.
+    expect(result.updatedInput).toEqual({ workflowName: 'unknown-wf' })
+  })
+
+  test('returns allow without dialog when yes-always consent is stored', async () => {
+    // Persist 'yes-always' for 'my-wf' first via the public surface
+    // — exercises both read and write paths of workflowConsent.ts.
+    await typed.onPermissionAnswer({ workflowName: 'my-wf' }, 'yes-always')
+
+    const result = await typed.checkPermissions(
+      { workflowName: 'my-wf', args: { foo: 'bar' } },
+      {},
+    )
+    expect(result.behavior).toBe('allow')
+    // updatedInput should round-trip so the tool.call() body sees
+    // the same args the LLM passed in.
+    expect(result.updatedInput).toEqual({
+      workflowName: 'my-wf',
+      args: { foo: 'bar' },
+    })
+  })
+
+  test('persists yes-always decisions via onPermissionAnswer', async () => {
+    await typed.onPermissionAnswer(
+      { workflowName: 'persisted-wf' },
+      'yes-always',
+    )
+
+    // The next call must short-circuit to allow — proving the
+    // write path actually reached disk and the read path sees it.
+    const result = await typed.checkPermissions(
+      { workflowName: 'persisted-wf' },
+      {},
+    )
+    expect(result.behavior).toBe('allow')
+  })
+
+  test('does not short-circuit when consent is "no" — dialog still fires', async () => {
+    // User previously answered 'no' — we still want them to see
+    // the dialog next time (no is a soft signal, not a hard block).
+    await typed.onPermissionAnswer({ workflowName: 'declined-wf' }, 'no')
+
+    const result = await typed.checkPermissions(
+      { workflowName: 'declined-wf' },
+      {},
+    )
+    expect(result.behavior).toBe('ask')
+  })
+})
