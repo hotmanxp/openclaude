@@ -246,6 +246,91 @@ describe('WorkflowTool.scriptPath mode', () => {
 // (callAgent override + default real spawner) is exercised end-to-end
 // in src/tasks/LocalWorkflowTask/LocalWorkflowTask.test.ts.
 
+// Plan4 Task 2: when invoked via `workflowName`, persist the resolved
+// script to the session dir and surface the path in `data.scriptPath`
+// so the LLM can re-invoke the same workflow with `{ scriptPath }` for
+// iterative editing (Write/Edit → run → tweak → re-run).
+//
+// The contract under test:
+//   - workflowName invocation writes the script to
+//     `<configDir>/sessions/<id>/workflows/<name>-<ts>.js` and returns
+//     the path in `data.scriptPath`.
+//   - scriptPath invocation does NOT re-write (the input IS the persisted
+//     path) — `data.scriptPath` echoes the input verbatim.
+//   - Early failures (unknown workflow, missing file) must NOT create
+//     an entry in the sessions dir.
+describe('WorkflowTool script persistence (Plan4 Task 2)', () => {
+  let tmpRoot: string
+  let prevConfigDir: string | undefined
+
+  beforeEach(() => {
+    tmpRoot = mkdtempSync(join(tmpdir(), 'wf-persist-'))
+    prevConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = tmpRoot
+  })
+
+  afterEach(() => {
+    if (prevConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = prevConfigDir
+  })
+
+  test('persists script to session dir when invoked by workflowName', async () => {
+    const result = await (WorkflowTool as unknown as {
+      call: (input: unknown, ctx: unknown) => Promise<{
+        data: { message?: string; scriptPath?: string; taskId?: string }
+      }>
+    }).call(
+      { workflowName: 'deep-research', args: 'test question' },
+      { setAppState: undefined },
+    )
+    expect(result.data.message).toContain('Run ID:')
+    // The persisted script path should be in the session dir under
+    // <configDir>/sessions/<id>/workflows/<name>-<ts>.js
+    expect(result.data.scriptPath).toBeDefined()
+    expect(result.data.scriptPath).toMatch(
+      new RegExp(`${tmpRoot}/sessions/[^/]+/workflows/deep-research-\\d+\\.js$`),
+    )
+  })
+
+  test('scriptPath invocation echoes the input path verbatim (no re-write)', async () => {
+    const { writeFile, unlink } = await import('node:fs/promises')
+    const tmpScript = `/tmp/test-wf-persist-${Date.now()}-${Math.random().toString(36).slice(2)}.js`
+    await writeFile(
+      tmpScript,
+      `return 'result: ' + (Array.isArray(args) && args.length > 0 ? args[0] : 'no-args');`,
+    )
+    try {
+      const result = await (WorkflowTool as unknown as {
+        call: (input: unknown, ctx: unknown) => Promise<{
+          data: { message?: string; scriptPath?: string }
+        }>
+      }).call(
+        { scriptPath: tmpScript, args: ['hello'] },
+        { setAppState: undefined },
+      )
+      expect(result.data.scriptPath).toBe(tmpScript)
+    } finally {
+      await unlink(tmpScript).catch(() => {})
+    }
+  })
+
+  test('unknown workflow does not create a sessions dir entry', async () => {
+    const result = await (WorkflowTool as unknown as {
+      call: (input: unknown, ctx: unknown) => Promise<{
+        data: { message?: string; scriptPath?: string }
+      }>
+    }).call(
+      { workflowName: 'definitely-not-a-real-workflow' },
+      { setAppState: undefined },
+    )
+    expect(result.data.message).toMatch(/Unknown workflow/)
+    expect(result.data.scriptPath).toBeUndefined()
+    // sessions dir must not exist when the call failed early
+    const { existsSync } = await import('node:fs')
+    expect(existsSync(join(tmpRoot, 'sessions'))).toBe(false)
+  })
+})
+
 describe('WorkflowTool.checkPermissions', () => {
   // Each test isolates the consent store by pointing
   // CLAUDE_CONFIG_DIR at a fresh tmpdir so we never read or write
