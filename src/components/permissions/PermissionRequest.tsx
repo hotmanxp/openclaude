@@ -33,7 +33,7 @@ import { NotebookEditPermissionRequest } from './NotebookEditPermissionRequest/N
 import { PowerShellPermissionRequest } from './PowerShellPermissionRequest/PowerShellPermissionRequest.js';
 import { SkillPermissionRequest } from './SkillPermissionRequest/SkillPermissionRequest.js';
 import { WebFetchPermissionRequest } from './WebFetchPermissionRequest/WebFetchPermissionRequest.js';
-import { WorkflowPermissionRequest } from '../../tools/WorkflowTool/WorkflowPermissionRequest.js';
+import { WorkflowPermissionDialog } from '../../tools/WorkflowTool/WorkflowPermissionDialog.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ReviewArtifactTool = feature('REVIEW_ARTIFACT') ? (require('../../tools/ReviewArtifactTool/ReviewArtifactTool.js') as typeof import('../../tools/ReviewArtifactTool/ReviewArtifactTool.js')).ReviewArtifactTool : null;
@@ -70,7 +70,7 @@ function permissionComponentForTool(tool: Tool): React.ComponentType<PermissionR
     case AskUserQuestionTool:
       return AskUserQuestionPermissionRequest;
     case WorkflowTool:
-      return WorkflowPermissionRequest ?? FallbackPermissionRequest;
+      return WorkflowPermissionDialog;
     case MonitorTool:
       return MonitorPermissionRequest ?? FallbackPermissionRequest;
     case GlobTool:

@@ -1,5 +1,7 @@
 // @ts-nocheck
+import { existsSync, readFileSync } from 'node:fs'
 import { PassThrough } from 'node:stream'
+import { join } from 'node:path'
 import { stripVTControlCharacters as stripAnsi } from 'node:util'
 
 import { describe, expect, test } from 'bun:test'
@@ -135,5 +137,30 @@ async function userScript() {
       />,
     )
     expect(out).toMatch(/6.*agents?/i)
+  })
+
+  test('is registered in PermissionRequest dispatch for WorkflowTool', () => {
+    // The dispatch in src/components/permissions/PermissionRequest.tsx
+    // routes each Tool class to a permission component. We assert that
+    // the WorkflowTool case (or a case keyed on its tool name) routes
+    // to WorkflowPermissionDialog — and that the old WorkflowPermissionRequest
+    // is no longer referenced.
+    const dispatchPath = join(
+      __dirname,
+      '..',
+      '..',
+      'components',
+      'permissions',
+      'PermissionRequest.tsx',
+    )
+    expect(existsSync(dispatchPath)).toBe(true)
+    const content = readFileSync(dispatchPath, 'utf-8')
+
+    // Either: a `case WorkflowTool:` switch that returns WorkflowPermissionDialog,
+    // or a string-keyed `case 'WorkflowTool':` switch that does the same.
+    // We accept both shapes by allowing the dialog name anywhere within ~250
+    // chars of any reference to WorkflowTool.
+    expect(content).toMatch(/WorkflowTool[\s\S]{0,300}WorkflowPermissionDialog/)
+    expect(content).not.toMatch(/WorkflowPermissionRequest/)
   })
 })
