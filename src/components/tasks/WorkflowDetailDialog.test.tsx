@@ -143,4 +143,48 @@ describe('WorkflowDetailDialog (render smoke)', () => {
       />
     )).not.toThrow();
   });
+
+  test('renders worktree path when present in agent state', () => {
+    const withWorktree: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'completed',
+      completedAt: Date.now(),
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          status: 'completed',
+          startedAt: Date.now() - 5000,
+          completedAt: Date.now() - 3000,
+          worktreePath: '/tmp/opencc-worktree-abc',
+          isolationRemoved: false,
+        },
+      ],
+    };
+    expect(() => (
+      <WorkflowDetailDialog state={withWorktree} onDone={() => {}} />
+    )).not.toThrow();
+  });
+
+  test('renders worktree path with cleaned-up indicator when isolationRemoved is true', () => {
+    const withCleanedWorktree: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'completed',
+      completedAt: Date.now(),
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'No-op subagent',
+          status: 'completed',
+          startedAt: Date.now() - 5000,
+          completedAt: Date.now() - 3000,
+          worktreePath: '/tmp/opencc-worktree-def',
+          isolationRemoved: true,
+        },
+      ],
+    };
+    expect(() => (
+      <WorkflowDetailDialog state={withCleanedWorktree} onDone={() => {}} />
+    )).not.toThrow();
+  });
 });

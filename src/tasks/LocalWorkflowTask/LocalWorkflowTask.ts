@@ -311,6 +311,12 @@ export class LocalWorkflowTask implements Task {
         if (result.tokensUsed !== undefined) agent.tokensUsed = result.tokensUsed
         if (result.toolsUsed !== undefined) agent.toolsUsed = result.toolsUsed
         if (result.toolCalls !== undefined) agent.toolCalls = result.toolCalls
+        // Propagate worktree isolation metadata from the real
+        // runAgent-backed spawner so WorkflowDetailDialog can show
+        // where the subagent ran (and whether its worktree was
+        // auto-removed because the run produced no file changes).
+        if (result.worktreePath !== undefined) agent.worktreePath = result.worktreePath
+        if (result.isolationRemoved !== undefined) agent.isolationRemoved = result.isolationRemoved
         // Auto-inject the model the subagent actually used (captured
         // by the real runAgent-backed spawner from the streamed
         // assistant message). Overrides opts.model if both are set;

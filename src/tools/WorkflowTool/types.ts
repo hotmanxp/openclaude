@@ -308,4 +308,19 @@ export type WorkflowAgentState = {
    * detail pane.
    */
   toolCalls?: ToolCallRecord[]
+  /**
+   * Path to the git worktree the subagent ran in, populated only
+   * when the caller invoked `agent({ isolation: 'worktree' })` and
+   * the real runAgent-backed spawner wrapped the run in
+   * withWorktreeIsolation. Surfaced in the per-agent detail pane
+   * so the user knows where to look for the subagent's work.
+   */
+  worktreePath?: string
+  /**
+   * True if the worktree was auto-removed because the subagent
+   * produced no file changes. Paired with `worktreePath`; the UI
+   * appends "(cleaned up)" vs "(kept)" to make the distinction
+   * obvious at a glance.
+   */
+  isolationRemoved?: boolean
 }
