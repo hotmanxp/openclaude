@@ -39,6 +39,22 @@ export function getWorkflowRegistry(projectDir?: string): WorkflowRegistry {
 }
 
 /**
+ * Invalidate the per-cwd registry instance cache and the bundled-source
+ * resolution cache. Port of upstream `Jwq.invalidateWorkflowCache`.
+ *
+ * After calling this, the next `getWorkflowRegistry(cwd)` returns a
+ * fresh instance (re-running `initBundledWorkflows` and the cold-scan
+ * on the next `list()`/`get()`). Useful for:
+ *   - plugin install/uninstall flows that need to re-read workflows
+ *   - tests that mutate `.claude/workflows/*.js` between runs
+ *   - hot-reload after a watcher detects a `package.json` workflow
+ *     addition that affects bundled-source resolution
+ */
+export function invalidateWorkflowCache(): void {
+  instances.clear()
+}
+
+/**
  * Resolve a child workflow ref (the wire shape from the wrapper's
  * `workflow(nameOrRef, args)` call) to the script source string.
  * Bundled workflows (e.g. `deep-research`) read from the in-process
