@@ -189,6 +189,25 @@ describe('WorkflowDetailDialog (render smoke)', () => {
     )).not.toThrow();
   });
 
+  test('renders transcriptDir and sessionUrl when present (port of I0K fields)', () => {
+    // OpenCC currently does not have remote/cloud workflow execution,
+    // so these fields are always undefined in real runs. The state
+    // type accepts them (per the I0K port) and the dialog renders
+    // them when populated. This smoke test guards the rendering
+    // path against schema drift.
+    const withI0K: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      startedAt: Date.now(),
+      agents: [],
+      transcriptDir: '/sessions/wf-123/transcripts',
+      sessionUrl: 'https://claude.ai/code/abc',
+    };
+    expect(() => (
+      <WorkflowDetailDialog state={withI0K} onDone={() => {}} />
+    )).not.toThrow();
+  });
+
   test('renders terminal status line for completed (port of upstream n73)', () => {
     const completed: LocalWorkflowTaskState = {
       ...sampleState,

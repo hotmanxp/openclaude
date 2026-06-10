@@ -598,6 +598,24 @@ export function WorkflowDetailDialog({
         </Box>
       )}
 
+      {/* I0K port: transcriptDir + sessionUrl lines. Shown when the
+          workflow has surfaced a transcript bundle path or a
+          remote/cloud session URL. Both fields are optional — the
+          dialog just shows whichever are populated. */}
+      {state.transcriptDir && (
+        <Box>
+          <Text dimColor>transcripts: {state.transcriptDir}</Text>
+        </Box>
+      )}
+      {state.sessionUrl && (
+        <Box>
+          <Text dimColor>
+            {'session: '}
+            <Text color="suggestion">{state.sessionUrl}</Text>
+          </Text>
+        </Box>
+      )}
+
       <Box marginTop={1} flexDirection="row">
         <PhasesPane
           phases={phases}

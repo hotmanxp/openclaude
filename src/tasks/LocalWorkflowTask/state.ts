@@ -38,6 +38,33 @@ export type LocalWorkflowTaskState = TaskStateBase & {
    * coalesce to 0 at read time.
    */
   budgetTotal?: number
+  /**
+   * Port of upstream `I0K` field. Disk path where this workflow's
+   * transcripts (per-agent prompts/results) are persisted. Rendered
+   * in WorkflowDetailDialog's header so the user can find the
+   * transcript bundle on disk.
+   */
+  transcriptDir?: string
+  /**
+   * Port of upstream `I0K` field. URL of a remote/cloud session that
+   * this workflow is running in. Surfaced prominently in
+   * WorkflowDetailDialog so the user can navigate to the cloud
+   * session to monitor progress.
+   */
+  sessionUrl?: string
+  /**
+   * Port of upstream `I0K` field. Mirrors `sessionUrl` but used by
+   * the `remote_launched` task state shape (cloud workflows that
+   * have been dispatched but not yet completed locally).
+   */
+  remoteSessionUrl?: string
+  /**
+   * Port of upstream `I0K` field. Optional warning emitted by the
+   * cloud session layer (e.g. "This workflow is running in a
+   * background tab — progress is not visible here"). Rendered as a
+   * warning-styled line in the dialog header.
+   */
+  warning?: string
 }
 
 export function createInitialState(args: {
