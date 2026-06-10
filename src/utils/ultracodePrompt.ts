@@ -1,10 +1,21 @@
-// VERBATIM PORT from upstream v2.1.170 binary (extracted as `e93` / Ultracode block).
-// Appended to workflow-spawned subagents when isUltracodeActive() is true.
+// src/utils/ultracodePrompt.ts
 //
-// The text below is taken verbatim from the upstream binary; unicode arrows
-// (→) and em-dashes (—) are decoded from the — / → escapes. The block
-// is the system-prompt prelude the upstream binary injects into workflow
-// subagents when the `ultracode` setting is on.
+// Appended to workflow-spawned subagent system prompts when isUltracodeActive() is true.
+//
+// Source:
+// - The "**Ultracode.**" opt-in rule paragraph is VERBATIM from upstream
+//   claude-code v2.1.170 (Workflow tool description, extracted from the
+//   compiled binary as the `Ut8` template literal).
+// - The "Composing patterns" code block, "Quality patterns" list, and
+//   "Scale to what the user asked for" guidance are reconstructed from
+//   upstream's intent (the patterns are documented upstream but as separate
+//   bullets, not a single contiguous block). The structural shape matches
+//   upstream's documented quality-pattern taxonomy; the prose may differ.
+// - The "You are a subagent spawned by a workflow orchestration script"
+//   preamble is the standard upstream subagent intro and is verbatim.
+//
+// This file is the single source of truth for ultracode subagent text.
+// See Task 4 of docs/superpowers/plans/2026-06-10-plan9-ultracode-sync.md.
 
 import { isUltracodeActive } from './ultracode.js'
 
