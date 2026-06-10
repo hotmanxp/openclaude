@@ -642,3 +642,96 @@ describe('formatTokens (Plan11: Math.floor rounding — port upstream _4)', () =
     expect(frame).toContain('1K');
   });
 });
+
+describe('WorkflowDetailDialog (Plan11: verbose activity list — port upstream Z0K)', () => {
+  test('verbose=true shows full activity log (step 0 + step 14 + tool names)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'running',
+          startedAt: Date.now() - 5000,
+          toolCalls: Array.from({ length: 15 }, (_, i) => ({
+            name: i % 2 === 0 ? 'WebFetch' : 'Bash',
+            inputSummary: `step ${i} description`,
+          })),
+        },
+      ],
+    };
+    const handle = await mountDialog(state, { verbose: true } as Partial<
+      React.ComponentProps<typeof WorkflowDetailDialog>
+    >);
+    try {
+      await waitForOutput(handle.getOutput, f => f.includes('↑↓ select'));
+      handle.stdin.write('\t');
+      await new Promise(r => setTimeout(r, 50));
+      handle.stdin.write('\r');
+      const frame = await waitForOutput(
+        handle.getOutput,
+        f => f.includes('step 0 description'),
+      );
+      expect(frame).toContain('step 0 description');
+      expect(frame).toContain('step 14 description');
+      expect(frame).toContain('WebFetch');
+    } finally {
+      handle.root.unmount();
+      handle.stdin.end();
+      handle.stdout.end();
+    }
+  });
+
+  test('verbose=false (default) shows only last 3 of 15 (compact mode)', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'running',
+          startedAt: Date.now() - 5000,
+          toolCalls: Array.from({ length: 15 }, (_, i) => ({
+            name: i % 2 === 0 ? 'WebFetch' : 'Bash',
+            inputSummary: `step ${i} description`,
+          })),
+        },
+      ],
+    };
+    const handle = await mountDialog(state);
+    try {
+      await waitForOutput(handle.getOutput, f => f.includes('↑↓ select'));
+      handle.stdin.write('\t');
+      await new Promise(r => setTimeout(r, 50));
+      handle.stdin.write('\r');
+      const frame = await waitForOutput(handle.getOutput, f =>
+        f.includes('↑↓ agent'),
+      );
+      expect(frame).toContain('step 12 description');
+      expect(frame).toContain('step 14 description');
+      expect(frame).not.toContain('step 0 description');
+    } finally {
+      handle.root.unmount();
+      handle.stdin.end();
+      handle.stdout.end();
+    }
+  });
+});

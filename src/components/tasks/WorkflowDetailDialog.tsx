@@ -46,6 +46,10 @@ type Props = {
   onBack?: () => void
   onSkipAgent?: (agentId: string) => void
   onRetryAgent?: (agentId: string) => void
+  /** Plan11: when true, show the full activity log; when false/undefined,
+   *  show compact (last 3). Port of upstream's `verbose` flag that
+   *  drives the Z0K detailed render. */
+  verbose?: boolean
 }
 
 type Focus = 'phases' | 'agents'
@@ -291,9 +295,11 @@ function AgentsPane({
 function AgentDetailPane({
   agent,
   onBack,
+  verbose,
 }: {
   agent: WorkflowAgentState
   onBack: () => void
+  verbose?: boolean
 }) {
   const elapsed = (agent.completedAt ?? Date.now()) - (agent.startedAt ?? Date.now())
   const promptLines = agent.prompt.split('\n').length
@@ -389,7 +395,7 @@ function AgentDetailPane({
           forever. That's an acceptable trade — the panel is a
           recent-activity glance, not a full transcript. */}
       {agent.toolCalls && agent.toolCalls.length > 0 && (
-        <ActivitySection toolCalls={agent.toolCalls} />
+        <ActivitySection toolCalls={agent.toolCalls} verbose={verbose} />
       )}
 
       <Box marginTop={1}>
@@ -408,26 +414,41 @@ function AgentDetailPane({
  */
 function ActivitySection({
   toolCalls,
+  verbose,
 }: {
   toolCalls: { name: string; inputSummary: string }[]
+  verbose?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const total = toolCalls.length
-  // Show the most recent N (the array is in yield-order, so the
-  // last entries are the most recent).
+  // Plan11: port of upstream's `Z0K` shape. Verbose mode shows
+  // the full log (capped at VERBOSE_VISIBLE rows) without needing
+  // the user to click "+N more". Compact (default) shows the most
+  // recent ACTIVITY_PREVIEW_LIMIT rows with an expand toggle.
+  const VERBOSE_VISIBLE = 50
   const preview = toolCalls.slice(-ACTIVITY_PREVIEW_LIMIT)
-  const visible = expanded ? toolCalls : preview
-  const hidden = total - visible.length
+  const verbosePreview = toolCalls.slice(-VERBOSE_VISIBLE)
+  const visible = verbose
+    ? verbosePreview
+    : expanded
+      ? toolCalls
+      : preview
+  const hidden = verbose
+    ? Math.max(0, total - VERBOSE_VISIBLE)
+    : total - visible.length
   return (
     <Box marginTop={1} flexDirection="column">
       <Box flexDirection="row">
         <Text bold>Activity</Text>
-        <Text dimColor>{' · last '}</Text>
+        <Text dimColor>{verbose ? ' · all ' : ' · last '}</Text>
         <Text>{visible.length}</Text>
         <Text dimColor>{' of '}</Text>
         <Text>{total}</Text>
         <Text dimColor>{' tool calls'}</Text>
-        {total > ACTIVITY_PREVIEW_LIMIT && (
+        {verbose && hidden > 0 && (
+          <Text dimColor>{` · ... +${hidden} earlier calls`}</Text>
+        )}
+        {!verbose && total > ACTIVITY_PREVIEW_LIMIT && (
           <Text dimColor>
             {' · '}
             <Text color="cyan" onClick={() => setExpanded(v => !v)}>
@@ -456,6 +477,7 @@ export function WorkflowDetailDialog({
   onPause,
   onBack,
   onRetryAgent,
+  verbose,
 }: Props) {
   const state = stateProp ?? workflowProp
   const phases = useMemo(() => (state ? derivePhases(state) : []), [state])
@@ -673,7 +695,11 @@ export function WorkflowDetailDialog({
           focused={focus === 'phases' && rightMode === 'list'}
         />
         {rightMode === 'detail' && selectedAgent ? (
-          <AgentDetailPane agent={selectedAgent} onBack={closeDetail} />
+          <AgentDetailPane
+            agent={selectedAgent}
+            onBack={closeDetail}
+            verbose={verbose}
+          />
         ) : (
           <AgentsPane
             phase={currentPhaseTitle}
