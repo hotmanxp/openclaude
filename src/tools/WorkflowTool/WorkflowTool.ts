@@ -21,19 +21,32 @@ export const listRuns = listWorkflowRuns
 // context (instead of relying on the WorkflowTool.call() default).
 export { buildRealSpawner }
 
-export const workflowInputSchema = z.object({
-  workflowName: z
-    .string()
-    .describe('Name of the workflow to run (e.g. "deep-research")'),
-  args: z
-    .union([z.string(), z.array(z.string()), z.record(z.string(), z.unknown())])
-    .optional()
-    .describe('Arguments to pass to the workflow'),
-  description: z
-    .string()
-    .optional()
-    .describe('Optional: free-form task description if running an ad-hoc workflow'),
-})
+export const workflowInputSchema = z
+  .object({
+    workflowName: z
+      .string()
+      .optional()
+      .describe(
+        'Name of the workflow to run (e.g. "deep-research"). Mutually exclusive with scriptPath.',
+      ),
+    scriptPath: z
+      .string()
+      .optional()
+      .describe(
+        'Path to a workflow script file written earlier via Write/Edit. Mutually exclusive with workflowName.',
+      ),
+    args: z
+      .union([z.string(), z.array(z.string()), z.record(z.string(), z.unknown())])
+      .optional()
+      .describe('Arguments to pass to the workflow'),
+    description: z
+      .string()
+      .optional()
+      .describe('Optional: free-form task description if running an ad-hoc workflow'),
+  })
+  .refine(d => !(d.workflowName && d.scriptPath), {
+    message: 'workflowName and scriptPath are mutually exclusive',
+  })
 
 /**
  * WorkflowTool — the LLM-facing entry point for running a dynamic workflow.
@@ -95,7 +108,11 @@ export const WorkflowTool = {
   // block is rendered in the conversation tree. Returns a one-line
   // description that fits alongside the workflow name in the chat UI.
   // See src/tools/McpAuthTool/McpAuthTool.ts:72 for the same pattern.
-  renderToolUseMessage(input: { workflowName?: string }): React.ReactNode {
+  renderToolUseMessage(input: {
+    workflowName?: string
+    scriptPath?: string
+  }): React.ReactNode {
+    if (input?.scriptPath) return `Run ad-hoc workflow: ${input.scriptPath}`
     const name = input?.workflowName
     return name ? `Run workflow: ${name}` : 'Run workflow'
   },
@@ -121,6 +138,7 @@ export const WorkflowTool = {
   // cancel cleanly) instead of failing inside checkPermissions.
   async checkPermissions(input: {
     workflowName?: string
+    scriptPath?: string
     args?: unknown
     description?: string
   }): Promise<
@@ -133,6 +151,10 @@ export const WorkflowTool = {
         return { behavior: 'allow', updatedInput: input }
       }
     }
+    // scriptPath invocations always prompt — ad-hoc scripts are
+    // exactly the case where the user most wants to see the
+    // WorkflowPermissionDialog (per-run, can't be pre-approved via
+    // yes-always for a "name" that doesn't exist in the registry).
     return {
       behavior: 'ask',
       message: 'Run a dynamic workflow?',
@@ -177,23 +199,99 @@ export const WorkflowTool = {
   },
 
   async call(
-    { workflowName, args }: z.infer<typeof workflowInputSchema>,
+    { workflowName: inputWorkflowName, scriptPath, args }: z.infer<typeof workflowInputSchema>,
     toolUseCtx?: { abortController?: AbortController; setAppState?: (updater: (prev: unknown) => unknown) => void; [k: string]: unknown },
     _canUseTool?: unknown,
   ) {
     try {
-      const registry = getWorkflowRegistry()
-      const workflow = await registry.get(workflowName)
-      if (!workflow) {
+      // Enforce the Zod refine() invariant defensively. The schema
+      // declares workflowName and scriptPath as mutually exclusive, but
+      // tests + internal callers bypass the schema parse and hand us
+      // the raw object — so re-check here so the call() function and
+      // the schema share a single source of truth.
+      if (inputWorkflowName && scriptPath) {
         return {
           data: {
-            message: `Unknown workflow: ${workflowName}. Run /workflows to see available.`,
+            message: 'workflowName and scriptPath are mutually exclusive — pass one or the other, not both.',
+          },
+        }
+      }
+
+      // Plan4 Task 1 — scriptPath mode: when the LLM passes a path to a
+      // workflow script on disk, run it directly without going through
+      // the registry. This is the foundation for the iterative
+      // "Write a workflow → run it → see results → tweak → re-run"
+      // loop, where each iteration writes a new .js file to the same
+      // path. The run is tagged with the synthetic name '<ad-hoc>' so
+      // the /workflows panel can label it differently from named
+      // workflows (e.g. "deep-research").
+      //
+      // Resolution order:
+      //   1. scriptPath: read the file from disk, synthesize a Workflow
+      //      object (name '<ad-hoc>', source 'project').
+      //   2. workflowName: look up in the registry (bundled / project /
+      //      user). Bundled workflows read from getBundledSource;
+      //      project/user workflows read workflow.path.
+      //   3. Neither: refuse with a clear message.
+      let workflow: import('./types.js').Workflow
+      let workflowName: string
+
+      if (scriptPath) {
+        let script: string
+        try {
+          script = readFileSync(scriptPath, 'utf-8')
+        } catch (e) {
+          return {
+            data: {
+              message: `Cannot read workflow source at ${scriptPath}: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            },
+          }
+        }
+        // Synthesize a Workflow object so the downstream
+        // LocalWorkflowTask / scheduler / run-store pipeline doesn't
+        // need a special case. We have to read the file twice (once
+        // here for the early validation, again later via
+        // workflow.path) — but readFileSync is cheap and the
+        // duplication is cheaper than threading `script` through
+        // every helper. The body of the file becomes the script we
+        // hand to the worker; the `run` field is required by the
+        // Workflow type but never invoked (see bundled/deepResearch.ts
+        // for the same pattern).
+        void script
+        workflow = {
+          name: '<ad-hoc>',
+          source: 'project',
+          path: scriptPath,
+          run: async () => '',
+        }
+        workflowName = '<ad-hoc>'
+      } else if (inputWorkflowName) {
+        const registry = getWorkflowRegistry()
+        const looked = await registry.get(inputWorkflowName)
+        if (!looked) {
+          return {
+            data: {
+              message: `Unknown workflow: ${inputWorkflowName}. Run /workflows to see available.`,
+            },
+          }
+        }
+        workflow = looked
+        workflowName = inputWorkflowName
+      } else {
+        return {
+          data: {
+            message: 'Either workflowName or scriptPath is required.',
           },
         }
       }
 
       // For bundled workflows, source is held in the bundled registry.
-      // For project/user workflows, read the .js file from disk.
+      // For project/user workflows (and ad-hoc scriptPath), read the
+      // .js file from disk. The script is captured into a local so
+      // both this block and the task.start() call downstream see the
+      // same string (and so we can return early on a missing bundle).
       let script: string
       if (workflow.source === 'bundled') {
         const src = getBundledSource(workflowName)
