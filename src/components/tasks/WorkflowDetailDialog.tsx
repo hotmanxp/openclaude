@@ -452,6 +452,7 @@ export function WorkflowDetailDialog({
   onKill,
   onPause,
   onBack,
+  onRetryAgent,
 }: Props) {
   const state = stateProp ?? workflowProp
   const phases = useMemo(() => (state ? derivePhases(state) : []), [state])
@@ -488,6 +489,14 @@ export function WorkflowDetailDialog({
         closeDetail()
       } else if (input === 's' || input === 'S') {
         onDone()
+      } else if (input === 'r' || input === 'R') {
+        // Plan11: detail-mode restart (port of upstream's r key
+        // bound to onRetryAgent). Handled in the detail branch
+        // because the general list-mode handlers above early-return
+        // when rightMode === 'detail'.
+        if (selectedAgent && onRetryAgent) {
+          onRetryAgent(selectedAgent.id)
+        }
       }
       return
     }
@@ -676,7 +685,7 @@ export function WorkflowDetailDialog({
       {/* Footer: keyboard shortcuts */}
       <Box marginTop={1}>
         <Text dimColor>
-          {rightMode === 'detail' ? '↑↓ agent' : '↑↓ select'} · tab/→ switch pane · enter inspect · x stop workflow · p pause · esc back · s save
+          {rightMode === 'detail' ? '↑↓ agent' : '↑↓ select'} · tab/→ switch pane · enter inspect · x stop workflow · p pause · {rightMode === 'detail' ? 'r restart · ' : ''}esc back · s save
         </Text>
       </Box>
     </Box>

@@ -537,3 +537,53 @@ describe('WorkflowDetailDialog (Plan11: footer label ↑↓ agent in detail mode
     }
   });
 });
+
+describe('WorkflowDetailDialog (Plan11: r restart action — port upstream)', () => {
+  test('detail mode footer shows "r restart" and pressing r invokes onRetryAgent', async () => {
+    const phase = 'Search';
+    const state: LocalWorkflowTaskState = {
+      ...sampleState,
+      status: 'running',
+      currentPhase: phase,
+      meta: {
+        name: 'test',
+        description: 'test',
+        phases: [{ title: phase }],
+      },
+      agents: [
+        {
+          id: 'w_abc-0',
+          prompt: 'Find primary sources',
+          phase,
+          status: 'failed',
+          startedAt: Date.now() - 5000,
+          completedAt: Date.now() - 3000,
+        },
+      ],
+    };
+    let retried: string | null = null;
+    const handle = await mountDialog(state, {
+      onRetryAgent: id => {
+        retried = id;
+      },
+    });
+    try {
+      await waitForOutput(handle.getOutput, f => f.includes('↑↓ select'));
+      handle.stdin.write('\t');
+      await new Promise(r => setTimeout(r, 50));
+      handle.stdin.write('\r');
+      const frame = await waitForOutput(
+        handle.getOutput,
+        f => f.includes('r restart'),
+      );
+      expect(frame).toContain('r restart');
+      handle.stdin.write('r');
+      await new Promise(r => setTimeout(r, 50));
+      expect(retried).toBe('w_abc-0');
+    } finally {
+      handle.root.unmount();
+      handle.stdin.end();
+      handle.stdout.end();
+    }
+  });
+});
