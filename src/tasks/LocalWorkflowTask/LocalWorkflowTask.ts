@@ -7,11 +7,13 @@ import type {
   WorkflowAgentState,
 } from '../../tools/WorkflowTool/types.js'
 import { registerWorkflowRun } from '../../tools/WorkflowTool/workflowRunStore.js'
-import { resolveChildScript } from '../../tools/WorkflowTool/singleton.js'
 import { registerWorkflowTask, unregisterWorkflowTask } from './lifecycle.js'
 import { runWorkflowInWorker } from './schedulerBridge.js'
+import { runWorkflowInVm, type VmRunnerResult } from '../../tools/WorkflowTool/runtime/vmRunner.js'
+import type { WorkflowApi } from '../../tools/WorkflowTool/runtime/vmContext.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js'
+import { logError } from '../../utils/log.js'
 
 // Re-export so consumers (notably src/tasks/types.ts) can import
 // LocalWorkflowTaskState from this entrypoint.
@@ -67,6 +69,9 @@ export class LocalWorkflowTask implements Task {
   private readonly _unregisterRun: () => void
   // Task interface compliance — name is required by Task.
   public readonly name = 'LocalWorkflowTask'
+  // VM runner used by start() to execute the user script. Override via
+  // setVmRunner() in tests to assert wiring without spawning a VM.
+  private vmRunner: typeof runWorkflowInVm = runWorkflowInVm
 
   constructor(args: LocalWorkflowTaskOptions) {
     this.workflow = args.workflow
@@ -102,6 +107,16 @@ export class LocalWorkflowTask implements Task {
    */
   setParentContext(ctx: LocalWorkflowParentContext): void {
     this.parentContext = ctx
+  }
+
+  /**
+   * Test seam: replace the VM runner used by start(). Production code
+   * should leave the default `runWorkflowInVm` in place; tests inject a
+   * mock to assert that start() wires the API correctly without
+   * spinning up a Node vm.Context for every assertion.
+   */
+  setVmRunner(fn: typeof runWorkflowInVm): void {
+    this.vmRunner = fn
   }
 
   /**
@@ -152,9 +167,17 @@ export class LocalWorkflowTask implements Task {
   }
 
   /**
-   * Run the workflow script in a Worker thread. The bridge handles the
-   * Worker ↔ main protocol; this method wraps the call with state
-   * tracking and subagent run bookkeeping.
+   * Run the workflow script in a Node `vm` context. Replaces the prior
+   * worker_threads-based path with a tighter sandbox that doesn't pay
+   * the cost of spawning a Worker for every run. The VM API surface
+   * (`agent`, `parallel`, `pipeline`, `workflow`, `args`, `budget`,
+   * `log`, `phase`, `setTimeout`, `clearTimeout`) is the same shape
+   * the worker wrapper exposed, so script-level behavior is unchanged.
+   *
+   * The `workflow()` global is a deliberate stub for now — wiring it
+   * through to runInline() is part of Plan4 nested-workflow support
+   * (Task5); children continue to be spawned via runWorkflowInWorker
+   * for the remaining uses of the bridge.
    */
   async start(script: string): Promise<void> {
     if (!this.parentContext) {
@@ -168,36 +191,76 @@ export class LocalWorkflowTask implements Task {
     this.state.status = 'running'
     this.state.script = script
 
-    const spawnSubagent = this.buildSpawnSubagent(this.parentContext)
+    const parentContext = this.parentContext
+    const spawnSubagent = this.buildSpawnSubagent(parentContext)
 
-    // Bridge function for child workflow() calls from the script.
-    // The worker posts a {kind:'workflow', callId, ref, args} message
-    // via parentPort; the bridge resolves the ref (registry lookup
-    // by name, or readFileSync for scriptPath) and runs the child
-    // inline. Resolved with the child's return value (or rejected
-    // with the child error).
-    const runChildScript = async (
-      ref:
-        | { kind: 'name'; value: string }
-        | { kind: 'scriptPath'; value: string },
-      args: unknown,
-    ): Promise<unknown> => {
-      const childScript = await resolveChildScript(ref)
-      return this.runInline(childScript, args)
+    // Build the WorkflowApi that the VM script sees. Mirrors the
+    // shape the old worker wrapper exposed so the script can keep
+    // using the same globals (agent, parallel, pipeline, args,
+    // budget, log, phase, timers). `workflow()` is a deliberate
+    // not-yet-wired stub; Plan4's runInline path uses the Worker
+    // bridge directly for children until the VM-side RPC lands.
+    const api: WorkflowApi = {
+      agent: async (prompt: string, opts?: Record<string, unknown>) => {
+        const spawnOpts = (opts ?? {}) as SpawnOpts
+        const result = await spawnSubagent(prompt, spawnOpts)
+        return {
+          ok: true as const,
+          agentId: result.agentId,
+          report: result.report,
+          structuredOutput: result.structuredOutput,
+        }
+      },
+      parallel: async <T,>(fns: Array<() => Promise<T>>): Promise<T[]> => {
+        return (await Promise.all(fns.map((f) => f()))) as T[]
+      },
+      pipeline: async <T,>(stages: Array<() => Promise<T>>): Promise<T[]> => {
+        const out: T[] = []
+        for (const s of stages) out.push(await s())
+        return out
+      },
+      workflow: async () => {
+        throw new Error(
+          'workflow() not supported in LocalWorkflowTask — use Plan4 nested path',
+        )
+      },
+      args: this.state.args,
+      budget: {
+        total: this.state.budgetTotal ?? 0,
+        spent: () => 0,
+        remaining: () => this.state.budgetTotal ?? 0,
+      },
+      log: (...msgs: unknown[]) => {
+        // The old worker wrapper surfaced script log() calls through
+        // the bridge's `log` message handler. We don't have a
+        // structured equivalent on the VM side yet — pipe to the
+        // canonical error sink so /errorlog still surfaces them, and
+        // prefix with [workflow] so the origin is unambiguous when
+        // a developer is scanning the log.
+        const line = msgs.map((m) => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ')
+        logError(new Error(`[workflow] ${line}`))
+      },
+      phase: (title: string) => {
+        // Mirrors the old worker's `phase` message handler: update
+        // the UI-visible currentPhase so /workflows and the
+        // WorkflowDetailDialog can show the active step without
+        // reaching back to the bridge.
+        this.state.currentPhase = String(title ?? '')
+        this.bumpWorkflowsVersion(parentContext)
+      },
+      setTimeout: ((...args: Parameters<typeof setTimeout>) =>
+        setTimeout(...args)) as typeof setTimeout,
+      clearTimeout: ((...args: Parameters<typeof clearTimeout>) =>
+        clearTimeout(...args)) as typeof clearTimeout,
     }
 
     try {
-      const report = await runWorkflowInWorker({
-        workflow: this.workflow,
+      const result: VmRunnerResult = await this.vmRunner({
         script,
         args: this.state.args,
-        spawnSubagent,
-        signal: this.abortController.signal,
-        runId: this.state.id,
-        budgetTotal: this.state.budgetTotal ?? 0,
-        runChildScript,
+        api,
       })
-      this.state.result = report
+      this.state.result = result.report
       this.state.status = 'completed'
     } catch (err) {
       this.state.error = {
