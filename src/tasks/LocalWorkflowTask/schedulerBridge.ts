@@ -161,6 +161,7 @@ export function runWorkflowInWorker(args: RunArgs): Promise<string> {
                   callId: msg.callId,
                   agentId: `wf_${Date.now()}-${msg.callId}`,
                   report: r.report,
+                  structuredOutput: r.structuredOutput,
                 } satisfies WorkerInbound)
               } catch {
                 // Worker may have terminated; drop the result silently.

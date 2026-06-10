@@ -80,6 +80,23 @@ export type SpawnOpts = {
     toolCalls?: ToolCallRecord[]
     model?: string
   }) => void
+  /**
+   * Optional JSON Schema (as a plain object) describing the structured
+   * output the caller wants from the subagent. When set, the real
+   * runAgent-backed spawner binds a StructuredOutputTool that validates
+   * the subagent's final payload against this schema, and the result is
+   * surfaced via SpawnResult.structuredOutput. Schema and isolation
+   * travel together: isolation governs the worktree the schema-validated
+   * output is produced in.
+   */
+  schema?: Record<string, unknown>
+  /**
+   * Optional isolation mode for the subagent run. Reserved string-typed
+   * value so future transports (e.g. 'worktree', 'container') can be
+   * added without breaking changes. The current real spawner ignores it
+   * — only `schema` is wired end-to-end today.
+   */
+  isolation?: 'worktree' | string
 }
 
 /** A single tool_use invocation captured during a subagent run. */
@@ -198,6 +215,7 @@ export type WorkerInbound =
       agentId?: string
       report?: string
       error?: string
+      structuredOutput?: unknown
     }
 
 /** Metadata declared via `__setMeta({...})` from inside a workflow script. */
@@ -223,6 +241,8 @@ export const SpawnOptsSchema = z.object({
   label: z.string().optional(),
   phase: z.string().optional(),
   agentType: z.string().optional(),
+  schema: z.record(z.string(), z.unknown()).optional(),
+  isolation: z.string().optional(),
 })
 
 /** Zod schema for the Workflow tool's input. */
