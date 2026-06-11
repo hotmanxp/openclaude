@@ -439,6 +439,14 @@ export type AppState = DeepImmutable<{
   fastMode?: boolean
   // Session-scoped auto-continuation goal.
   activeGoal: ActiveGoal | null
+  // Transcript-restore marker for the most recent /goal status flip.
+  // OpenCC lacks upstream's applyMessageOp equivalent, so this lives on
+  // appState (known gap from the Stop-hook port spec).
+  goalSentinel?: {
+    met: boolean
+    condition: string
+    timestamp: number
+  }
   // Advisor model for server-side advisor tool (undefined = disabled).
   advisorModel?: string
   // Effort value
