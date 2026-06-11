@@ -161,7 +161,7 @@ export type AppState = DeepImmutable<{
   replBridgeInitialName: string | undefined
   // Always-on bridge: first-time remote dialog pending (set by /remote-control command)
   showRemoteCallout: boolean
-  // Session-scoped /goal tracking state (see AppState.goal)
+  // Session-scoped /goal tracking state (see AppState.activeGoal)
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
