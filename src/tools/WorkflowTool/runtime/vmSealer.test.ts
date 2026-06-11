@@ -31,11 +31,12 @@ describe('sealForVmBoundary', () => {
 
   it('recursively seals nested objects', () => {
     const input = { nested: { fn: () => 1, value: 'ok' }, arr: [1, { fn: () => 2, value: 2 }] }
-    const out = sealForVmBoundary(input) as { nested: { fn?: unknown; value: string }; arr: Array<{ fn?: unknown; value: number }> }
+    const out = sealForVmBoundary(input) as { nested: { fn?: unknown; value: string }; arr: unknown[] }
     expect(out.nested.value).toBe('ok')
     expect(out.nested.fn).toBeUndefined()
     expect(out.arr[0]).toBe(1)
-    expect(out.arr[1]?.value).toBe(2)
-    expect(out.arr[1]?.fn).toBeUndefined()
+    const arrItem1 = out.arr[1] as { fn?: unknown; value: number }
+    expect(arrItem1.value).toBe(2)
+    expect(arrItem1.fn).toBeUndefined()
   })
 })
