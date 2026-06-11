@@ -60,6 +60,12 @@ export const releasePump = release
  */
 export async function drainRunLoop<T>(fn: () => Promise<T>): Promise<T> {
   retain()
+  // Cast to NodeJS.Timeout — with both `lib: ["DOM"]` and `@types/node` in
+  // tsconfig, `ReturnType<typeof setTimeout>` resolves to DOM's `number`,
+  // but `setTimeout(handler, ms, ...args)` selects the Node overload that
+  // returns a `Timeout` object. The variable type and the call-site return
+  // type drift apart → TS2322. Cast to keep the runtime value (Timeout
+  // object) and the compile-time type aligned.
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     // If the timeout wins the race, fn()'s promise is orphaned — a late
