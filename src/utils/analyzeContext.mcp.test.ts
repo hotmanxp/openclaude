@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import type { Tool } from '../Tool.js'
 import { TOOL_SEARCH_TOOL_NAME } from '../tools/ToolSearchTool/constants.js'
 import { countMcpToolTokens } from './analyzeContext.js'
@@ -45,6 +45,17 @@ function makeContextData(overrides: Partial<ContextData> = {}): ContextData {
 }
 
 describe('countMcpToolTokens', () => {
+  // Pre-existing env-var sensitivity: this test path expects Tool
+  // Search deferral to be ENABLED (the default), but the host shell
+  // may have CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=true set (e.g.
+  // on CI or local devs who flip the kill switch). Unset it for the
+  // duration of these tests so the assertions don't depend on host
+  // config. (See opencc-analyzecontext-mcp-test-envvar-sensitivity
+  // in team memory.)
+  beforeEach(() => {
+    delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+  })
+
   test('marks MCP tools loaded and request-size groups them by server when Tool Search is not deferred', async () => {
     const result = await countMcpToolTokens(
       [makeMcpTool('mcp__alpha__search'), makeMcpTool('mcp__beta__list')],

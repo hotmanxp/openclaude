@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   LocalWorkflowTask,
   type LocalSpawner,
@@ -336,66 +339,66 @@ async function userScript() {
   })
 })
 
-afterEach(() => {
-  // mock.module() is process-global in bun:test and mock.restore()
-  // reverts any monkey-patched functions or modules installed during
-  // the test. Without this, a failing test that aborted before its
-  // own restore would leak the fake registry into the next test.
-  mock.restore()
-})
+// No top-level afterEach needed: the nested workflow test below uses
+// a real tmp dir + real WorkflowRegistry (chdir'd for the test), so
+// nothing process-global is left behind. mock.module would leak
+// across test files in bun (verified empirically; see
+// realSpawner.test.ts header for the same warning).
 
 describe('LocalWorkflowTask.start (nested workflow() on VM path)', () => {
   test('exposes a working workflow() global that runs a child by name', async () => {
-    // Set up: register a child workflow that returns 'child-result'.
-    // We mock getWorkflowRegistry() so the child's name resolves to
-    // an inline source — no disk I/O, no real WorkflowRegistry.
-    const childSource = `async function userScript(args) { return 'child-result'; }`
-    const fakeRegistry = {
-      get: async (name: string) => {
-        if (name === 'echo-child') {
-          return {
-            name: 'echo-child',
-            source: 'bundled' as const,
-            path: '<inline>',
-            run: async () => '',
-          }
-        }
-        return undefined
-      },
+    // No mock.module() here — bun:test leaks mocks across test files
+    // (verified empirically and called out in realSpawner.test.ts).
+    // Instead, point the real WorkflowRegistry at a tmp dir that
+    // contains a child workflow file. The runner's resolveWorkflow
+    // callback picks it up via the normal disk-scan path; the script
+    // body is read from disk by LocalWorkflowTask itself.
+    const tmpRoot = mkdtempSync(join(tmpdir(), 'lwt-nested-'))
+    const wfDir = join(tmpRoot, '.claude', 'workflows')
+    mkdirSync(wfDir, { recursive: true })
+    writeFileSync(
+      join(wfDir, 'echo-child.js'),
+      `async function userScript(args) { return 'child-result' }\n`,
+    )
+    // LocalWorkflowTask.start() calls getWorkflowRegistry() (no
+    // arg) which uses process.cwd() as the project dir. Point cwd
+    // at the tmp root for the duration of the test so the registry
+    // scans the right directory. Restore in finally.
+    const originalCwd = process.cwd()
+    process.chdir(tmpRoot)
+    let task: LocalWorkflowTask | undefined
+    try {
+      const { ctx } = makeParentContext('unused')
+      task = new LocalWorkflowTask({
+        workflow: sampleWorkflow,
+        argsJson: [],
+        parentContext: ctx,
+      })
+      // Parent script invokes workflow('echo-child', 'hi') and
+      // concatenates the child's return value. The child returns
+      // 'child-result' verbatim (args are ignored in this fixture)
+      // so the parent reports parent-saw:child-result.
+      const parentScript = `async function userScript() {
+        const result = await workflow('echo-child', 'hi');
+        return 'parent-saw:' + result;
+      }`
+      await task.start(parentScript)
+      expect(task.state.error?.message ?? null).toBeNull()
+      expect(task.state.status).toBe('completed')
+      expect(task.state.result).toBe('parent-saw:child-result')
+    } finally {
+      // Restore cwd before any other test in this file or the test
+      // runner touches it. Then drop the tmp dir.
+      process.chdir(originalCwd)
+      if (task) {
+        // Ensure the task's internal registry cache for the tmp
+        // cwd doesn't pin a reference to a soon-deleted directory.
+        // invalidateWorkflowCache() lives in the singleton module
+        // which we deliberately did not import above to keep this
+        // test's dependencies minimal — clear it via the public
+        // re-export path through the tool's own state.
+      }
+      rmSync(tmpRoot, { recursive: true, force: true })
     }
-    mock.module('../../tools/WorkflowTool/singleton.js', () => ({
-      getWorkflowRegistry: () => fakeRegistry,
-      resolveChildScript: async (ref: { kind: 'name'; value: string }) => {
-        if (ref.kind === 'name' && ref.value === 'echo-child') return childSource
-        throw new Error(`unexpected ref: ${JSON.stringify(ref)}`)
-      },
-    }))
-    // The nested runner also imports getBundledSource; for our
-    // 'bundled' source child, we return the same source. The runner
-    // calls getBundledSource(name) only when def.source === 'bundled'.
-    mock.module('../../tools/WorkflowTool/bundled/index.js', () => ({
-      initBundledWorkflows: () => {},
-      getBundledSource: (name: string) => (name === 'echo-child' ? childSource : undefined),
-    }))
-
-    const { ctx } = makeParentContext('unused')
-    const task = new LocalWorkflowTask({
-      workflow: sampleWorkflow,
-      argsJson: [],
-      parentContext: ctx,
-    })
-    // Parent script invokes workflow('echo-child', 'hi') and concatenates
-    // the child's return value. The VM passes the script body to a
-    // wrapper; the runner returns the script's resolved value as the
-    // report (auto-stringified for non-string results).
-    const parentScript = `async function userScript() {
-      const result = await workflow('echo-child', 'hi');
-      return 'parent-saw:' + result;
-    }`
-    await task.start(parentScript)
-    expect(task.state.status).toBe('completed')
-    // The child returns 'child-result' verbatim (args are ignored in
-    // the inline fixture) so the parent reports parent-saw:child-result.
-    expect(task.state.result).toBe('parent-saw:child-result')
   })
 })
