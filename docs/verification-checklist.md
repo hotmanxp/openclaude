@@ -76,19 +76,45 @@ STOP and flag for fix before Phase 4.
 
 ## Phase 4 — TUI 完整流程
 
-**Critical**: OpenCC has NO in-session `/debug` command. The
-`--debug` flag MUST be set at launch, otherwise the debug log
-captures nothing. Always restart the TUI to enable debug.
+**ALWAYS delegate Phase 4 to the `tui-func-verifier` subagent** (not done
+manually by the coordinator). The agent drives `agent-tui` end-to-end
+through 4.3 (4 tools) + 4.4 (4 slash commands) + 3-way version check +
+4.5 (final tool call for debug log) + Phase 5 (debug log scan), and
+returns a structured verification report. Rationale: the TUI
+verification loop is mechanical and time-bound (~5 min); the
+coordinator's job is to dispatch + read the verdict, not to type
+into a terminal. Manual TUI verification in the coordinator
+session wastes context and is prone to missed state snapshots.
+
+**Coordinator's job (just dispatch):**
 
 ```bash
 # Cleanup any stale session
 agent-tui kill 2>/dev/null
 agent-tui health | tail -3   # confirm daemon healthy
 
-# Launch WITH --debug
-agent-tui run -d "$(pwd)" -- node "$(pwd)/dist/cli.mjs" --debug
-# → capture session_id, expect "Debug mode" label in status bar
+# Launch WITH --debug (use nohup so shell exit doesn't SIGHUP the session)
+nohup agent-tui run -d "$(pwd)" -- node "$(pwd)/dist/cli.mjs" --debug \
+  > /tmp/agent-tui-launch.log 2>&1 &
+sleep 3
+agent-tui sessions 2>&1 | tail -3   # capture session_id
 ```
+
+Then dispatch the `tui-func-verifier` agent with:
+- The session_id (e.g. `a28f175d`)
+- Working directory (`/Users/ethan/code/opencc`)
+- Expected version (from Phase 1 build output)
+- Instruction to run the full Phase 4.3-5 protocol and return a
+  structured report (4-tool coverage + 4-slash coverage + 3-way
+  version + debug log scan).
+
+DO NOT manually type/press/wait in the coordinator — the agent
+drives the TUI in its own context and returns the verdict.
+
+**Coordinator does Phase 4.1 (render) + 4.2 (LLM response) in-line
+only as a quick sanity check** to confirm the session is alive
+before delegating 4.3-5. The actual coverage tests are the
+agent's job.
 
 No environment variables are needed — the project's
 `.claude-profile.json` (gitignored) is auto-loaded.
