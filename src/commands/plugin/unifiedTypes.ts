@@ -1,38 +1,38 @@
-import type { MCPServerConnection } from '../../services/mcp/types.js'
+import type { MCPServerConnection, ConfigScope } from '../../services/mcp/types.js'
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
+import type { PersistablePluginScope } from '../../utils/plugins/pluginIdentifier.js'
+
+export type PluginInstalledScope = PersistablePluginScope | 'builtin'
+export type UnifiedPluginScope = PluginInstalledScope | 'flagged' | ConfigScope
+export type McpStatus =
+  | 'connected'
+  | 'disabled'
+  | 'pending'
+  | 'needs-auth'
+  | 'failed'
 
 export type UnifiedInstalledItem =
   | {
       type: 'plugin'
       id: string
       name: string
-      description: string
+      description?: string
       marketplace: string
-      scope: string
+      scope: PluginInstalledScope
       isEnabled: boolean
       errorCount: number
       errors: PluginError[]
       plugin: LoadedPlugin
       pendingEnable?: boolean
       pendingUpdate?: boolean
-      pendingToggle?: boolean
-    }
-  | {
-      type: 'mcp'
-      id: string
-      name: string
-      description: undefined
-      scope: string
-      status: string
-      client: MCPServerConnection
-      indented?: boolean
+      pendingToggle?: 'will-enable' | 'will-disable'
     }
   | {
       type: 'failed-plugin'
       id: string
       name: string
       marketplace: string
-      scope: string
+      scope: PersistablePluginScope
       errorCount: number
       errors: PluginError[]
     }
@@ -44,5 +44,15 @@ export type UnifiedInstalledItem =
       scope: 'flagged'
       reason: string
       text: string
-      flaggedAt: number
+      flaggedAt: string
+    }
+  | {
+      type: 'mcp'
+      id: string
+      name: string
+      description?: string
+      scope: ConfigScope
+      status: McpStatus
+      client: MCPServerConnection
+      indented?: boolean
     }

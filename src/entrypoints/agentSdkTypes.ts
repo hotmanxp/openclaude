@@ -27,6 +27,7 @@ export * from './sdk/coreTypes.js'
 export * from './sdk/runtimeTypes.js'
 
 // Re-export settings types (generated from settings JSON schema)
+// @ts-expect-error — generated at build time
 export type { Settings } from './sdk/settingsTypes.generated.js'
 // Re-export tool types (all marked @internal until SDK API stabilizes)
 export * from './sdk/toolTypes.js'
@@ -43,14 +44,9 @@ import type {
 } from './sdk/coreTypes.js'
 // Import types needed for function signatures
 import type {
-  AnyZodRawShape,
   ForkSessionOptions,
   ForkSessionResult,
   GetSessionInfoOptions,
-  GetSessionMessagesOptions,
-  InferShape,
-  InternalOptions,
-  InternalQuery,
   ListSessionsOptions,
   McpSdkServerConfigWithInstance,
   Options,
@@ -60,7 +56,7 @@ import type {
   SdkMcpToolDefinition,
   SessionMessage,
   SessionMutationOptions,
-} from './sdk/runtimeTypes.js'
+} from './sdk/shared.js'
 
 export type {
   ListSessionsOptions,

@@ -120,6 +120,7 @@ const result = await Bun.build({
       JSON.stringify('report the issue at https://github.com/anthropics/claude-code/issues'),
     'MACRO.PACKAGE_URL': JSON.stringify('@hotmanxp/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
+    'MACRO.VERSION_CHANGELOG': 'undefined',
   },
   plugins: [
     noTelemetryPlugin,

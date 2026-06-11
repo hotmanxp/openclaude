@@ -9,7 +9,7 @@ type Props = {
   item: UnifiedInstalledItem;
   isSelected: boolean;
 };
-export function UnifiedInstalledCell(t0) {
+export function UnifiedInstalledCell(t0: Props): React.ReactNode {
   const $ = _c(142);
   const {
     item,

@@ -1,14 +1,8 @@
 // Stub — cachedMicrocompact not included in source snapshot (feature-gated)
-export type CachedMCState = {
-  registeredTools: Set<string>
-  toolOrder: string[]
-  deletedRefs: Set<string>
-  pinnedEdits: PinnedCacheEdits[]
-}
 
 export type CacheEditsBlock = {
   type: 'cache_edits'
-  edits: Array<{ tool_use_id: string }>
+  edits: unknown[]
 }
 
 export type PinnedCacheEdits = {
@@ -16,39 +10,20 @@ export type PinnedCacheEdits = {
   block: CacheEditsBlock
 }
 
-export function createCachedMCState(): CachedMCState {
-  return {
-    registeredTools: new Set(),
-    toolOrder: [],
-    deletedRefs: new Set(),
-    pinnedEdits: [],
-  }
+export type CachedMCState = {
+  registeredTools: Set<string>
+  pinnedEdits: PinnedCacheEdits[]
+  toolOrder: string[]
+  deletedRefs: Set<string>
 }
 
-export function registerToolResult(
-  _state: CachedMCState,
-  _toolUseId: string,
-): void {}
-
-export function registerToolMessage(
-  _state: CachedMCState,
-  _toolUseIds: string[],
-): void {}
-
-export function getToolResultsToDelete(_state: CachedMCState): string[] {
-  return []
+export type CachedMCConfig = {
+  enabled: boolean
+  triggerThreshold: number
+  keepRecent: number
+  supportedModels?: string[]
+  systemPromptSuggestSummaries?: boolean
 }
-
-export function createCacheEditsBlock(
-  _state: CachedMCState,
-  _toolIds: string[],
-): CacheEditsBlock | null {
-  return null
-}
-
-export function markToolsSentToAPI(_state: CachedMCState): void {}
-
-export function resetCachedMCState(_state: CachedMCState): void {}
 
 export function isCachedMicrocompactEnabled(): boolean {
   return false
@@ -58,6 +33,48 @@ export function isModelSupportedForCacheEditing(_model: string): boolean {
   return false
 }
 
-export function getCachedMCConfig() {
+export function getCachedMCConfig(): CachedMCConfig | null {
+  return null
+}
+
+export function createCachedMCState(): CachedMCState {
+  return {
+    registeredTools: new Set(),
+    pinnedEdits: [],
+    toolOrder: [],
+    deletedRefs: new Set(),
+  }
+}
+
+export function markToolsSentToAPI(_state: CachedMCState): void {
+  // Stub — no-op in external builds
+}
+
+export function resetCachedMCState(_state: CachedMCState): void {
+  // Stub — no-op in external builds
+}
+
+export function registerToolResult(
+  _state: CachedMCState,
+  _toolUseId: string,
+): void {
+  // Stub — no-op in external builds
+}
+
+export function registerToolMessage(
+  _state: CachedMCState,
+  _toolUseIds: string[],
+): void {
+  // Stub — no-op in external builds
+}
+
+export function getToolResultsToDelete(_state: CachedMCState): string[] {
+  return []
+}
+
+export function createCacheEditsBlock(
+  _state: CachedMCState,
+  _toolUseIds: string[],
+): CacheEditsBlock | null {
   return null
 }

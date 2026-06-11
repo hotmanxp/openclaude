@@ -849,6 +849,248 @@ function repairPossiblyTruncatedObjectJson(raw: string): string | null {
  * Async generator that transforms an OpenAI SSE stream into
  * Anthropic-format BetaRawMessageStreamEvent objects.
  */
+/**
+ * Passthrough for Anthropic Messages API SSE streams.
+ * The response events are already in AnthropicStreamEvent format —
+ * we just parse the SSE frames and yield them directly.
+ */
+async function* anthropicSsePassthrough(
+  response: Response,
+  _model: string,
+  signal?: AbortSignal,
+): AsyncGenerator<AnthropicStreamEvent> {
+  const readerOrNull = response.body?.getReader()
+  if (!readerOrNull) throw new Error('Response body is not readable')
+  const reader: ReadableStreamDefaultReader<Uint8Array> = readerOrNull
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  // Read helper that properly cleans up abort listeners (mirrors codexShim.ts pattern).
+  type ReadResult = Awaited<ReturnType<typeof reader.read>>
+  function readWithAbort(): Promise<ReadResult> {
+    if (!signal) return reader.read()
+    return new Promise<ReadResult>((resolve, reject) => {
+      const onAbort = () => reject(new DOMException('Aborted', 'AbortError'))
+      signal.addEventListener('abort', onAbort, { once: true })
+      reader.read().then(
+        result => { signal.removeEventListener('abort', onAbort); resolve(result) },
+        err => { signal.removeEventListener('abort', onAbort); reject(err) },
+      )
+    })
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await readWithAbort()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() ?? ''
+
+      for (const chunk of chunks) {
+        const lines = chunk.split('\n').map(l => l.trim()).filter(Boolean)
+        if (lines.length === 0) continue
+
+        const dataLines = lines.filter(l => l.startsWith('data: '))
+        if (dataLines.length === 0) continue
+
+        const rawData = dataLines.map(l => l.slice(6)).join('\n')
+        if (rawData === '[DONE]') return
+
+        try {
+          const parsed = JSON.parse(rawData) as AnthropicStreamEvent
+          if (parsed && typeof parsed === 'object' && 'type' in parsed) {
+            yield parsed
+          }
+        } catch {
+          // skip malformed frames
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/**
+ * Transforms Google AI SDK SSE stream into Anthropic-format stream events.
+ * Google AI SDK yields frames with { candidates: [{ content: { role, parts } }] }.
+ */
+async function* geminiSseToAnthropic(
+  response: Response,
+  model: string,
+  signal?: AbortSignal,
+): AsyncGenerator<AnthropicStreamEvent> {
+  const reader: ReadableStreamDefaultReader<Uint8Array> | undefined = response.body?.getReader()
+  if (!reader) throw new Error('Response body is not readable')
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const messageId = makeMessageId()
+  let contentBlockIndex = 0
+  let hasEmittedStart = false
+  let hasEmittedTextStart = false
+  let hasEmittedCurrentTool = false
+  let usage: Partial<AnthropicUsage> | undefined
+  let finishReason: string | undefined
+
+  function readWithAbort(): Promise<ReadableStreamReadResult<Uint8Array>> {
+    if (!signal) return reader!.read() as Promise<ReadableStreamReadResult<Uint8Array>>
+    return new Promise((resolve, reject) => {
+      const onAbort = () => reject(new DOMException('Aborted', 'AbortError'))
+      signal.addEventListener('abort', onAbort, { once: true })
+      reader!.read().then(
+        result => { signal.removeEventListener('abort', onAbort); resolve(result as ReadableStreamReadResult<Uint8Array>) },
+        err => { signal.removeEventListener('abort', onAbort); reject(err) },
+      )
+    })
+  }
+
+  function mapFinishReason(reason: string | undefined, hasToolUse: boolean): string {
+    if (hasToolUse) return 'tool_use'
+    if (reason === 'MAX_TOKENS') return 'max_tokens'
+    return 'end_turn'
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await readWithAbort()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() ?? ''
+
+      for (const chunk of chunks) {
+        const lines = chunk.split('\n').map(l => l.trim()).filter(Boolean)
+        const dataLines = lines.filter(l => l.startsWith('data: '))
+        if (dataLines.length === 0) continue
+
+        const rawData = dataLines.map(l => l.slice(6)).join('\n')
+        if (rawData === '[DONE]') {
+          if (hasEmittedTextStart || hasEmittedCurrentTool) {
+            yield { type: 'content_block_stop', index: contentBlockIndex }
+          }
+          yield {
+            type: 'message_delta',
+            delta: { stop_reason: mapFinishReason(finishReason, hasEmittedCurrentTool) },
+            usage: usage ?? {},
+          }
+          yield { type: 'message_stop' }
+          return
+        }
+
+        let parsed: Record<string, unknown>
+        try {
+          parsed = JSON.parse(rawData) as Record<string, unknown>
+        } catch {
+          continue
+        }
+
+        if (!hasEmittedStart) {
+          yield {
+            type: 'message_start',
+            message: {
+              id: messageId,
+              type: 'message',
+              role: 'assistant',
+              content: [],
+              model,
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 0, output_tokens: 0 },
+            },
+          }
+          hasEmittedStart = true
+        }
+
+        if (parsed.usageMetadata && typeof parsed.usageMetadata === 'object') {
+          const um = parsed.usageMetadata as Record<string, number>
+          usage = buildAnthropicUsageFromRawUsage({
+            input_tokens: um.promptTokenCount ?? 0,
+            output_tokens: (um.candidatesTokenCount ?? 0) + (um.thoughtsTokenCount ?? 0),
+          })
+        }
+
+        const candidates = parsed.candidates as Array<Record<string, unknown>> | undefined
+        if (!candidates || candidates.length === 0) continue
+        const candidate = candidates[0]
+
+        if (typeof candidate.finishReason === 'string') {
+          finishReason = candidate.finishReason
+        }
+
+        const content = candidate.content as { role?: string; parts?: Array<Record<string, unknown>> } | undefined
+        if (!content || !content.parts) continue
+
+        for (const part of content.parts) {
+          const text = part.text as string | undefined
+          const fc = part.functionCall as { name?: string; args?: unknown } | undefined
+
+          if (text) {
+            if (hasEmittedCurrentTool) {
+              yield { type: 'content_block_stop', index: contentBlockIndex }
+              contentBlockIndex++
+              hasEmittedCurrentTool = false
+            }
+            if (!hasEmittedTextStart) {
+              yield {
+                type: 'content_block_start',
+                index: contentBlockIndex,
+                content_block: { type: 'text', text: '' },
+              }
+              hasEmittedTextStart = true
+            }
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: { type: 'text_delta', text },
+            }
+          } else if (fc?.name) {
+            if (hasEmittedTextStart) {
+              yield { type: 'content_block_stop', index: contentBlockIndex }
+              contentBlockIndex++
+              hasEmittedTextStart = false
+            }
+            const toolId = `toolu_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
+            yield {
+              type: 'content_block_start',
+              index: contentBlockIndex,
+              content_block: {
+                type: 'tool_use',
+                id: toolId,
+                name: fc.name,
+                input: {},
+              },
+            }
+            hasEmittedCurrentTool = true
+            yield {
+              type: 'content_block_delta',
+              index: contentBlockIndex,
+              delta: {
+                type: 'input_json_delta',
+                partial_json: typeof fc.args === 'string' ? fc.args : JSON.stringify(fc.args ?? {}),
+              },
+            }
+          }
+        }
+      }
+    }
+
+    if (hasEmittedTextStart || hasEmittedCurrentTool) {
+      yield { type: 'content_block_stop', index: contentBlockIndex }
+    }
+    yield {
+      type: 'message_delta',
+      delta: { stop_reason: mapFinishReason(finishReason, hasEmittedCurrentTool) },
+      usage: usage ?? {},
+    }
+    yield { type: 'message_stop' }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 async function* openaiStreamToAnthropic(
   response: Response,
   model: string,
@@ -917,8 +1159,9 @@ async function* openaiStreamToAnthropic(
     },
   }
 
-  const reader = response.body?.getReader()
-  if (!reader) return
+  const readerOrNull = response.body?.getReader()
+  if (!readerOrNull) throw new Error('Response body is not readable')
+  const reader: ReadableStreamDefaultReader<Uint8Array> = readerOrNull
 
   const decoder = new TextDecoder()
   const STREAM_IDLE_TIMEOUT_MS = 120_000 // 2 minutes without data = connection likely dead
@@ -932,8 +1175,9 @@ async function* openaiStreamToAnthropic(
    * Respects the caller's AbortSignal — clears the idle timer on abort
    * so the rejection reason is AbortError, not a spurious idle timeout.
    */
-  async function readWithTimeout(): Promise<ReadableStreamReadResult<Uint8Array>> {
-    return new Promise((resolve, reject) => {
+  type ReadResult = Awaited<ReturnType<typeof reader.read>>
+  async function readWithTimeout(): Promise<ReadResult> {
+    return new Promise<ReadResult>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
         reject(new Error(
@@ -1930,6 +2174,10 @@ class OpenAIShimMessages {
 
         throwClassifiedTransportError(error, requestUrl, failure)
       }
+
+      // After the try/catch, response is guaranteed to be defined — the catch
+      // block always throws (throwClassifiedTransportError returns never).
+      if (!response) continue
 
       if (response.ok) {
         let tokensIn = 0
