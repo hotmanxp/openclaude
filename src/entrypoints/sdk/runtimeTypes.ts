@@ -1,7 +1,7 @@
 // Runtime types for SDK - stub definitions
 // This file should contain non-serializable types (callbacks, interfaces with methods)
 
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'ultracode'
 
 // Types needed for agentSdkTypes.ts
 export type AnyZodRawShape = Record<string, unknown>

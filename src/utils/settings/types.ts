@@ -443,6 +443,66 @@ export const SettingsSchema = lazySchema(() =>
           'Auto-fix configuration: automatically run lint/test after AI file edits ' +
           'and feed errors back for self-repair.',
         ),
+      // OpenCC Dynamic Workflows — multi-agent orchestration tool.
+      // See src/tools/WorkflowTool/ for runtime. Env-var equivalents
+      // (OPENCC_DISABLE_WORKFLOWS, OPENCC_WORKFLOW_TIMEOUT_MS,
+      // OPENCC_WORKFLOW_MAX_AGENTS, OPENCC_WORKFLOW_KEYWORD) live in
+      // src/utils/envUtils.ts.
+      workflows: z
+        .object({
+          disabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Disable Open CC dynamic workflows (equivalent to OPENCC_DISABLE_WORKFLOWS=1). ' +
+                'Useful for projects where multi-agent orchestration is not desired.',
+            ),
+          keyword: z
+            .string()
+            .optional()
+            .describe(
+              'Custom trigger word that activates a workflow from the user prompt. ' +
+                'Defaults to "ultracode". Equivalent to OPENCC_WORKFLOW_KEYWORD.',
+            ),
+          permissions: z
+            .object({
+              allow: z
+                .array(
+                  z.object({
+                    name: z
+                      .string()
+                      .describe(
+                        'Tool name this permission rule applies to (e.g. "Bash", "FileRead").',
+                      ),
+                    pathPattern: z
+                      .string()
+                      .describe(
+                        'Glob pattern matched against the tool argument (e.g. file path). ' +
+                          'Use "*" to match all paths.',
+                      ),
+                  }),
+                )
+                .optional()
+                .describe(
+                  'Per-workflow permission allow rules. Combined with the global ' +
+                    "permission system when a workflow spawns tools on the user's behalf.",
+                ),
+            })
+            .optional()
+            .describe('Permission overrides that apply only inside workflow execution'),
+        })
+        .optional()
+        .describe('Open CC Dynamic Workflows configuration'),
+      // Legacy top-level kill switch — kept for backward compatibility with
+      // users who set it before the nested `workflows` object existed.
+      disableWorkflows: z
+        .boolean()
+        .optional()
+        .describe(
+          'Disable Open CC dynamic workflows. Equivalent to OPENCC_DISABLE_WORKFLOWS=1 ' +
+            'and to setting workflows.disabled = true. Kept for backward compatibility; ' +
+            'prefer the nested workflows.disabled form in new settings files.',
+        ),
       worktree: z
         .object({
           symlinkDirectories: z
@@ -713,6 +773,36 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),
+      // Session-level ultracode toggle. When true, the runtime reads this
+      // via isUltracodeActive() (src/utils/ultracode.ts) and applies xhigh
+      // effort + dynamic-workflow orchestration for this session.
+      // Per-session — same shape as upstream 2.1.170 `ultracode: boolean`.
+      // The user-facing trigger word for activating a workflow in the
+      // prompt lives at `workflows.keyword` (env: OPENCC_WORKFLOW_KEYWORD,
+      // default "ultracode") — this boolean is the session-level gate.
+      ultracode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Whether ultracode (xhigh effort + standing dynamic-workflow ' +
+            'orchestration) is active for this session. ' +
+            'Set per session via the `ultracode` settings key ' +
+            '(--settings or apply_flag_settings).',
+        ),
+      // Per-session toggle for the prompt keyword trigger that activates
+      // the Workflow tool. When false, detectUltracodeTrigger() in REPL.tsx
+      // does not strip the keyword from the input — the prefix is left
+      // intact and the model sees a literal "ultracode ..." prompt. Mirrors
+      // upstream claude-code v2.1.170 `workflowKeywordTriggerEnabled`
+      // (default true).
+      workflowKeywordTriggerEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable the "ultracode" keyword trigger: including the keyword ' +
+            'in a prompt opts that turn into the Workflow tool. Set to false ' +
+            'to disable the trigger. Default: true.',
+        ),
       advisorModel: z
         .string()
         .optional()

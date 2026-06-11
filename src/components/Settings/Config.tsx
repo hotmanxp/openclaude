@@ -1001,6 +1001,44 @@ export function Config({
       }));
     }
   }] : []),
+  // Dynamic workflows (always shown — feature is fully enabled)
+  ...(true ? [{
+    id: 'disableWorkflows',
+    label: '禁用动态工作流',
+    description: '开启后 Claude 不能再使用 WorkflowTool 运行多 agent 脚本。',
+    value: settingsData?.disableWorkflows ?? false,
+    type: 'boolean' as const,
+    onChange(disableWorkflows: boolean) {
+      updateSettingsForSource('userSettings', {
+        disableWorkflows
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        disableWorkflows
+      }));
+    }
+  }] : []),
+  // Per-session toggle for the prompt keyword trigger (default "ultracode")
+  // that activates the Workflow tool. Mirrors upstream claude-code
+  // v2.1.170 `workflowKeywordTriggerEnabled`. When false, REPL leaves the
+  // keyword prefix intact and the model sees a literal "ultracode ..."
+  // prompt. Default true (enabled) — undefined falls back to the default.
+  ...(true ? [{
+    id: 'workflowKeywordTriggerEnabled',
+    label: 'Ultracode keyword trigger',
+    description: 'Enable the "ultracode" keyword trigger: including the keyword in a prompt opts that turn into the Workflow tool. Set to false to disable the trigger. Default: true.',
+    value: settingsData?.workflowKeywordTriggerEnabled !== false,
+    type: 'boolean' as const,
+    onChange(workflowKeywordTriggerEnabled: boolean) {
+      updateSettingsForSource('userSettings', {
+        workflowKeywordTriggerEnabled
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        workflowKeywordTriggerEnabled
+      }));
+    }
+  }] : []),
   // Remote at startup toggle — gated on build flag + GrowthBook + policy
   ...(feature('BRIDGE_MODE') && isBridgeEnabled() ? [{
     id: 'remoteControlAtStartup',

@@ -300,6 +300,8 @@ function getStatusText(status: TaskStatus): string {
       return 'failed'
     case 'killed':
       return 'was stopped'
+    case 'paused':
+      return 'is paused'
     case 'running':
       return 'is running'
     case 'pending':

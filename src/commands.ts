@@ -67,6 +67,7 @@ import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
+import workflows from './commands/workflows/index.js'
 import { feature } from 'bun:bundle'
 import { runtimeFeature } from './utils/envUtils.js'
 import { isBuddyEnabled } from './buddy/feature.js'
@@ -95,11 +96,6 @@ const voiceCommand = feature('VOICE_MODE')
   : null
 const forceSnip = feature('HISTORY_SNIP')
   ? require('./commands/force-snip.js').default
-  : null
-const workflowsCmd = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
-    ).default
   : null
 const webCmd = feature('CCR_REMOTE_SETUP')
   ? (
@@ -190,6 +186,7 @@ import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
 import remoteEnv from './commands/remote-env/index.js'
 import upgrade from './commands/upgrade/index.js'
+import workflows from './commands/workflows/index.js'
 import {
   extraUsage,
   extraUsageNonInteractive,
@@ -406,7 +403,7 @@ const COMMANDS = memoize((): Command[] => [
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
-  ...(workflowsCmd ? [workflowsCmd] : []),
+  workflows,
   ...(torch ? [torch] : []),
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
     ? INTERNAL_ONLY_COMMANDS
@@ -466,11 +463,9 @@ async function getSkills(cwd: string): Promise<{
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const getWorkflowCommands = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./tools/WorkflowTool/createWorkflowCommand.js') as typeof import('./tools/WorkflowTool/createWorkflowCommand.js')
-    ).getWorkflowCommands
-  : null
+const getWorkflowCommands = (
+  require('./tools/WorkflowTool/createWorkflowCommand.js') as typeof import('./tools/WorkflowTool/createWorkflowCommand.js')
+).getWorkflowCommands
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
@@ -821,6 +816,16 @@ export function formatDescriptionWithSource(cmd: Command): string {
 
   if (cmd.source === 'bundled') {
     return `${desc} (bundled)`
+  }
+
+  // Workflow command sources — see createWorkflowCommand. Without
+  // these cases the function falls through to getSettingSourceName
+  // (which doesn't know these literals) and renders "(undefined)".
+  if (cmd.source === 'project') {
+    return `${desc} (project)`
+  }
+  if (cmd.source === 'user') {
+    return `${desc} (user)`
   }
 
   return `${desc} (${getSettingSourceName(cmd.source)})`

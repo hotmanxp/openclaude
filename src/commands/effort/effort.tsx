@@ -5,9 +5,11 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelSupportsUltracode, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
 import { EffortPicker } from '../../components/EffortPicker.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
+import { isWorkflowsDisabled } from '../../utils/envUtils.js';
+import { getMainLoopModel } from '../../utils/model/model.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
   message: string;
@@ -15,7 +17,45 @@ type EffortCommandResult = {
     value: EffortValue | undefined;
   };
 };
-function setEffortValue(effortValue: EffortValue): EffortCommandResult {
+export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
+  // /effort ultracode flips the session-level ultracode toggle (not
+  // effortLevel) — ultracode is a session mode, not a persisted tier.
+  // The 'ultracode' marker is also returned as effortUpdate.value so the
+  // AppState + spinner reflect the current mode.
+  if (effortValue === 'ultracode') {
+    // Validation 1: workflows must be enabled — ultracode is meaningless
+    // without dynamic-workflow orchestration.
+    if (isWorkflowsDisabled()) {
+      return {
+        message: 'Ultracode needs dynamic workflows enabled (see /config). Valid options are: low, medium, high, xhigh, max, auto',
+      };
+    }
+    // Validation 2: model must support ultracode (xhigh effort + opus-4-6
+    // family). Surface the model so the user knows what to change to.
+    const model = getMainLoopModel();
+    if (!modelSupportsUltracode(model)) {
+      return {
+        message: `Ultracode runs at xhigh effort, which requires an opus-4-6+ family model. Current model: ${model}. Valid options are: low, medium, high, xhigh, max, auto`,
+      };
+    }
+    const ultracodeResult = updateSettingsForSource('userSettings', {
+      ultracode: true
+    });
+    if (ultracodeResult.error) {
+      return {
+        message: `Failed to enable ultracode: ${ultracodeResult.error.message}`
+      };
+    }
+    logEvent('tengu_effort_command', {
+      effort: 'ultracode' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    });
+    return {
+      message: 'Set effort level to ultracode (this session only): xhigh + dynamic workflow orchestration. Workflows are now standing — substantive tasks will use the Workflow tool by default.',
+      effortUpdate: {
+        value: 'ultracode'
+      }
+    };
+  }
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
@@ -119,7 +159,7 @@ export function executeEffort(args: string): EffortCommandResult {
     return setEffortValue(openAIEffortToStandard(normalized));
   }
   return {
-    message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, xhigh, auto`
+    message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, xhigh, ultracode, auto`
   };
 }
 function ShowCurrentEffort(t0) {
@@ -177,7 +217,7 @@ function ApplyEffortAndClose(t0) {
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [low|medium|high|max|xhigh|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Opus 4.6 only)\n- xhigh: Extra-high reasoning for OpenAI/Codex models (alias for max)\n- auto: Use the default effort level for your model');
+    onDone('Usage: /effort [low|medium|high|max|xhigh|ultracode|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Opus 4.6 only)\n- xhigh: Extra-high reasoning for OpenAI/Codex models (alias for max)\n- ultracode: xhigh + dynamic-workflow orchestration (session only)\n- auto: Use the default effort level for your model');
     return;
   }
   if (args === 'current' || args === 'status') {

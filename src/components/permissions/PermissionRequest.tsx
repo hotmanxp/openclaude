@@ -18,6 +18,7 @@ import { NotebookEditTool } from '../../tools/NotebookEditTool/NotebookEditTool.
 import { PowerShellTool } from '../../tools/PowerShellTool/PowerShellTool.js';
 import { SkillTool } from '../../tools/SkillTool/SkillTool.js';
 import { WebFetchTool } from '../../tools/WebFetchTool/WebFetchTool.js';
+import { WorkflowTool } from '../../tools/WorkflowTool/WorkflowTool.js';
 import type { AssistantMessage } from '../../types/message.js';
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js';
 import { AskUserQuestionPermissionRequest } from './AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.js';
@@ -32,12 +33,11 @@ import { NotebookEditPermissionRequest } from './NotebookEditPermissionRequest/N
 import { PowerShellPermissionRequest } from './PowerShellPermissionRequest/PowerShellPermissionRequest.js';
 import { SkillPermissionRequest } from './SkillPermissionRequest/SkillPermissionRequest.js';
 import { WebFetchPermissionRequest } from './WebFetchPermissionRequest/WebFetchPermissionRequest.js';
+import { WorkflowPermissionDialog } from '../../tools/WorkflowTool/WorkflowPermissionDialog.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ReviewArtifactTool = feature('REVIEW_ARTIFACT') ? (require('../../tools/ReviewArtifactTool/ReviewArtifactTool.js') as typeof import('../../tools/ReviewArtifactTool/ReviewArtifactTool.js')).ReviewArtifactTool : null;
 const ReviewArtifactPermissionRequest = feature('REVIEW_ARTIFACT') ? (require('./ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.js') as typeof import('./ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.js')).ReviewArtifactPermissionRequest : null;
-const WorkflowTool = feature('WORKFLOW_SCRIPTS') ? (require('../../tools/WorkflowTool/WorkflowTool.js') as typeof import('../../tools/WorkflowTool/WorkflowTool.js')).WorkflowTool : null;
-const WorkflowPermissionRequest = feature('WORKFLOW_SCRIPTS') ? (require('../../tools/WorkflowTool/WorkflowPermissionRequest.js') as typeof import('../../tools/WorkflowTool/WorkflowPermissionRequest.js')).WorkflowPermissionRequest : null;
 import { MonitorTool } from '../../tools/MonitorTool/MonitorTool.js';
 import { MonitorPermissionRequest } from './MonitorPermissionRequest/MonitorPermissionRequest.js';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
@@ -70,7 +70,7 @@ function permissionComponentForTool(tool: Tool): React.ComponentType<PermissionR
     case AskUserQuestionTool:
       return AskUserQuestionPermissionRequest;
     case WorkflowTool:
-      return WorkflowPermissionRequest ?? FallbackPermissionRequest;
+      return WorkflowPermissionDialog;
     case MonitorTool:
       return MonitorPermissionRequest ?? FallbackPermissionRequest;
     case GlobTool:

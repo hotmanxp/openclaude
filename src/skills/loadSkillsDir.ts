@@ -817,10 +817,9 @@ export const getSkillDirCommands = memoize(
       ),
     )
 
-    const seenFileIds = new Map<
-      string,
-      SettingSource | 'builtin' | 'mcp' | 'plugin' | 'bundled'
-    >()
+    // Pinned to PromptCommand['source'] (rather than the literal union)
+    // so it stays in sync if Command.source is widened again.
+    const seenFileIds = new Map<string, PromptCommand['source']>()
     const deduplicatedSkills: Command[] = []
 
     for (let i = 0; i < allSkillsWithPaths.length; i++) {
