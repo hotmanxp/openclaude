@@ -172,7 +172,6 @@ async function compactViaReactive(
       hookResult.newCustomInstructions,
     )
 
-    // @ts-expect-error - requesting not in SpinnerMode
     context.setStreamMode?.('requesting')
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_start' })
@@ -225,7 +224,6 @@ async function compactViaReactive(
       displayText: buildDisplayText(context, combinedMessage),
     }
   } finally {
-    // @ts-expect-error - requesting not in SpinnerMode
     context.setStreamMode?.('requesting')
     context.setResponseLength?.(() => 0)
     context.onCompactProgress?.({ type: 'compact_end' })

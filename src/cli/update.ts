@@ -152,7 +152,6 @@ export async function update() {
     if (packageManager === 'homebrew') {
       writeToStdout('Open CC is managed by Homebrew.\n')
       const latest = await getLatestVersion(channel)
-      // @ts-expect-error latest checked for truthiness above
       if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')
@@ -164,7 +163,6 @@ export async function update() {
     } else if (packageManager === 'winget') {
       writeToStdout('Open CC is managed by winget.\n')
       const latest = await getLatestVersion(channel)
-      // @ts-expect-error latest checked for truthiness above
       if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')
@@ -178,7 +176,6 @@ export async function update() {
     } else if (packageManager === 'apk') {
       writeToStdout('Open CC is managed by apk.\n')
       const latest = await getLatestVersion(channel)
-      // @ts-expect-error latest checked for truthiness above
       if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')

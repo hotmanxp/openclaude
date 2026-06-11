@@ -4,6 +4,7 @@ import { getCombinedTools, loadReexposedMcpTools } from './mcp.js'
 import type { Tool as InternalTool } from '../Tool.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import { releaseSharedMutationLock } from '../test/sharedMutationLock.js'
 
 const originalDisableExperimentalBetas =
   process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS

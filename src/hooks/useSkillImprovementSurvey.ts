@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react'
-// @ts-expect-error - FeedbackSurveyResponse not exported
 import type { FeedbackSurveyResponse } from '../components/FeedbackSurvey/utils.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
