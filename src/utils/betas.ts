@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
@@ -214,7 +213,7 @@ export function shouldUseGlobalCacheScope(): boolean {
 }
 
 export const getAllModelBetas = memoize((model: string): string[] => {
-  const betaHeaders = []
+  const betaHeaders: string[] = []
   const isHaiku = getCanonicalName(model).includes('haiku')
   const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas()
 
