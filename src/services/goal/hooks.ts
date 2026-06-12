@@ -70,7 +70,7 @@ export function normalizeCondition(raw: string): string | { error: string } {
   const trimmed = raw.trim()
   if (!trimmed) return { error: 'Goal condition cannot be empty.' }
   if (trimmed.length > MAX_CONDITION_CHARS) {
-    return { error: `Goal condition must be ${MAX_CONDITION_CHARS} characters or fewer.` }
+    return { error: `Goal condition must be ${MAX_CONDITION_CHARS.toLocaleString('en-US')} characters or fewer.` }
   }
   // Strip surrounding quotes if present
   if (
