@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 
 import { getTotalCost } from '../../cost-tracker.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
+import { logForDebugging } from '../../utils/debug.js'
 import {
   addFunctionHook,
   removeFunctionHook,
@@ -24,6 +25,13 @@ const GOAL_HOOK_ERROR_MESSAGE =
   'Goal continuation: stop blocked. Re-evaluate whether the condition is met. If met, return JSON {met: true, reason: "..."} to clear the goal. If not met, continue working and return {met: false, reason: "..."}.'
 const GOAL_MAX_ITERATIONS = 50
 const MAX_CONDITION_CHARS = 4_000
+
+// Module-scope registry of currently-active Stop-hook goals keyed by hookId.
+// The Stop-hook callback closes over a snapshot of `opts.appState` that, with
+// DeepImmutable<AppState>, never reflects the live `activeGoal` mutations made
+// by later setAppState calls. We use this map to keep the live reference
+// reachable so iteration counts and the max-iter escape hatch actually work.
+const liveGoals = new Map<string, ActiveGoal>()
 
 export type GateResult = {
   code: 'hooks_gate' | 'trust_gate'
@@ -91,6 +99,10 @@ export function setActiveGoal(opts: {
   const goal = createActiveGoal(opts.condition, getTotalCost())
   const hookId = `goal-${randomUUID()}`
 
+  // Register the live goal in the module-scope map so the Stop-hook callback
+  // can read the up-to-date iteration count (see C1 fix comment above).
+  liveGoals.set(hookId, goal)
+
   // 1. Set activeGoal in appState
   opts.setAppState(prev => ({ ...prev, activeGoal: goal }))
 
@@ -101,9 +113,10 @@ export function setActiveGoal(opts: {
     'Stop',
     GOAL_HOOK_MATCHER,
     (messages, signal) =>
-      handleGoalStopHook(messages, signal, opts.appState, opts.setAppState, hookId),
+      handleGoalStopHook(messages, signal, opts.setAppState, hookId),
     GOAL_HOOK_ERROR_MESSAGE,
-    { id: hookId, timeout: 30_000 },
+    // 5s is plenty for the sync check; no async work in handleGoalStopHook.
+    { id: hookId, timeout: 5_000 },
   )
 
   // 3. Append sentinel attachment (not-met) for transcript restore
@@ -124,10 +137,24 @@ export function clearActiveGoal(opts: {
   const existing = opts.appState.activeGoal
   if (!existing) return
 
-  // 1. Remove hook
-  const hookId = findGoalHookId(opts.appState, sessionId)
-  if (hookId) {
-    removeFunctionHook(opts.setAppState, sessionId, 'Stop', hookId)
+  // 1. Remove hook — look up the hookId via the liveGoals map. If absent,
+  //    that means a stale appState (caller misuse or race) and we log a
+  //    warning rather than silently leaking a dead Stop function hook.
+  let foundHookId: string | null = null
+  for (const [id, g] of liveGoals) {
+    if (g.condition === existing.condition) {
+      foundHookId = id
+      break
+    }
+  }
+  if (foundHookId) {
+    removeFunctionHook(opts.setAppState, sessionId, 'Stop', foundHookId)
+    liveGoals.delete(foundHookId)
+  } else {
+    logForDebugging(
+      `clearActiveGoal: no live goal hook found for condition "${existing.condition}" — possible race or caller misuse`,
+      { level: 'warn' },
+    )
   }
 
   // 2. Clear activeGoal
@@ -144,40 +171,28 @@ export function clearActiveGoal(opts: {
 async function handleGoalStopHook(
   _messages: Message[],
   _signal: AbortSignal | undefined,
-  appState: AppState,
   setAppState: (updater: (prev: AppState) => AppState) => void,
   hookId: string,
 ): Promise<boolean> {
   const sessionId = getSessionId()
-  const goal = appState.activeGoal
-  if (!goal) {
+  // Read the live goal from the module-scope map (not the captured
+  // appState snapshot — DeepImmutable<AppState> freezes it).
+  const liveGoal = liveGoals.get(hookId)
+  if (!liveGoal) {
     removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
     return true // Allow stop
   }
-  if (goal.iterations >= GOAL_MAX_ITERATIONS) {
+  if (liveGoal.iterations >= GOAL_MAX_ITERATIONS) {
     removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
+    liveGoals.delete(hookId)
     setAppState(prev => ({ ...prev, activeGoal: null }))
     return true // Force stop at max iterations
   }
-  setAppState(prev => ({
-    ...prev,
-    activeGoal: prev.activeGoal ? incrementIteration(prev.activeGoal) : prev.activeGoal,
-  }))
+  // Advance the iteration count in BOTH the live map and the appState.
+  const next = incrementIteration(liveGoal)
+  liveGoals.set(hookId, next)
+  setAppState(prev => ({ ...prev, activeGoal: next }))
   return false // Block stop, force continuation
-}
-
-function findGoalHookId(appState: AppState, sessionId: string): string | null {
-  const store = appState.sessionHooks.get(sessionId)
-  if (!store) return null
-  const matchers = store.hooks.Stop ?? []
-  for (const m of matchers) {
-    for (const h of m.hooks) {
-      if (h.hook.type === 'function' && h.hook.id?.startsWith('goal-')) {
-        return h.hook.id
-      }
-    }
-  }
-  return null
 }
 
 function appendGoalStatusAttachment(opts: {
