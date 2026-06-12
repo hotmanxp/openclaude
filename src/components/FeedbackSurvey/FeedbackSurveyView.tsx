@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React from 'react';
 import { Box, Text } from '../../ink.js';
@@ -19,7 +18,7 @@ const inputToResponse: Record<ResponseInput, FeedbackSurveyResponse> = {
   '3': 'good'
 } as const;
 export const isValidResponseInput = (input: string): input is ResponseInput => (RESPONSE_INPUTS as readonly string[]).includes(input);
-const DEFAULT_MESSAGE = 'How is Claude doing this session? (optional)';
+const DEFAULT_MESSAGE = 'How is OpenCC doing this session? (optional)';
 export function FeedbackSurveyView(t0) {
   const $ = _c(15);
   const {
