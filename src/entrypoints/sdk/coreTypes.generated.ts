@@ -1562,7 +1562,7 @@ export type SDKStatus = "compacting" | null
 
 export type SDKUserMessage = {
   type: "user"
-  message: Record<string, unknown> & { role: "user", content: string | Array<unknown> }
+  message: { role: "user", content: string | Array<unknown> }
   parent_tool_use_id: string | null
   isSynthetic?: boolean
   tool_use_result?: unknown
@@ -1574,7 +1574,7 @@ export type SDKUserMessage = {
 
 export type SDKUserMessageReplay = {
   type: "user"
-  message: Record<string, unknown> & { role: "user", content: string | Array<unknown> }
+  message: { role: "user", content: string | Array<unknown> }
   parent_tool_use_id: string | null
   isSynthetic?: boolean
   tool_use_result?: unknown
@@ -1600,7 +1600,7 @@ export type SDKRateLimitInfo = {
 
 export type SDKAssistantMessage = {
   type: "assistant"
-  message: Record<string, unknown> & { role: "assistant", content: Array<unknown> }
+  message: { role: "assistant", content: Array<unknown> }
   parent_tool_use_id: string | null
   error?: "authentication_failed" | "billing_error" | "rate_limit" | "invalid_request" | "server_error" | "unknown" | "max_output_tokens"
   uuid: string
@@ -2043,14 +2043,14 @@ export type SDKSessionInfo = {
 
 export type SDKMessage = ({
   type: "assistant"
-  message: Record<string, unknown> & { role: "assistant", content: Array<unknown> }
+  message: { role: "assistant", content: Array<unknown> }
   parent_tool_use_id: string | null
   error?: "authentication_failed" | "billing_error" | "rate_limit" | "invalid_request" | "server_error" | "unknown" | "max_output_tokens"
   uuid: string
   session_id: string
 }) | ({
   type: "user"
-  message: Record<string, unknown> & { role: "user", content: string | Array<unknown> }
+  message: { role: "user", content: string | Array<unknown> }
   parent_tool_use_id: string | null
   isSynthetic?: boolean
   tool_use_result?: unknown
@@ -2060,7 +2060,7 @@ export type SDKMessage = ({
   session_id?: string
 }) | ({
   type: "user"
-  message: Record<string, unknown> & { role: "user", content: string | Array<unknown> }
+  message: { role: "user", content: string | Array<unknown> }
   parent_tool_use_id: string | null
   isSynthetic?: boolean
   tool_use_result?: unknown

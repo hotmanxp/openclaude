@@ -152,7 +152,6 @@ export class RemoteSessionManager {
   ): void {
     // Handle control requests (permission prompts from CCR)
     if (message.type === 'control_request') {
-      // @ts-expect-error - type mismatch
       this.handleControlRequest(message)
       return
     }

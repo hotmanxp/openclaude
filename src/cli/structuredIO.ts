@@ -42,9 +42,9 @@ import { notifyCommandLifecycle } from '../utils/commandLifecycle.js'
 import { normalizeControlMessageKeys } from '../utils/controlMessageCompat.js'
 import { executePermissionRequestHooks } from '../utils/hooks.js'
 import {
+  applyPermissionUpdates,
   persistPermissionUpdates,
 } from '../utils/permissions/PermissionUpdate.js'
-import { applyPermissionUpdatesToLiveContext } from '../utils/permissions/permissionSetup.js'
 import {
   notifySessionStateChanged,
   type RequiresActionDetails,
@@ -450,9 +450,11 @@ export class StructuredIO {
       if (message.type === 'assistant' || message.type === 'system') {
         return message
       }
-      if (message.message.role !== 'user') {
+      // After the type filter above, message.type is 'user'
+      const userMessage = message as { type: 'user'; message: { role: string } }
+      if (userMessage.message.role !== 'user') {
         exitWithMessage(
-          `Error: Expected message role 'user', got '${message.message.role}'`,
+          `Error: Expected message role 'user', got '${userMessage.message.role}'`,
         )
       }
       return message
@@ -545,7 +547,8 @@ export class StructuredIO {
     ): Promise<PermissionDecision> => {
       const shouldBypassForcedAsk =
         forceDecision?.behavior === 'ask' &&
-        toolUseContext.getAppState().toolPermissionContext.mode === 'fullAccess'
+        (toolUseContext.getAppState().toolPermissionContext.mode as string) ===
+          'fullAccess'
       const mainPermissionResult =
         forceDecision !== undefined && !shouldBypassForcedAsk
           ? forceDecision
@@ -827,7 +830,7 @@ async function executePermissionRequestHooksForSDK(
           let updatedContext = toolUseContext.getAppState().toolPermissionContext
           // Update permission context via setAppState
           toolUseContext.setAppState(prev => {
-            updatedContext = applyPermissionUpdatesToLiveContext(
+            updatedContext = applyPermissionUpdates(
               prev.toolPermissionContext,
               permissionUpdates,
             )

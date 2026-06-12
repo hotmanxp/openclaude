@@ -124,15 +124,15 @@ export type SDKControlGetContextUsageRequest = {
 
 export type SDKHookCallbackRequest = {
   subtype: 'hook_callback'
-  hook_name: string
-  args?: unknown[]
+  callback_id: string
+  input: unknown
+  tool_use_id?: string
 }
 
 export type SDKControlMcpMessageRequest = {
   subtype: 'mcp_message'
   server_name: string
-  method: string
-  params?: unknown
+  message: unknown
 }
 
 export type SDKControlRewindFilesRequest = {
@@ -186,9 +186,12 @@ export type SDKControlGetSettingsRequest = {
 
 export type SDKControlElicitationRequest = {
   subtype: 'elicitation'
-  elicitation_id: string
+  elicitation_id?: string
+  mcp_server_name: string
   message: string
-  params?: unknown
+  mode?: 'form' | 'url'
+  url?: string
+  requested_schema?: Record<string, unknown>
 }
 
 /**
@@ -253,29 +256,20 @@ export type StdoutMessage =
   | SDKControlCancelRequest
   | SDKKeepAliveMessage
 
-export type SDKMessage = {
-  type: string
-  uuid?: string
-  parentUuid?: string
-  content?: string
-  timestamp?: number
-  subtype?: string
-  message?: {
-    content?: string | unknown[]
-    role?: string
-  }
-  [key: string]: unknown
-}
+export type SDKMessage = import('./coreTypes.generated.js').SDKMessage
 
 export type SDKStreamlinedTextMessage = {
-  type: 'text'
-  content: string
+  type: 'streamlined_text'
+  text: string
+  session_id: string
+  uuid: string
 }
 
 export type SDKStreamlinedToolUseSummaryMessage = {
-  type: 'tool_summary'
-  toolUseId: string
-  content: string
+  type: 'streamlined_tool_use_summary'
+  tool_summary: string
+  session_id: string
+  uuid: string
 }
 
 export type SDKPostTurnSummaryMessage = {
