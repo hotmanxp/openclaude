@@ -8,7 +8,7 @@ import { useAppState } from '../../state/AppState.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { logError } from '../../utils/log.js';
 import { countCharInString } from '../../utils/stringUtils.js';
-import { MessageActionsSelectedContext } from '../messageActions.js';
+import { MessageActionsSelectedContext, stripSystemReminders } from '../messageActions.js';
 import { HighlightedThinkingText } from './HighlightedThinkingText.js';
 type Props = {
   addMargin: boolean;
@@ -61,11 +61,18 @@ export function UserPromptMessage({
   const useBriefLayout = feature('KAIROS') || feature('KAIROS_BRIEF') ? (getKairosActive() || getUserMsgOptIn() && (briefEnvEnabled || getFeatureValue_CACHED_MAY_BE_STALE('tengu_kairos_brief', false))) && isBriefOnly && !isTranscriptMode && !viewingAgentTaskId : false;
 
   // Truncate before the early return so the hook order is stable.
+  // Strip <system-reminder> blocks first so reminder text injected by
+  // upstream features (e.g. ultracode opt-in in REPL.tsx, CCR scaffolding)
+  // doesn't leak into the user-visible chat. The reminder still reaches the
+  // LLM via the API call — only the on-screen display strips it.
   const displayText = useMemo(() => {
-    if (text.length <= MAX_DISPLAY_CHARS) return text;
-    const head = text.slice(0, TRUNCATE_HEAD_CHARS);
-    const tail = text.slice(-TRUNCATE_TAIL_CHARS);
-    const hiddenLines = countCharInString(text, '\n', TRUNCATE_HEAD_CHARS) - countCharInString(tail, '\n');
+    const stripped = stripSystemReminders(text);
+    if (stripped.length <= MAX_DISPLAY_CHARS) return stripped;
+    const head = stripped.slice(0, TRUNCATE_HEAD_CHARS);
+    const tail = stripped.slice(-TRUNCATE_TAIL_CHARS);
+    const hiddenLines =
+      countCharInString(stripped, '\n', TRUNCATE_HEAD_CHARS) -
+      countCharInString(tail, '\n');
     return `${head}\n… +${hiddenLines} lines …\n${tail}`;
   }, [text]);
   const isSelected = useContext(MessageActionsSelectedContext);
