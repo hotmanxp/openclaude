@@ -49,7 +49,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
         <Text dimColor>
           {modelDisplay}{effortSuffix}
         </Text>
-        <Text dimColor>~ {dir}</Text>
+        <Text dimColor>{dir.startsWith('~') ? dir : `~ ${dir}`}</Text>
       </Box>
     </Box>
   )
