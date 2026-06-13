@@ -2223,9 +2223,7 @@ export function REPL({
 
     // Clear any active token budget so the backstop doesn't fire on
     // a stale budget if the query generator hasn't exited yet.
-    if (feature('TOKEN_BUDGET')) {
-      snapshotOutputTokensForTurn(null);
-    }
+    snapshotOutputTokensForTurn(null);
     if (focusedInputDialog === 'tool-permission') {
       // Tool use confirm handles the abort signal itself
       toolUseConfirmQueue[0]?.onAbort();
@@ -2634,7 +2632,7 @@ export function REPL({
           } : {})
         }));
       },
-      requestPrompt: feature('HOOK_PROMPTS') ? requestPrompt : undefined,
+      requestPrompt,
       contentReplacementState: contentReplacementStateRef.current,
       syncToolResultReplacements
     };
@@ -3015,10 +3013,8 @@ export function REPL({
       resetCurrentTurn();
       setMessages(oldMessages => [...oldMessages, ...newMessages]);
       responseLengthRef.current = 0;
-      if (feature('TOKEN_BUDGET')) {
-        const parsedBudget = input ? parseTokenBudget(input) : null;
-        snapshotOutputTokensForTurn(parsedBudget ?? getCurrentTurnTokenBudget());
-      }
+      const parsedBudget = input ? parseTokenBudget(input) : null;
+      snapshotOutputTokensForTurn(parsedBudget ?? getCurrentTurnTokenBudget());
       apiMetricsRef.current = [];
       setStreamingToolUses([]);
       setStreamingText(null);
@@ -3081,16 +3077,14 @@ export function REPL({
           limit: number;
           nudges: number;
         } | undefined;
-        if (feature('TOKEN_BUDGET')) {
-          if (getCurrentTurnTokenBudget() !== null && getCurrentTurnTokenBudget()! > 0 && !abortController.signal.aborted) {
-            budgetInfo = {
-              tokens: getTurnOutputTokens(),
-              limit: getCurrentTurnTokenBudget()!,
-              nudges: getBudgetContinuationCount()
-            };
-          }
-          snapshotOutputTokensForTurn(null);
+        if (getCurrentTurnTokenBudget() !== null && getCurrentTurnTokenBudget()! > 0 && !abortController.signal.aborted) {
+          budgetInfo = {
+            tokens: getTurnOutputTokens(),
+            limit: getCurrentTurnTokenBudget()!,
+            nudges: getBudgetContinuationCount()
+          };
         }
+        snapshotOutputTokensForTurn(null);
 
         // Add turn duration message for turns longer than 30s or with a budget
         // Skip if user aborted or if in loop mode (too noisy between ticks)
