@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { randomUUID } from 'crypto'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'
@@ -7,7 +6,7 @@ import {
   clearActiveGoalIfActive,
 } from '../../services/goal/hooks.js'
 import type { ToolUseContext } from '../../Tool.js'
-import type { Message } from '../../types/message.js'
+import type { HookResultMessage, Message } from '../../types/message.js'
 import { createAttachmentMessage } from '../attachments.js'
 import { createCombinedAbortSignal } from '../combinedAbortSignal.js'
 import { logForDebugging } from '../debug.js'
@@ -89,7 +88,7 @@ export function fallbackHookResult(response: string): { ok: boolean; reason: str
  * payloads the model might hallucinate as "tool" calls.
  */
 export function extractHookResponseContent(
-  blocks: readonly unknown[],
+  blocks: string | readonly unknown[],
 ): string {
   const textParts: string[] = []
   for (const b of blocks) {
@@ -282,10 +281,10 @@ export async function execPromptHook(
     const userMessage = createUserMessage({ content: processedPrompt })
 
     // Prepend conversation history if provided
-    const messagesToQuery =
+    const messagesToQuery: Message[] =
       messages && messages.length > 0
-        ? [...messages, userMessage]
-        : [userMessage]
+        ? [...messages, userMessage as Message]
+        : [userMessage as Message]
 
     logForDebugging(
       `Hooks: Querying model with ${messagesToQuery.length} messages`,
@@ -327,6 +326,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
       let lastRawResponse = ''
       let lastParseErr = ''
       let succeededOnAttempt = 0
+      let fullResponse = ''
 
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         if (signal.aborted) break
@@ -422,7 +422,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         // Update response length for spinner display
         toolUseContext.setResponseLength(length => length + content.length)
 
-        const fullResponse = stripMinimaxToolCallWrapper(content.trim())
+        fullResponse = stripMinimaxToolCallWrapper(content.trim())
         logForDebugging(
           `Hooks[execPromptHook DIAG]: attempt ${attempt} model response: ${fullResponse}`,
         )
@@ -500,7 +500,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
             stderr: 'JSON validation failed',
             stdout: lastRawResponse,
             exitCode: 1,
-          }),
+          }) as unknown as HookResultMessage,
         }
       }
 
@@ -526,7 +526,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
             stderr: `Schema validation failed: ${parsed.error.message}`,
             stdout: fullResponse,
             exitCode: 1,
-          }),
+          }) as unknown as HookResultMessage,
         }
       }
 
@@ -584,7 +584,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
           toolUseID: effectiveToolUseID,
           hookEvent,
           content: '',
-        }),
+        }) as unknown as HookResultMessage,
       }
     } catch (error) {
       cleanupSignal()
@@ -611,7 +611,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         stderr: `Error executing prompt hook: ${errorMsg}`,
         stdout: '',
         exitCode: 1,
-      }),
+      }) as unknown as HookResultMessage,
     }
   }
 }
