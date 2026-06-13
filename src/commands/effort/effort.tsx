@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
@@ -75,7 +74,7 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
-      effortLevel: persistable
+      effortLevel: persistable as 'low' | 'medium' | 'high' | 'max' | undefined
     });
     if (result.error) {
       return {
@@ -301,7 +300,7 @@ export function handleSelect(
   // which the picker doesn't surface, but guard defensively)
   if (persistable !== undefined) {
     updateSettingsForSource('userSettings', {
-      effortLevel: persistable,
+      effortLevel: persistable as 'low' | 'medium' | 'high' | 'max' | undefined,
       // Clear ultracode if it was active (exit path)
       ...(metaMessages ? { ultracode: false } : {}),
     });
@@ -328,7 +327,7 @@ function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
 
   function onPickerSelect(effort: EffortValue | undefined) {
     // Delegate to the standalone exported function
-    handleSelect(effort, onDone, setter => setAppState(setter));
+    handleSelect(effort, onDone, setter => setAppState(setter as unknown as Parameters<typeof setAppState>[0]));
   }
 
   function handleCancel() {
