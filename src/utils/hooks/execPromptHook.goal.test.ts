@@ -16,11 +16,12 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 //   3. git checkout 53b12fbefd7c92530777dce8a7f9c45f12f8b744 -- src/utils/hooks/execPromptHook.ts
 //      (or `git stash pop`) and re-run → expect 2 pass / 0 fail.
 
-const queryModelWithoutStreamingMock = mock(async () => ({
+const DEFAULT_OK_TRUE_RESPONSE = async () => ({
   message: {
     content: [{ type: 'text', text: '{"ok": true}' }],
   },
-}))
+})
+const queryModelWithoutStreamingMock = mock(DEFAULT_OK_TRUE_RESPONSE)
 
 const actualClaudeModule = await import('../../services/api/claude.js')
 mock.module('../../services/api/claude.js', () => ({
@@ -72,7 +73,13 @@ const hook = {
 }
 
 beforeEach(() => {
+  // mockReset clears both call history AND the implementation. Re-establish
+  // the default ok:true response so tests that don't override the impl still
+  // see the success-path LLM shape. mockReset's defensive value remains for
+  // any future test that uses mockImplementationOnce — the once-queue is
+  // also cleared, preventing state bleed between tests.
   queryModelWithoutStreamingMock.mockReset()
+  queryModelWithoutStreamingMock.mockImplementation(DEFAULT_OK_TRUE_RESPONSE)
 })
 
 describe('execPromptHook — /goal Stop-hook success path integration', () => {
