@@ -56,6 +56,45 @@ function walkDir(dir: string, out: string[] = []): string[] {
 const trueFlags = parseFeatureFlags(BUILD_TS)
 const violations: Array<{ file: string; line: number; flag: string }> = []
 
+// Skip matches that appear inside a `//` line comment or inside a
+// `/* ... */` block.  Some prior feat-solidify commits left
+// `// [FLAG] was: feature('FLAG') ...` historical marker comments
+// behind after the runtime guard had been removed.  Those markers
+// are documentation, not live guards, and should not fail the build.
+function isInsideComment(content: string, matchIndex: number): boolean {
+  // Find the start of the line containing the match.
+  const lineStart = content.lastIndexOf('\n', matchIndex - 1) + 1
+  const linePrefix = content.slice(lineStart, matchIndex)
+  // `//` line comment: any `//` earlier on the same line begins a comment.
+  if (linePrefix.includes('//')) return true
+  // Block comment: walk through the file, toggling on `/*` and `*/`.
+  // For correctness we use a simple state machine over the full text up
+  // to the match index.
+  let i = 0
+  let inBlock = false
+  while (i < matchIndex) {
+    if (inBlock) {
+      const end = content.indexOf('*/', i)
+      if (end === -1 || end > matchIndex) return true
+      i = end + 2
+      inBlock = false
+    } else {
+      const start = content.indexOf('/*', i)
+      const lineEnd = content.indexOf('\n', i)
+      if (lineEnd !== -1 && (start === -1 || start > lineEnd)) {
+        // On this line, only a `//` could start a comment; already
+        // checked above via linePrefix. Advance past the newline.
+        i = lineEnd + 1
+        continue
+      }
+      if (start === -1) return false
+      i = start + 2
+      inBlock = true
+    }
+  }
+  return inBlock
+}
+
 for (const file of walkDir(srcRoot)) {
   const rel = file.replace(REPO_ROOT + '/', '')
   if (rel.includes('__tests__') || rel.endsWith('.test.ts') || rel.endsWith('.test.tsx')) continue
@@ -65,6 +104,7 @@ for (const file of walkDir(srcRoot)) {
   while ((m = featureCallRe.exec(content)) !== null) {
     const flag = m[1]!
     if (!trueFlags.has(flag)) continue
+    if (isInsideComment(content, m.index)) continue
     // Line number = number of newlines before the match offset, plus 1.
     const line = content.slice(0, m.index).split('\n').length
     violations.push({ file: rel, line, flag })
