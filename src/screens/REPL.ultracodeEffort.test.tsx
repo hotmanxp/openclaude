@@ -76,7 +76,7 @@ describe('applyKeywordTrigger (keyword-trigger path)', () => {
     // Simulate REPL setMessages call
     const existingMessages: MetaMessage[] = []
     const updatedMessages = applyEffortMetaMessagesToState(
-      result.metaMessages.map(m => m.content[0].text),
+      result.metaMessages.map(m => m.message.content[0].text),
       existingMessages,
     )
 

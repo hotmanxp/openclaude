@@ -234,6 +234,7 @@ const UndercoverAutoCallout = IS_ANT_EMPLOYEE ? require('../components/Undercove
 import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
 import { buildKeywordTurnRequest, detectUltracodeTrigger } from '../utils/ultracode.js';
+import { queueUltracodeReminder } from '../utils/ultracodeReminder.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { MCPConnectionManager } from 'src/services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from 'src/components/FeedbackSurvey/useFeedbackSurvey.js';
@@ -3492,7 +3493,12 @@ export function REPL({
     ): string {
       const result = buildKeywordTurnRequest(input, trigger)
       if (result.metaMessages.length > 0) {
-        setMessages(oldMessages => [...result.metaMessages, ...oldMessages])
+        // Activate the ultracode state machine for this keyword-triggered turn.
+        const effortMetaMessages = queueUltracodeReminder('enter')
+        const allMeta = effortMetaMessages.length > 0
+          ? [...effortMetaMessages.map(content => createUserMessage({ content: [{ type: 'text', text: content }], isMeta: true })), ...result.metaMessages]
+          : result.metaMessages
+        setMessages(oldMessages => [...allMeta, ...oldMessages])
       }
       return result.userInput
     }
