@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { feature } from 'bun:bundle'
 import { getCoordinatorUserContext } from './coordinator/coordinatorMode.js'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
@@ -37,6 +36,8 @@ import { hasAutoMemPathOverride } from './memdir/paths.js'
 import { query as defaultQuery } from './query.js'
 import { categorizeRetryableAPIError } from './services/api/errors.js'
 import type { AutoCompactTrackingState } from './services/compact/autoCompact.js'
+import { snipCompactIfNeeded } from './services/compact/snipCompact.js'
+import { isSnipBoundaryMessage } from './services/compact/snipProjection.js'
 import type { MCPServerConnection } from './services/mcp/types.js'
 import type { AppState } from './state/AppState.js'
 import { type Tools, type ToolUseContext, toolMatchesName } from './Tool.js'
@@ -114,16 +115,6 @@ import {
 
 // Dead code elimination: conditional import for coordinator mode
 
-// Dead code elimination: conditional import for snip compaction
-/* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
-  : null
-const snipProjection = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipProjection.js') as typeof import('./services/compact/snipProjection.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
-
 export type QueryEngineConfig = {
   cwd: string
   tools: Tools
@@ -155,13 +146,12 @@ export type QueryEngineConfig = {
   /**
    * Snip-boundary handler: receives each yielded system message plus the
    * current mutableMessages store. Returns undefined if the message is not a
-   * snip boundary; otherwise returns the replayed snip result. Injected by
-   * ask() when HISTORY_SNIP is enabled so feature-gated strings stay inside
-   * the gated module (keeps QueryEngine free of excluded strings and testable
-   * despite feature() returning false under bun test). SDK-only: the REPL
-   * keeps full history for UI scrollback and projects on demand via
-   * projectSnippedView; QueryEngine truncates here to bound memory in long
-   * headless sessions (no UI to preserve).
+   * snip boundary; otherwise returns the replayed snip result. The subtype
+   * check lives inside this callback so snip-gated strings stay out of
+   * QueryEngine (excluded-strings check). SDK-only: the REPL keeps full
+   * history for UI scrollback and projects on demand via projectSnippedView;
+   * QueryEngine truncates here to bound memory in long headless sessions
+   * (no UI to preserve).
    */
   snipReplay?: (
     yieldedSystemMsg: Message,
@@ -924,7 +914,7 @@ export class QueryEngine {
           // the replay produces its own equivalent boundary. Without this,
           // markers persist and re-trigger on every turn, and mutableMessages
           // never shrinks (memory leak in long SDK sessions). The subtype
-          // check lives inside the injected callback so feature-gated strings
+          // check lives inside the injected callback so snip-gated strings
           // stay out of this file (excluded-strings check).
           const snipResult = this.config.snipReplay?.(
             message,
@@ -1405,15 +1395,11 @@ export async function* ask({
     setSDKStatus,
     abortController,
     orphanedPermission,
-    ...(feature('HISTORY_SNIP')
-      ? {
-          snipReplay: (yielded: Message, store: Message[]) => {
-            if (!snipProjection!.isSnipBoundaryMessage(yielded))
-              return undefined
-            return snipModule!.snipCompactIfNeeded(store, { force: true })
-          },
-        }
-      : {}),
+    snipReplay: (yielded: Message, store: Message[]) => {
+      if (!isSnipBoundaryMessage(yielded))
+        return undefined
+      return snipCompactIfNeeded(store, { force: true })
+    },
   })
 
   try {
