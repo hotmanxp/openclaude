@@ -2346,7 +2346,7 @@ export function normalizeMessagesForAPI(
   // VCR fixture lookup. Gate must match SnipTool.isEnabled() — don't
   // inject [id:] tags when the tool isn't available (confuses the model
   // and wastes tokens on every non-meta user message for every ant).
-  if (feature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
+  if (process.env.NODE_ENV !== 'test') {
     const { isSnipRuntimeEnabled } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -2409,29 +2409,27 @@ function isToolResultMessage(msg: Message): boolean {
 export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   const lastContent = normalizeUserTextContent(a.message.content)
   const currentContent = normalizeUserTextContent(b.message.content)
-  if (feature('HISTORY_SNIP')) {
-    // A merged message is only meta if ALL merged messages are meta. If any
-    // operand is real user content, the result must not be flagged isMeta
-    // (so [id:] tags get injected and it's treated as user-visible content).
-    // Gated behind the full runtime check because changing isMeta semantics
-    // affects downstream callers (e.g., VCR fixture hashing in SDK harness
-    // tests), so this must only fire when snip is actually enabled — not
-    // for all ants.
-    const { isSnipRuntimeEnabled } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-    if (isSnipRuntimeEnabled()) {
-      return {
-        ...a,
-        isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
-        uuid: a.isMeta ? b.uuid : a.uuid,
-        message: {
-          ...a.message,
-          content: hoistToolResults(
-            joinTextAtSeam(lastContent, currentContent),
-          ),
-        },
-      }
+  // A merged message is only meta if ALL merged messages are meta. If any
+  // operand is real user content, the result must not be flagged isMeta
+  // (so [id:] tags get injected and it's treated as user-visible content).
+  // Gated behind the full runtime check because changing isMeta semantics
+  // affects downstream callers (e.g., VCR fixture hashing in SDK harness
+  // tests), so this must only fire when snip is actually enabled — not
+  // for all ants.
+  const { isSnipRuntimeEnabled } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+  if (isSnipRuntimeEnabled()) {
+    return {
+      ...a,
+      isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
+      uuid: a.isMeta ? b.uuid : a.uuid,
+      message: {
+        ...a.message,
+        content: hoistToolResults(
+          joinTextAtSeam(lastContent, currentContent),
+        ),
+      },
     }
   }
   return {
@@ -4152,18 +4150,15 @@ You have exited auto mode. The user may now want to interact more directly. You 
       ])
     }
     case 'context_efficiency': {
-      if (feature('HISTORY_SNIP')) {
-        const { SNIP_NUDGE_TEXT } =
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-        return wrapMessagesInSystemReminder([
-          createUserMessage({
-            content: SNIP_NUDGE_TEXT,
-            isMeta: true,
-          }),
-        ])
-      }
-      return []
+      const { SNIP_NUDGE_TEXT } =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+      return wrapMessagesInSystemReminder([
+        createUserMessage({
+          content: SNIP_NUDGE_TEXT,
+          isMeta: true,
+        }),
+      ])
     }
     case 'date_change': {
       return wrapMessagesInSystemReminder([
@@ -4651,7 +4646,7 @@ export function getMessagesAfterCompactBoundary<
 >(messages: T[], options?: { includeSnipped?: boolean }): T[] {
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
-  if (!options?.includeSnipped && feature('HISTORY_SNIP')) {
+  if (!options?.includeSnipped) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { projectSnippedView } =
       require('../services/compact/snipProjection.js') as typeof import('../services/compact/snipProjection.js')
