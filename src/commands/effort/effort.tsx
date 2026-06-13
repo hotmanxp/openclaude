@@ -264,61 +264,76 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
   return <ApplyEffortAndClose result={result} onDone={onDone} />;
 }
 
+/**
+ * Standalone effort-picker selection handler.
+ * Exported for unit testing — see effort.test.tsx.
+ *
+ * @param effort - The effort value selected from the picker (or undefined for auto)
+ * @param onDone - Callback invoked with the result message and optional metaMessages
+ * @param setAppState - AppState setter (normally from useSetAppState hook)
+ */
+export function handleSelect(
+  effort: EffortValue | undefined,
+  onDone: LocalJSXCommandOnDone,
+  setAppState: (fn: (prev: { effortValue: EffortValue | undefined }) => { effortValue: EffortValue | undefined }) => void,
+): void {
+  // Ultracode path: use setEffortValue to get enter meta messages
+  if (effort === 'ultracode') {
+    const result = setEffortValue('ultracode');
+    setAppState(() => ({
+      effortValue: 'ultracode'
+    }));
+    if (result.metaMessages?.length) {
+      onDone(result.message, { metaMessages: result.metaMessages });
+    } else {
+      onDone(result.message);
+    }
+    return;
+  }
+
+  // Non-ultracode: if ultracode was on, emit exit and clear it
+  const persistable = toPersistableEffort(effort);
+  let metaMessages: string[] | undefined;
+  if (isUltracodeActive()) {
+    metaMessages = queueUltracodeReminder('exit');
+  }
+  // Skip writing effortLevel if persistable is undefined (numeric values,
+  // which the picker doesn't surface, but guard defensively)
+  if (persistable !== undefined) {
+    updateSettingsForSource('userSettings', {
+      effortLevel: persistable,
+      // Clear ultracode if it was active (exit path)
+      ...(metaMessages ? { ultracode: false } : {}),
+    });
+  }
+  logEvent('tengu_effort_command', {
+    effort: (effort ?? 'auto') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  });
+  setAppState(() => ({
+    effortValue: effort ?? undefined
+  }));
+  const description = effort ? getEffortValueDescription(effort) : 'Use default effort level for your model';
+  const suffix = persistable !== undefined ? '' : ' (this session only)';
+  if (metaMessages?.length) {
+    onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`, { metaMessages });
+  } else {
+    onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`);
+  }
+}
+
 function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
   const setAppState = useSetAppState();
   const model = useMainLoopModel();
   const usesOpenAIEffort = modelUsesOpenAIEffort(model);
 
-  function handleSelect(effort: EffortValue | undefined) {
-    // Ultracode path: use setEffortValue to get enter meta messages
-    if (effort === 'ultracode') {
-      const result = setEffortValue('ultracode');
-      setAppState(prev => ({
-        ...prev,
-        effortValue: 'ultracode'
-      }));
-      if (result.metaMessages?.length) {
-        onDone(result.message, { metaMessages: result.metaMessages });
-      } else {
-        onDone(result.message);
-      }
-      return;
-    }
-
-    // Non-ultracode: if ultracode was on, emit exit and clear it
-    const persistable = toPersistableEffort(effort);
-    let metaMessages: string[] | undefined;
-    if (isUltracodeActive()) {
-      metaMessages = queueUltracodeReminder('exit');
-    }
-    // Skip writing effortLevel if persistable is undefined (numeric values,
-    // which the picker doesn't surface, but guard defensively)
-    if (persistable !== undefined) {
-      updateSettingsForSource('userSettings', {
-        effortLevel: persistable,
-        // Clear ultracode if it was active (exit path)
-        ...(metaMessages ? { ultracode: false } : {}),
-      });
-    }
-    logEvent('tengu_effort_command', {
-      effort: (effort ?? 'auto') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    });
-    setAppState(prev => ({
-      ...prev,
-      effortValue: effort
-    }));
-    const description = effort ? getEffortValueDescription(effort) : 'Use default effort level for your model';
-    const suffix = persistable !== undefined ? '' : ' (this session only)';
-    if (metaMessages?.length) {
-      onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`, { metaMessages });
-    } else {
-      onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`);
-    }
+  function onPickerSelect(effort: EffortValue | undefined) {
+    // Delegate to the standalone exported function
+    handleSelect(effort, onDone, setter => setAppState(setter));
   }
 
   function handleCancel() {
     onDone('Cancelled');
   }
 
-  return <EffortPicker onSelect={handleSelect} onCancel={handleCancel} />;
+  return <EffortPicker onSelect={onPickerSelect} onCancel={handleCancel} />;
 }

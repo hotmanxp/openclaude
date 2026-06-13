@@ -299,3 +299,105 @@ describe('effort /ultracode validation', () => {
     });
   });
 });
+
+describe('EffortPickerWrapper.handleSelect (standalone)', () => {
+  beforeEach(() => {
+    mock.restore();
+    resetUltracodeReminderState();
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('handleSelect("medium") when ultracode is active emits EXIT reminder via onDone', () => {
+    mock.module('../../utils/ultracodeReminder.js', () => ({
+      queueUltracodeReminder: (_event: 'enter' | 'exit') => [
+        'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.',
+      ],
+      resetUltracodeReminderState: () => {},
+      isUltracodeReminderOn: () => true,
+    }));
+    mock.module('../../utils/ultracode.js', () => ({
+      isUltracodeActive: () => true,
+      isWorkflowKeywordTriggerEnabled: () => true,
+      getUltracodeReminder: () => '<system-reminder>ultracode is on</system-reminder>',
+      detectUltracodeTrigger: () => ({ triggered: false, keyword: 'ultracode', rest: '' }),
+      findUltracodeTriggerPositions: () => [],
+      isUltracodeKeywordTriggered: () => false,
+      buildKeywordTurnRequest: () => ({ userInput: '', metaMessages: [] }),
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    mock.module('../../services/analytics/index.js', () => ({
+      logEvent: () => {},
+    }));
+
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      let doneArgs: unknown[] = [];
+      const onDone = (...args: unknown[]) => {
+        doneArgs = args;
+      };
+      const setAppState = (_fn: any) => {};
+
+      mod.handleSelect('medium', onDone, setAppState);
+
+      // Second argument is { metaMessages: [...] }
+      expect(doneArgs[0]).toMatch(/Set effort level to medium/);
+      expect(doneArgs[1]).toHaveProperty('metaMessages');
+      const metaMessages = (doneArgs[1] as { metaMessages: string[] }).metaMessages;
+      expect(metaMessages).toContain(
+        'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.',
+      );
+    });
+  });
+
+  test('handleSelect("medium") when ultracode is not active emits no metaMessages', () => {
+    mock.module('../../utils/ultracodeReminder.js', () => ({
+      queueUltracodeReminder: () => [],
+      resetUltracodeReminderState: () => {},
+      isUltracodeReminderOn: () => false,
+    }));
+    mock.module('../../utils/ultracode.js', () => ({
+      isUltracodeActive: () => false,
+      isWorkflowKeywordTriggerEnabled: () => true,
+      getUltracodeReminder: () => '<system-reminder>ultracode is off</system-reminder>',
+      detectUltracodeTrigger: () => ({ triggered: false, keyword: 'ultracode', rest: '' }),
+      findUltracodeTriggerPositions: () => [],
+      isUltracodeKeywordTriggered: () => false,
+      buildKeywordTurnRequest: () => ({ userInput: '', metaMessages: [] }),
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    mock.module('../../services/analytics/index.js', () => ({
+      logEvent: () => {},
+    }));
+
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      let doneArgs: unknown[] = [];
+      const onDone = (...args: unknown[]) => {
+        doneArgs = args;
+      };
+      const setAppState = (_fn: any) => {};
+
+      mod.handleSelect('medium', onDone, setAppState);
+
+      // Only message arg, no second metaMessages argument
+      expect(doneArgs[0]).toMatch(/Set effort level to medium/);
+      expect(doneArgs[1]).toBeUndefined();
+    });
+  });
+});

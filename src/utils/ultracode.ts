@@ -146,16 +146,6 @@ export const ULTRACODE_EFFORT_EXIT =
   'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.'
 
 /**
- * Builds the effort enter/exit meta message shape for queueUltracodeEffortReminder.
- * Returns the message content array matching the isMeta message format.
- */
-function buildEffortMetaMessage(
-  text: string,
-): Array<{ type: 'text'; text: string }> {
-  return [{ type: 'text', text }]
-}
-
-/**
  * Builds the userInput and metaMessages for a keyword-triggered turn.
  *
  * When the keyword trigger fires (trigger.triggered === true), returns:
@@ -196,68 +186,3 @@ export function buildKeywordTurnRequest(
   }
 }
 
-/**
- * Queue an ultra_effort_enter or ultra_effort_exit meta reminder to be
- * prepended to the messages state for the current LLM turn.
- *
- * - event='enter': enqueues FULL reminder if lastEnterTurnIndex is null
- *   (first time OR last action was an exit), otherwise SHORT reminder.
- *   Sets lastEnterTurnIndex = currentTurnIndex.
- * - event='exit': enqueues EXIT reminder. Sets lastEnterTurnIndex = null.
- * - event='enter' with isCurrentlyOn === true: no-op (guard).
- *
- * Returns the updated lastEnterTurnIndex so the caller can persist it.
- *
- * The isMeta message format mirrors buildKeywordTurnRequest:
- *   { type: 'user', content: [{ type: 'text', text: '...' }], isMeta: true }
- */
-export function queueUltracodeEffortReminder(
-  event: 'enter' | 'exit',
-  isCurrentlyOn: boolean,
-  currentTurnIndex: number,
-  lastEnterTurnIndex: number | null,
-  setMessages: (
-    fn: (
-      old: Array<{
-        type: string
-        content: Array<{ type: string; text: string }>
-        isMeta?: true
-      }>,
-    ) => Array<{
-      type: string
-      content: Array<{ type: string; text: string }>
-      isMeta?: true
-    }>,
-  ) => void,
-  setLastEnterTurnIndex: (n: number | null) => void,
-): { lastEnterTurnIndex: number | null } {
-  // Guard: enter when already on should not happen via normal toggle flow
-  if (event === 'enter' && isCurrentlyOn) {
-    return { lastEnterTurnIndex }
-  }
-
-  if (event === 'enter') {
-    const text =
-      lastEnterTurnIndex === null
-        ? ULTRACODE_EFFORT_ENTER_FULL
-        : ULTRACODE_EFFORT_ENTER_SHORT
-    const metaMessage = {
-      type: 'user' as const,
-      content: buildEffortMetaMessage(text),
-      isMeta: true as const,
-    }
-    setMessages(oldMessages => [metaMessage, ...oldMessages])
-    setLastEnterTurnIndex(currentTurnIndex)
-    return { lastEnterTurnIndex: currentTurnIndex }
-  } else {
-    // event === 'exit'
-    const metaMessage = {
-      type: 'user' as const,
-      content: buildEffortMetaMessage(ULTRACODE_EFFORT_EXIT),
-      isMeta: true as const,
-    }
-    setMessages(oldMessages => [metaMessage, ...oldMessages])
-    setLastEnterTurnIndex(null)
-    return { lastEnterTurnIndex: null }
-  }
-}
