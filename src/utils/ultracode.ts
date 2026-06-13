@@ -1,4 +1,5 @@
 import { getInitialSettings } from './settings/settings.js'
+import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
 
 /**
  * Ultracode is xhigh effort + standing dynamic-workflow orchestration.
@@ -75,4 +76,29 @@ export function detectUltracodeTrigger(
     return { triggered: false, keyword, rest: input }
   }
   return { triggered: true, keyword, rest: match[1]! }
+}
+
+/**
+ * Find positions of the "ultracode" keyword in text, for the PromptInput
+ * rainbow highlight and "Dynamic workflow requested" notification.
+ *
+ * Mirrors `findUltraplanTriggerPositions` / `findUltrareviewTriggerPositions`
+ * — the helper handles quote-pair skipping, path/identifier guards (`/`,
+ * `\`, `-`, `.` + word), `?` exclusion, and slash-command exclusion.
+ *
+ * The actual strip-on-submit happens in REPL.tsx via `detectUltracodeTrigger`
+ * (which requires a separator after the keyword). The two functions are
+ * intentionally separate: the typing-time highlight accepts any occurrence
+ * (a user might still want feedback while composing), but the submit-time
+ * detection is stricter.
+ */
+export function findUltracodeTriggerPositions(
+  text: string,
+): Array<{ word: string; start: number; end: number }> {
+  return findKeywordTriggerPositions(text, 'ultracode')
+}
+
+/** Convenience: any ultracode trigger detected in text? */
+export function isUltracodeKeywordTriggered(text: string): boolean {
+  return findUltracodeTriggerPositions(text).length > 0
 }
