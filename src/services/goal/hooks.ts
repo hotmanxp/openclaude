@@ -168,8 +168,80 @@ export function clearActiveGoal(opts: {
   })
 }
 
+function parseStopHookResult(messages: Message[]): { met: boolean; reason: string } | null {
+  // Walk messages in reverse looking for assistant messages whose content
+  // contains the hook JSON response. Message.content is a string at the
+  // TOP LEVEL of the Message type (not nested under .message) — see
+  // src/types/message.ts.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.type !== 'assistant') continue
+    const text = (typeof m.content === 'string' ? m.content : '').trim()
+    if (!text) continue
+    // Find every "met":true/false candidate, then try to extract a
+    // balanced JSON object around it. The first call uses `[\s\S]*?`
+    // non-greedy which grabs the smallest possible match — if that's an
+    // inner `}` (e.g. nested object in the reason field), JSON.parse
+    // throws and we widen the window. Loop until we either parse a
+    // valid object with `met: boolean` or run out of candidates.
+    const re = /\{[\s\S]*?"met"\s*:\s*(true|false)/g
+    let candidate: RegExpExecArray | null
+    while ((candidate = re.exec(text)) !== null) {
+      const start = candidate.index
+      // Walk forward, tracking depth, to find the matching closing `}`.
+      const end = findBalancedEnd(text, start)
+      if (end === -1) break
+      const candidateText = text.slice(start, end + 1)
+      try {
+        const parsed = JSON.parse(candidateText) as { met?: unknown; reason?: unknown }
+        if (typeof parsed.met !== 'boolean') continue
+        return { met: parsed.met, reason: typeof parsed.reason === 'string' ? parsed.reason : '' }
+      } catch {
+        // not valid JSON; the next re.exec() will try the next candidate
+      }
+    }
+  }
+  return null
+}
+
+// Walk the text from `start` (an opening `{`) to the matching `}` accounting
+// for string literals and escaped braces. Returns the index of the matching
+// `}`, or -1 if unbalanced.
+function findBalancedEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') {
+        escape = true
+        continue
+      }
+      if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
 async function handleGoalStopHook(
-  _messages: Message[],
+  messages: Message[],
   _signal: AbortSignal | undefined,
   setAppState: (updater: (prev: AppState) => AppState) => void,
   hookId: string,
@@ -182,6 +254,17 @@ async function handleGoalStopHook(
     removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
     return true // Allow stop
   }
+
+  // Parse the assistant's hook response from messages.
+  const result = parseStopHookResult(messages)
+  if (result?.met) {
+    removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
+    liveGoals.delete(hookId)
+    setAppState(prev => ({ ...prev, activeGoal: null }))
+    appendGoalStatusAttachment({ setAppState, met: true, condition: liveGoal.condition })
+    return true // Goal met — allow stop.
+  }
+
   if (liveGoal.iterations >= GOAL_MAX_ITERATIONS) {
     removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
     liveGoals.delete(hookId)

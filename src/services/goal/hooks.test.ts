@@ -197,4 +197,65 @@ describe('Stop hook callback (C1 regression)', () => {
     // Tear down so this hook doesn't leak into other tests in the file
     clearActiveGoal({ setAppState, appState: state })
   })
+
+  // Regression test for the bug where parseStopHookResult looked for
+  // m.message.content (Anthropic format) but the OpenCC Message type uses
+  // m.content (string at top level). Without this fix, the agent's goal-met
+  // response was never detected and the hook blocked stop indefinitely.
+  test('releases hook when assistant content contains {met: true} JSON (top-level content field)', async () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'all tests pass', setAppState, appState: state })
+
+    const store = state.sessionHooks.get(getSessionId())
+    const goalHookEntry = store?.hooks.Stop
+      ?.flatMap(m => m.hooks)
+      .find(h => h.hook.type === 'function' && h.hook.id?.startsWith('goal-'))
+    expect(goalHookEntry).toBeDefined()
+    const callback = (goalHookEntry!.hook as { callback: FunctionHookCallback }).callback
+
+    // Build the assistant message exactly as OpenCC stores it in the
+    // transcript: top-level `content: string` (NOT nested under .message).
+    const assistantResponse: Message = {
+      uuid: 'a1',
+      type: 'assistant',
+      content:
+        'Goal already achieved: All requested tests pass.\n\n{"met": true, "reason": "all tests pass"}',
+      timestamp: Date.now(),
+    }
+    const allowStop = await callback([assistantResponse], undefined)
+    expect(allowStop).toBe(true)
+    expect(state.activeGoal).toBeNull()
+  })
+
+  test('releases hook when assistant content has nested JSON in reason', async () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish refactor', setAppState, appState: state })
+
+    const store = state.sessionHooks.get(getSessionId())
+    const goalHookEntry = store?.hooks.Stop
+      ?.flatMap(m => m.hooks)
+      .find(h => h.hook.type === 'function' && h.hook.id?.startsWith('goal-'))
+    expect(goalHookEntry).toBeDefined()
+    const callback = (goalHookEntry!.hook as { callback: FunctionHookCallback }).callback
+
+    // Nested `}` in the reason field — the OLD regex /\{[^}]*"met"...\}/
+    // would have stopped at the inner `}` of the reason object. The NEW
+    // regex /\{[\s\S]*?"met"...\}/ uses [\s\S]*? so it works.
+    const assistantResponse: Message = {
+      uuid: 'a2',
+      type: 'assistant',
+      content:
+        '{"met": true, "reason": "{\\"text\\": \\"done\\"}"}',
+      timestamp: Date.now(),
+    }
+    const allowStop = await callback([assistantResponse], undefined)
+    expect(allowStop).toBe(true)
+    expect(state.activeGoal).toBeNull()
+  })
 })
