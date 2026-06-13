@@ -60,6 +60,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:type-tests": "bun run scripts/typecheck-type-tests.ts",
     "smoke": "bun run build && node dist/cli.mjs --version",
+    "smoke:bg-agent-view": "bash scripts/smoke-bg-agent-view.sh",
     "check": "bun run smoke && bun run typecheck:type-tests && bun run test:full",
     "verify:privacy": "bun run scripts/verify-no-phone-home.ts",
     "build:verified": "bun run build && bun run verify:privacy",
