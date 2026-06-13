@@ -35,6 +35,7 @@ import {
   encodeFrame,
   type BGRequest,
   type BGResponse,
+  type LeaseClient,
 } from '../../utils/daemon/protocol.js'
 import {
   getSockPath,
@@ -113,11 +114,10 @@ async function daemonStatus({json}: {json?: boolean}): Promise<void> {
  * jobs map is filled in by T7's `dispatch` op; leases map is populated
  * by the `lease` op.
  */
-interface DaemonState {
+export interface DaemonState {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- concrete JobRecord type lives in protocol.ts; placeholder until T7
   jobs: Map<string, any>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- concrete LeaseClient type lives in protocol.ts; placeholder until T7
-  leases: Map<string, any>
+  leases: Map<string, LeaseClient>
 }
 
 export interface SupervisorOptions {
@@ -366,6 +366,24 @@ function isBGRequest(value: object): value is BGRequest {
 
 // ---------- Op dispatch ----------
 
+/**
+ * Maximum age (ms) of a registered lease before it is considered stale and
+ * pruned from the leases map. This catches half-open connections whose
+ * peer died without emitting the kernel 'close' event (NAT timeout,
+ * container pause, crash without FIN, etc.).
+ */
+export const LEASE_TTL_MS = 60_000
+
+/**
+ * Remove any lease whose `registeredAt` is older than `LEASE_TTL_MS`.
+ * Called on every `leases` op so the next observer sees a clean map.
+ */
+export function pruneExpiredLeases(state: DaemonState, now: number): void {
+  for (const [id, lease] of state.leases) {
+    if (now - lease.registeredAt > LEASE_TTL_MS) state.leases.delete(id)
+  }
+}
+
 async function routeOp(
   req: BGRequest,
   sock: Socket,
@@ -383,22 +401,19 @@ async function routeOp(
 
     case 'lease': {
       const leaseId = randomUUID()
-      state.leases.set(leaseId, {
+      const client: LeaseClient = {
         label: req.label,
         cwd: req.cwd,
         pid: req.pid,
         registeredAt: Date.now(),
-      })
+      }
+      state.leases.set(leaseId, client)
       sock.once('close', () => state.leases.delete(leaseId))
       return writeFrame(sock, {ok: true, op: 'lease'})
     }
 
     case 'leases':
-      return writeFrame(sock, {
-        ok: true,
-        op: 'leases',
-        clients: Array.from(state.leases.values()),
-      })
+      return handleLeases(state, sock)
 
     case 'list':
       return writeFrame(sock, {ok: true, op: 'list', jobs: []})
@@ -436,6 +451,23 @@ async function routeOp(
         ),
       )
   }
+}
+
+/**
+ * `leases` op handler. Prunes expired leases (TTL guard for half-open
+ * connections) before returning the current client set.
+ */
+/**
+ * `leases` op handler. Prunes expired leases (TTL guard for half-open
+ * connections) before returning the current client set.
+ */
+export async function handleLeases(state: DaemonState, sock: Socket): Promise<void> {
+  pruneExpiredLeases(state, Date.now())
+  return writeFrame(sock, {
+    ok: true,
+    op: 'leases',
+    clients: Array.from(state.leases.values()),
+  })
 }
 
 // ---------- Response helpers ----------

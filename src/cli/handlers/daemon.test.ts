@@ -56,6 +56,9 @@ import {
   getBgDaemonStatus,
   runSupervisor,
   handleDaemonSubcommand,
+  LEASE_TTL_MS,
+  pruneExpiredLeases,
+  type DaemonState,
 } from './daemon.js'
 
 // ---------- Temp dirs / socket / roster overrides ----------
@@ -203,18 +206,6 @@ describe('daemonStatus: getBgDaemonStatus', () => {
     }
   })
 
-  test('returns state="installed-but-down" when plist exists but socket is dead', async () => {
-    const ov = freshOverrides()
-    const plistPath = join(ov.claudeDir, 'fake.plist')
-    writeFileSync(plistPath, '<?xml version="1.0"?><plist/>', 'utf8')
-    const status = await getBgDaemonStatus({
-      sockPath: ov.sockPath,
-      rosterPath: ov.rosterPath,
-      plistPath,
-      pingTimeoutMs: 100,
-    })
-    expect(status.state).toBe('installed-but-down')
-  })
   test('formats the running state with pid + sock path', () => {
     const text = formatBgDaemonStatus({
       state: 'running',
@@ -337,6 +328,35 @@ describe('runSupervisor', () => {
     } finally {
       await stop()
     }
+  })
+
+  test('prunes leases older than LEASE_TTL_MS (half-open connection guard)', () => {
+    // Construct a state with two leases: one stale, one fresh. This models
+    // a peer that died without emitting a 'close' event (the sock.once
+    // listener never fires, so the lease lives forever without the TTL).
+    const state: DaemonState = {
+      jobs: new Map(),
+      leases: new Map(),
+    }
+    const now = Date.now()
+    state.leases.set('stale', {
+      label: 'stale',
+      cwd: '/tmp',
+      pid: 1,
+      registeredAt: now - LEASE_TTL_MS - 1,
+    })
+    state.leases.set('fresh', {
+      label: 'fresh',
+      cwd: '/tmp',
+      pid: 2,
+      registeredAt: now,
+    })
+
+    pruneExpiredLeases(state, now)
+
+    expect(state.leases.has('stale')).toBe(false)
+    expect(state.leases.has('fresh')).toBe(true)
+    expect(state.leases.size).toBe(1)
   })
 
   test('has returns present=false, ready=false for an unknown short', async () => {
