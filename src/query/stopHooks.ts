@@ -45,7 +45,6 @@ import {
 } from '../services/extractMemories/extractMemories.js'
 import type { QuerySource } from '../constants/querySource.js'
 import { executeAutoDream } from '../services/autoDream/autoDream.js'
-import type { GoalEvaluationDeps } from '../services/goal/controller.js'
 import { executePromptSuggestion } from '../services/PromptSuggestion/promptSuggestion.js'
 import { isBareMode, isEnvDefinedFalsy } from '../utils/envUtils.js'
 import {
@@ -78,7 +77,6 @@ export async function* handleStopHooks(
   toolUseContext: ToolUseContext,
   querySource: QuerySource,
   stopHookActive?: boolean,
-  goalEvaluationDeps?: GoalEvaluationDeps,
   stopHookExecutionDeps?: StopHookExecutionDeps,
 ): AsyncGenerator<
   | StreamEvent
@@ -493,40 +491,6 @@ export async function* handleStopHooks(
       if (teammateBlockingErrors.length > 0) {
         return {
           blockingErrors: teammateBlockingErrors,
-          preventContinuation: false,
-          stopHookActive: false,
-        }
-      }
-    }
-
-    const activeGoal = toolUseContext.getAppState().goal
-    const terminalAssistantUuid = assistantMessages.at(-1)?.uuid
-    const isMainThreadGoalQuery =
-      !toolUseContext.agentId &&
-      typeof querySource === 'string' &&
-      (querySource === 'sdk' || querySource.startsWith('repl_main_thread'))
-    if (
-      activeGoal?.status === 'active' &&
-      isMainThreadGoalQuery &&
-      terminalAssistantUuid &&
-      activeGoal.lastEvaluatedMessageUuid !== terminalAssistantUuid
-    ) {
-      const { evaluateGoalAfterTurn } = await import(
-        '../services/goal/controller.js'
-      )
-      const goalBlockingErrors = yield* evaluateGoalAfterTurn({
-        messagesForQuery,
-        assistantMessages,
-        toolUseContext,
-        querySource,
-        deps: goalEvaluationDeps,
-      })
-      if (goalBlockingErrors.length > 0) {
-        for (const userMessage of goalBlockingErrors) {
-          yield userMessage
-        }
-        return {
-          blockingErrors: goalBlockingErrors,
           preventContinuation: false,
           stopHookActive: false,
         }
