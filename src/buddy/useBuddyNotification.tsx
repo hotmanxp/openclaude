@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import React, { useEffect } from 'react';
 import { useNotifications } from '../context/notifications.js';
@@ -6,22 +5,22 @@ import { Text } from '../ink.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { getRainbowColor } from '../utils/thinking.js';
 import { isBuddyEnabled } from './feature.js';
+import { isAntEmployee } from '../utils/buildConfig.js';
 
 // Local date, not UTC — 24h rolling wave across timezones. Sustained Twitter
 // buzz instead of a single UTC-midnight spike, gentler on soul-gen load.
 // Teaser window: April 1-7, 2026 only. Command stays live forever after.
 export function isBuddyTeaserWindow(): boolean {
+  if (isAntEmployee()) return true;
   const d = new Date();
   return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7;
 }
 export function isBuddyLive(): boolean {
+  if (isAntEmployee()) return true;
   const d = new Date();
   return d.getFullYear() > 2026 || d.getFullYear() === 2026 && d.getMonth() >= 3;
 }
-interface RainbowTextProps {
-  text: string;
-}
-function RainbowText(t0: RainbowTextProps) {
+function RainbowText(t0) {
   const $ = _c(2);
   const {
     text
@@ -39,7 +38,7 @@ function RainbowText(t0: RainbowTextProps) {
 
 // Rainbow /buddy teaser shown on startup when no companion hatched yet.
 // Idle presence and reactions are handled by CompanionSprite directly.
-function _temp(ch: string, i: number) {
+function _temp(ch, i) {
   return <Text key={i} color={getRainbowColor(i)}>{ch}</Text>;
 }
 export function useBuddyNotification() {

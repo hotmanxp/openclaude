@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { KeyboardShortcutHint } from '../components/design-system/KeyboardShortcutHint.js';
 import { Box, Text } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
+import { isAntEmployee } from './buildConfig.js';
 type Props = {
   onRun: () => void;
   onCancel: () => void;
@@ -82,7 +83,7 @@ export type AutoRunIssueReason = 'feedback_survey_bad' | 'feedback_survey_good';
  */
 export function shouldAutoRunIssue(reason: AutoRunIssueReason): boolean {
   // Only for Ant users
-  if ("external" !== 'ant') {
+  if (!isAntEmployee()) {
     return false;
   }
   switch (reason) {
@@ -101,7 +102,7 @@ export function shouldAutoRunIssue(reason: AutoRunIssueReason): boolean {
  */
 export function getAutoRunCommand(reason: AutoRunIssueReason): string {
   // Only ant builds have the /good-claude command
-  if ("external" === 'ant' && reason === 'feedback_survey_good') {
+  if (isAntEmployee() && reason === 'feedback_survey_good') {
     return '/good-claude';
   }
   return '/issue';

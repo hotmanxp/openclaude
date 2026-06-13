@@ -23,6 +23,7 @@ import { Notifications } from './Notifications.js';
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
 import { PromptInputHelpMenu } from './PromptInputHelpMenu.js';
+import { isAntEmployee } from '../../utils/buildConfig.js';
 type Props = {
   apiKeyStatus: VerificationStatus;
   debug: boolean;
@@ -129,7 +130,7 @@ function PromptInputFooter({
   useSetPromptOverlay(overlayData);
   if (suggestions.length && !isFullscreen) {
     return <Box paddingX={2} paddingY={0}>
-        <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} overlay={true} />
+        <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} />
       </Box>;
   }
   if (helpOpen) {
@@ -137,20 +138,17 @@ function PromptInputFooter({
   }
   return <>
       <Box flexDirection={isNarrow ? 'column' : 'row'} justifyContent={isNarrow ? 'flex-start' : 'space-between'} paddingX={2} gap={isNarrow ? 0 : 1}>
-        <Box flexDirection={statusLineShouldDisplay(settings) && !isNarrow ? 'row' : 'column'} flexShrink={isNarrow ? 0 : 1} alignItems={statusLineShouldDisplay(settings) && !isNarrow ? 'center' : undefined} gap={1}>
-          <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
+        <Box flexDirection="column" flexShrink={isNarrow ? 0 : 1}>
           {mode === 'prompt' && !isShort && !exitMessage.show && !isPasting && statusLineShouldDisplay(settings) && <StatusLine messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} vimMode={vimMode} />}
+          <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
         </Box>
         <Box flexShrink={1} gap={1}>
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
-          {/* @ts-ignore - build-time constant check */}
-          {"external" === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
+          {isAntEmployee() && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
-          <GoalStatusIndicator />
         </Box>
       </Box>
-      {/* @ts-ignore - build-time constant check */}
-      {"external" === 'ant' && <CoordinatorTaskPanel />}
+      {isAntEmployee() && <CoordinatorTaskPanel />}
     </>;
 }
 export default memo(PromptInputFooter);
@@ -190,21 +188,4 @@ function BridgeStatusIndicator({
       {status.label}
       {bridgeSelected && <Text dimColor> · Enter to view</Text>}
     </Text>;
-}
-
-function GoalStatusIndicator(): React.ReactNode {
-  const goal = useAppState(s => s.goal);
-
-  if (!goal || goal.status !== 'active') return null;
-
-  const durationSeconds = Math.floor((Date.now() - Date.parse(goal.startedAt)) / 1000);
-  const minutes = Math.floor(durationSeconds / 60);
-  const seconds = durationSeconds % 60;
-  const duration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-  return (
-    <Text color="suggestion" wrap="truncate">
-      ◎ /goal active ({duration})
-    </Text>
-  );
 }
