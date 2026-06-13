@@ -22,6 +22,19 @@ export function createGoalCall(deps?: {
       return { type: 'text', value: gate.message }
     }
 
+    // Status — report current goal without creating one
+    if (action === 'status') {
+      const appState = context.getAppState()
+      if (!appState.activeGoal) {
+        return { type: 'text', value: 'No goal set.' }
+      }
+      const goal = appState.activeGoal
+      return {
+        type: 'text',
+        value: `◎ Active: ${goal.condition} · ${goal.iterations} iteration${goal.iterations === 1 ? '' : 's'}`,
+      }
+    }
+
     // Clear aliases
     const CLEAR_ALIASES = new Set([
       'clear', 'stop', 'off', 'reset', 'none', 'cancel',

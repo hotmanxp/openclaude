@@ -17,6 +17,114 @@ import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
 
 /**
+ * Strip a markdown code fence (``` or ```json), if present, and return the
+ * inner text. Accepts trailing prose after the closing fence — only the
+ * content between the first opener and the matching closer is returned.
+ */
+function stripMarkdownFence(s: string): string {
+  // Match ```lang?\n ... \n``` anywhere in s
+  const fenceRe = /```(?:[a-zA-Z]+)?\s*\n([\s\S]*?)\n```/
+  const m = s.match(fenceRe)
+  return m ? m[1].trim() : s
+}
+
+/**
+ * Find the first balanced top-level `{...}` object in `s`, ignoring braces
+ * inside strings and template literals. Treats runs of 3+ backticks as a
+ * markdown fence delimiter (skipped as a unit). Returns null if no balanced
+ * object is found.
+ */
+function extractFirstBalancedObject(s: string): string | null {
+  let start = -1
+  let depth = 0
+  let inString: false | '"' | "'" | '`' = false
+  let escape = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    // Skip markdown fence runs (3+ backticks) entirely.
+    if (c === '`' && !inString) {
+      let run = 0
+      while (i < s.length && s[i] === '`') {
+        run++
+        i++
+      }
+      i-- // step back so the outer for-loop advances past the run
+      if (run >= 3) continue
+      // Single backtick outside a string still acts as a template literal
+      // delimiter for brace-counting purposes.
+      inString = '`'
+      continue
+    }
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (inString) {
+      if (c === '\\') {
+        escape = true
+        continue
+      }
+      if (c === inString) {
+        inString = false
+      }
+      continue
+    }
+    if (c === '{') {
+      if (start === -1) start = i
+      depth++
+      continue
+    }
+    if (c === '}') {
+      if (start === -1) continue
+      depth--
+      if (depth === 0) {
+        return s.slice(start, i + 1)
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Parse a prompt-hook LLM response into a JS object.
+ *
+ * LLMs (including MiniMax-M2.7-highspeed and others without structured-output
+ * beta headers) often wrap JSON in markdown fences or precede it with prose.
+ * We try three strategies in order:
+ *   1. Direct JSON.parse on the trimmed response.
+ *   2. Strip ```lang fences and retry.
+ *   3. Extract the first balanced `{...}` object from the response.
+ *
+ * Returns null when nothing parseable is found.
+ */
+export function parsePromptHookResponse(response: string): unknown | null {
+  const trimmed = response.trim()
+  if (!trimmed) return null
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // fall through
+  }
+  const unfenced = stripMarkdownFence(trimmed)
+  if (unfenced !== trimmed) {
+    try {
+      return JSON.parse(unfenced)
+    } catch {
+      // fall through
+    }
+  }
+  const balanced = extractFirstBalancedObject(trimmed)
+  if (balanced) {
+    try {
+      return JSON.parse(balanced)
+    } catch {
+      // fall through
+    }
+  }
+  return null
+}
+
+/**
  * Execute a prompt-based hook using an LLM
  */
 export async function execPromptHook(
@@ -60,6 +168,12 @@ export async function execPromptHook(
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
     try {
+      const resolvedModel = hook.model ?? getSmallFastModel()
+      logForDebugging(
+        `Hooks[execPromptHook DIAG]: hookName=${hookName} hookEvent=${hookEvent} ` +
+          `resolvedModel=${resolvedModel} outputFormat.type=json_schema ` +
+          `messagesToQuery.length=${messagesToQuery.length}`,
+      )
       const response = await queryModelWithoutStreaming({
         messages: messagesToQuery,
         systemPrompt: asSystemPrompt([
@@ -77,7 +191,7 @@ Your response must be a JSON object matching one of the following schemas:
             const appState = toolUseContext.getAppState()
             return appState.toolPermissionContext
           },
-          model: hook.model ?? getSmallFastModel(),
+          model: resolvedModel,
           toolChoice: undefined,
           isNonInteractiveSession: true,
           hasAppendSystemPrompt: false,
@@ -102,6 +216,33 @@ Your response must be a JSON object matching one of the following schemas:
 
       cleanupSignal()
 
+      // DIAG: dump raw content block shape BEFORE extracting text — if the
+      // model returned a tool_use block or wrapped JSON in code fences, this
+      // is the only place we see it.
+      try {
+        const rawBlocks = response?.message?.content
+        if (Array.isArray(rawBlocks)) {
+          const blockTypes = rawBlocks.map((b: any) => ({
+            type: b?.type,
+            hasText: typeof b?.text === 'string',
+            textPreview:
+              typeof b?.text === 'string' ? b.text.slice(0, 200) : undefined,
+            hasInput: b?.input != null,
+          }))
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: raw content blocks = ${JSON.stringify(blockTypes)}`,
+          )
+        } else {
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: raw content is not array, typeof=${typeof rawBlocks} keys=${rawBlocks ? Object.keys(rawBlocks).join(',') : 'null'}`,
+          )
+        }
+      } catch (diagErr) {
+        logForDebugging(
+          `Hooks[execPromptHook DIAG]: error dumping blocks: ${errorMessage(diagErr)}`,
+        )
+      }
+
       // Extract text content from response
       const content = extractTextContent(response.message.content)
 
@@ -111,23 +252,43 @@ Your response must be a JSON object matching one of the following schemas:
       const fullResponse = content.trim()
       logForDebugging(`Hooks: Model response: ${fullResponse}`)
 
-      const json = safeParseJSON(fullResponse)
+      let json: unknown = null
+      let parseErrMsg = ''
+      try {
+        json = JSON.parse(fullResponse)
+      } catch (parseErr) {
+        parseErrMsg = errorMessage(parseErr)
+      }
       if (!json) {
-        logForDebugging(
-          `Hooks: error parsing response as JSON: ${fullResponse}`,
-        )
-        return {
-          hook,
-          outcome: 'non_blocking_error',
-          message: createAttachmentMessage({
-            type: 'hook_non_blocking_error',
-            hookName,
-            toolUseID: effectiveToolUseID,
-            hookEvent,
-            stderr: 'JSON validation failed',
-            stdout: fullResponse,
-            exitCode: 1,
-          }),
+        // Fallback strategies for markdown-wrapped or prose-prefixed JSON
+        // (MiniMax-M2.7-highspeed and similar models without structured-output
+        // beta headers often return ```json\n{...}\n``` despite instructions).
+        const fallback = parsePromptHookResponse(fullResponse)
+        if (fallback !== null) {
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: direct JSON.parse failed (${parseErrMsg}) but parsePromptHookResponse succeeded; recovered=${JSON.stringify(fallback).slice(0, 200)}`,
+          )
+          json = fallback
+        } else {
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: all JSON.parse strategies failed; rawResponse=${JSON.stringify(fullResponse).slice(0, 500)}`,
+          )
+          logForDebugging(
+            `Hooks: error parsing response as JSON: ${fullResponse}`,
+          )
+          return {
+            hook,
+            outcome: 'non_blocking_error',
+            message: createAttachmentMessage({
+              type: 'hook_non_blocking_error',
+              hookName,
+              toolUseID: effectiveToolUseID,
+              hookEvent,
+              stderr: 'JSON validation failed',
+              stdout: fullResponse,
+              exitCode: 1,
+            }),
+          }
         }
       }
 
