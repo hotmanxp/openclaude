@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * OpenAI-compatible API shim for Claude Code.
  *
@@ -57,6 +56,9 @@ import {
   getStreamStats,
 } from '../../utils/streamingOptimizer.js'
 import { stableStringifyJson } from '../../utils/stableStringify.js'
+import { buildAnthropicUsageFromRawUsage } from './cacheMetrics.js'
+import { JSON_REPAIR_SUFFIXES } from './openaiShim/streaming.js'
+import { getLocalProviderRetryBaseUrls, shouldAttemptLocalToollessRetry } from './openaiShim/providerUtils.js'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
@@ -1094,9 +1096,9 @@ async function* geminiSseToAnthropic(
 async function* openaiStreamToAnthropic(
   response: Response,
   model: string,
-  signal?: AbortSignal,
   correlationId: string,
   startTime: number,
+  signal?: AbortSignal,
 ): AsyncGenerator<AnthropicStreamEvent> {
   // Accumulate usage across the stream. OpenAI's `include_usage` sends the
   // cumulative totals in the final chunk (after `finish_reason`), so we
@@ -1397,7 +1399,7 @@ async function* openaiStreamToAnthropic(
                   // Extract Gemini signature from extra_content
                   ...((tc.extra_content?.google as any)?.thought_signature
                     ? {
-                        signature: (tc.extra_content.google as any)
+                        signature: (tc.extra_content?.google as any)
                           .thought_signature,
                       }
                     : {}),
@@ -1624,7 +1626,7 @@ async function* openaiStreamToAnthropic(
       totalInputTokens,
       totalOutputTokens,
       true,
-      stats.firstTokenMs,
+      stats.firstTokenMs ?? undefined,
       stats.totalChunks,
       streamError,
     )
@@ -1684,7 +1686,7 @@ class OpenAIShimMessages {
     let httpResponse: Response | undefined
 
     const promise = (async () => {
-      const request = resolveProviderRequest({ model: self.providerOverride?.model ?? params.model, baseUrl: self.providerOverride?.baseURL, reasoningEffortOverride: self.reasoningEffort })
+      const request = resolveProviderRequest({ model: self.providerOverride?.model ?? params.model, baseUrl: self.providerOverride?.baseURL })
       const { response, correlationId, startTime } = await self._doRequest(request, params, options)
       httpResponse = response
 
@@ -1693,9 +1695,9 @@ class OpenAIShimMessages {
           openaiStreamToAnthropic(
             response,
             request.resolvedModel,
-            options?.signal,
             correlationId,
             startTime,
+            options?.signal,
           ),
         )
       }
@@ -1762,13 +1764,6 @@ class OpenAIShimMessages {
       messages: openaiMessages,
       stream: params.stream ?? false,
       store: false,
-    }
-    // Emit reasoning_effort for chat_completions when the resolved provider
-     // request carries a reasoning effort (set via /effort, model alias default,
-     // or `?reasoning=<level>` query on the model string). OpenAI, Codex, and
-     // most OpenAI-compatible endpoints read it from this top-level field.
-    if (request.reasoning) {
-      body.reasoning_effort = request.reasoning.effort
     }
     // Convert max_tokens to max_completion_tokens for OpenAI API compatibility.
     // Azure OpenAI requires max_completion_tokens and does not accept max_tokens.
@@ -2193,7 +2188,7 @@ class OpenAIShimMessages {
             tokensIn = data.usage?.prompt_tokens ?? 0
             tokensOut = data.usage?.completion_tokens ?? 0
           } catch { /* ignore */ }
-          logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, params.stream)
+          logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, params.stream ?? false)
           return { response, correlationId, startTime }
         }
         // Streaming path: return the response and let the generator log
@@ -2349,7 +2344,7 @@ class OpenAIShimMessages {
           ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
           // Extract Gemini signature from extra_content
           ...((tc.extra_content?.google as any)?.thought_signature
-            ? { signature: (tc.extra_content.google as any).thought_signature }
+            ? { signature: (tc.extra_content?.google as any).thought_signature }
             : {}),
         })
       }
