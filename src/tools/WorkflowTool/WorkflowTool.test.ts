@@ -456,6 +456,71 @@ describe('WORKFLOW_DESCRIPTION upstream tail (Task 3)', () => {
   })
 })
 
+describe('WORKFLOW_DESCRIPTION script-syntax section (Task 4)', () => {
+  // Task 4: the full script-syntax section from claude-code 2.1.177
+  // (binary offset 210896464\u2013210902560) must be appended verbatim so
+  // the LLM has everything it needs to author and invoke WorkflowTool
+  // without the "never invokes WorkflowTool" gap.
+  //
+  // Placeholder resolutions (from upstream binary string table):
+  //   ${TwO}\u2192""  ${qwO}\u2192""  ${KwO}\u2192"'worktree'"
+  //   ${OwO}\u2192""  ${ZVH}\u2192"subagent"
+  test('contains the verbatim script-syntax section from 2.1.177', async () => {
+    const desc = await tool.prompt()
+
+    // Script invocation pattern
+    expect(desc).toContain(
+      'Pass the script inline via `script` \u2014 do not Write it to a file first',
+    )
+    expect(desc).toContain('automatically persists its script to a file under the session directory')
+
+    // meta object requirements
+    expect(desc).toContain('Every script must begin with `export const meta = {...}`')
+    expect(desc).toContain('PURE LITERAL \u2014 no variables, function calls, spreads, or template interpolation')
+
+    // Script body hooks
+    expect(desc).toContain('Script body hooks:')
+    expect(desc).toContain('agent(prompt: string, opts?:')
+    expect(desc).toContain('pipeline(items, stage1, stage2, ...)')
+    expect(desc).toContain('parallel(thunks: Array<() => Promise<any>>)')
+    expect(desc).toContain('log(message: string): void')
+    expect(desc).toContain('phase(title: string): void')
+    expect(desc).toContain('budget: {total: number|null')
+    expect(desc).toContain('workflow(nameOrRef:')
+
+    // opts.isolation resolved to 'worktree'
+    expect(desc).toContain("opts.isolation: 'worktree'")
+
+    // ${ZVH} resolved to "subagent"
+    expect(desc).toContain('subagent name')
+
+    // DEFAULT TO pipeline() section
+    expect(desc).toContain('DEFAULT TO pipeline()')
+    expect(desc).toContain('Smell test: if you wrote')
+
+    // Quality patterns
+    expect(desc).toContain('Quality patterns \u2014 common shapes')
+    expect(desc).toContain('Adversarial verify: spawn N independent skeptics')
+    expect(desc).toContain('Perspective-diverse verify')
+    expect(desc).toContain('Loop-until-dry: for unknown-size discovery')
+    expect(desc).toContain('Multi-modal sweep: parallel agents each searching a different way')
+    expect(desc).toContain('Completeness critic')
+    expect(desc).toContain('No silent caps')
+
+    // Resume section
+    expect(desc).toContain('## Resume')
+    expect(desc).toContain('resumeFromRunId')
+    expect(desc).toContain('Date.now()/Math.random()/new Date() are unavailable in scripts')
+  })
+
+  test('WORKFLOW_DESCRIPTION total length is non-trivial after append', async () => {
+    const desc = await tool.prompt()
+    // After appending ~3800 chars of script-syntax section, the
+    // description should be well over 5000 chars total.
+    expect(desc.length).toBeGreaterThan(5000)
+  })
+})
+
 describe('WorkflowTool resumeFromRunId (Plan12 Task2: port upstream)', () => {
   test('rejects resumeFromRunId that does not match upstream regex', () => {
     // Schema-level validation: malformed run IDs are caught by the
