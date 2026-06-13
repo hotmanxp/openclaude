@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { feature } from 'bun:bundle';
@@ -62,10 +61,12 @@ type Props = {
 type SettingBase = {
   id: string;
   label: string;
+  description?: string;
 } | {
   id: string;
   label: React.ReactNode;
   searchText: string;
+  description?: string;
 };
 type Setting = (SettingBase & {
   value: boolean;
@@ -431,29 +432,8 @@ export function Config({
       });
     }
   }] : []),
-  // Speculation toggle (internal-only)
-  ...("external" === 'ant' ? [{
-    id: 'speculationEnabled',
-    label: '推测执行',
-    value: globalConfig.speculationEnabled ?? true,
-    type: 'boolean' as const,
-    onChange(enabled_2: boolean) {
-      saveGlobalConfig(current_1 => {
-        if (current_1.speculationEnabled === enabled_2) return current_1;
-        return {
-          ...current_1,
-          speculationEnabled: enabled_2
-        };
-      });
-      setGlobalConfig({
-        ...getGlobalConfig(),
-        speculationEnabled: enabled_2
-      });
-      logEvent('tengu_speculation_setting_changed', {
-        enabled: enabled_2
-      });
-    }
-  }] : []), ...(isFileCheckpointingAvailable ? [{
+  // Speculation toggle (internal-only) — disabled: not built in the external fork
+  ...([] as const), ...(isFileCheckpointingAvailable ? [{
     id: 'fileCheckpointingEnabled',
     label: '代码回溯（检查点）',
     value: globalConfig.fileCheckpointingEnabled,
