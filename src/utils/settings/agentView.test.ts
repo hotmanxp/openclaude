@@ -41,9 +41,14 @@ describe('isAgentViewEnabled', () => {
     expect(isAgentViewEnabled({ disableAgentView: true })).toBe(false)
   })
 
-  test('setting wins over env when env is unset', () => {
-    delete process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW
+  test('setting true wins over non-"1" env values (env="0")', () => {
+    process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW = '0'
     expect(isAgentViewEnabled({ disableAgentView: true })).toBe(false)
+  })
+
+  test('empty-string env var does NOT disable (strict "1" only)', () => {
+    process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW = ''
+    expect(isAgentViewEnabled({})).toBe(true)
   })
 
   test('setting wins over env when env is "0"', () => {
