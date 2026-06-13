@@ -94,6 +94,10 @@ import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import {
+  findUltracodeTriggerPositions,
+  isWorkflowKeywordTriggerEnabled,
+} from '../../utils/ultracode.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
@@ -535,6 +539,13 @@ function PromptInput({
   const ultrareviewTriggers = useMemo(() => isUltrareviewEnabled() ? findUltrareviewTriggerPositions(displayedValue) : [], [displayedValue]);
   const btwTriggers = useMemo(() => findBtwTriggerPositions(displayedValue), [displayedValue]);
   const buddyTriggers = useMemo(() => findBuddyTriggerPositions(displayedValue), [displayedValue]);
+  const ultracodeTriggers = useMemo(
+    () =>
+      isWorkflowKeywordTriggerEnabled()
+        ? findUltracodeTriggerPositions(displayedValue)
+        : [],
+    [displayedValue],
+  );
   const slashCommandTriggers = useMemo(() => {
     const positions = findSlashCommandPositions(displayedValue);
     // Only highlight valid commands
@@ -749,8 +760,24 @@ function PromptInput({
         });
       }
     }
+
+    // Rainbow for the ultracode keyword (xhigh + dynamic workflow
+    // orchestration). Mirrors ultrathink / ultraplan / ultrareview / buddy
+    // treatment — per-character cycling colors with shimmer overlay for
+    // the typing-time "dynamic" effect.
+    for (const trigger of ultracodeTriggers) {
+      for (let i = trigger.start; i < trigger.end; i++) {
+        highlights.push({
+          start: i,
+          end: i + 1,
+          color: getRainbowColor(i - trigger.start),
+          shimmerColor: getRainbowColor(i - trigger.start, true),
+          priority: 10
+        });
+      }
+    }
     return highlights;
-  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, thinkTriggers, ultraplanTriggers, ultrareviewTriggers, buddyTriggers]);
+  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, thinkTriggers, ultraplanTriggers, ultrareviewTriggers, buddyTriggers, ultracodeTriggers]);
   const {
     addNotification,
     removeNotification
@@ -791,6 +818,23 @@ function PromptInput({
       });
     }
   }, [addNotification, ultrareviewTriggers.length]);
+
+  // Show ultracode-keyword notification (mirrors upstream claude-code
+  // v2.1.173 `workflow-keyword-active` "Dynamic workflow requested for
+  // this turn" toast). Fires whenever the user has typed the keyword
+  // into the input and the trigger is enabled. Cleared on edit/delete.
+  useEffect(() => {
+    if (ultracodeTriggers.length && isWorkflowKeywordTriggerEnabled()) {
+      addNotification({
+        key: 'workflow-keyword-active',
+        text: 'Dynamic workflow requested for this turn',
+        priority: 'immediate',
+        timeoutMs: 5000
+      });
+    } else {
+      removeNotification('workflow-keyword-active');
+    }
+  }, [addNotification, removeNotification, ultracodeTriggers.length]);
 
   // Track input length for stash hint
   const prevInputLengthRef = useRef(input.length);
