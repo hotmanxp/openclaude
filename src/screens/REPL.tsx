@@ -3460,7 +3460,12 @@ export function REPL({
         getInitialSettings().workflowKeywordTriggerEnabled !== false,
       );
       if (trigger.triggered && !options?.fromKeybinding && !speculationAccept) {
-        input = trigger.rest;
+        // Tell the LLM the user opted into workflow orchestration. Upstream
+        // claude-code v2.1.173 (binary extract offset 209330714) phrases the
+        // opt-in rule as: "The user included the keyword 'ultracode' in
+        // their prompt (you'll see a system-reminder confirming it)." The
+        // WorkflowTool description also lists this as the canonical signal.
+        input = `<system-reminder>The user included the keyword "${trigger.keyword}" in their prompt — opt into the Workflow tool for this turn and follow the **Ultracode** rule.</system-reminder>\n\n${trigger.rest}`;
       }
     }
 
