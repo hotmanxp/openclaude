@@ -475,15 +475,6 @@ export type AppState = DeepImmutable<{
   // Races against local UI + bridge + hooks + classifier via claim() in
   // interactiveHandler.ts. Constructed once in useManageMCPConnections.
   channelPermissionCallbacks?: ChannelPermissionCallbacks
-  // Tracks the ultracode effort meta-reminder state for the current session.
-  // lastEnterTurnIndex: the turn index on which ultra_effort_enter last fired.
-  //   null = no enter has fired this session (or last action was an exit).
-  // pendingReminder: 'enter' | 'exit' | null — set by effort command to signal
-  //   REPL to prepend the appropriate meta reminder at the start of the next turn.
-  ultracodeReminder: {
-    lastEnterTurnIndex: number | null
-    pendingReminder: 'enter' | 'exit' | null
-  }
 }
 
 export type AppStateStore = Store<AppState>
@@ -598,9 +589,5 @@ export function getDefaultAppState(): AppState {
     activeOverlays: new Set<string>(),
     fastMode: false,
     activeGoal: null,
-    ultracodeReminder: {
-      lastEnterTurnIndex: null,
-      pendingReminder: null,
-    },
   }
 }

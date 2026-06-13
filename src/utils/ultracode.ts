@@ -113,37 +113,8 @@ export function isUltracodeKeywordTriggered(text: string): boolean {
  * (binary extract offset 212614885) where the reminder is a separate
  * `isMeta: true` user message rather than an inline user-input prefix.
  */
-/**
- * The verbatim upstream reminder text delivered as a meta message when the
- * keyword trigger fires. Mirrors upstream claude-code v2.1.177's behavior
- * (binary extract offset 212614885) where the reminder is a separate
- * `isMeta: true` user message rather than an inline user-input prefix.
- */
 const KEYWORD_TURN_REMINDER =
   'The user included the keyword "ultracode", opting this turn into multi-agent orchestration — use the Workflow tool to fulfill the request.'
-
-/**
- * Meta reminder text for ultra_effort_enter(full) — fired when /effort ultracode
- * is set and this is the first enter in the session (or last action was an exit).
- * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
- */
-export const ULTRACODE_EFFORT_ENTER_FULL =
-  'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\u2019s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.'
-
-/**
- * Meta reminder text for ultra_effort_enter(short) — fired when /effort ultracode
- * is re-entered after a prior enter (i.e. user toggled off then back on).
- * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
- */
-export const ULTRACODE_EFFORT_ENTER_SHORT =
-  'Ultracode is still on — use the Workflow tool; see its Ultracode section.'
-
-/**
- * Meta reminder text for ultra_effort_exit — fired when ultracode is turned off.
- * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
- */
-export const ULTRACODE_EFFORT_EXIT =
-  'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.'
 
 /**
  * Builds the userInput and metaMessages for a keyword-triggered turn.
