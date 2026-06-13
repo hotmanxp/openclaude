@@ -160,6 +160,39 @@ describe('FrameReader', () => {
   test('BG_MAX_FRAME_BYTES is 1_048_576 (1 MiB)', () => {
     expect(BG_MAX_FRAME_BYTES).toBe(1_048_576)
   })
+
+  // Issue #1 fix: kind byte must be 0 (payload) or 1 (ctrl).
+  test('throws when frame kind byte is not 0 or 1', () => {
+    const reader = new FrameReader(() => {})
+    const bad = Buffer.alloc(6)
+    bad.writeUInt32BE(1, 0) // body length 1
+    bad.writeUInt8(2, 4)    // kind byte 2 — invalid
+    bad.writeUInt8(0x41, 5) // 'A'
+    expect(() => reader.feed(bad)).toThrow(/frame kind byte must be/i)
+  })
+
+  test('throws when frame kind byte is 255', () => {
+    const reader = new FrameReader(() => {})
+    const bad = Buffer.alloc(6)
+    bad.writeUInt32BE(1, 0)
+    bad.writeUInt8(255, 4)
+    bad.writeUInt8(0x41, 5)
+    expect(() => reader.feed(bad)).toThrow(/frame kind byte must be/i)
+  })
+
+  test('accepts frame with kind byte 0 (payload)', () => {
+    const out = encodeFrame({ kind: 0, body: Buffer.from('payload') })
+    const frames = collect([out])
+    expect(frames.length).toBe(1)
+    expect(frames[0].kind).toBe(0)
+  })
+
+  test('accepts frame with kind byte 1 (ctrl)', () => {
+    const out = encodeFrame({ kind: 1, body: Buffer.from('ctrl') })
+    const frames = collect([out])
+    expect(frames.length).toBe(1)
+    expect(frames[0].kind).toBe(1)
+  })
 })
 
 // ---------- Constants ----------
@@ -792,6 +825,53 @@ describe('BGResponseOkSchema', () => {
     expect(() =>
       BGResponseOkSchema.parse({ ok: false, op: 'ping' }),
     ).toThrow()
+  })
+
+  // Issue #2: minimal ops stay minimal; extras ops require extras.
+  test('rejects list response without jobs array', () => {
+    expect(() =>
+      BGResponseOkSchema.parse({ ok: true, op: 'list' }),
+    ).toThrow(/expected array.*received undefined|Jobs/i)
+  })
+
+  test('rejects leases response without clients array', () => {
+    expect(() =>
+      BGResponseOkSchema.parse({ ok: true, op: 'leases' }),
+    ).toThrow(/expected array.*received undefined|clients/i)
+  })
+
+  test('rejects has response without present/ready', () => {
+    expect(() =>
+      BGResponseOkSchema.parse({ ok: true, op: 'has', short: 'abcd1234' }),
+    ).toThrow()
+  })
+
+  test('rejects has response with non-boolean present', () => {
+    expect(() =>
+      BGResponseOkSchema.parse({
+        ok: true,
+        op: 'has',
+        short: 'abcd1234',
+        present: 'yes',
+        ready: true,
+      }),
+    ).toThrow()
+  })
+
+  test('accepts dispatch as minimal {ok, op}', () => {
+    const r = BGResponseOkSchema.parse({ ok: true, op: 'dispatch' })
+    expect(r.ok).toBe(true)
+    expect(r.op).toBe('dispatch')
+  })
+
+  test('accepts attach as minimal {ok, op}', () => {
+    const r = BGResponseOkSchema.parse({ ok: true, op: 'attach' })
+    expect(r.op).toBe('attach')
+  })
+
+  test('accepts shutdown as minimal {ok, op}', () => {
+    const r = BGResponseOkSchema.parse({ ok: true, op: 'shutdown' })
+    expect(r.op).toBe('shutdown')
   })
 })
 

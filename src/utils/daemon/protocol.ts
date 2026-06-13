@@ -25,8 +25,14 @@ export const BG_MAX_FRAME_BYTES = 1_048_576
 
 // ---------- Frame codec ----------
 
+/**
+ * On-wire frame kind bytes. Anything other than 0/1 in the kind slot is
+ * treated as a fatal protocol error by {@link FrameReader}.
+ */
+export const FRAME_KIND = {payload: 0, ctrl: 1} as const
+
 /** Frame kind: 0 = payload (JSON), 1 = ctrl (reserved). */
-export type FrameKind = 0 | 1
+export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND]
 
 export interface Frame {
   kind: FrameKind
@@ -86,7 +92,13 @@ export class FrameReader {
       throw new Error(`frame too large: ${len} bytes (max ${BG_MAX_FRAME_BYTES})`)
     }
     if (this.buffer.length < 5 + len) return false
-    const kind = this.buffer.readUInt8(4) as FrameKind
+    const kindByte = this.buffer.readUInt8(4)
+    if (kindByte !== FRAME_KIND.payload && kindByte !== FRAME_KIND.ctrl) {
+      throw new Error(
+        `frame kind byte must be ${FRAME_KIND.payload} (payload) or ${FRAME_KIND.ctrl} (ctrl), got ${kindByte}`,
+      )
+    }
+    const kind = kindByte as FrameKind
     // Copy the body out so the caller can retain it past the next `feed()`.
     const body = Buffer.from(this.buffer.subarray(5, 5 + len))
     this.buffer = this.buffer.subarray(5 + len)
@@ -372,46 +384,55 @@ export type BGRequestOp = BGRequest['op']
 /**
  * Success-branch response. Each op-specific shape unions with a base
  * `{ok:true, op}` so unknown ops are rejected by the literal op field.
+ *
+ * The 3 ops with extras (`list` → jobs, `leases` → clients, `has` →
+ * short/present/ready) are listed explicitly. The remaining 15 ops
+ * collapse to a single minimal `{ok:true, op}` shape via `BGBaseOkShape`.
  */
+const BGBaseOkShape = { ok: z.literal(true) } as const
+
 export const BGResponseOkSchema = z.discriminatedUnion('op', [
-  z.object({ ok: z.literal(true), op: z.literal('ping') }),
-  z.object({ ok: z.literal(true), op: z.literal('nudge') }),
-  z.object({ ok: z.literal(true), op: z.literal('yield') }),
-  z.object({ ok: z.literal(true), op: z.literal('lease') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('ping') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('nudge') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('yield') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('lease') }),
   z.object({
-    ok: z.literal(true),
+    ...BGBaseOkShape,
     op: z.literal('leases'),
     clients: z.array(LeaseClientSchema),
   }),
-  z.object({ ok: z.literal(true), op: z.literal('await-ack') }),
-  z.object({ ok: z.literal(true), op: z.literal('dispatch') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('await-ack') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('dispatch') }),
   z.object({
-    ok: z.literal(true),
+    ...BGBaseOkShape,
     op: z.literal('list'),
     jobs: z.array(JobRecordSchema),
   }),
   z.object({
-    ok: z.literal(true),
+    ...BGBaseOkShape,
     op: z.literal('has'),
     short: JobShortIdSchema,
     present: z.boolean(),
     ready: z.boolean(),
   }),
-  z.object({ ok: z.literal(true), op: z.literal('kill') }),
-  z.object({ ok: z.literal(true), op: z.literal('reply') }),
-  z.object({ ok: z.literal(true), op: z.literal('subscribe') }),
-  z.object({ ok: z.literal(true), op: z.literal('attach') }),
-  z.object({ ok: z.literal(true), op: z.literal('resize') }),
-  z.object({ ok: z.literal(true), op: z.literal('ensure-spare') }),
-  z.object({
-    ok: z.literal(true),
-    op: z.literal('permission-response'),
-  }),
-  z.object({ ok: z.literal(true), op: z.literal('respawn-stale') }),
-  z.object({ ok: z.literal(true), op: z.literal('shutdown') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('kill') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('reply') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('subscribe') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('attach') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('resize') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('ensure-spare') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('permission-response') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('respawn-stale') }),
+  z.object({ ...BGBaseOkShape, op: z.literal('shutdown') }),
 ])
 
 export type BGResponseOk = z.infer<typeof BGResponseOkSchema>
+
+/** Convenience: ops whose success response carries extras beyond `{ok, op}`. */
+export type BGResponseExtras = 'leases' | 'list' | 'has'
+
+export type BGResponseOkPayload<Op extends BGRequestOp = BGRequestOp> =
+  Op extends BGResponseExtras ? BGResponseOk & {op: Op} : {ok: true; op: Op}
 
 /**
  * Failure-branch response. `error` is human-readable; `code` is the
