@@ -35,7 +35,12 @@ function parseFeatureFlags(buildTsPath: string): Set<string> {
   return trueFlags
 }
 
-const featureCallRe = /\bfeature\(\s*['"](\w+)['"]/g
+// Match feature('FLAG') and feature("FLAG") calls, including multi-line
+// forms such as feature(\n  'FLAG',\n). The `s` flag lets `.` cross
+// newlines so we can match through the closing `)`. To compute the
+// call's source line we count `\n` in the content slice *before* the
+// match offset.
+const featureCallRe = /\bfeature\(\s*['"](\w+)['"][\s,]*\)/gs
 
 function walkDir(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out
@@ -54,17 +59,15 @@ const violations: Array<{ file: string; line: number; flag: string }> = []
 for (const file of walkDir(srcRoot)) {
   const rel = file.replace(REPO_ROOT + '/', '')
   if (rel.includes('__tests__') || rel.endsWith('.test.ts') || rel.endsWith('.test.tsx')) continue
-  const lines = readFileSync(file, 'utf-8').split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!
-    let m: RegExpExecArray | null
-    featureCallRe.lastIndex = 0
-    while ((m = featureCallRe.exec(line)) !== null) {
-      const flag = m[1]!
-      if (trueFlags.has(flag)) {
-        violations.push({ file: rel, line: i + 1, flag })
-      }
-    }
+  const content = readFileSync(file, 'utf-8')
+  let m: RegExpExecArray | null
+  featureCallRe.lastIndex = 0
+  while ((m = featureCallRe.exec(content)) !== null) {
+    const flag = m[1]!
+    if (!trueFlags.has(flag)) continue
+    // Line number = number of newlines before the match offset, plus 1.
+    const line = content.slice(0, m.index).split('\n').length
+    violations.push({ file: rel, line, flag })
   }
 }
 

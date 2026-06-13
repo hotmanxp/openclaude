@@ -28,4 +28,21 @@ describe('check-feature-solidify', () => {
     expect(result.status).toBe(0)
     rmSync(tmp, { recursive: true })
   })
+
+  test('flags multi-line feature(\'HISTORY_SNIP\')', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'check-fs-'))
+    writeFileSync(join(tmp, 'multi.ts'), `feature(\n  'HISTORY_SNIP',\n)\n`)
+    const result = spawnSync('bun', [SCRIPT, '--src', tmp], { encoding: 'utf-8' })
+    expect(result.status).toBe(1)
+    expect(result.stdout).toMatch(/HISTORY_SNIP/)
+    rmSync(tmp, { recursive: true })
+  })
+
+  test('does NOT flag KAIROS_BRIEF (not in dict)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'check-fs-'))
+    writeFileSync(join(tmp, 'k.ts'), `if (feature('KAIROS_BRIEF')) {}\n`)
+    const result = spawnSync('bun', [SCRIPT, '--src', tmp], { encoding: 'utf-8' })
+    expect(result.status).toBe(0)
+    rmSync(tmp, { recursive: true })
+  })
 })
