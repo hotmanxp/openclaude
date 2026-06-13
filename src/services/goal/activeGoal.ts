@@ -3,6 +3,11 @@ export type ActiveGoal = {
   iterations: number
   setAt: number
   tokensAtStart: number
+  // When set, the goal has been achieved and the UI shows the summary
+  // ("✔ Goal achieved (...)") for a short confirmation window. Cleared by
+  // a timer in clearActiveGoal so the footer pill eventually disappears.
+  achievedAt?: number
+  tokensAtEnd?: number
 }
 
 export function createActiveGoal(

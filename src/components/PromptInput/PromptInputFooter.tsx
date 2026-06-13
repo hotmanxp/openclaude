@@ -1,6 +1,13 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { memo, type ReactNode, useMemo, useRef } from 'react';
+import {
+  memo,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
@@ -13,6 +20,7 @@ import type { MCPServerConnection } from '../../services/mcp/types.js';
 import { useAppState } from '../../state/AppState.js';
 import type { ToolPermissionContext } from '../../Tool.js';
 import type { Message } from '../../types/message.js';
+import { formatTokenCount } from './goalFormat.js';
 import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
@@ -192,16 +200,43 @@ function BridgeStatusIndicator({
 }
 function GoalStatusIndicator(): React.ReactNode {
   const goal = useAppState(s => s.activeGoal);
+  // 1Hz tick to keep the elapsed-seconds display fresh while the goal is
+  // active. Skipped once the goal transitions to the achieved summary
+  // (frozen duration, no need to re-render).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!goal || goal.achievedAt) return;
+    const id = setInterval(() => setTick(t => (t + 1) % 1_000_000), 1000);
+    return () => clearInterval(id);
+  }, [goal?.achievedAt]);
 
   if (!goal) return null;
 
-  const iterText = goal.iterations === 1
-    ? '1 iteration'
-    : `${goal.iterations} iterations`;
+  // Achieved summary: `✔ Goal achieved (Xs · Y turn(s) · Zk tokens)`. The
+  // `iterations` field counts Stop-hook rejections; if it's still 0 the
+  // LLM approved on first try, so we show "1 turn" as the floor.
+  if (goal.achievedAt) {
+    const durSec = Math.max(
+      0,
+      Math.round((goal.achievedAt - goal.setAt) / 1000),
+    );
+    const turns = goal.iterations > 0 ? goal.iterations : 1;
+    const turnText = turns === 1 ? '1 turn' : `${turns} turns`;
+    const tokens = Math.max(0, (goal.tokensAtEnd ?? 0) - goal.tokensAtStart);
+    return (
+      <Text color="suggestion" wrap="truncate">
+        ✔ Goal achieved ({durSec}s · {turnText} · {formatTokenCount(tokens)}{' '}
+        tokens)
+      </Text>
+    );
+  }
 
+  // Active: `◎ /goal active (Ns)`, ticking every second.
+  const durSec = Math.max(0, Math.floor((Date.now() - goal.setAt) / 1000));
   return (
     <Text color="suggestion" wrap="truncate">
-      ◎ /goal active · {iterText} · stop-hook
+      ◎ /goal active ({durSec}s)
     </Text>
   );
 }
+

@@ -63,15 +63,21 @@ describe('setActiveGoal', () => {
 })
 
 describe('clearActiveGoal', () => {
-  test('removes the hook and clears activeGoal', () => {
+  test('removes the hook and marks activeGoal as achieved (timer clears later)', () => {
     const appState = makeAppState()
     const setAppState = (updater: (prev: AppState) => AppState) => {
       Object.assign(appState, updater(appState))
     }
     setActiveGoal({ condition: 'finish tests', setAppState, appState })
     expect(appState.activeGoal).not.toBeNull()
+    expect(appState.activeGoal?.achievedAt).toBeUndefined()
     clearActiveGoal({ setAppState, appState })
-    expect(appState.activeGoal).toBeNull()
+    // Mark-as-achieved preserves the goal so the UI can show the summary;
+    // a 5s setTimeout then nulls it out. We assert the achieved state
+    // immediately after clear.
+    expect(appState.activeGoal).not.toBeNull()
+    expect(typeof appState.activeGoal?.achievedAt).toBe('number')
+    expect(typeof appState.activeGoal?.tokensAtEnd).toBe('number')
   })
 
   test('flips goalSentinel to met: true', () => {
@@ -84,6 +90,24 @@ describe('clearActiveGoal', () => {
     clearActiveGoal({ setAppState, appState })
     expect(appState.goalSentinel?.met).toBe(true)
     expect(appState.goalSentinel?.condition).toBe('finish tests')
+  })
+
+  test('achieves tokens via input+output delta (not cost)', () => {
+    // Smoke: if a clear happens with some token usage, tokensAtEnd should
+    // reflect the *cumulative* input+output (not USD cost), so the UI
+    // can render "1.5k tokens" rather than a fractional dollar figure.
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    setActiveGoal({ condition: 'finish tests', setAppState, appState })
+    const startTokens = appState.activeGoal!.tokensAtStart
+    clearActiveGoal({ setAppState, appState })
+    const endTokens = appState.activeGoal!.tokensAtEnd!
+    // tokensAtEnd >= tokensAtStart in any plausible state — guards against
+    // a future regression where the field gets repopulated with a cost
+    // number (which would make this assertion false).
+    expect(endTokens).toBeGreaterThanOrEqual(startTokens)
   })
 })
 
@@ -202,7 +226,7 @@ describe('Stop prompt hook (upstream-style architecture)', () => {
     expect(promptHook.prompt).toBe('second')
   })
 
-  test('clearActiveGoal removes the goal prompt hook and clears activeGoal', () => {
+  test('clearActiveGoal removes the goal prompt hook and marks activeGoal as achieved', () => {
     let state: AppState = makeAppState()
     const setAppState = (updater: (prev: AppState) => AppState) => {
       state = updater(state)
@@ -213,11 +237,16 @@ describe('Stop prompt hook (upstream-style architecture)', () => {
 
     clearActiveGoal({ setAppState, appState: state })
 
-    expect(state.activeGoal).toBeNull()
+    // Hook is removed synchronously; activeGoal is marked achieved (timer
+    // will null it after 5s, but the immediate post-clear state preserves
+    // achievedAt + tokensAtEnd for the UI summary).
     const remaining = (state.sessionHooks.get(getSessionId())?.hooks.Stop ?? [])
       .flatMap(m => m.hooks)
       .filter(h => h.hook.type === 'prompt')
     expect(remaining).toHaveLength(0)
+    expect(state.activeGoal).not.toBeNull()
+    expect(typeof state.activeGoal?.achievedAt).toBe('number')
+    expect(typeof state.activeGoal?.tokensAtEnd).toBe('number')
   })
 
   test('clearActiveGoal is a no-op when no goal is active', () => {

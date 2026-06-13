@@ -1,4 +1,7 @@
-import { getTotalCost } from '../../cost-tracker.js'
+import {
+  getTotalInputTokens,
+  getTotalOutputTokens,
+} from '../../cost-tracker.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
@@ -104,10 +107,13 @@ export function setActiveGoal(opts: {
   appState: AppState
 }): { goal: ActiveGoal } {
   const sessionId = getSessionId()
-  // tokensAtStart is populated via getTotalCost() per the user decision
-  // 2026-06-12 — matches upstream v2.1.173 activeGoal shape and Task 1's
-  // ActiveGoal type.
-  const goal = createActiveGoal(opts.condition, getTotalCost())
+  // tokensAtStart records input+output token count at goal-set time so the
+  // "Goal achieved" footer can show tokens consumed during the goal. The
+  // earlier implementation used getTotalCost() (USD) which was a unit-mix
+  // bug — the field is now in tokens to match its name and downstream use.
+  const tokensAtStart =
+    getTotalInputTokens() + getTotalOutputTokens()
+  const goal = createActiveGoal(opts.condition, tokensAtStart)
 
   // 1. Clear any prior goal Stop prompt hooks (idempotent — `/goal X` while
   //    one is already active should swap, not stack).
@@ -167,8 +173,16 @@ export function clearActiveGoal(opts: {
     }
   }
 
-  // 2. Clear activeGoal
-  opts.setAppState(prev => ({ ...prev, activeGoal: null }))
+  // 2. Mark as achieved (so the UI shows "✔ Goal achieved (Xs · Y turn ·
+  //    Zk tokens)" for a brief confirmation window) and schedule a clear.
+  //    We do NOT null activeGoal immediately — the indicator needs the
+  //    achievedAt + tokensAtEnd to render the summary.
+  const achievedAt = Date.now()
+  const tokensAtEnd = getTotalInputTokens() + getTotalOutputTokens()
+  opts.setAppState(prev => ({
+    ...prev,
+    activeGoal: { ...existing, achievedAt, tokensAtEnd },
+  }))
 
   // 3. Append sentinel attachment (met) for transcript restore
   appendGoalStatusAttachment({
@@ -176,6 +190,18 @@ export function clearActiveGoal(opts: {
     met: true,
     condition: existing.condition,
   })
+
+  // 4. Schedule the achieved window to clear so the footer pill eventually
+  //    disappears. The 5s window matches how /command status indicators
+  //    auto-dismiss elsewhere in the TUI.
+  const ACHIEVED_DISPLAY_MS = 5000
+  setTimeout(() => {
+    opts.setAppState(prev =>
+      prev.activeGoal?.achievedAt === achievedAt
+        ? { ...prev, activeGoal: null }
+        : prev,
+    )
+  }, ACHIEVED_DISPLAY_MS)
 }
 
 function appendGoalStatusAttachment(opts: {
