@@ -352,8 +352,8 @@ export function generateCommandSuggestions(
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
 
-    // Take top 5 recently used skills
-    for (const item of commandsWithScores.slice(0, 5)) {
+    // Take top 25 recently used skills
+    for (const item of commandsWithScores.slice(0, 25)) {
       recentlyUsed.push(item.cmd)
     }
 
