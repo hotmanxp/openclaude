@@ -81,7 +81,7 @@ export type ClaudeCodeStats = {
   // Speculation time saved
   totalSpeculationTimeSavedMs: number
 
-  // [SHOT_STATS] was: internal-only, gated by SHOT_STATS feature flag
+  // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
   // Shot stats
   shotDistribution?: { [shotCount: number]: number }
   oneShotRate?: number
@@ -129,7 +129,7 @@ async function processSessionFiles(
   let totalMessages = 0
   let totalSpeculationTimeSavedMs = 0
   const modelUsageAgg: { [modelName: string]: ModelUsage } = {}
-  // [SHOT_STATS] was: feature('SHOT_STATS') ? new Map() : undefined
+  // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
   const shotDistributionMap = new Map<number, number>()
   // Track parent sessions that already recorded a shot count (dedup across subagents)
   const sessionsWithShotCount = new Set<string>()
@@ -211,7 +211,7 @@ async function processSessionFiles(
       // Extract shot count from PR attribution in gh pr create calls (internal-only)
       // This must run before the sidechain filter since subagent transcripts
       // mark all messages as sidechain
-      // [SHOT_STATS] was: feature('SHOT_STATS') &&
+      // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
       if (shotDistributionMap) {
         const parentSessionId = isSubagentFile
           ? basename(dirname(dirname(sessionFile)))
@@ -365,7 +365,7 @@ async function processSessionFiles(
     hourCounts: Object.fromEntries(hourCounts),
     totalMessages,
     totalSpeculationTimeSavedMs,
-    // [SHOT_STATS] was: feature('SHOT_STATS') && shotDistributionMap ? {...} : {}
+    // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
     ...(shotDistributionMap
       ? { shotDistribution: Object.fromEntries(shotDistributionMap) }
       : {}),
@@ -612,7 +612,7 @@ function cacheToStats(
     totalSpeculationTimeSavedMs,
   }
 
-  // [SHOT_STATS] was: if (feature('SHOT_STATS')) { ... }
+  // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
   const shotDistribution: { [shotCount: number]: number } = {
     ...(cache.shotDistribution || {}),
   }
@@ -830,7 +830,7 @@ function processedStatsToClaudeCodeStats(
     totalSpeculationTimeSavedMs: stats.totalSpeculationTimeSavedMs,
   }
 
-  // [SHOT_STATS] was: if (feature('SHOT_STATS') && stats.shotDistribution)
+  // [SHOT_STATS] was: feature-gated by SHOT_STATS flag (now unconditional; see e883827a)
   if (stats.shotDistribution) {
     result.shotDistribution = stats.shotDistribution
     const totalWithShots = Object.values(stats.shotDistribution).reduce(
