@@ -167,6 +167,23 @@ export async function execPromptHook(
     const { signal: combinedSignal, cleanup: cleanupSignal } =
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
+    // First-attempt system prompt. The `Retry` variant below is more
+    // aggressive — used when the first response isn't parseable JSON.
+    const FIRST_SYSTEM_PROMPT = `You are evaluating a hook in Open CC.
+
+Your response must be a JSON object matching one of the following schemas:
+1. If the condition is met, return: {"ok": true}
+2. If the condition is not met, return: {"ok": false, "reason": "Reason for why it is not met"}`
+
+    const RETRY_SYSTEM_PROMPT = `You are evaluating a hook in Open CC. Your previous response could not be parsed as JSON.
+
+CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
+- Return ONLY the JSON object, with NO surrounding prose, NO markdown code fences, NO leading/trailing text.
+- Output exactly: {"ok": true}  OR  {"ok": false, "reason": "..."}
+- Do not include greetings, explanations, or anything outside the braces.`
+
+    const MAX_ATTEMPTS = 2
+
     try {
       const resolvedModel = hook.model ?? getSmallFastModel()
       logForDebugging(
@@ -174,122 +191,163 @@ export async function execPromptHook(
           `resolvedModel=${resolvedModel} outputFormat.type=json_schema ` +
           `messagesToQuery.length=${messagesToQuery.length}`,
       )
-      const response = await queryModelWithoutStreaming({
-        messages: messagesToQuery,
-        systemPrompt: asSystemPrompt([
-          `You are evaluating a hook in Open CC.
 
-Your response must be a JSON object matching one of the following schemas:
-1. If the condition is met, return: {"ok": true}
-2. If the condition is not met, return: {"ok": false, "reason": "Reason for why it is not met"}`,
-        ]),
-        thinkingConfig: { type: 'disabled' as const },
-        tools: toolUseContext.options.tools,
-        signal: combinedSignal,
-        options: {
-          async getToolPermissionContext() {
-            const appState = toolUseContext.getAppState()
-            return appState.toolPermissionContext
-          },
-          model: resolvedModel,
-          toolChoice: undefined,
-          isNonInteractiveSession: true,
-          hasAppendSystemPrompt: false,
-          agents: [],
-          querySource: 'hook_prompt',
-          mcpTools: [],
-          agentId: toolUseContext.agentId,
-          outputFormat: {
-            type: 'json_schema',
-            schema: {
-              type: 'object',
-              properties: {
-                ok: { type: 'boolean' },
-                reason: { type: 'string' },
-              },
-              required: ['ok'],
-              additionalProperties: false,
-            },
-          },
-        },
-      })
+      let json: unknown = null
+      let lastRawResponse = ''
+      let lastParseErr = ''
+      let succeededOnAttempt = 0
 
-      cleanupSignal()
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        if (signal.aborted) break
 
-      // DIAG: dump raw content block shape BEFORE extracting text — if the
-      // model returned a tool_use block or wrapped JSON in code fences, this
-      // is the only place we see it.
-      try {
-        const rawBlocks = response?.message?.content
-        if (Array.isArray(rawBlocks)) {
-          const blockTypes = rawBlocks.map((b: any) => ({
-            type: b?.type,
-            hasText: typeof b?.text === 'string',
-            textPreview:
-              typeof b?.text === 'string' ? b.text.slice(0, 200) : undefined,
-            hasInput: b?.input != null,
-          }))
+        const systemPrompt =
+          attempt === 1 ? FIRST_SYSTEM_PROMPT : RETRY_SYSTEM_PROMPT
+        if (attempt > 1) {
           logForDebugging(
-            `Hooks[execPromptHook DIAG]: raw content blocks = ${JSON.stringify(blockTypes)}`,
-          )
-        } else {
-          logForDebugging(
-            `Hooks[execPromptHook DIAG]: raw content is not array, typeof=${typeof rawBlocks} keys=${rawBlocks ? Object.keys(rawBlocks).join(',') : 'null'}`,
+            `Hooks[execPromptHook DIAG]: retrying with stronger prompt (attempt ${attempt}/${MAX_ATTEMPTS}); previousRawResponse=${JSON.stringify(lastRawResponse).slice(0, 200)}`,
           )
         }
-      } catch (diagErr) {
+
+        const response = await queryModelWithoutStreaming({
+          messages: messagesToQuery,
+          systemPrompt: asSystemPrompt([systemPrompt]),
+          thinkingConfig: { type: 'disabled' as const },
+          tools: toolUseContext.options.tools,
+          signal: combinedSignal,
+          options: {
+            async getToolPermissionContext() {
+              const appState = toolUseContext.getAppState()
+              return appState.toolPermissionContext
+            },
+            model: resolvedModel,
+            toolChoice: undefined,
+            isNonInteractiveSession: true,
+            hasAppendSystemPrompt: false,
+            agents: [],
+            querySource: 'hook_prompt',
+            mcpTools: [],
+            agentId: toolUseContext.agentId,
+            outputFormat: {
+              type: 'json_schema',
+              schema: {
+                type: 'object',
+                properties: {
+                  ok: { type: 'boolean' },
+                  reason: { type: 'string' },
+                },
+                required: ['ok'],
+                additionalProperties: false,
+              },
+            },
+          },
+        })
+
+        // DIAG: dump raw content block shape BEFORE extracting text — if the
+        // model returned a tool_use block or wrapped JSON in code fences, this
+        // is the only place we see it.
+        try {
+          const rawBlocks = response?.message?.content
+          if (Array.isArray(rawBlocks)) {
+            const blockTypes = rawBlocks.map((b: any) => ({
+              type: b?.type,
+              hasText: typeof b?.text === 'string',
+              textPreview:
+                typeof b?.text === 'string'
+                  ? b.text.slice(0, 200)
+                  : undefined,
+              hasInput: b?.input != null,
+            }))
+            logForDebugging(
+              `Hooks[execPromptHook DIAG]: attempt ${attempt} raw content blocks = ${JSON.stringify(blockTypes)}`,
+            )
+          } else {
+            logForDebugging(
+              `Hooks[execPromptHook DIAG]: attempt ${attempt} raw content is not array, typeof=${typeof rawBlocks}`,
+            )
+          }
+        } catch (diagErr) {
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: error dumping blocks: ${errorMessage(diagErr)}`,
+          )
+        }
+
+        // Extract text content from response
+        const content = extractTextContent(response.message.content)
+
+        // Update response length for spinner display
+        toolUseContext.setResponseLength(length => length + content.length)
+
+        const fullResponse = content.trim()
         logForDebugging(
-          `Hooks[execPromptHook DIAG]: error dumping blocks: ${errorMessage(diagErr)}`,
+          `Hooks[execPromptHook DIAG]: attempt ${attempt} model response: ${fullResponse}`,
+        )
+
+        // Strategy 1: direct JSON.parse
+        let parsedJson: unknown = null
+        let parseErrMsg = ''
+        try {
+          parsedJson = JSON.parse(fullResponse)
+        } catch (parseErr) {
+          parseErrMsg = errorMessage(parseErr)
+        }
+
+        // Strategy 2: 3-level parsePromptHookResponse (markdown fence strip,
+        // balanced-brace extraction). Recovers `` ```json\n{...}\n``` `` and
+        // prose-prefixed JSON for MiniMax-M2.7-highspeed and similar models
+        // without structured-outputs beta headers.
+        if (parsedJson === null) {
+          const recovered = parsePromptHookResponse(fullResponse)
+          if (recovered !== null) {
+            logForDebugging(
+              `Hooks[execPromptHook DIAG]: attempt ${attempt} direct JSON.parse failed (${parseErrMsg}) but parsePromptHookResponse succeeded; recovered=${JSON.stringify(recovered).slice(0, 200)}`,
+            )
+            parsedJson = recovered
+          }
+        }
+
+        if (parsedJson !== null) {
+          json = parsedJson
+          lastRawResponse = fullResponse
+          lastParseErr = parseErrMsg
+          succeededOnAttempt = attempt
+          break
+        }
+
+        // All strategies failed for this attempt. Remember the response for
+        // the retry's diagnostic log, then either retry or fall through to
+        // the failure handler below.
+        lastRawResponse = fullResponse
+        lastParseErr = parseErrMsg
+        logForDebugging(
+          `Hooks[execPromptHook DIAG]: attempt ${attempt} all JSON.parse strategies failed; parseErr=${parseErrMsg}; rawResponse=${JSON.stringify(fullResponse).slice(0, 500)}`,
         )
       }
 
-      // Extract text content from response
-      const content = extractTextContent(response.message.content)
+      cleanupSignal()
 
-      // Update response length for spinner display
-      toolUseContext.setResponseLength(length => length + content.length)
-
-      const fullResponse = content.trim()
-      logForDebugging(`Hooks: Model response: ${fullResponse}`)
-
-      let json: unknown = null
-      let parseErrMsg = ''
-      try {
-        json = JSON.parse(fullResponse)
-      } catch (parseErr) {
-        parseErrMsg = errorMessage(parseErr)
-      }
       if (!json) {
-        // Fallback strategies for markdown-wrapped or prose-prefixed JSON
-        // (MiniMax-M2.7-highspeed and similar models without structured-output
-        // beta headers often return ```json\n{...}\n``` despite instructions).
-        const fallback = parsePromptHookResponse(fullResponse)
-        if (fallback !== null) {
-          logForDebugging(
-            `Hooks[execPromptHook DIAG]: direct JSON.parse failed (${parseErrMsg}) but parsePromptHookResponse succeeded; recovered=${JSON.stringify(fallback).slice(0, 200)}`,
-          )
-          json = fallback
-        } else {
-          logForDebugging(
-            `Hooks[execPromptHook DIAG]: all JSON.parse strategies failed; rawResponse=${JSON.stringify(fullResponse).slice(0, 500)}`,
-          )
-          logForDebugging(
-            `Hooks: error parsing response as JSON: ${fullResponse}`,
-          )
-          return {
-            hook,
-            outcome: 'non_blocking_error',
-            message: createAttachmentMessage({
-              type: 'hook_non_blocking_error',
-              hookName,
-              toolUseID: effectiveToolUseID,
-              hookEvent,
-              stderr: 'JSON validation failed',
-              stdout: fullResponse,
-              exitCode: 1,
-            }),
-          }
+        logForDebugging(
+          `Hooks: error parsing response as JSON after ${MAX_ATTEMPTS} attempts: ${lastRawResponse}`,
+        )
+        return {
+          hook,
+          outcome: 'non_blocking_error',
+          message: createAttachmentMessage({
+            type: 'hook_non_blocking_error',
+            hookName,
+            toolUseID: effectiveToolUseID,
+            hookEvent,
+            stderr: 'JSON validation failed',
+            stdout: lastRawResponse,
+            exitCode: 1,
+          }),
         }
+      }
+
+      if (succeededOnAttempt > 1) {
+        logForDebugging(
+          `Hooks[execPromptHook DIAG]: succeeded on attempt ${succeededOnAttempt} (retry path recovered)`,
+        )
       }
 
       const parsed = hookResponseSchema().safeParse(json)
