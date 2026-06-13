@@ -216,21 +216,19 @@ function SpinnerWithVerbInner({
 
   // Budget text (internal-only) — shown above the tip line
   let budgetText: string | null = null;
-  if (feature('TOKEN_BUDGET')) {
-    const budget = getCurrentTurnTokenBudget();
-    if (budget !== null && budget > 0) {
-      const tokens = getTurnOutputTokens();
-      if (tokens >= budget) {
-        budgetText = `Target: ${formatNumber(tokens)} used (${formatNumber(budget)} min ${figures.tick})`;
-      } else {
-        const pct = Math.round(tokens / budget * 100);
-        const remaining = budget - tokens;
-        const rate = elapsedSnapshot > 5000 && tokens >= 2000 ? tokens / elapsedSnapshot : 0;
-        const eta = rate > 0 ? ` \u00B7 ~${formatDuration(remaining / rate, {
-          mostSignificantOnly: true
-        })}` : '';
-        budgetText = `Target: ${formatNumber(tokens)} / ${formatNumber(budget)} (${pct}%)${eta}`;
-      }
+  const budget = getCurrentTurnTokenBudget();
+  if (budget !== null && budget > 0) {
+    const tokens = getTurnOutputTokens();
+    if (tokens >= budget) {
+      budgetText = `Target: ${formatNumber(tokens)} used (${formatNumber(budget)} min ${figures.tick})`;
+    } else {
+      const pct = Math.round(tokens / budget * 100);
+      const remaining = budget - tokens;
+      const rate = elapsedSnapshot > 5000 && tokens >= 2000 ? tokens / elapsedSnapshot : 0;
+      const eta = rate > 0 ? ` \u00B7 ~${formatDuration(remaining / rate, {
+        mostSignificantOnly: true
+      })}` : '';
+      budgetText = `Target: ${formatNumber(tokens)} / ${formatNumber(budget)} (${pct}%)${eta}`;
     }
   }
   return <Box flexDirection="column" width="100%" alignItems="flex-start">
