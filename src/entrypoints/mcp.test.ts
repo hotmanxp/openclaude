@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { afterAll, describe, it, expect, mock } from 'bun:test'
-import { getCombinedTools, loadReexposedMcpTools } from './mcp.js'
 import type { Tool as InternalTool } from '../Tool.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'

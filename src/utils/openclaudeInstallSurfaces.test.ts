@@ -2,6 +2,7 @@ import { afterEach, expect, mock, test } from 'bun:test'
 import * as fsPromises from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import * as realEnvUtils from './envUtils.js'
 
 const originalEnv = { ...process.env }
 const originalMacro = (globalThis as Record<string, unknown>).MACRO
@@ -67,6 +68,7 @@ test.skip('cleanupNpmInstallations removes both openclaude and legacy claude loc
   }))
 
   mock.module('./envUtils.js', () => ({
+    ...realEnvUtils,
     getClaudeConfigHomeDir: () => join(homedir(), '.claude'),
     isEnvTruthy: (value: string | undefined) => value === '1',
   }))
