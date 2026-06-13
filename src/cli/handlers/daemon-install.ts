@@ -383,13 +383,37 @@ async function isProcessDead(sockPath: string): Promise<boolean> {
 }
 
 /**
- * Has the user installed the LaunchAgent? Reads the plist file's
- * existence from disk; we don't ping `launchctl print` here because
- * that requires a running daemon (and is slower).
+ * Has the user installed the LaunchAgent?
+ *
+ * Two checks per the T6 spec:
+ *   1. The plist file exists at the configured path.
+ *   2. launchd has actually loaded the agent (`launchctl print gui/<uid>/<label>`).
+ *
+ * The second check catches the stale-plist case: a user may have manually
+ * `launchctl bootout`'d the agent (or the launchd override may have been
+ * cleared) while the plist remains on disk. Without the launchctl
+ * check, status helpers would falsely report the agent as installed.
+ *
+ * Returns false on non-darwin hosts and on any launchctl error. The
+ * function is async because `launchctl print` is an external spawn.
  */
-export function isInstalled(): boolean {
+export async function isInstalled(): Promise<boolean> {
   if (platform !== 'darwin') return false
-  return existsSync(getPlistPath())
+  if (!existsSync(getPlistPath())) return false
+  // Plist is on disk; verify launchd actually loaded it. `process.getuid`
+  // is darwin-only — guard defensively in case this ever runs on a
+  // platform that lacks it.
+  const uid = process.getuid?.()
+  if (uid === undefined) return false
+  try {
+    const result = await runLaunchctl(['print', `gui/${uid}/${LAUNCH_AGENT_LABEL}`])
+    return result.ok
+  } catch {
+    // Defensive: runLaunchctl currently never throws, but a future
+    // implementation might. Treat any throw as "not installed" so the
+    // caller never gets stranded.
+    return false
+  }
 }
 
 // ---------- Test hooks ----------

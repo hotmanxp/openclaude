@@ -199,9 +199,9 @@ describe('non-darwin rejection', () => {
     expect(result.error).toMatch(/service install not available/i)
   })
 
-  test('isInstalled returns false on non-darwin', () => {
+  test('isInstalled returns false on non-darwin', async () => {
     if (platform === 'darwin') return
-    expect(isInstalled()).toBe(false)
+    expect(await isInstalled()).toBe(false)
   })
 })
 
@@ -444,7 +444,10 @@ describe('isInstalled (darwin path)', () => {
       const fakePlist = join(ov, 'fake.plist')
       writeFileSync(fakePlist, '<plist/>', 'utf8')
       __test__.setPlistPath(fakePlist)
-      expect(isInstalled()).toBe(true)
+      // Non-darwin: isInstalled short-circuits to false before checking
+      // the plist or launchctl, so we can't exercise the positive path
+      // here. Skip rather than false-positive.
+      expect(await isInstalled()).toBe(false)
       __test__.reset()
     } else {
       // On real darwin we can't safely clobber LAUNCH_AGENT_PATH, so
@@ -459,8 +462,95 @@ describe('isInstalled (darwin path)', () => {
     const ov = freshDir()
     const fakePlist = join(ov, 'never-created.plist')
     __test__.setPlistPath(fakePlist)
-    expect(isInstalled()).toBe(false)
+    expect(await isInstalled()).toBe(false)
     __test__.reset()
+  })
+
+  // Spec gap: T6 spec said "stat plist + check launchctl print" but the
+  // first impl only checked plist existence. The next three tests lock
+  // the new behavior in.
+  test('returns true when plist exists and launchctl print exits 0 (darwin-stubbed)', async () => {
+    if (platform !== 'darwin') {
+      // Non-darwin: isInstalled short-circuits to false; we can't reach
+      // the launchctl branch. Skip rather than false-positive.
+      expect(true).toBe(true)
+      return
+    }
+    const {__test__} = await import('./daemon-install.js')
+    const ov = freshDir()
+    const fakePlist = join(ov, 'fake.plist')
+    writeFileSync(fakePlist, '<plist/>', 'utf8')
+    __test__.setPlistPath(fakePlist)
+    const stub = vi.fn(async (_args: string[]) => ({
+      ok: true,
+      stdout: '',
+      stderr: '',
+    }))
+    __test__.setRunLaunchctl(stub)
+    try {
+      expect(await isInstalled()).toBe(true)
+      expect(stub).toHaveBeenCalledTimes(1)
+      const callArgs = stub.mock.calls[0]?.[0]
+      expect(callArgs?.[0]).toBe('print')
+      expect(callArgs?.[1]).toMatch(/^gui\/\d+\//)
+      expect(callArgs?.[1]).toContain(LAUNCH_AGENT_LABEL)
+    } finally {
+      __test__.reset()
+    }
+  })
+
+  test('returns false when plist exists but launchctl print exits non-zero', async () => {
+    if (platform !== 'darwin') {
+      // Non-darwin: isInstalled short-circuits to false; we can't reach
+      // the launchctl branch. Skip rather than false-positive.
+      expect(true).toBe(true)
+      return
+    }
+    const {__test__} = await import('./daemon-install.js')
+    const ov = freshDir()
+    const fakePlist = join(ov, 'fake.plist')
+    writeFileSync(fakePlist, '<plist/>', 'utf8')
+    __test__.setPlistPath(fakePlist)
+    const stub = vi.fn(async (_args: string[]) => ({
+      ok: false,
+      error: 'launchctl exited 36: Not loaded',
+      stdout: '',
+      stderr: 'Not loaded',
+    }))
+    __test__.setRunLaunchctl(stub)
+    try {
+      expect(await isInstalled()).toBe(false)
+      expect(stub).toHaveBeenCalledTimes(1)
+    } finally {
+      __test__.reset()
+    }
+  })
+
+  test('returns false when plist does not exist (no launchctl call)', async () => {
+    if (platform !== 'darwin') {
+      // Non-darwin: isInstalled short-circuits to false; we can't reach
+      // the launchctl branch. Skip rather than false-positive.
+      expect(true).toBe(true)
+      return
+    }
+    const {__test__} = await import('./daemon-install.js')
+    const ov = freshDir()
+    const fakePlist = join(ov, 'never-created.plist')
+    __test__.setPlistPath(fakePlist)
+    const stub = vi.fn(async (_args: string[]) => ({
+      ok: true,
+      stdout: '',
+      stderr: '',
+    }))
+    __test__.setRunLaunchctl(stub)
+    try {
+      expect(await isInstalled()).toBe(false)
+      // launchctl must NOT be called when the plist is absent — that
+      // would be wasteful (and racy with concurrent installs).
+      expect(stub).toHaveBeenCalledTimes(0)
+    } finally {
+      __test__.reset()
+    }
   })
 })
 
