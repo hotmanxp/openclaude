@@ -1574,7 +1574,6 @@ async function* queryLoop(
         toolUseContext,
         querySource,
         stopHookActive,
-        deps.goalEvaluationDeps,
         deps.stopHookExecutionDeps,
       )
 
