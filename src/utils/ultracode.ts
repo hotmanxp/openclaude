@@ -102,3 +102,53 @@ export function findUltracodeTriggerPositions(
 export function isUltracodeKeywordTriggered(text: string): boolean {
   return findUltracodeTriggerPositions(text).length > 0
 }
+
+/**
+ * The verbatim upstream reminder text delivered as a meta message when the
+ * keyword trigger fires. Mirrors upstream claude-code v2.1.177's behavior
+ * (binary extract offset 212614885) where the reminder is a separate
+ * `isMeta: true` user message rather than an inline user-input prefix.
+ */
+const KEYWORD_TURN_REMINDER =
+  'The user included the keyword "ultracode", opting this turn into multi-agent orchestration — use the Workflow tool to fulfill the request.'
+
+/**
+ * Builds the userInput and metaMessages for a keyword-triggered turn.
+ *
+ * When the keyword trigger fires (trigger.triggered === true), returns:
+ *   - userInput: just the raw remainder (trigger.rest), with NO
+ *     <system-reminder> prefix and NO concatenation
+ *   - metaMessages: a single isMeta:true user message containing the
+ *     verbatim upstream reminder text
+ *
+ * When the trigger is not active (trigger.triggered === false), returns
+ * the input unchanged with no meta messages.
+ *
+ * This separates the user-facing input from the model-facing meta reminder,
+ * matching upstream claude-code v2.1.177's delivery mechanism.
+ */
+export function buildKeywordTurnRequest(
+  input: string,
+  trigger: { triggered: boolean; keyword: string; rest: string },
+): {
+  userInput: string
+  metaMessages: Array<{
+    type: 'user'
+    content: Array<{ type: 'text'; text: string }>
+    isMeta: true
+  }>
+} {
+  if (!trigger.triggered) {
+    return { userInput: input, metaMessages: [] }
+  }
+  return {
+    userInput: trigger.rest,
+    metaMessages: [
+      {
+        type: 'user',
+        content: [{ type: 'text', text: KEYWORD_TURN_REMINDER }],
+        isMeta: true,
+      },
+    ],
+  }
+}

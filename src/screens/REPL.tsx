@@ -233,7 +233,7 @@ const UndercoverAutoCallout = IS_ANT_EMPLOYEE ? require('../components/Undercove
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
-import { detectUltracodeTrigger } from '../utils/ultracode.js';
+import { buildKeywordTurnRequest, detectUltracodeTrigger } from '../utils/ultracode.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { MCPConnectionManager } from 'src/services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from 'src/components/FeedbackSurvey/useFeedbackSurvey.js';
@@ -3451,7 +3451,7 @@ export function REPL({
     // strip the prefix from the input and forward the remainder to the model
     // — the WorkflowTool description tells the LLM when to invoke it, so the
     // remaining text becomes a free-form task description. This mirrors
-    // upstream claude-code v2.1.160's behavior where the trigger is a pure
+    // upstream claude-code v2.1.177's behavior where the trigger is a pure
     // user-facing convention; the LLM-facing surface is the tool itself.
     {
       const trigger = detectUltracodeTrigger(
@@ -3460,13 +3460,49 @@ export function REPL({
         getInitialSettings().workflowKeywordTriggerEnabled !== false,
       );
       if (trigger.triggered && !options?.fromKeybinding && !speculationAccept) {
-        // Tell the LLM the user opted into workflow orchestration. Upstream
-        // claude-code v2.1.173 (binary extract offset 209330714) phrases the
-        // opt-in rule as: "The user included the keyword 'ultracode' in
-        // their prompt (you'll see a system-reminder confirming it)." The
-        // WorkflowTool description also lists this as the canonical signal.
-        input = `<system-reminder>The user included the keyword "${trigger.keyword}" in their prompt — opt into the Workflow tool for this turn and follow the **Ultracode** rule.</system-reminder>\n\n${trigger.rest}`;
+        // Deliver the keyword reminder as a verbatim isMeta:true message rather
+        // than inlining it into the user input string. Upstream claude-code
+        // v2.1.177 (binary extract offset 212614885) uses this separate-meta-
+        // message pattern.
+        const result = buildKeywordTurnRequest(input, trigger);
+        input = result.userInput;
+        // Prepend meta messages to the current turn so they land in the same
+        // API context as the user input (handlePromptSubmit passes messages
+        // derived from input to onQuery; having meta in messagesRef.current
+        // before that call ensures they're visible to processUserInput).
+        if (result.metaMessages.length > 0) {
+          setMessages(oldMessages => [...result.metaMessages, ...oldMessages]);
+        }
       }
+    }
+
+    // ── Keyword-trigger integration helper ──────────────────────────────────
+    // Exported for unit-testing without rendering the full REPL. Encapsulates
+    // the integration contract: buildKeywordTurnRequest is called and its
+    // meta messages are prepended to the current turn via setMessages before
+    // the user input is submitted. Returns the result for caller to use.
+    function applyKeywordTrigger(
+      input: string,
+      trigger: { triggered: boolean; keyword: string; rest: string },
+      setMessages: (
+        fn: (
+          old: Array<{
+            type: string
+            content: Array<{ type: string; text: string }>
+            isMeta?: true
+          }>,
+        ) => Array<{
+          type: string
+          content: Array<{ type: string; text: string }>
+          isMeta?: true
+        }>,
+      ) => void,
+    ) {
+      const result = buildKeywordTurnRequest(input, trigger)
+      if (result.metaMessages.length > 0) {
+        setMessages(oldMessages => [...result.metaMessages, ...oldMessages])
+      }
+      return result
     }
 
     // Remote mode: skip empty input early before any state mutations
