@@ -146,6 +146,7 @@ function PromptInputFooter({
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
           {isAntEmployee() && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
+          <GoalStatusIndicator />
         </Box>
       </Box>
       {isAntEmployee() && <CoordinatorTaskPanel />}
@@ -188,4 +189,19 @@ function BridgeStatusIndicator({
       {status.label}
       {bridgeSelected && <Text dimColor> · Enter to view</Text>}
     </Text>;
+}
+function GoalStatusIndicator(): React.ReactNode {
+  const goal = useAppState(s => s.activeGoal);
+
+  if (!goal) return null;
+
+  const iterText = goal.iterations === 1
+    ? '1 iteration'
+    : `${goal.iterations} iterations`;
+
+  return (
+    <Text color="suggestion" wrap="truncate">
+      ◎ /goal active · {iterText} · stop-hook
+    </Text>
+  );
 }
