@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { PassThrough } from 'node:stream'
 import { stripVTControlCharacters as stripAnsi } from 'node:util'
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import React from 'react'
 import { createRoot } from '../../ink.js'
 import { TerminalSizeContext } from '../../ink/components/TerminalSizeContext.js'
@@ -17,11 +17,22 @@ mock.module('../../utils/cwd.js', () => ({
   runWithCwdOverride: (cwd: string, fn: () => unknown) => fn(),
 }))
 
-// Force useMainLoopModel to return null so the '(no model)' fallback branch
-// in StartupHeader is exercised. Without this mock the real hook resolves a
-// default model (e.g. MiniMax-M2.7-highspeed) and the null branch is dead.
+// Mock useMainLoopModel with a state-aware factory.
+//
+// Why mock at all? The (no model) fallback in StartupHeader.tsx is
+// unreachable through the real hook — `parseUserSpecifiedModel` always
+// returns a non-empty string, so `useMainLoopModel` never returns null.
+// The only way to exercise `modelDisplay = '(no model)'` is to override
+// the hook. bun:test's `mock.module()` is file-scoped and `mock.restore()`
+// does not undo module overrides (per Bun docs), so the mock cannot be
+// removed partway through the file. The factory below reads the current
+// model from a shared test-state object. Tests 1/2/4 set a real model
+// (via the default renderHeader argument); Test 3 sets
+// `currentModel = null` and verifies the (no model) branch.
+const testState: { currentModel: string | null } = { currentModel: 'claude-sonnet-4-6' }
+
 mock.module('../../hooks/useMainLoopModel.js', () => ({
-  useMainLoopModel: () => null,
+  useMainLoopModel: () => testState.currentModel,
 }))
 
 ;(globalThis as { MACRO?: { VERSION?: string; DISPLAY_VERSION?: string } }).MACRO = {
@@ -84,14 +95,26 @@ async function renderHeader(columns: number): Promise<string> {
   return stripAnsi(extractLastFrame(getOutput()))
 }
 
+afterEach(() => {
+  testState.currentModel = 'claude-sonnet-4-6'
+})
+
 describe('StartupHeader (Claude-style)', () => {
   test('renders mascot + brand + version + model + cwd at 80 cols', async () => {
+    testState.currentModel = 'claude-sonnet-4-6'
     const frame = await renderHeader(80)
     expect(frame).toContain('▐▛███▜▌')  // mascot head
     expect(frame).toContain('▝▜█████▛▘') // mascot body
     expect(frame).toContain('OpenCC')
     expect(frame).toContain('v0.11.1-test')
     expect(frame).toContain('/Users/test/code/opencc')
+    // Strengthen the model assertion: the header must render the real
+    // model (claude-sonnet-4-6 -> "Sonnet 4.6" via renderModelSetting),
+    // NOT the (no model) fallback. The original module-level mock
+    // forced every test down the null branch and Test 1 silently passed
+    // because it didn't check the model line.
+    expect(frame).toContain('Sonnet 4.6')
+    expect(frame).not.toContain('(no model)')
   })
 
   test('does not render Codex-style artifacts', async () => {
@@ -103,6 +126,7 @@ describe('StartupHeader (Claude-style)', () => {
   })
 
   test('falls back to (no model) when mainLoopModel is null', async () => {
+    testState.currentModel = null
     const frame = await renderHeader(80)
     expect(frame).toContain('(no model)')
   })
