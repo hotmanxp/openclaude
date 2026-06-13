@@ -1,4 +1,5 @@
 import { getInitialSettings } from './settings/settings.js'
+import { isUltracodeReminderOn } from './ultracodeReminder.js'
 import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
 
 /**
@@ -11,7 +12,10 @@ import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
  * behavior across the runtime.
  */
 export function isUltracodeActive(): boolean {
-  return getInitialSettings().ultracode === true
+  // Check the state machine first (reflects runtime changes from /effort command).
+  // Fall back to settings for cold-start: if ultracode was set in a prior
+  // session and the user hasn't run /effort yet this session.
+  return isUltracodeReminderOn() || getInitialSettings().ultracode === true
 }
 
 /**
@@ -109,8 +113,47 @@ export function isUltracodeKeywordTriggered(text: string): boolean {
  * (binary extract offset 212614885) where the reminder is a separate
  * `isMeta: true` user message rather than an inline user-input prefix.
  */
+/**
+ * The verbatim upstream reminder text delivered as a meta message when the
+ * keyword trigger fires. Mirrors upstream claude-code v2.1.177's behavior
+ * (binary extract offset 212614885) where the reminder is a separate
+ * `isMeta: true` user message rather than an inline user-input prefix.
+ */
 const KEYWORD_TURN_REMINDER =
   'The user included the keyword "ultracode", opting this turn into multi-agent orchestration — use the Workflow tool to fulfill the request.'
+
+/**
+ * Meta reminder text for ultra_effort_enter(full) — fired when /effort ultracode
+ * is set and this is the first enter in the session (or last action was an exit).
+ * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
+ */
+export const ULTRACODE_EFFORT_ENTER_FULL =
+  'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\'s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.'
+
+/**
+ * Meta reminder text for ultra_effort_enter(short) — fired when /effort ultracode
+ * is re-entered after a prior enter (i.e. user toggled off then back on).
+ * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
+ */
+export const ULTRACODE_EFFORT_ENTER_SHORT =
+  'Ultracode is still on — use the Workflow tool; see its Ultracode section.'
+
+/**
+ * Meta reminder text for ultra_effort_exit — fired when ultracode is turned off.
+ * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
+ */
+export const ULTRACODE_EFFORT_EXIT =
+  'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.'
+
+/**
+ * Builds the effort enter/exit meta message shape for queueUltracodeEffortReminder.
+ * Returns the message content array matching the isMeta message format.
+ */
+function buildEffortMetaMessage(
+  text: string,
+): Array<{ type: 'text'; text: string }> {
+  return [{ type: 'text', text }]
+}
 
 /**
  * Builds the userInput and metaMessages for a keyword-triggered turn.
@@ -150,5 +193,71 @@ export function buildKeywordTurnRequest(
         isMeta: true,
       },
     ],
+  }
+}
+
+/**
+ * Queue an ultra_effort_enter or ultra_effort_exit meta reminder to be
+ * prepended to the messages state for the current LLM turn.
+ *
+ * - event='enter': enqueues FULL reminder if lastEnterTurnIndex is null
+ *   (first time OR last action was an exit), otherwise SHORT reminder.
+ *   Sets lastEnterTurnIndex = currentTurnIndex.
+ * - event='exit': enqueues EXIT reminder. Sets lastEnterTurnIndex = null.
+ * - event='enter' with isCurrentlyOn === true: no-op (guard).
+ *
+ * Returns the updated lastEnterTurnIndex so the caller can persist it.
+ *
+ * The isMeta message format mirrors buildKeywordTurnRequest:
+ *   { type: 'user', content: [{ type: 'text', text: '...' }], isMeta: true }
+ */
+export function queueUltracodeEffortReminder(
+  event: 'enter' | 'exit',
+  isCurrentlyOn: boolean,
+  currentTurnIndex: number,
+  lastEnterTurnIndex: number | null,
+  setMessages: (
+    fn: (
+      old: Array<{
+        type: string
+        content: Array<{ type: string; text: string }>
+        isMeta?: true
+      }>,
+    ) => Array<{
+      type: string
+      content: Array<{ type: string; text: string }>
+      isMeta?: true
+    }>,
+  ) => void,
+  setLastEnterTurnIndex: (n: number | null) => void,
+): { lastEnterTurnIndex: number | null } {
+  // Guard: enter when already on should not happen via normal toggle flow
+  if (event === 'enter' && isCurrentlyOn) {
+    return { lastEnterTurnIndex }
+  }
+
+  if (event === 'enter') {
+    const text =
+      lastEnterTurnIndex === null
+        ? ULTRACODE_EFFORT_ENTER_FULL
+        : ULTRACODE_EFFORT_ENTER_SHORT
+    const metaMessage = {
+      type: 'user' as const,
+      content: buildEffortMetaMessage(text),
+      isMeta: true as const,
+    }
+    setMessages(oldMessages => [metaMessage, ...oldMessages])
+    setLastEnterTurnIndex(currentTurnIndex)
+    return { lastEnterTurnIndex: currentTurnIndex }
+  } else {
+    // event === 'exit'
+    const metaMessage = {
+      type: 'user' as const,
+      content: buildEffortMetaMessage(ULTRACODE_EFFORT_EXIT),
+      isMeta: true as const,
+    }
+    setMessages(oldMessages => [metaMessage, ...oldMessages])
+    setLastEnterTurnIndex(null)
+    return { lastEnterTurnIndex: null }
   }
 }

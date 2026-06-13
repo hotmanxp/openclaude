@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach, mock, afterEach } from 'bun:test';
 import * as M from './effort.js';
 import { executeEffort, setEffortValue } from './effort.js';
+import { resetUltracodeReminderState } from '../../utils/ultracodeReminder.js';
 
 // Complete mock of `settings.js` — must include EVERY export the production
 // code (directly or transitively) imports, otherwise a downstream test file
@@ -45,6 +46,9 @@ describe('effort (import smoke)', () => {
 describe('effort /ultracode', () => {
   beforeEach(() => {
     mock.restore();
+    // Reset module-level reminder state so tests are independent regardless
+    // of test file ordering in the full suite run.
+    resetUltracodeReminderState();
     // setEffortValue("ultracode") now validates workflows-enabled + model
     // supports ultracode before writing settings. These tests exercise the
     // happy path / settings-write path, so default both checks to "pass".
@@ -115,9 +119,114 @@ describe('effort /ultracode', () => {
   });
 });
 
+describe('effort /ultracode meta messages', () => {
+  beforeEach(() => {
+    mock.restore();
+    // Reset module-level reminder state so tests are independent
+    resetUltracodeReminderState();
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('setEffortValue("ultracode") first time returns FULL enter meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      const result = mod.setEffortValue('ultracode');
+      expect(result.metaMessages).toEqual([
+        'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\'s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.',
+      ]);
+    });
+  });
+
+  test('setEffortValue("ultracode") second time returns SHORT enter meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      mod.setEffortValue('ultracode'); // first
+      const result = mod.setEffortValue('ultracode'); // second
+      expect(result.metaMessages).toEqual([
+        'Ultracode is still on — use the Workflow tool; see its Ultracode section.',
+      ]);
+    });
+  });
+
+  test('setEffortValue("low") after ultracode was on returns EXIT meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      mod.setEffortValue('ultracode'); // enter
+      const result = mod.setEffortValue('low'); // exit via low
+      expect(result.metaMessages).toEqual([
+        'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.',
+      ]);
+    });
+  });
+
+  test('setEffortValue("low") when ultracode is already off returns no meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      const result = mod.setEffortValue('low');
+      expect(result.metaMessages).toBeUndefined();
+    });
+  });
+
+  test('executeEffort("auto") after ultracode was on returns EXIT meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      mod.setEffortValue('ultracode'); // enter
+      const result = mod.executeEffort('auto'); // exit via auto
+      expect(result.metaMessages).toEqual([
+        'Ultracode is off — the Workflow tool\'s standard opt-in rule applies again.',
+      ]);
+    });
+  });
+
+  test('executeEffort("auto") when ultracode is already off returns no meta message', () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
+      resetUltracodeReminderState();
+      const result = mod.executeEffort('auto');
+      expect(result.metaMessages).toBeUndefined();
+    });
+  });
+});
+
 describe('effort /ultracode validation', () => {
   beforeEach(() => {
     mock.restore();
+    // Reset module-level reminder state so tests are independent regardless
+    // of test file ordering in the full suite run.
+    resetUltracodeReminderState();
     // Default to "everything valid" so individual tests can flip the bits
     // they care about. Tests that exercise validation override these.
     mock.module('../../utils/envUtils.js', () => ({

@@ -4,18 +4,22 @@ import * as React from 'react';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import type { LocalJSXCommandOnDone } from '../../types/command.js';
+import type { LocalJSXCommandOnDone, LocalJSXCommandContext } from '../../types/command.js';
 import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, isOpenAIEffortLevel, modelSupportsUltracode, modelUsesOpenAIEffort, openAIEffortToStandard, toPersistableEffort } from '../../utils/effort.js';
 import { EffortPicker } from '../../components/EffortPicker.js';
-import { updateSettingsForSource } from '../../utils/settings/settings.js';
+import { getInitialSettings, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { isWorkflowsDisabled } from '../../utils/envUtils.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
+import { isUltracodeActive } from '../../utils/ultracode.js';
+import { queueUltracodeReminder } from '../../utils/ultracodeReminder.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
   message: string;
   effortUpdate?: {
     value: EffortValue | undefined;
   };
+  /** Meta messages (model-visible, user-hidden) to inject into the current turn. */
+  metaMessages?: string[];
 };
 export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   // /effort ultracode flips the session-level ultracode toggle (not
@@ -38,6 +42,8 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
         message: `Ultracode runs at xhigh effort, which requires an opus-4-6+ family model. Current model: ${model}. Valid options are: low, medium, high, xhigh, max, auto`,
       };
     }
+    // Queue the enter reminder (full or short depending on state machine state)
+    const metaMessages = queueUltracodeReminder('enter');
     const ultracodeResult = updateSettingsForSource('userSettings', {
       ultracode: true
     });
@@ -53,9 +59,19 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
       message: 'Set effort level to ultracode (this session only): xhigh + dynamic workflow orchestration. Workflows are now standing — substantive tasks will use the Workflow tool by default.',
       effortUpdate: {
         value: 'ultracode'
-      }
+      },
+      metaMessages,
     };
   }
+
+  // Non-ultracode effort level: if ultracode was on, emit exit reminder
+  // and clear the ultracode session toggle alongside the new effort level.
+  let metaMessages: string[] | undefined;
+  if (isUltracodeActive()) {
+    metaMessages = queueUltracodeReminder('exit');
+    updateSettingsForSource('userSettings', { ultracode: false });
+  }
+
   const persistable = toPersistableEffort(effortValue);
   if (persistable !== undefined) {
     const result = updateSettingsForSource('userSettings', {
@@ -98,7 +114,8 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     message: `Set effort level to ${effortValue}${suffix}: ${description}`,
     effortUpdate: {
       value: effortValue
-    }
+    },
+    metaMessages,
   };
 }
 export function showCurrentEffort(appStateEffort: EffortValue | undefined, model: string): EffortCommandResult {
@@ -116,6 +133,12 @@ export function showCurrentEffort(appStateEffort: EffortValue | undefined, model
   };
 }
 function unsetEffortLevel(): EffortCommandResult {
+  // If ultracode was on, emit exit reminder and clear it.
+  let metaMessages: string[] | undefined;
+  if (isUltracodeActive()) {
+    metaMessages = queueUltracodeReminder('exit');
+    updateSettingsForSource('userSettings', { ultracode: false });
+  }
   const result = updateSettingsForSource('userSettings', {
     effortLevel: undefined
   });
@@ -143,7 +166,8 @@ function unsetEffortLevel(): EffortCommandResult {
     message: 'Effort level set to auto',
     effortUpdate: {
       value: undefined
-    }
+    },
+    metaMessages,
   };
 }
 export function executeEffort(args: string): EffortCommandResult {
@@ -178,7 +202,7 @@ function _temp(s) {
   return s.effortValue;
 }
 function ApplyEffortAndClose(t0) {
-  const $ = _c(6);
+  const $ = _c(7);
   const {
     result,
     onDone
@@ -186,11 +210,12 @@ function ApplyEffortAndClose(t0) {
   const setAppState = useSetAppState();
   const {
     effortUpdate,
-    message
+    message,
+    metaMessages,
   } = result;
   let t1;
   let t2;
-  if ($[0] !== effortUpdate || $[1] !== message || $[2] !== onDone || $[3] !== setAppState) {
+  if ($[0] !== effortUpdate || $[1] !== message || $[2] !== onDone || $[3] !== setAppState || $[4] !== metaMessages) {
     t1 = () => {
       if (effortUpdate) {
         setAppState(prev => ({
@@ -198,18 +223,23 @@ function ApplyEffortAndClose(t0) {
           effortValue: effortUpdate.value
         }));
       }
-      onDone(message);
+      if (metaMessages?.length) {
+        onDone(message, { metaMessages });
+      } else {
+        onDone(message);
+      }
     };
-    t2 = [setAppState, effortUpdate, message, onDone];
+    t2 = [setAppState, effortUpdate, message, onDone, metaMessages];
     $[0] = effortUpdate;
     $[1] = message;
     $[2] = onDone;
     $[3] = setAppState;
-    $[4] = t1;
-    $[5] = t2;
+    $[4] = metaMessages;
+    $[5] = t1;
+    $[6] = t2;
   } else {
-    t1 = $[4];
-    t2 = $[5];
+    t1 = $[5];
+    t2 = $[6];
   }
   React.useEffect(t1, t2);
   return null;
@@ -236,10 +266,34 @@ function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
   const usesOpenAIEffort = modelUsesOpenAIEffort(model);
 
   function handleSelect(effort: EffortValue | undefined) {
+    // Ultracode path: use setEffortValue to get enter meta messages
+    if (effort === 'ultracode') {
+      const result = setEffortValue('ultracode');
+      setAppState(prev => ({
+        ...prev,
+        effortValue: 'ultracode'
+      }));
+      if (result.metaMessages?.length) {
+        onDone(result.message, { metaMessages: result.metaMessages });
+      } else {
+        onDone(result.message);
+      }
+      return;
+    }
+
+    // Non-ultracode: if ultracode was on, emit exit and clear it
     const persistable = toPersistableEffort(effort);
+    let metaMessages: string[] | undefined;
+    if (isUltracodeActive()) {
+      metaMessages = queueUltracodeReminder('exit');
+    }
+    // Skip writing effortLevel if persistable is undefined (numeric values,
+    // which the picker doesn't surface, but guard defensively)
     if (persistable !== undefined) {
       updateSettingsForSource('userSettings', {
-        effortLevel: persistable
+        effortLevel: persistable,
+        // Clear ultracode if it was active (exit path)
+        ...(metaMessages ? { ultracode: false } : {}),
       });
     }
     logEvent('tengu_effort_command', {
@@ -251,7 +305,11 @@ function EffortPickerWrapper({ onDone }: { onDone: LocalJSXCommandOnDone }) {
     }));
     const description = effort ? getEffortValueDescription(effort) : 'Use default effort level for your model';
     const suffix = persistable !== undefined ? '' : ' (this session only)';
-    onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`);
+    if (metaMessages?.length) {
+      onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`, { metaMessages });
+    } else {
+      onDone(`Set effort level to ${effort ?? 'auto'}${suffix}: ${description}`);
+    }
   }
 
   function handleCancel() {
