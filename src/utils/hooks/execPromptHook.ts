@@ -33,24 +33,29 @@ function stripMarkdownFence(s: string): string {
 
 /**
  * Final fallback when ALL parsing strategies have failed and we are about to
- * return a `non_blocking_error`. Returns a safe default `{ok: true}`.
+ * return a `non_blocking_error`. Returns a safe default `{ok: false}`.
  *
- * Why `ok: true` (not `false`)?  For the `/goal` Stop hook on 2026-06-13,
- * MiniMax-M2.7-highspeed sometimes returned:
- *   - pure prose ("Let me check the transcript...") with no JSON at all
- *   - ONLY `<minimax:tool_call>...[/tool_call]` wrappers (text block is
- *     present but becomes empty after stripping), with no JSON anywhere
- * Without this fallback, the user saw "Stop hook error: JSON validation
- * failed" and the goal stayed `active` forever — stranding the UI. The
- * hook's `ok` semantics is "did the agent satisfy the goal". The agent
- * just successfully finished a turn, so by default the goal IS met
- * unless the hook evidence explicitly says otherwise. Defaulting to
- * ok=true is the safer interpretation: it unblocks the user instead of
- * leaving the goal stranded.
+ * Why `ok: false` (strict, not permissive)?  Per user feedback 2026-06-13:
+ * when the hook LLM (Haiku / MiniMax-M2.7-highspeed) fails to produce a
+ * parseable verdict, defaulting to `ok: true` was masking cases where the
+ * model genuinely couldn't evaluate the goal — letting the agent stop when
+ * the goal was not actually met (false negative on the eval side). Strict
+ * default to `ok: false` means: "no parseable evidence = not satisfied" —
+ * the agent must continue working and produce clearer evidence on the next
+ * turn. This pairs with `tools: []` + `extractHookResponseContent` to push
+ * the model toward the text channel; if it still fails to emit JSON, that
+ * IS the signal that it couldn't decide, and we err on the side of more
+ * work, not less.
+ *
+ * Note: this is the inverse of the previous (2026-06-13 morning) rationale,
+ * which preferred `ok: true` to unblock users stranded by a Haiku eval
+ * parse failure. That preference traded false positives (let stop when
+ * unmet) for false negatives (block stop when met); user explicitly
+ * preferred the other direction.
  *
  * Returns `null` only if the response contained parseable JSON (in which
  * case the caller should not have invoked the fallback) — empty/whitespace
- * is treated as "no signal, default to ok=true".
+ * is treated as "no signal, default to ok=false".
  */
 export function fallbackHookResult(response: string): { ok: boolean; reason: string } | null {
   const trimmed = response.trim()
@@ -59,10 +64,10 @@ export function fallbackHookResult(response: string): { ok: boolean; reason: str
   // silently override a real hook verdict.
   if (trimmed && parsePromptHookResponse(trimmed) !== null) return null
   return {
-    ok: true,
+    ok: false,
     reason: trimmed
-      ? 'hook returned no parseable JSON; defaulting to ok=true'
-      : 'hook returned empty response; defaulting to ok=true',
+      ? 'hook returned no parseable JSON; defaulting to ok=false (strict)'
+      : 'hook returned empty response; defaulting to ok=false (strict)',
   }
 }
 
@@ -479,7 +484,7 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         const fallback = fallbackHookResult(lastRawResponse)
         if (fallback !== null) {
           logForDebugging(
-            `Hooks[execPromptHook DIAG]: all ${MAX_ATTEMPTS} attempts unparseable; applying fallbackHookResult={ok:true} (lastRawResponse=${JSON.stringify(lastRawResponse).slice(0, 200)})`,
+            `Hooks[execPromptHook DIAG]: all ${MAX_ATTEMPTS} attempts unparseable; applying fallbackHookResult={ok:false} (strict default) (lastRawResponse=${JSON.stringify(lastRawResponse).slice(0, 200)})`,
           )
           json = fallback
         }

@@ -3,8 +3,8 @@ import type { Command } from '../../commands.js'
 const goal = {
   type: 'local',
   name: 'goal',
-  description: 'Set and manage a session completion goal',
-  argumentHint: '[condition|status|pause|resume|clear]',
+  description: '设置并管理会话完成目标',
+  argumentHint: '[<condition> | clear]',
   supportsNonInteractive: true,
   load: () => import('./goal.js'),
 } satisfies Command

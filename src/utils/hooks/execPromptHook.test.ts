@@ -159,19 +159,17 @@ describe('stripMinimaxToolCallWrapper', () => {
 })
 
 describe('fallbackHookResult', () => {
-  test('returns ok=true fallback when called with a prose-only response', () => {
+  test('returns ok=false fallback when called with a prose-only response', () => {
     // Last-resort safety net for /goal Stop-hook on 2026-06-13:
     // MiniMax-M2.7-highspeed sometimes emits pure prose ("Let me check the
     // transcript...") with no `{ok:true}` JSON anywhere. After stripping
-    // tool-call wrappers, all parse strategies fail. Without this fallback
-    // the user sees "Stop hook error: JSON validation failed" and the goal
-    // stays active forever — see /goal bug reproduction. Defaulting to
-    // {ok:true} is the safer interpretation: the agent just successfully
-    // finished a turn, so the goal IS met unless the hook evidence says
-    // otherwise.
+    // tool-call wrappers, all parse strategies fail. Strict default to
+    // {ok:false} (per user feedback 2026-06-13): "no parseable evidence =
+    // not satisfied". The agent must continue working and produce clearer
+    // evidence on the next turn; we err on the side of more work, not less.
     expect(fallbackHookResult('Let me check the transcript.')).toEqual({
-      ok: true,
-      reason: 'hook returned no parseable JSON; defaulting to ok=true',
+      ok: false,
+      reason: 'hook returned no parseable JSON; defaulting to ok=false (strict)',
     })
   })
 
@@ -185,18 +183,19 @@ describe('fallbackHookResult', () => {
     expect(fallbackHookResult('{"ok": false, "reason": "x"}')).toBeNull()
   })
 
-  test('returns ok=true fallback for empty/whitespace input (Stop #3 case)', () => {
+  test('returns ok=false fallback for empty/whitespace input (Stop #3 case)', () => {
     // This is the exact shape seen at Stop #3 on 2026-06-13: model emitted
     // only `<minimax:tool_call>...</minimax:tool_call>` wrappers with no
     // text block, so after stripping the lastRawResponse is "". The
-    // fallback must still fire — otherwise the goal stays stranded.
+    // fallback must still fire — strict default blocks the agent from
+    // stopping until clearer evidence is produced.
     expect(fallbackHookResult('')).toEqual({
-      ok: true,
-      reason: 'hook returned empty response; defaulting to ok=true',
+      ok: false,
+      reason: 'hook returned empty response; defaulting to ok=false (strict)',
     })
     expect(fallbackHookResult('   \n  ')).toEqual({
-      ok: true,
-      reason: 'hook returned empty response; defaulting to ok=true',
+      ok: false,
+      reason: 'hook returned empty response; defaulting to ok=false (strict)',
     })
   })
 })
