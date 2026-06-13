@@ -17,7 +17,7 @@
 
 **成功标准**（5 条）：
 1. 源码 `git grep "feature('HISTORY_SNIP')"` → 0 命中（其余 true flag 同理）
-2. 源码 `git grep "feature('VOICE_MODE')"` → N 命中保留（字典中 false flag 不动）
+2. 源码 `git grep "feature('VOICE_MODE')"` → N 命中保留（所有字典 `=false` 的 flag 同理：BRIDGE_MODE / BG_SESSIONS / CHICAGO_MCP / CONTEXT_COLLAPSE / KAIROS* / PROACTIVE / 等共约 35+ 个）
 3. 删除/改动的每一处都有 commit message 引用源 flag 名
 4. `bun run smoke` + `bun test` + `bun run typecheck` 全绿
 5. TUI `--debug` 启动一次主流程无 regression
@@ -52,32 +52,11 @@
 
 **文件**：`src/tools.ts`、`src/entrypoints/cli.tsx`（CLI 参数解析层）
 
-**针对 flags**（字典中 `=true` 的）：
+**针对 flags**（字典中 `=true` 的，共 22 个，**先 grep 真实命中点再排序**）：
 
-| Flag | 字典值 | 主要改点 |
-|------|-------|----------|
-| HISTORY_SNIP | true | C3 (tools.ts:110) |
-| CONTEXT_COLLAPSE | true | C3 (tools.ts:99) |
-| COORDINATOR_MODE | true | tools.ts 加载列表 |
-| BUILTIN_EXPLORE_PLAN_AGENTS | true | tools.ts 加载列表 |
-| MONITOR_TOOL | true | tools.ts:30 |
-| TEAMMEM | true | tools.ts 加载 |
-| MESSAGE_ACTIONS | true | UI 渲染 |
-| HOOK_PROMPTS | true | 工具 prompt |
-| CACHED_MICROCOMPACT | true | compact 路径 |
-| TOKEN_BUDGET | true | query budget 路径 |
-| PROMPT_CACHE_BREAK_DETECTION | true | logging |
-| DUMP_SYSTEM_PROMPT | true | CLI flag |
-| FORK_SUBAGENT | true | agent 工具 |
-| VERIFICATION_AGENT | true | agent 工具 |
-| TRANSCRIPT_CLASSIFIER | true | permission 路径 |
-| EXTRACT_MEMORIES | true | session 后处理 |
-| SHOT_STATS | true | stats 渲染 |
-| QUICK_SEARCH | true | input 渲染 |
-| HISTORY_PICKER | true | input 渲染 |
-| AWAY_SUMMARY | true | session 渲染 |
-| ULTRATHINK | true | query 路径 |
-| MCP_SKILLS | true | services/mcp |
+`HISTORY_SNIP` / `MCP_SKILLS` / `COORDINATOR_MODE` / `BUILTIN_EXPLORE_PLAN_AGENTS` / `BUDDY` / `MONITOR_TOOL` / `TEAMMEM` / `MESSAGE_ACTIONS` / `HOOK_PROMPTS` / `CACHED_MICROCOMPACT` / `TOKEN_BUDGET` / `PROMPT_CACHE_BREAK_DETECTION` / `DUMP_SYSTEM_PROMPT` / `FORK_SUBAGENT` / `VERIFICATION_AGENT` / `TRANSCRIPT_CLASSIFIER` / `EXTRACT_MEMORIES` / `SHOT_STATS` / `QUICK_SEARCH` / `HISTORY_PICKER` / `AWAY_SUMMARY` / `ULTRATHINK`
+
+主要改点：C3（条件 require 注入）+ C5（顶层 const 透传）+ C1a（tools 列表里的 if）
 
 **5 步子任务流**：
 1. `git grep -nE "feature\('(本波flag列表)'\)\|feature\(\"(本波flag列表)\"\)"` 列出本波目标 flag 全部命中 → 输出 `.agent_working_dir/feature-solidify/wave1-before.txt`
@@ -90,7 +69,9 @@
 
 **文件**：`src/query.ts`、`src/services/api/*`、`src/services/compact/*`、`src/services/mcp/*`、`src/services/analytics/*`、`src/services/settingsSync/*`、`src/QueryEngine.ts`
 
-**针对 flags**：`REACTIVE_COMPACT`、`EXPERIMENTAL_SKILL_SEARCH`、`TEMPLATES`、`BG_SESSIONS`、`MULTI_TURN_CONTEXT`、`CONVERSATION_ARC`、`COMMIT_ATTRIBUTION`、`BASH_CLASSIFIER`、`UNATTENDED_RETRY`、`DOWNLOAD_USER_SETTINGS`、`UPLOAD_USER_SETTINGS`、`ANTI_DISTILLATION_CC`、`CONNECTOR_TEXT`、`HYBRID_CONTEXT_STRATEGY`
+**针对 flags**（字典 `=true` 落在本目录的）：`HISTORY_SNIP`（波 1 动过 tools.ts，波 2 动 query.ts:129 处的 `snipModule`）、`CACHED_MICROCOMPACT`（compact 服务）、`TOKEN_BUDGET`（query budget）、`PROMPT_CACHE_BREAK_DETECTION`（logging）、`MCP_SKILLS`（services/mcp）。先 `git grep "feature('" src/services src/query.ts | sort -u` 列出本目录实际涉及字典中 true flag 的所有调用点，**只对 true flag 做固化**。
+
+**注意**：源码中可能存在 `feature('EXPERIMENTAL_SKILL_SEARCH')` / `feature('REACTIVE_COMPACT')` / `feature('TEMPLATES')` / `feature('BASH_CLASSIFIER')` / `feature('CONNECTOR_TEXT')` 等调用 — 这些 flag **不在字典中**，`@bun:bundle feature()` preprocess 时遇到字典外名字会替换为 `false`，源码中那些守卫**已经永远 false**，属于**死代码**而不是固化目标。**本设计不处理这些**（可在未来单独 plan "清理死代码"）。
 
 **风险**：`src/query.ts:1` 头部有 `// @ts-nocheck`（按 §3 "跨波约束" 先解除再固化），typecheck 不能 catch 该文件 TS 错误 — 必须 mock-based 集成测试反向证明（参考 `applyPromptFallback.test.ts:13` 既定模式）
 
@@ -100,9 +81,9 @@
 
 **文件**：`src/commands/*`、`src/components/*`、`src/hooks/*`、`src/main.tsx`、`src/REPL.tsx`、`src/interactiveHelpers.tsx`、`src/voice/voiceModeEnabled.ts`
 
-**针对 flags**：`NEW_INIT`、`ABLATION_BASELINE`、`CHICAGO_MCP`（字典值 `true`）
+**针对 flags**（字典 `=true` 落在本目录的）：`MESSAGE_ACTIONS` / `HOOK_PROMPTS` / `DUMP_SYSTEM_PROMPT`（cli.tsx 已被波 1 触及但本轮重看）/ `TRANSCRIPT_CLASSIFIER` / `ULTRATHINK` / `TOKEN_BUDGET`（Spinner 渲染层）/ `HISTORY_PICKER` / `QUICK_SEARCH` / `SHOT_STATS` / `AWAY_SUMMARY` / `FORK_SUBAGENT` / `VERIFICATION_AGENT` / `BUDDY`（如有 UI 入口）/ `EXTRACT_MEMORIES` / `COORDINATOR_MODE`（UI 入口）/ `BUILTIN_EXPLORE_PLAN_AGENTS`（UI 入口）/ `TEAMMEM`（UI 入口）/ `MONITOR_TOOL`（UI 入口）。同波 2：先 grep 真实命中点，**只对 true flag 做固化**。
 
-**注意**：`BRIDGE_MODE` 字典值 `false` — 不动；`BG_SESSIONS` / `DAEMON` 字典值 `false` — 不动；`CONTEXT_COLLAPSE` 字典值 `true` — 波 1 动过 tools.ts，波 3 动 `src/commands/context/*`；`TEMPLATES` 字典值 `true` — 波 2 动过，波 3 动 `src/entrypoints/cli.tsx:303`（已属 cli.tsx，波 1 也动但本轮重看）
+**不动 flags**（字典 `=false`）：`BRIDGE_MODE` / `BG_SESSIONS` / `CHICAGO_MCP` / `CONTEXT_COLLAPSE` / `KAIROS*` / `PROACTIVE` / `VOICE_MODE` / `ABLATION_BASELINE` / `COMMIT_ATTRIBUTION` / `DAEMON` / `AGENT_TRIGGERS*` / `UDS_INBOX` / `WEB_BROWSER_TOOL` / `OVERFLOW_TEST_TOOL` / `TERMINAL_PANEL` / `COORDINATOR_*_TELEMETRY` / `COWORKER_TYPE_TELEMETRY` / `SESSION_AGE_WARNING` / `ANT_ONLY_ATTRIBUTION` / `HISTORIC_NOTICE` / `PROMPTS_LIST*` / `PERMISSION_FLOW_DEBUG` / `SANDBOX` / `DISABLE_TELEMETRY` / `ANT_PYTHON_INTERPRETER_*` / `PROMPT_SUGGESTION` / `ENTER_PLAN_MODE_REMINDER`
 
 **风险**：UI 行为易出 regression；改完必须 agent-tui 跑一遍 `/help`、`/init`、`/compact`、`/goal start` 主流程
 
