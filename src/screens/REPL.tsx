@@ -3464,15 +3464,7 @@ export function REPL({
         // than inlining it into the user input string. Upstream claude-code
         // v2.1.177 (binary extract offset 212614885) uses this separate-meta-
         // message pattern.
-        const result = buildKeywordTurnRequest(input, trigger);
-        input = result.userInput;
-        // Prepend meta messages to the current turn so they land in the same
-        // API context as the user input (handlePromptSubmit passes messages
-        // derived from input to onQuery; having meta in messagesRef.current
-        // before that call ensures they're visible to processUserInput).
-        if (result.metaMessages.length > 0) {
-          setMessages(oldMessages => [...result.metaMessages, ...oldMessages]);
-        }
+        input = applyKeywordTrigger(input, trigger, setMessages);
       }
     }
 
@@ -3497,12 +3489,12 @@ export function REPL({
           isMeta?: true
         }>,
       ) => void,
-    ) {
+    ): string {
       const result = buildKeywordTurnRequest(input, trigger)
       if (result.metaMessages.length > 0) {
         setMessages(oldMessages => [...result.metaMessages, ...oldMessages])
       }
-      return result
+      return result.userInput
     }
 
     // Remote mode: skip empty input early before any state mutations
