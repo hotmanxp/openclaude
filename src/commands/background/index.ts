@@ -1,24 +1,26 @@
 import type { Command } from '../../commands.js'
 
 /**
- * `/background` slash command — shows the background-agent view panel.
+ * `/background` slash command — shows the bg daemon's live job list.
  *
- * T8 of the `2026-06-13-plan-bg-agent-view` plan. Renders the same dialog as
- * `/tasks` for now (BackgroundTasksDialog), which lists `appState.tasks` — the
- * in-process background task registry. When T9 ships `BackgroundAgentViewDialog`
- * (daemon-backed job list, kill routes to daemon `kill` op), this command will
- * switch to that component with the same `toolUseContext`/`onDone` contract.
+ * T8 + T9 of the `2026-06-13-plan-bg-agent-view` plan. Mounts the
+ * daemon-backed `BackgroundAgentViewDialog` (sibling to the older
+ * `BackgroundTasksDialog` which reads `appState.tasks`). Reads jobs
+ * from the bg daemon's `list` op — they survive CLI restarts, and
+ * kill routes to the daemon's `kill` op rather than the in-process
+ * task registry.
  *
- * Why the fallback: T8 depends on T7 (done) and unlocks T10. T9 is a parallel
- * branch (unlocks T8 and T10 per the plan dependency graph) — shipping T8
- * before T9 lets the slash command be available without blocking the rest of
- * the daemon work. Same data shape (label/status/startedAt/etc.), same Ink
- * UI primitives, no semantic regression for users.
+ * Respects the T1 agent-view killswitch — when
+ * `ManagedSettings.disableAgentView` is true or
+ * `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, the guard in `background.tsx`
+ * renders an inline notice instead of mounting the dialog.
+ *
+ * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T8 §T9
  */
 const background = {
   type: 'local-jsx',
   name: 'background',
-  description: 'Show background tasks (alias for /tasks; daemon view in T9)',
+  description: 'Show background tasks (daemon-managed bg agents)',
   load: () => import('./background.js'),
 } satisfies Command
 

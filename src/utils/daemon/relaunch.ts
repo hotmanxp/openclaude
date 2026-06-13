@@ -89,8 +89,7 @@ export function clearRelaunchMarker(): void {
  * relaunch child receives the response and the TUI rendering is
  * BackgroundAgentViewDialog (T9). This function only owns the
  * "is this a relaunch?" check + parameter validation; the actual
- * dispatch + render is left to the caller. Wiring T10 → T5 + T9 is a
- * follow-up commit (T11 smoke will exercise it).
+ * dispatch + render is left to the caller.
  */
 export interface RelaunchContext {
   short: JobShortId

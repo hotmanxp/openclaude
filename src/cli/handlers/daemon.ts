@@ -481,10 +481,6 @@ async function routeOp(
  * `leases` op handler. Prunes expired leases (TTL guard for half-open
  * connections) before returning the current client set.
  */
-/**
- * `leases` op handler. Prunes expired leases (TTL guard for half-open
- * connections) before returning the current client set.
- */
 export async function handleLeases(state: DaemonState, sock: Socket): Promise<void> {
   pruneExpiredLeases(state, Date.now())
   return writeFrame(sock, {

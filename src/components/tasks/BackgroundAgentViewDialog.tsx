@@ -398,8 +398,6 @@ function BackgroundAgentViewDialogInner({
       loading={loading}
       error={error}
       selectedIdx={selectedIdx}
-      onRefresh={() => void refresh()}
-      onClose={() => close('Background agents dialog dismissed')}
     />
   )
 }
@@ -409,8 +407,6 @@ interface BodyProps {
   loading: boolean
   error: string | null
   selectedIdx: number
-  onRefresh: () => void
-  onClose: () => void
 }
 
 /**
@@ -422,8 +418,6 @@ function BackgroundAgentViewDialogBody({
   loading,
   error,
   selectedIdx,
-  onRefresh,
-  onClose,
 }: BodyProps): React.ReactNode {
   const runningCount = jobs.filter(j => !j.dying).length
 
@@ -495,8 +489,6 @@ function BackgroundAgentViewDialogBody({
           </Text>
           <Text dimColor> (Esc/q)</Text>
         </Text>
-        <Text dimColor>{onRefresh.toString().slice(0, 0)}</Text>
-        <Text dimColor>{onClose.toString().slice(0, 0)}</Text>
       </Box>
     </Box>
   )

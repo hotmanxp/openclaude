@@ -1,7 +1,10 @@
 import * as React from 'react'
+import { Box, Text } from '../../ink.js'
 import type { LocalJSXCommandContext } from '../../commands.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import { BackgroundAgentViewDialog } from '../../components/tasks/BackgroundAgentViewDialog.js'
+import { useSettings } from '../../hooks/useSettings.js'
+import { isAgentViewEnabled } from '../../utils/settings/agentView.js'
 
 /**
  * `/background` renderer. T8 + T9 of the bg-agent-view plan.
@@ -17,10 +20,48 @@ import { BackgroundAgentViewDialog } from '../../components/tasks/BackgroundAgen
  * Per the plan §T9 spec, the dialog owns its own input loop and exit
  * semantics — this slash command is just a thin mount that passes the
  * `onDone` callback through.
+ *
+ * Respects the T1 agent-view killswitch: when
+ * `ManagedSettings.disableAgentView` is true or
+ * `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, `BackgroundGuard` renders an
+ * inline notice instead of mounting the dialog. The full CLI wiring
+ * (T12) funnels all three gating points through the same helper.
  */
 export async function call(
   onDone: LocalJSXCommandOnDone,
   _context: LocalJSXCommandContext,
 ): Promise<React.ReactNode> {
+  return <BackgroundGuard onDone={onDone} />
+}
+
+/**
+ * Wrapper that consults the agent-view killswitch before mounting
+ * `BackgroundAgentViewDialog`. Reading settings via `useSettings()`
+ * means the dialog auto-dismisses if a ManagedSettings flip happens
+ * while the slash command is open.
+ */
+function BackgroundGuard({
+  onDone,
+}: {
+  onDone: LocalJSXCommandOnDone
+}): React.ReactNode {
+  const settings = useSettings()
+  // useSettings returns the full Settings shape (passthrough),
+  // not the narrow { disableAgentView? } that isAgentViewEnabled expects.
+  // Cast through unknown because the field is genuinely optional on both sides.
+  if (!isAgentViewEnabled(settings as unknown as { disableAgentView?: boolean })) {
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Text bold>Background agents</Text>
+        <Text dimColor>
+          Agent view is disabled. Unset CLAUDE_CODE_DISABLE_AGENT_VIEW or
+          ManagedSettings.disableAgentView.
+        </Text>
+        <Box marginTop={1}>
+          <Text dimColor>Press Esc or q to close.</Text>
+        </Box>
+      </Box>
+    )
+  }
   return <BackgroundAgentViewDialog onDone={onDone} />
 }
