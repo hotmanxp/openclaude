@@ -983,15 +983,6 @@ if (result?.success) {
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
-    // HISTORY_SNIP feature flag (build.ts) enables a snip tool for context
-    // management. The fork does not mirror these source files; the build
-    // generates noop stubs at runtime. The flag is feature-gated and the
-    // stubbed paths are unreachable in the open build.
-    'src/commands/force-snip',
-    'src/components/messages/SnipBoundaryMessage',
-    'src/services/compact/snipProjection',
-    'src/tools/SnipTool/SnipTool',
-    'src/tools/SnipTool/prompt',
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer
