@@ -8,7 +8,7 @@
  * - src/ path aliases
  */
 
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { noTelemetryPlugin } from './no-telemetry-plugin'
 import { CLI_EXTERNALS, SDK_EXTERNALS } from './externals.js'
 
@@ -473,6 +473,12 @@ if (!result.success) {
 
 // ── SDK Bundle Build ──────────────────────────────────────────────────────
 // SDK is a separate bundle for npm consumption - must NOT bundle React/Ink
+// OpenCC/openclaude fork does NOT publish an SDK bundle — skip the build
+// when the SDK entry point is absent (e.g. partial cherry-pick of #1497).
+if (!existsSync('./src/entrypoints/sdk/index.ts')) {
+  console.log('⏭️  Skipping SDK bundle (no src/entrypoints/sdk/index.ts)')
+  sdkResult = undefined
+} else {
 console.log('Building SDK bundle...')
 
 sdkResult = await Bun.build({
@@ -892,14 +898,15 @@ ${parts.join('\n')}
     },
   ],
 })
+} // end of SDK build (only when entry point exists)
 
-if (!sdkResult.success) {
+if (sdkResult && !sdkResult.success) {
   console.error('SDK build failed:')
   for (const log of sdkResult.logs) {
     console.error(log)
   }
   process.exitCode = 1
-} else {
+} else if (sdkResult?.success) {
   console.log(`✓ Built SDK bundle → dist/sdk.mjs`)
 }
 
@@ -976,6 +983,15 @@ if (result?.success) {
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
+    // HISTORY_SNIP feature flag (build.ts) enables a snip tool for context
+    // management. The fork does not mirror these source files; the build
+    // generates noop stubs at runtime. The flag is feature-gated and the
+    // stubbed paths are unreachable in the open build.
+    'src/commands/force-snip',
+    'src/components/messages/SnipBoundaryMessage',
+    'src/services/compact/snipProjection',
+    'src/tools/SnipTool/SnipTool',
+    'src/tools/SnipTool/prompt',
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer
