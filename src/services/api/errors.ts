@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   APIConnectionError,
   APIConnectionTimeoutError,
@@ -351,6 +350,7 @@ function logToolUseToolResultMismatch(
     for (let i = 0; i < messagesForAPI.length; i++) {
       const msg = messagesForAPI[i]
       if (!msg) continue
+      if (!msg.message) continue
       const content = msg.message.content
       if (Array.isArray(content)) {
         for (const block of content) {
@@ -372,7 +372,7 @@ function logToolUseToolResultMismatch(
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i]
       if (!msg) continue
-      if (msg.type === 'assistant' && 'message' in msg) {
+      if (msg.type === 'assistant' && 'message' in msg && msg.message) {
         const content = msg.message.content
         if (Array.isArray(content)) {
           for (const block of content) {
@@ -395,10 +395,12 @@ function logToolUseToolResultMismatch(
     for (let i = normalizedIndex + 1; i < messagesForAPI.length; i++) {
       const msg = messagesForAPI[i]
       if (!msg) continue
+      if (msg.type !== 'assistant') continue
+      if (!msg.message) continue
+      const role = msg.message.role ?? 'assistant'
       const content = msg.message.content
       if (Array.isArray(content)) {
         for (const block of content) {
-          const role = msg.message.role
           if (block.type === 'tool_use' && 'id' in block) {
             normalizedSeq.push(`${role}:tool_use:${block.id}`)
           } else if (block.type === 'tool_result' && 'tool_use_id' in block) {
@@ -414,7 +416,7 @@ function logToolUseToolResultMismatch(
           }
         }
       } else if (typeof content === 'string') {
-        normalizedSeq.push(`${msg.message.role}:string_content`)
+        normalizedSeq.push(`${role}:string_content`)
       }
     }
 
@@ -427,11 +429,11 @@ function logToolUseToolResultMismatch(
       switch (msg.type) {
         case 'user':
         case 'assistant': {
-          if ('message' in msg) {
+          if ('message' in msg && msg.message) {
+            const role = msg.message.role ?? 'assistant'
             const content = msg.message.content
             if (Array.isArray(content)) {
               for (const block of content) {
-                const role = msg.message.role
                 if (block.type === 'tool_use' && 'id' in block) {
                   preNormalizedSeq.push(`${role}:tool_use:${block.id}`)
                 } else if (
@@ -452,13 +454,13 @@ function logToolUseToolResultMismatch(
                 }
               }
             } else if (typeof content === 'string') {
-              preNormalizedSeq.push(`${msg.message.role}:string_content`)
+              preNormalizedSeq.push(`${role}:string_content`)
             }
           }
           break
         }
         case 'attachment':
-          if ('attachment' in msg) {
+          if ('attachment' in msg && msg.attachment) {
             preNormalizedSeq.push(`attachment:${msg.attachment.type}`)
           }
           break
