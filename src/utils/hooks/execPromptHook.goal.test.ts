@@ -5,6 +5,17 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 // We preserve every other export from claude.js so unrelated transitive
 // imports (cost-tracker re-exports getAPIMetadata, etc.) still work — only
 // queryModelWithoutStreaming is overridden.
+
+// Sanity check (reproduces the 2026-06-13 regression guard):
+//   1. git stash push -- src/utils/hooks/execPromptHook.ts
+//      (or `git checkout 4c847ee5 -- src/utils/hooks/execPromptHook.ts`)
+//   2. bun test src/utils/hooks/execPromptHook.goal.test.ts
+//      → expect 1 fail / 1 pass; the failure is "expected 'number' received
+//        'undefined'" on the achievedAt assertion (helper threw TypeError,
+//        try/catch swallowed, activeGoal.achievedAt never stamped).
+//   3. git checkout 53b12fbefd7c92530777dce8a7f9c45f12f8b744 -- src/utils/hooks/execPromptHook.ts
+//      (or `git stash pop`) and re-run → expect 2 pass / 0 fail.
+
 const queryModelWithoutStreamingMock = mock(async () => ({
   message: {
     content: [{ type: 'text', text: '{"ok": true}' }],
@@ -61,7 +72,7 @@ const hook = {
 }
 
 beforeEach(() => {
-  queryModelWithoutStreamingMock.mockClear()
+  queryModelWithoutStreamingMock.mockReset()
 })
 
 describe('execPromptHook — /goal Stop-hook success path integration', () => {
