@@ -1,9 +1,10 @@
-# Feature Flag 源代码固化设计
+# Feature Flag 源代码固化设计（brainstorm transcript）
 
-**状态**：approved
+**状态**：transcript（ground truth 在 `2026-06-13-feat-solidify-design.md`）
 **日期**：2026-06-13
 **作者**：brainstorming session
-**目标分支**：`main-opencc`
+
+> **重要**：本 spec 是本次 brainstorming 的完整转录（5 节设计草案 + 用户逐节确认过程）。**主 spec 是 `2026-06-13-feat-solidify-design.md`**（Approved 状态、含 Background/Out of Scope/Success Criteria/Risks/Verification/Definition of Done 等 10 节），本文件作为辅助参考存在。
 
 ## 1. 目标与范围
 

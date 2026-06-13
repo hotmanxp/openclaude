@@ -118,7 +118,7 @@
 ## 9. Not Doing (explicit)
 
 - 不写 codemod（用户选人工逐处改）
-- 不拆 `// @ts-nocheck`
+- **不再保留 `// @ts-nocheck` 文件头**：本轮触及的所有 `// @ts-nocheck` 文件（已知 `src/query.ts:1`，实际执行时 `git grep -nl "@ts-nocheck" src/` 可能发现更多）必须**先解除**（删除该行）再做固化。理由：`@ts-nocheck` 屏蔽 tsc 全部防线，而我们正需要 typecheck 帮我们捕 C1-C7 改写中可能引入的 C3 import 形态错误、C5 变量未用错误等。解除顺序：**先**删 `// @ts-nocheck` → **再**做 C1-C7 改写。解除后立即 `bun run typecheck` 暴露预存错误：与本波无关的预存错误 → 单独 commit `chore(typecheck): unblock N pre-existing errors in <file>` 先于本波固化落地；与本波改写相关的错误 → 跟着本波固化 commit 一起修
 - 不动 `featureFlags` 字典
 - 不动 stub / MACRO
 - 不动 `=false` 的 flag
