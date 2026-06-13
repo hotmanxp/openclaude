@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import type { AppState } from '../../state/AppState.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { checkGoalGate, clearActiveGoal, getActiveGoalFromTranscript, setActiveGoal } from './hooks.js'
-import type { FunctionHookCallback } from '../../utils/hooks/sessionHooks.js'
 import type { Message } from '../../types/message.js'
 
 describe('checkGoalGate', () => {
@@ -159,103 +158,75 @@ describe('getActiveGoalFromTranscript', () => {
   })
 })
 
-describe('Stop hook callback (C1 regression)', () => {
-  // Regression for the stale-closure bug: the callback used to capture
-  // `opts.appState` by reference, and since AppState is DeepImmutable, the
-  // captured snapshot never reflected later setAppState writes — so
-  // iterations was always 0 and the 50-iter cap was unreachable.
-  // The fix uses a module-scope `liveGoals` map.
-  // This test uses a production-shaped setAppState (replaces the AppState
-  // reference) so the bug WOULD be caught here: a stale snapshot would
-  // observe iterations=0 forever, but a live map observes the increment.
-  test('iterations advances past 0 across multiple invocations', async () => {
+describe('Stop prompt hook (upstream-style architecture)', () => {
+  // /goal registers a Stop PROMPT hook (not a function hook) so that the
+  // LLM evaluates the goal condition via execPromptHook. This mirrors
+  // upstream claude-code v2.1.177's exact mechanism (binary extract
+  // 2026-06-13: `o1_` adds `{type: "prompt", prompt: H}` to sessionHooks
+  // .Stop; LLM returns {ok: true}/{ok: false, reason: "..."} via the
+  // system prompt that execPromptHook wraps around the user prompt).
+  test('setActiveGoal registers a prompt-typed Stop hook with the condition as its prompt', () => {
     let state: AppState = makeAppState()
     const setAppState = (updater: (prev: AppState) => AppState) => {
-      // Production-style: replace the reference, do not mutate.
       state = updater(state)
     }
-    // setActiveGoal captures the current `state` reference. We must pass
-    // the original reference in; later setAppState calls won't mutate it.
     setActiveGoal({ condition: 'finish tests', setAppState, appState: state })
 
-    // Pull the registered callback out of the session store
     const store = state.sessionHooks.get(getSessionId())
-    const stopMatchers = store?.hooks.Stop ?? []
-    const goalHookEntry = stopMatchers
+    const stopHooks = store?.hooks.Stop ?? []
+    const goalHook = stopHooks
       .flatMap(m => m.hooks)
-      .find(h => h.hook.type === 'function' && h.hook.id?.startsWith('goal-'))
-    expect(goalHookEntry).toBeDefined()
-    const callback = (goalHookEntry!.hook as { callback: FunctionHookCallback }).callback
+      .find(h => h.hook.type === 'prompt')
+    expect(goalHook).toBeDefined()
+    const promptHook = goalHook!.hook as { type: 'prompt'; prompt: string; timeout?: number }
+    expect(promptHook.prompt).toBe('finish tests')
+    expect(promptHook.timeout).toBe(30) // 30s for the Haiku eval
+    expect(state.activeGoal?.condition).toBe('finish tests')
+  })
 
-    // Invoke 5 times — iterations must climb to 5
-    for (let i = 0; i < 5; i++) {
-      const allowStop = await callback([], undefined)
-      expect(allowStop).toBe(false)
+  test('setActiveGoal swaps — does not stack — when a goal is already active', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
     }
-    expect(state.activeGoal?.iterations).toBe(5)
+    setActiveGoal({ condition: 'first', setAppState, appState: state })
+    setActiveGoal({ condition: 'second', setAppState, appState: state })
 
-    // Tear down so this hook doesn't leak into other tests in the file
+    const store = state.sessionHooks.get(getSessionId())
+    const promptHooks = (store?.hooks.Stop ?? [])
+      .flatMap(m => m.hooks)
+      .filter(h => h.hook.type === 'prompt')
+    // Exactly one — the second set should have removed the first.
+    expect(promptHooks).toHaveLength(1)
+    const promptHook = promptHooks[0]!.hook as { type: 'prompt'; prompt: string }
+    expect(promptHook.prompt).toBe('second')
+  })
+
+  test('clearActiveGoal removes the goal prompt hook and clears activeGoal', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish', setAppState, appState: state })
+    expect(state.activeGoal).not.toBeNull()
+    expect((state.sessionHooks.get(getSessionId())?.hooks.Stop ?? []).flatMap(m => m.hooks).filter(h => h.hook.type === 'prompt').length).toBe(1)
+
     clearActiveGoal({ setAppState, appState: state })
-  })
 
-  // Regression test for the bug where parseStopHookResult looked for
-  // m.message.content (Anthropic format) but the OpenCC Message type uses
-  // m.content (string at top level). Without this fix, the agent's goal-met
-  // response was never detected and the hook blocked stop indefinitely.
-  test('releases hook when assistant content contains {met: true} JSON (top-level content field)', async () => {
-    let state: AppState = makeAppState()
-    const setAppState = (updater: (prev: AppState) => AppState) => {
-      state = updater(state)
-    }
-    setActiveGoal({ condition: 'all tests pass', setAppState, appState: state })
-
-    const store = state.sessionHooks.get(getSessionId())
-    const goalHookEntry = store?.hooks.Stop
-      ?.flatMap(m => m.hooks)
-      .find(h => h.hook.type === 'function' && h.hook.id?.startsWith('goal-'))
-    expect(goalHookEntry).toBeDefined()
-    const callback = (goalHookEntry!.hook as { callback: FunctionHookCallback }).callback
-
-    // Build the assistant message exactly as OpenCC stores it in the
-    // transcript: top-level `content: string` (NOT nested under .message).
-    const assistantResponse: Message = {
-      uuid: 'a1',
-      type: 'assistant',
-      content:
-        'Goal already achieved: All requested tests pass.\n\n{"met": true, "reason": "all tests pass"}',
-      timestamp: Date.now(),
-    }
-    const allowStop = await callback([assistantResponse], undefined)
-    expect(allowStop).toBe(true)
     expect(state.activeGoal).toBeNull()
+    const remaining = (state.sessionHooks.get(getSessionId())?.hooks.Stop ?? [])
+      .flatMap(m => m.hooks)
+      .filter(h => h.hook.type === 'prompt')
+    expect(remaining).toHaveLength(0)
   })
 
-  test('releases hook when assistant content has nested JSON in reason', async () => {
+  test('clearActiveGoal is a no-op when no goal is active', () => {
     let state: AppState = makeAppState()
     const setAppState = (updater: (prev: AppState) => AppState) => {
       state = updater(state)
     }
-    setActiveGoal({ condition: 'finish refactor', setAppState, appState: state })
-
-    const store = state.sessionHooks.get(getSessionId())
-    const goalHookEntry = store?.hooks.Stop
-      ?.flatMap(m => m.hooks)
-      .find(h => h.hook.type === 'function' && h.hook.id?.startsWith('goal-'))
-    expect(goalHookEntry).toBeDefined()
-    const callback = (goalHookEntry!.hook as { callback: FunctionHookCallback }).callback
-
-    // Nested `}` in the reason field — the OLD regex /\{[^}]*"met"...\}/
-    // would have stopped at the inner `}` of the reason object. The NEW
-    // regex /\{[\s\S]*?"met"...\}/ uses [\s\S]*? so it works.
-    const assistantResponse: Message = {
-      uuid: 'a2',
-      type: 'assistant',
-      content:
-        '{"met": true, "reason": "{\\"text\\": \\"done\\"}"}',
-      timestamp: Date.now(),
-    }
-    const allowStop = await callback([assistantResponse], undefined)
-    expect(allowStop).toBe(true)
+    // Should not throw
+    clearActiveGoal({ setAppState, appState: state })
     expect(state.activeGoal).toBeNull()
   })
 })

@@ -1,11 +1,9 @@
-import { randomUUID } from 'crypto'
-
 import { getTotalCost } from '../../cost-tracker.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
-  addFunctionHook,
-  removeFunctionHook,
+  addSessionHook,
+  removeSessionHook,
 } from '../../utils/hooks/sessionHooks.js'
 import {
   getHooksConfigFromSnapshot,
@@ -16,22 +14,15 @@ import type { Message } from '../../types/message.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   createActiveGoal,
-  incrementIteration,
   type ActiveGoal,
 } from './activeGoal.js'
+import type { HookCommand } from '../../schemas/hooks.js'
 
 const GOAL_HOOK_MATCHER = ''
-const GOAL_HOOK_ERROR_MESSAGE =
-  'Goal continuation: stop blocked. Re-evaluate whether the condition is met. If met, return JSON {met: true, reason: "..."} to clear the goal. If not met, continue working and return {met: false, reason: "..."}.'
-const GOAL_MAX_ITERATIONS = 50
+// 30s is plenty for a Haiku eval call (typical 1-3s). Matches the upstream
+// claude-code v2.1.177 prompt-hook timeout for /goal Stop evaluation.
+const GOAL_HOOK_TIMEOUT_S = 30
 const MAX_CONDITION_CHARS = 4_000
-
-// Module-scope registry of currently-active Stop-hook goals keyed by hookId.
-// The Stop-hook callback closes over a snapshot of `opts.appState` that, with
-// DeepImmutable<AppState>, never reflects the live `activeGoal` mutations made
-// by later setAppState calls. We use this map to keep the live reference
-// reachable so iteration counts and the max-iter escape hatch actually work.
-const liveGoals = new Map<string, ActiveGoal>()
 
 export type GateResult = {
   code: 'hooks_gate' | 'trust_gate'
@@ -83,50 +74,76 @@ export function normalizeCondition(raw: string): string | { error: string } {
   return trimmed
 }
 
-export { GOAL_MAX_ITERATIONS, MAX_CONDITION_CHARS, GOAL_HOOK_ERROR_MESSAGE }
+export { MAX_CONDITION_CHARS, GOAL_HOOK_TIMEOUT_S }
 
 const GOAL_STATUS_ATTACHMENT_TYPE = 'goal_status'
+
+/**
+ * Find all Stop session hooks that /goal has registered (prompt-typed, no
+ * matcher, no skillRoot). Mirrors upstream claude-code v2.1.177's `r1_()` —
+ * walks `appState.sessionHooks[sessionId].hooks.Stop` and picks the prompt
+ * hooks that belong to /goal. Used by clearActiveGoal to remove them.
+ */
+function findGoalPromptHooks(appState: AppState, sessionId: string): HookCommand[] {
+  const store = appState.sessionHooks.get(sessionId)
+  if (!store) return []
+  const stopMatchers = store.hooks.Stop ?? []
+  const out: HookCommand[] = []
+  for (const matcher of stopMatchers) {
+    if (matcher.matcher !== '' || matcher.skillRoot !== undefined) continue
+    for (const entry of matcher.hooks) {
+      if (entry.hook.type === 'prompt') out.push(entry.hook)
+    }
+  }
+  return out
+}
 
 export function setActiveGoal(opts: {
   condition: string
   setAppState: (updater: (prev: AppState) => AppState) => void
   appState: AppState
-}): { hookId: string; goal: ActiveGoal } {
+}): { goal: ActiveGoal } {
   const sessionId = getSessionId()
   // tokensAtStart is populated via getTotalCost() per the user decision
   // 2026-06-12 — matches upstream v2.1.173 activeGoal shape and Task 1's
   // ActiveGoal type.
   const goal = createActiveGoal(opts.condition, getTotalCost())
-  const hookId = `goal-${randomUUID()}`
 
-  // Register the live goal in the module-scope map so the Stop-hook callback
-  // can read the up-to-date iteration count (see C1 fix comment above).
-  liveGoals.set(hookId, goal)
+  // 1. Clear any prior goal Stop prompt hooks (idempotent — `/goal X` while
+  //    one is already active should swap, not stack).
+  for (const prior of findGoalPromptHooks(opts.appState, sessionId)) {
+    removeSessionHook(opts.setAppState, sessionId, 'Stop', prior)
+  }
 
-  // 1. Set activeGoal in appState
+  // 2. Set activeGoal in appState
   opts.setAppState(prev => ({ ...prev, activeGoal: goal }))
 
-  // 2. Register Stop function hook
-  addFunctionHook(
+  // 3. Register a Stop PROMPT hook — upstream's exact mechanism. The
+  //    condition itself is the prompt; execPromptHook wraps it in a
+  //    system prompt that asks the LLM for {ok: true}/{ok: false, reason}.
+  //    The LLM evaluates recent messages and decides whether to allow
+  //    stopping. No need to parse JSON from the agent's text response.
+  const goalPromptHook: HookCommand = {
+    type: 'prompt',
+    prompt: opts.condition,
+    timeout: GOAL_HOOK_TIMEOUT_S,
+  }
+  addSessionHook(
     opts.setAppState,
     sessionId,
     'Stop',
     GOAL_HOOK_MATCHER,
-    (messages, signal) =>
-      handleGoalStopHook(messages, signal, opts.setAppState, hookId),
-    GOAL_HOOK_ERROR_MESSAGE,
-    // 5s is plenty for the sync check; no async work in handleGoalStopHook.
-    { id: hookId, timeout: 5_000 },
+    goalPromptHook,
   )
 
-  // 3. Append sentinel attachment (not-met) for transcript restore
+  // 4. Append sentinel attachment (not-met) for transcript restore
   appendGoalStatusAttachment({
     setAppState: opts.setAppState,
     met: false,
     condition: opts.condition,
   })
 
-  return { hookId, goal }
+  return { goal }
 }
 
 export function clearActiveGoal(opts: {
@@ -137,24 +154,17 @@ export function clearActiveGoal(opts: {
   const existing = opts.appState.activeGoal
   if (!existing) return
 
-  // 1. Remove hook — look up the hookId via the liveGoals map. If absent,
-  //    that means a stale appState (caller misuse or race) and we log a
-  //    warning rather than silently leaking a dead Stop function hook.
-  let foundHookId: string | null = null
-  for (const [id, g] of liveGoals) {
-    if (g.condition === existing.condition) {
-      foundHookId = id
-      break
-    }
-  }
-  if (foundHookId) {
-    removeFunctionHook(opts.setAppState, sessionId, 'Stop', foundHookId)
-    liveGoals.delete(foundHookId)
-  } else {
+  // 1. Remove all goal prompt hooks (mirrors upstream `a1_`).
+  const promptHooks = findGoalPromptHooks(opts.appState, sessionId)
+  if (promptHooks.length === 0) {
     logForDebugging(
-      `clearActiveGoal: no live goal hook found for condition "${existing.condition}" — possible race or caller misuse`,
+      `clearActiveGoal: no goal prompt hook found for condition "${existing.condition}" — possible race or caller misuse`,
       { level: 'warn' },
     )
+  } else {
+    for (const hook of promptHooks) {
+      removeSessionHook(opts.setAppState, sessionId, 'Stop', hook)
+    }
   }
 
   // 2. Clear activeGoal
@@ -166,116 +176,6 @@ export function clearActiveGoal(opts: {
     met: true,
     condition: existing.condition,
   })
-}
-
-function parseStopHookResult(messages: Message[]): { met: boolean; reason: string } | null {
-  // Walk messages in reverse looking for assistant messages whose content
-  // contains the hook JSON response. Message.content is a string at the
-  // TOP LEVEL of the Message type (not nested under .message) — see
-  // src/types/message.ts.
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m?.type !== 'assistant') continue
-    const text = (typeof m.content === 'string' ? m.content : '').trim()
-    if (!text) continue
-    // Find every "met":true/false candidate, then try to extract a
-    // balanced JSON object around it. The first call uses `[\s\S]*?`
-    // non-greedy which grabs the smallest possible match — if that's an
-    // inner `}` (e.g. nested object in the reason field), JSON.parse
-    // throws and we widen the window. Loop until we either parse a
-    // valid object with `met: boolean` or run out of candidates.
-    const re = /\{[\s\S]*?"met"\s*:\s*(true|false)/g
-    let candidate: RegExpExecArray | null
-    while ((candidate = re.exec(text)) !== null) {
-      const start = candidate.index
-      // Walk forward, tracking depth, to find the matching closing `}`.
-      const end = findBalancedEnd(text, start)
-      if (end === -1) break
-      const candidateText = text.slice(start, end + 1)
-      try {
-        const parsed = JSON.parse(candidateText) as { met?: unknown; reason?: unknown }
-        if (typeof parsed.met !== 'boolean') continue
-        return { met: parsed.met, reason: typeof parsed.reason === 'string' ? parsed.reason : '' }
-      } catch {
-        // not valid JSON; the next re.exec() will try the next candidate
-      }
-    }
-  }
-  return null
-}
-
-// Walk the text from `start` (an opening `{`) to the matching `}` accounting
-// for string literals and escaped braces. Returns the index of the matching
-// `}`, or -1 if unbalanced.
-function findBalancedEnd(text: string, start: number): number {
-  let depth = 0
-  let inString = false
-  let escape = false
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i]
-    if (escape) {
-      escape = false
-      continue
-    }
-    if (inString) {
-      if (ch === '\\') {
-        escape = true
-        continue
-      }
-      if (ch === '"') {
-        inString = false
-      }
-      continue
-    }
-    if (ch === '"') {
-      inString = true
-      continue
-    }
-    if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) return i
-    }
-  }
-  return -1
-}
-
-async function handleGoalStopHook(
-  messages: Message[],
-  _signal: AbortSignal | undefined,
-  setAppState: (updater: (prev: AppState) => AppState) => void,
-  hookId: string,
-): Promise<boolean> {
-  const sessionId = getSessionId()
-  // Read the live goal from the module-scope map (not the captured
-  // appState snapshot — DeepImmutable<AppState> freezes it).
-  const liveGoal = liveGoals.get(hookId)
-  if (!liveGoal) {
-    removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
-    return true // Allow stop
-  }
-
-  // Parse the assistant's hook response from messages.
-  const result = parseStopHookResult(messages)
-  if (result?.met) {
-    removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
-    liveGoals.delete(hookId)
-    setAppState(prev => ({ ...prev, activeGoal: null }))
-    appendGoalStatusAttachment({ setAppState, met: true, condition: liveGoal.condition })
-    return true // Goal met — allow stop.
-  }
-
-  if (liveGoal.iterations >= GOAL_MAX_ITERATIONS) {
-    removeFunctionHook(setAppState, sessionId, 'Stop', hookId)
-    liveGoals.delete(hookId)
-    setAppState(prev => ({ ...prev, activeGoal: null }))
-    return true // Force stop at max iterations
-  }
-  // Advance the iteration count in BOTH the live map and the appState.
-  const next = incrementIteration(liveGoal)
-  liveGoals.set(hookId, next)
-  setAppState(prev => ({ ...prev, activeGoal: next }))
-  return false // Block stop, force continuation
 }
 
 function appendGoalStatusAttachment(opts: {
