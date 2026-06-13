@@ -41,6 +41,7 @@ import {
 } from '../../utils/daemon/socket.js'
 import {
   updateRoster,
+  ROSTER_PATH,
 } from '../../utils/daemon/roster.js'
 import { formatBgDaemonStatus, getBgDaemonStatus } from './daemonStatus.js'
 
@@ -152,7 +153,7 @@ export interface SupervisorHandle {
  */
 export async function runSupervisor(opts: SupervisorOptions = {}): Promise<SupervisorHandle> {
   const sockPath = opts.sockPath ?? getSockPath()
-  const rosterPath = opts.rosterPath
+  const rosterPath = opts.rosterPath ?? ROSTER_PATH
   const heartbeatMs = opts.heartbeatMs ?? 5_000
 
   // 1. Ensure the sock directory exists.
