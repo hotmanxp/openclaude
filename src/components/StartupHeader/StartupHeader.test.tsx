@@ -6,6 +6,7 @@ import React from 'react'
 import { createRoot } from '../../ink.js'
 import { TerminalSizeContext } from '../../ink/components/TerminalSizeContext.js'
 import { AppStateProvider } from '../../state/AppState.js'
+import { ThemeProvider } from '../design-system/ThemeProvider.js'
 import { StartupHeader } from './StartupHeader.js'
 
 // user.test.ts leaks a cwd.js mock returning 'C:\\repo'. Override here so the
@@ -14,6 +15,13 @@ mock.module('../../utils/cwd.js', () => ({
   getCwd: () => '/Users/test/code/opencc',
   pwd: () => '/Users/test/code/opencc',
   runWithCwdOverride: (cwd: string, fn: () => unknown) => fn(),
+}))
+
+// Force useMainLoopModel to return null so the '(no model)' fallback branch
+// in StartupHeader is exercised. Without this mock the real hook resolves a
+// default model (e.g. MiniMax-M2.7-highspeed) and the null branch is dead.
+mock.module('../../hooks/useMainLoopModel.js', () => ({
+  useMainLoopModel: () => null,
 }))
 
 ;(globalThis as { MACRO?: { VERSION?: string; DISPLAY_VERSION?: string } }).MACRO = {
@@ -59,19 +67,16 @@ function createTestStreams(columns: number) {
   return { stdout, stdin, getOutput: () => output }
 }
 
-// Model-context assertions and setState-in-render helpers were removed
-// because they collide with global state from user.test.ts (cwd.js mock
-// leak + bun mock.module scope). Pure-function tests in
-// StartupHeader.test.ts cover buildModelLine's (N) suffix logic (10 cases).
-// These snapshot tests cover rendering shape only.
 async function renderHeader(columns: number): Promise<string> {
   const { stdout, stdin, getOutput } = createTestStreams(columns)
   const root = await createRoot({ stdout, stdin })
   await root.render(
     <AppStateProvider>
-      <TerminalSizeContext.Provider value={{ columns, rows: 24 }}>
-        <StartupHeader />
-      </TerminalSizeContext.Provider>
+      <ThemeProvider initialState="dark">
+        <TerminalSizeContext.Provider value={{ columns, rows: 24 }}>
+          <StartupHeader />
+        </TerminalSizeContext.Provider>
+      </ThemeProvider>
     </AppStateProvider>,
   )
   await new Promise(resolve => setTimeout(resolve, 500))
@@ -79,13 +84,22 @@ async function renderHeader(columns: number): Promise<string> {
   return stripAnsi(extractLastFrame(getOutput()))
 }
 
-describe('StartupHeader', () => {
-  test('renders header line + model line + directory line at 80 cols', async () => {
+describe('StartupHeader (Claude-style)', () => {
+  test('renders mascot + brand + version + model + cwd at 80 cols', async () => {
     const frame = await renderHeader(80)
-    expect(frame).toContain('>_ OpenCC (v0.11.1-test)')
-    expect(frame).toContain('model:')
-    expect(frame).toContain('directory:')
-    expect(frame).toContain('/model to change')
+    expect(frame).toContain('▐▛███▜▌')  // mascot head
+    expect(frame).toContain('▝▜█████▛▘') // mascot body
+    expect(frame).toContain('OpenCC')
+    expect(frame).toContain('v0.11.1-test')
+    expect(frame).toContain('/Users/test/code/opencc')
+  })
+
+  test('does not render Codex-style artifacts', async () => {
+    const frame = await renderHeader(80)
+    expect(frame).not.toContain('>_')
+    expect(frame).not.toContain('directory:')
+    expect(frame).not.toContain('model:')
+    expect(frame).not.toContain('/model to change')
   })
 
   test('falls back to (no model) when mainLoopModel is null', async () => {
@@ -93,13 +107,8 @@ describe('StartupHeader', () => {
     expect(frame).toContain('(no model)')
   })
 
-  test('truncates directory at narrow terminal widths', async () => {
+  test('truncates cwd at narrow terminal widths', async () => {
     const frame = await renderHeader(24)
     expect(frame).toContain('...')
-  })
-
-  test('does not append (N) when context window is missing', async () => {
-    const frame = await renderHeader(80)
-    expect(frame).not.toMatch(/\(\d+[KM]\)/)
   })
 })
