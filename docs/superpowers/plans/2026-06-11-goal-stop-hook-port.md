@@ -1,5 +1,13 @@
 # /goal Stop-Hook 架构 Port Implementation Plan
 
+**Status:** ✅ COMPLETE (2026-06-13, 12 commits on `feat/goal-stop-hook` worktree)
+
+**Final delta:** +520 insertions, -2670 deletions (net -2150 lines); 0 typecheck errors; 29/29 goal tests pass; build PASS; smoke PASS.
+
+**Worktree:** `.worktrees/goal-stop-hook` on `feat/goal-stop-hook` (NOT pushed to origin).
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 OpenCC `/goal` 从"post-turn Haiku judge"（`controller.ts` + `evaluator.ts`）重构为 upstream claude-code v2.1.173 的"session-scoped Stop hook"架构——`addFunctionHook` 注册 Stop hook + 写 `goal_status` sentinel attachment，主 agent 试图 stop 时被 hook 拦截强制继续。同步精简状态机（4 态 → 2 态）和 UI 指示器。
