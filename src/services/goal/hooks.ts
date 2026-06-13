@@ -287,7 +287,7 @@ export function clearActiveGoalIfActive(opts: {
  * prompt-hook LLM returns `{ok: false, reason: "..."}` — i.e. the model
  * decided the goal isn't met yet and the agent must continue working.
  * Each block is one observable iteration of the goal loop, surfaced in
- * the footer pill as `◎ /goal active (Ns · N iterations)`.
+ * the footer pill as `◎goal active (Ns · N iterations)`.
  *
  * Idempotent — no-op when no goal is active OR when the goal is already
  * achieved (achieved goals can't accumulate more iterations).

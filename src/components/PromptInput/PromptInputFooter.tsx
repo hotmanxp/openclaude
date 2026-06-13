@@ -231,11 +231,11 @@ function GoalStatusIndicator(): React.ReactNode {
     );
   }
 
-  // Active: `◎ /goal active (Ns)`, ticking every second.
+  // Active: `◎goal active (Ns)`, ticking every second.
   const durSec = Math.max(0, Math.floor((Date.now() - goal.setAt) / 1000));
   return (
     <Text color="suggestion" wrap="truncate">
-      ◎ /goal active ({durSec}s)
+      ◎goal active ({durSec}s)
     </Text>
   );
 }

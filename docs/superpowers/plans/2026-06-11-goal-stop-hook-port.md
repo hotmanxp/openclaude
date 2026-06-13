@@ -822,7 +822,7 @@ function GoalStatusIndicator(): React.ReactNode {
 
   return (
     <Text color="suggestion" wrap="truncate">
-      ◎ /goal active · {iterText} · stop-hook
+      ◎goal active · {iterText} · stop-hook
     </Text>
   );
 }

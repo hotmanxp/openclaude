@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 修复 `/goal` 命令在状态栏（footer）右侧的状态指示器 `◎ /goal active (12s)` 不显示的问题，同时清理 `AppState.goalState` 死字段。
+**Goal:** 修复 `/goal` 命令在状态栏（footer）右侧的状态指示器 `◎goal active (12s)` 不显示的问题，同时清理 `AppState.goalState` 死字段。
 
 **Architecture:** 单点字段名修复 + 死代码清理。无需新增组件、无需新增测试。Refactor (commit `9a23a692`) 把 `AppState.goalState` 重命名为 `goal`，但 `GoalStatusIndicator` 的 selector 没跟着改，导致指示器永远读 `undefined`。同步清掉 AppStateStore 里残留的死字段行。
 
@@ -87,7 +87,7 @@ The upstream /goal refactor (9a23a692, PR #1293) renamed
 AppState.goalState to AppState.goal but did not update this selector,
 leaving the right-side footer indicator permanently hidden.
 
-Read from the new field so `◎ /goal active (Ns)` renders after
+Read from the new field so `◎goal active (Ns)` renders after
 /goal <condition>.
 EOF
 )"
@@ -259,8 +259,8 @@ bun run dev
 /goal 测试状态栏指示器
 ```
 
-Expected: 状态栏右侧立即出现 `◎ /goal active (0s)`，
-等待数秒后秒数递增（如 `◎ /goal active (5s)`）。
+Expected: 状态栏右侧立即出现 `◎goal active (0s)`，
+等待数秒后秒数递增（如 `◎goal active (5s)`）。
 
 - [ ] **Step 3: 清除目标**
 
@@ -302,7 +302,7 @@ Expected: push 成功，无 force-push 警告（这是 fast-forward push）。
 - ✅ `bun run typecheck` exit 0
 - ✅ `bun test` 全绿
 - ✅ `bun run build` exit 0
-- ✅ 手动 TUI：输入 `/goal X` 后 footer 右侧出现 `◎ /goal active (Ns)` 字样
+- ✅ 手动 TUI：输入 `/goal X` 后 footer 右侧出现 `◎goal active (Ns)` 字样
 - ✅ 手动 TUI：输入 `/goal clear` 后字样消失
 - ✅ 全仓 grep `s.goalState` 零命中（除 `test-goal.ts` 等明确独立脚本）
 
