@@ -125,10 +125,8 @@ import {
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
+import { snipCompactIfNeeded } from './services/compact/snipCompact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
-  : null
 const taskSummaryModule = feature('BG_SESSIONS')
   ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
   : null
@@ -470,16 +468,14 @@ async function* queryLoop(
     // what snip removed; tokenCountWithEstimation alone can't see it (reads usage
     // from the protected-tail assistant, which survives snip unchanged).
     let snipTokensFreed = 0
-    if (feature('HISTORY_SNIP')) {
-      queryCheckpoint('query_snip_start')
-      const snipResult = snipModule!.snipCompactIfNeeded(messagesForQuery)
-      messagesForQuery = snipResult.messages
-      snipTokensFreed = snipResult.tokensFreed
-      if (snipResult.boundaryMessage) {
-        yield snipResult.boundaryMessage
-      }
-      queryCheckpoint('query_snip_end')
+    queryCheckpoint('query_snip_start')
+    const snipResult = snipCompactIfNeeded(messagesForQuery)
+    messagesForQuery = snipResult.messages
+    snipTokensFreed = snipResult.tokensFreed
+    if (snipResult.boundaryMessage) {
+      yield snipResult.boundaryMessage
     }
+    queryCheckpoint('query_snip_end')
 
     // Apply microcompact before autocompact
     queryCheckpoint('query_microcompact_start')
