@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto'
 import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
-import type { GoalEvaluationDeps } from '../services/goal/controller.js'
 import type { StopHookExecutionDeps } from './stopHooks.js'
 
 // -- deps
@@ -32,7 +31,6 @@ export type QueryDeps = {
   uuid: () => string
 
   // -- goal continuation
-  goalEvaluationDeps?: GoalEvaluationDeps
   stopHookExecutionDeps?: StopHookExecutionDeps
 }
 
