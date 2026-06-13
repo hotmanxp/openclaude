@@ -55,34 +55,6 @@ export function createGoalState(
   }
 }
 
-export function pauseGoal(goal: GoalState, now: string = nowIso()): GoalState {
-  if (goal.status !== 'active') return goal
-  return {
-    ...goal,
-    status: 'paused',
-    pausedAt: now,
-    updatedAt: now,
-  }
-}
-
-export function resumeGoal(goal: GoalState, now: string = nowIso()): GoalState {
-  if (goal.status !== 'paused' && goal.status !== 'active') return goal
-  return {
-    ...goal,
-    status: 'active',
-    startedAt: now,
-    resumedAt: now,
-    pausedAt: undefined,
-    updatedAt: now,
-    turnCount: 0,
-    lastEvaluatedMessageUuid: undefined,
-  }
-}
-
-export function clearGoal(_goal: GoalState | null): null {
-  return null
-}
-
 export function achieveGoal(
   goal: GoalState,
   opts: {
@@ -131,26 +103,6 @@ export function markGoalEvaluated(
   }
 }
 
-export function pauseGoalAtMaxTurns(
-  goal: GoalState,
-  terminalMessageUuid: string,
-  now: string = nowIso(),
-  evaluatorReason?: string,
-): GoalState {
-  const maxReason = `Goal paused: after reaching the maximum of ${goal.maxTurns} turns.`
-  return {
-    ...goal,
-    status: 'paused',
-    pausedAt: now,
-    updatedAt: now,
-    lastEvaluatedMessageUuid: terminalMessageUuid,
-    lastDecision: 'incomplete',
-    lastReason: evaluatorReason
-      ? `${maxReason} Last evaluator reason: ${evaluatorReason}`
-      : maxReason,
-  }
-}
-
 export function shouldEvaluateGoal(
   goal: GoalState | null | undefined,
   terminalAssistantMessageUuid: string | undefined,
@@ -162,20 +114,4 @@ export function shouldEvaluateGoal(
   }
   if (goal.turnCount >= goal.maxTurns) return false
   return true
-}
-
-export function prepareGoalForSessionResume(
-  goal: GoalState | null | undefined,
-  now: string = nowIso(),
-): GoalState | null {
-  if (!goal) return null
-  if (goal.status !== 'active') return goal
-  return {
-    ...goal,
-    startedAt: now,
-    resumedAt: now,
-    updatedAt: now,
-    turnCount: 0,
-    lastEvaluatedMessageUuid: undefined,
-  }
 }

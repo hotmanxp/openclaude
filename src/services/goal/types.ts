@@ -1,4 +1,4 @@
-export type GoalStatus = 'active' | 'paused' | 'achieved' | 'cleared'
+export type GoalStatus = 'active' | 'achieved'
 
 export type GoalDecision = 'complete' | 'incomplete' | 'malformed' | 'error'
 
@@ -17,9 +17,6 @@ export type GoalState = {
   lastNextInstruction?: string
   evaluatorFailures: number
   achievedAt?: string
-  clearedAt?: string
-  pausedAt?: string
-  resumedAt?: string
 }
 
 export type GoalEvaluatorDecision = {

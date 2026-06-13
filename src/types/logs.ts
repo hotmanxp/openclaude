@@ -5,7 +5,6 @@ import type { AgentId } from './ids.js'
 import type { Message } from './message.js'
 // @ts-ignore
 import type { QueueOperationMessage } from './messageQueueTypes.js'
-import type { GoalState } from '../services/goal/types.js'
 
 export type SerializedMessage = Message & {
   cwd: string
@@ -52,7 +51,6 @@ export type LogOption = {
   mode?: 'coordinator' | 'normal' // Session mode for coordinator/normal detection
   worktreeSession?: PersistedWorktreeSession | null // Worktree state at session end (null = exited, undefined = never entered)
   contentReplacements?: ContentReplacementRecord[] // Replacement decisions for resume reconstruction
-  goal?: GoalState | null // Last session goal state, if any
 }
 
 export type SummaryMessage = {
@@ -188,12 +186,6 @@ export type ContentReplacementEntry = {
   replacements: ContentReplacementRecord[]
 }
 
-export type GoalStateEntry = {
-  type: 'goal-state'
-  sessionId: UUID
-  goal: GoalState | null
-}
-
 export type FileHistorySnapshotMessage = {
   type: 'file-history-snapshot'
   messageId: UUID
@@ -322,7 +314,6 @@ export type Entry =
   | ModeEntry
   | WorktreeStateEntry
   | ContentReplacementEntry
-  | GoalStateEntry
   | ContextCollapseCommitEntry
   | ContextCollapseSnapshotEntry
 
