@@ -6,15 +6,18 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 // imports (cost-tracker re-exports getAPIMetadata, etc.) still work — only
 // queryModelWithoutStreaming is overridden.
 
-// Sanity check (reproduces the 2026-06-13 regression guard):
+// Sanity check (reproduces the 2026-06-13 regression guards):
 //   1. git stash push -- src/utils/hooks/execPromptHook.ts
 //      (or `git checkout 4c847ee5 -- src/utils/hooks/execPromptHook.ts`)
 //   2. bun test src/utils/hooks/execPromptHook.goal.test.ts
-//      → expect 1 fail / 1 pass; the failure is "expected 'number' received
-//        'undefined'" on the achievedAt assertion (helper threw TypeError,
-//        try/catch swallowed, activeGoal.achievedAt never stamped).
+//      → expect 2 fail / 1 pass; failures are:
+//        - success-path: "expected 'number' received 'undefined'" on the
+//          achievedAt assertion (clearActiveGoalIfActive threw TypeError,
+//          try/catch swallowed, activeGoal.achievedAt never stamped).
+//        - blocking-path: "expected 1 received 0" on iterations
+//          (bumpGoalIteration threw TypeError, try/catch swallowed).
 //   3. git checkout 53b12fbefd7c92530777dce8a7f9c45f12f8b744 -- src/utils/hooks/execPromptHook.ts
-//      (or `git stash pop`) and re-run → expect 2 pass / 0 fail.
+//      (or `git stash pop`) and re-run → expect 3 pass / 0 fail.
 
 const DEFAULT_OK_TRUE_RESPONSE = async () => ({
   message: {
@@ -136,5 +139,52 @@ describe('execPromptHook — /goal Stop-hook success path integration', () => {
     // The helper did NOT mark a goal because activeGoal was null — but
     // it also did not throw, which is the regression guard.
     expect(state.activeGoal).toBeNull()
+  })
+})
+
+describe('execPromptHook — /goal Stop-hook blocking path integration', () => {
+  test('bumpGoalIteration increments iterations when LLM returns ok:false (regression: 2026-06-13)', async () => {
+    // The symmetric regression guard for the blocking path. Same root
+    // cause as the success path test — call-site shape mismatch with
+    // bumpGoalIteration. If the call site passes flat {setAppState, appState}
+    // to bumpGoalIteration (which expects {toolUseContext}), the helper
+    // throws TypeError on toolUseContext.getAppState(), try/catch swallows,
+    // and iterations stays at 0 even though the model said ok:false.
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'finish tests')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    // Override the default mock (set in beforeEach) for this test only.
+    // mockImplementationOnce enqueues a single override; beforeEach's
+    // mockReset + mockImplementation runs FIRST in this test's lifecycle
+    // (bun test calls beforeEach before each test, then the test body),
+    // so the once-override replaces the default for this one call.
+    queryModelWithoutStreamingMock.mockImplementationOnce(async () => ({
+      message: {
+        content: [
+          { type: 'text', text: '{"ok": false, "reason": "still working"}' },
+        ],
+      },
+    }))
+
+    const result = await execPromptHook(
+      hook,
+      'goal-stop-eval',
+      'Stop' as any,
+      '{}',
+      new AbortController().signal,
+      toolUseContext,
+      [],
+      'tool-use-id-2',
+    )
+
+    // 1. execPromptHook returned blocking (model said ok:false)
+    expect(result.outcome).toBe('blocking')
+
+    // 2. THE REGRESSION ASSERTION: iterations went from 0 to 1. If the
+    //    call-site shape is wrong, bumpGoalIteration throws TypeError,
+    //    try/catch swallows, iterations stays 0.
+    expect(state.activeGoal?.iterations).toBe(1)
+    expect(state.activeGoal?.achievedAt).toBeUndefined()
   })
 })
