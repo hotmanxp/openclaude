@@ -40,7 +40,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   const version = MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown'
 
   return (
-    <Box alignSelf="flex-start" flexDirection="row" gap={1}>
+    <Box alignSelf="flex-start" flexDirection="row" gap={2}>
       <ClaudeMascot />
       <Box flexDirection="column">
         <Text>
