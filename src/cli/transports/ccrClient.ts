@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { randomUUID } from 'crypto'
 import type {
   SDKPartialAssistantMessage,
@@ -179,7 +178,11 @@ export function accumulateStreamEvents(
     const event = msg.event as StreamEvent
     switch (event.type) {
       case 'message_start': {
-        const id = event.message.id
+        if (!event.message) {
+          out.push(msg)
+          break
+        }
+        const id = event.message.id ?? `synthetic-${Math.random().toString(36).slice(2)}`
         const prevId = state.scopeToMessage.get(scopeKey(msg))
         if (prevId) state.byMessage.delete(prevId)
         state.scopeToMessage.set(scopeKey(msg), id)
@@ -188,7 +191,7 @@ export function accumulateStreamEvents(
         break
       }
       case 'content_block_delta': {
-        if (event.delta.type !== 'text_delta') {
+        if (!event.delta || event.delta.type !== 'text_delta' || event.delta.text === undefined) {
           out.push(msg)
           break
         }
@@ -202,7 +205,8 @@ export function accumulateStreamEvents(
           out.push(msg)
           break
         }
-        const chunks = (blocks[event.index] ??= [])
+        const blockIndex = event.index ?? 0
+        const chunks = (blocks[blockIndex] ??= [])
         chunks.push(event.delta.text)
         const existing = touched.get(chunks)
         if (existing) {
@@ -216,7 +220,7 @@ export function accumulateStreamEvents(
           parent_tool_use_id: msg.parent_tool_use_id,
           event: {
             type: 'content_block_delta',
-            index: event.index,
+            index: blockIndex,
             delta: { type: 'text_delta', text: chunks.join('') },
           },
         }
@@ -241,9 +245,10 @@ export function clearStreamAccumulatorForMessage(
   assistant: {
     session_id: string
     parent_tool_use_id: string | null
-    message: { id: string }
+    message?: { id?: string } & Record<string, unknown>
   },
 ): void {
+  if (!assistant.message?.id) return
   state.byMessage.delete(assistant.message.id)
   const scope = scopeKey(assistant)
   if (state.scopeToMessage.get(scope) === assistant.message.id) {
