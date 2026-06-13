@@ -128,7 +128,7 @@ const KEYWORD_TURN_REMINDER =
  * Mirrors upstream claude-code v2.1.177 (binary extract offset 212614885).
  */
 export const ULTRACODE_EFFORT_ENTER_FULL =
-  'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\'s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.'
+  'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\u2019s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.'
 
 /**
  * Meta reminder text for ultra_effort_enter(short) — fired when /effort ultracode

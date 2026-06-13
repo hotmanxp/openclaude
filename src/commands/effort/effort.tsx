@@ -241,7 +241,11 @@ function ApplyEffortAndClose(t0) {
     t1 = $[5];
     t2 = $[6];
   }
-  React.useEffect(t1, t2);
+  // Call onDone SYNCHRONously during render (not via useEffect) so that
+  // meta messages are in messagesRef.current BEFORE the user submits their
+  // next prompt. useEffect defers to the next tick, which would miss the
+  // following turn's LLM call.
+  t1();
   return null;
 }
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {

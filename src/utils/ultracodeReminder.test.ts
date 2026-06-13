@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, beforeEach } from 'bun:test'
 import {
   queueUltracodeReminder,
@@ -62,7 +61,7 @@ describe('queueUltracodeReminder', () => {
   describe('verbatim upstream text', () => {
     it('ULTRACODE_EFFORT_ENTER_FULL matches upstream verbatim text', () => {
       expect(ULTRACODE_EFFORT_ENTER_FULL).toBe(
-        'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\'s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.',
+        'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\u2019s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.',
       )
     })
 
