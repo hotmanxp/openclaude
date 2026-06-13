@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Text } from '../../ink.js'
+import { Box, Text } from '../../ink.js'
 import { getTheme } from '../../utils/theme.js'
 import { useTheme } from '../design-system/ThemeProvider.js'
 
@@ -17,10 +17,10 @@ export function ClaudeMascot() {
   const [themeName] = useTheme()
   const theme = getTheme(themeName)
   return (
-    <>
+    <Box flexDirection="column">
       <Text color={theme.mascotPrimary}>{CLAUDE_MASCOT_ROWS[0]}</Text>
       <Text color={theme.mascotPrimary}>{CLAUDE_MASCOT_ROWS[1]}</Text>
       <Text color={theme.mascotPrimary}>{CLAUDE_MASCOT_ROWS[2]}</Text>
-    </>
+    </Box>
   )
 }
