@@ -14,9 +14,11 @@ import {
 } from '../../utils/hooks/hooksConfigSnapshot.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { Message } from '../../types/message.js'
+import type { ToolUseContext } from '../../Tool.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   createActiveGoal,
+  incrementIteration,
   type ActiveGoal,
 } from './activeGoal.js'
 import type { HookCommand } from '../../schemas/hooks.js'
@@ -247,4 +249,60 @@ export function getActiveGoalFromTranscript(
     }
   }
   return null
+}
+
+/**
+ * Stop-hook success path helper. Called from `execPromptHook` when the
+ * prompt-hook LLM returns `{ok: true}` (or the safe `fallbackHookResult`
+ * `{ok: true}` default). Clears the active goal so the footer pill shows
+ * "✔ Goal achieved" for 5s and then disappears.
+ *
+ * Idempotent — no-op when no goal is active OR when the goal is already in
+ * the `achieved` window (the latter guard prevents re-clearing from
+ * resetting the 5s summary timer on a duplicate hook fire).
+ *
+ * Returns `true` if a clear was applied, `false` if no-op.
+ *
+ * Why this lives here (and not in `execPromptHook`)? Goal state lives in
+ * `services/goal`; the hooks module is a generic LLM-eval utility and
+ * shouldn't know about `activeGoal` semantics. Centralizing the
+ * "goal-clearing on Stop-hook-success" transition here keeps `execPromptHook`
+ * agnostic of which hook called it (Stop vs SessionStart vs ...).
+ */
+export function clearActiveGoalIfActive(opts: {
+  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'setAppState'>
+}): boolean {
+  const appState = opts.toolUseContext.getAppState()
+  const existing = appState.activeGoal
+  if (!existing || existing.achievedAt !== undefined) return false
+  clearActiveGoal({
+    setAppState: opts.toolUseContext.setAppState,
+    appState,
+  })
+  return true
+}
+
+/**
+ * Stop-hook blocking path helper. Called from `execPromptHook` when the
+ * prompt-hook LLM returns `{ok: false, reason: "..."}` — i.e. the model
+ * decided the goal isn't met yet and the agent must continue working.
+ * Each block is one observable iteration of the goal loop, surfaced in
+ * the footer pill as `◎ /goal active (Ns · N iterations)`.
+ *
+ * Idempotent — no-op when no goal is active OR when the goal is already
+ * achieved (achieved goals can't accumulate more iterations).
+ *
+ * Returns `true` if iterations were bumped, `false` if no-op.
+ */
+export function bumpGoalIteration(opts: {
+  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'setAppState'>
+}): boolean {
+  const appState = opts.toolUseContext.getAppState()
+  const existing = appState.activeGoal
+  if (!existing || existing.achievedAt !== undefined) return false
+  opts.toolUseContext.setAppState(prev => ({
+    ...prev,
+    activeGoal: incrementIteration(prev.activeGoal as ActiveGoal),
+  }))
+  return true
 }

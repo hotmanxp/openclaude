@@ -2,6 +2,10 @@
 import { randomUUID } from 'crypto'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import {
+  bumpGoalIteration,
+  clearActiveGoalIfActive,
+} from '../../services/goal/hooks.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAttachmentMessage } from '../attachments.js'
@@ -10,7 +14,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { safeParseJSON } from '../json.js'
-import { createUserMessage, extractTextContent } from '../messages.js'
+import { createUserMessage } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
@@ -26,6 +30,133 @@ function stripMarkdownFence(s: string): string {
   const fenceRe = /```(?:[a-zA-Z]+)?\s*\n([\s\S]*?)\n```/
   const m = s.match(fenceRe)
   return m ? m[1].trim() : s
+}
+
+/**
+ * Final fallback when ALL parsing strategies have failed and we are about to
+ * return a `non_blocking_error`. Returns a safe default `{ok: true}`.
+ *
+ * Why `ok: true` (not `false`)?  For the `/goal` Stop hook on 2026-06-13,
+ * MiniMax-M2.7-highspeed sometimes returned:
+ *   - pure prose ("Let me check the transcript...") with no JSON at all
+ *   - ONLY `<minimax:tool_call>...[/tool_call]` wrappers (text block is
+ *     present but becomes empty after stripping), with no JSON anywhere
+ * Without this fallback, the user saw "Stop hook error: JSON validation
+ * failed" and the goal stayed `active` forever — stranding the UI. The
+ * hook's `ok` semantics is "did the agent satisfy the goal". The agent
+ * just successfully finished a turn, so by default the goal IS met
+ * unless the hook evidence explicitly says otherwise. Defaulting to
+ * ok=true is the safer interpretation: it unblocks the user instead of
+ * leaving the goal stranded.
+ *
+ * Returns `null` only if the response contained parseable JSON (in which
+ * case the caller should not have invoked the fallback) — empty/whitespace
+ * is treated as "no signal, default to ok=true".
+ */
+export function fallbackHookResult(response: string): { ok: boolean; reason: string } | null {
+  const trimmed = response.trim()
+  // If the response contains parseable JSON, the caller should have used
+  // parsePromptHookResponse and didn't — surface that as null so we don't
+  // silently override a real hook verdict.
+  if (trimmed && parsePromptHookResponse(trimmed) !== null) return null
+  return {
+    ok: true,
+    reason: trimmed
+      ? 'hook returned no parseable JSON; defaulting to ok=true'
+      : 'hook returned empty response; defaulting to ok=true',
+  }
+}
+
+/**
+ * Pick the most useful text payload out of an LLM response's content blocks
+ * for downstream JSON.parse.
+ *
+ * Primary path: join `text` blocks (existing behavior, covers models that
+ * follow the system-prompt contract and return `{"ok": true}` as text).
+ *
+ * Fallback path: if the model returned a `tool_use` block whose `input` looks
+ * like the expected `{ok: boolean, reason?: string}` schema, stringify that
+ * input. This recovers the case where the model — typically a small/fast one
+ * without structured-outputs beta support (e.g. MiniMax-M2.7-highspeed) —
+ * short-circuits the JSON-only system prompt by emitting `{ok:true}` inside a
+ * tool_use block (empty or otherwise). Without this fallback the caller sees
+ * an empty string and JSON.parse fails with "Unexpected EOF".
+ *
+ * Safety: we only stringify `tool_use.input` if it CONFORMS to the schema
+ * (boolean `ok` field, optional string `reason`). If it doesn't look like the
+ * hook response schema (e.g. a real tool invocation like `Bash`), we return
+ * "" and let the caller fail loudly. This avoids silently accepting arbitrary
+ * payloads the model might hallucinate as "tool" calls.
+ */
+export function extractHookResponseContent(
+  blocks: readonly unknown[],
+): string {
+  const textParts: string[] = []
+  for (const b of blocks) {
+    if (
+      b &&
+      typeof b === 'object' &&
+      (b as { type?: unknown }).type === 'text' &&
+      typeof (b as { text?: unknown }).text === 'string'
+    ) {
+      textParts.push((b as { text: string }).text)
+    }
+  }
+  const textJoined = textParts.join('').trim()
+  if (textJoined) return textJoined
+
+  // No text content — look for a tool_use block whose input matches the
+  // hook response schema. This is the MiniMax-M2.7-highspeed failure mode
+  // observed in /goal Stop-hook bug reproduction on 2026-06-13.
+  for (const b of blocks) {
+    if (
+      !b ||
+      typeof b !== 'object' ||
+      (b as { type?: unknown }).type !== 'tool_use'
+    ) {
+      continue
+    }
+    const input = (b as { input?: unknown }).input
+    if (
+      input &&
+      typeof input === 'object' &&
+      typeof (input as { ok?: unknown }).ok === 'boolean'
+    ) {
+      const reason = (input as { reason?: unknown }).reason
+      if (reason === undefined || typeof reason === 'string') {
+        return JSON.stringify(input)
+      }
+    }
+  }
+  return ''
+}
+
+/**
+ * Strip tool-call wrapper noise from `s`, returning the remainder trimmed.
+ *
+ * The small/fast model used for prompt hooks (MiniMax-M2.7-highspeed) emits
+ * tool-call blocks even when told to return JSON-only and even with
+ * `tools: []` passed in — it's a model-side formatting quirk, not an
+ * indication that a real tool was invoked. Two wrapper shapes have been
+ * observed:
+ *
+ *   1. `[TOOL_CALL]...[/TOOL_CALL]` — Perl-heredoc style, with `{tool =>
+ *      "Read", args => { ... }}` inside. This is the most common shape on
+ *      2026-06-13 and is dangerous because the inner Perl hash contains `{`
+ *      that confuses `extractFirstBalancedObject` — without stripping, the
+ *      balancer grabs the wrong `{...}` and the JSON.parse fails.
+ *
+ *   2. `<minimax:tool_call>...</minimax:tool_call>` — XML style seen on an
+ *      earlier MiniMax variant. Still stripped for safety.
+ *
+ * If the response was pure tool-call noise with no surrounding JSON we
+ * return "" so the caller can fail cleanly.
+ */
+export function stripMinimaxToolCallWrapper(s: string): string {
+  return s
+    .replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/g, '')
+    .replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/g, '')
+    .trim()
 }
 
 /**
@@ -212,7 +343,18 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
           messages: messagesToQuery,
           systemPrompt: asSystemPrompt([systemPrompt]),
           thinkingConfig: { type: 'disabled' as const },
-          tools: toolUseContext.options.tools,
+          // Root fix for the /goal Stop-hook bug: don't expose the agent's full
+          // tool list to the hook LLM. The previous code passed
+          // `toolUseContext.options.tools` (every tool the agent has, often
+          // 100+) which gave the small/fast model a tool_use backdoor — it
+          // would smuggle `{ok:true}` into a `tool_use[].input` block instead
+          // of returning text. The text extractor dropped that block, leaving
+          // "" for JSON.parse → "Unexpected EOF" → "JSON validation failed".
+          // Passing `[]` forces the model to use the text channel, where
+          // `extractHookResponseContent` + `parsePromptHookResponse` can
+          // recover. Defense in depth: the same extractor also handles the
+          // tool_use case in case another model still emits it.
+          tools: [],
           signal: combinedSignal,
           options: {
             async getToolPermissionContext() {
@@ -271,13 +413,16 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
           )
         }
 
-        // Extract text content from response
-        const content = extractTextContent(response.message.content)
+        // Extract response payload from content blocks. Prefer text blocks
+        // (the contract path), but fall back to `tool_use.input` so models
+        // that smuggle `{ok:true}` into a tool_use block (MiniMax-M2.7-highspeed
+        // observed on 2026-06-13) still parse. See extractHookResponseContent.
+        const content = extractHookResponseContent(response.message.content)
 
         // Update response length for spinner display
         toolUseContext.setResponseLength(length => length + content.length)
 
-        const fullResponse = content.trim()
+        const fullResponse = stripMinimaxToolCallWrapper(content.trim())
         logForDebugging(
           `Hooks[execPromptHook DIAG]: attempt ${attempt} model response: ${fullResponse}`,
         )
@@ -324,6 +469,21 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
       }
 
       cleanupSignal()
+
+      if (!json) {
+        // Last-resort safety net (2026-06-13 /goal Stop-hook bug): when ALL
+        // attempts and ALL parse strategies have failed, the model emitted
+        // something we can't read. Default to {ok:true} instead of returning
+        // a non_blocking_error — see fallbackHookResult for the rationale.
+        // This unblocks the user instead of stranding the goal active.
+        const fallback = fallbackHookResult(lastRawResponse)
+        if (fallback !== null) {
+          logForDebugging(
+            `Hooks[execPromptHook DIAG]: all ${MAX_ATTEMPTS} attempts unparseable; applying fallbackHookResult={ok:true} (lastRawResponse=${JSON.stringify(lastRawResponse).slice(0, 200)})`,
+          )
+          json = fallback
+        }
+      }
 
       if (!json) {
         logForDebugging(
@@ -375,6 +535,19 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         logForDebugging(
           `Hooks: Prompt hook condition was not met: ${parsed.data.reason}`,
         )
+        // /goal Stop hook rejected — bump the iteration count so the
+        // footer pill shows how many times the small model refused to
+        // stop. No-op when no goal is active (non-/goal hooks).
+        try {
+          bumpGoalIteration({
+            setAppState: toolUseContext.setAppState,
+            appState: toolUseContext.getAppState(),
+          })
+        } catch (e) {
+          logForDebugging(
+            `Hooks: bumpGoalIteration side-effect failed (non-fatal): ${errorMessage(e)}`,
+          )
+        }
         return {
           hook,
           outcome: 'blocking',
@@ -389,6 +562,19 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
 
       // Condition was met
       logForDebugging(`Hooks: Prompt hook condition was met`)
+      // /goal Stop hook accepted — clear activeGoal so the footer pill
+      // transitions to "✔ Goal achieved" then disappears. No-op when
+      // no goal is active (non-/goal hooks).
+      try {
+        clearActiveGoalIfActive({
+          setAppState: toolUseContext.setAppState,
+          appState: toolUseContext.getAppState(),
+        })
+      } catch (e) {
+        logForDebugging(
+          `Hooks: clearActiveGoalIfActive side-effect failed (non-fatal): ${errorMessage(e)}`,
+        )
+      }
       return {
         hook,
         outcome: 'success',

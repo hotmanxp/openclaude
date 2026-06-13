@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import type { AppState } from '../../state/AppState.js'
 import { getSessionId } from '../../bootstrap/state.js'
-import { checkGoalGate, clearActiveGoal, getActiveGoalFromTranscript, setActiveGoal } from './hooks.js'
+import {
+  bumpGoalIteration,
+  checkGoalGate,
+  clearActiveGoal,
+  clearActiveGoalIfActive,
+  getActiveGoalFromTranscript,
+  setActiveGoal,
+} from './hooks.js'
 import type { Message } from '../../types/message.js'
 
 describe('checkGoalGate', () => {
@@ -257,5 +264,101 @@ describe('Stop prompt hook (upstream-style architecture)', () => {
     // Should not throw
     clearActiveGoal({ setAppState, appState: state })
     expect(state.activeGoal).toBeNull()
+  })
+})
+
+function makeToolUseContext(
+  state: AppState,
+  setAppState: (updater: (prev: AppState) => AppState) => void,
+): Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext'] {
+  return {
+    getAppState: () => state,
+    setAppState,
+  } as unknown as Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext']
+}
+
+describe('clearActiveGoalIfActive (Stop hook success path helper)', () => {
+  test('marks the active goal as achieved and removes the Stop hook', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish tests', setAppState, appState: state })
+    expect(state.activeGoal?.achievedAt).toBeUndefined()
+
+    clearActiveGoalIfActive({ toolUseContext: makeToolUseContext(state, setAppState) })
+
+    // Mirrors clearActiveGoal: hook removed, achievedAt stamped.
+    expect(typeof state.activeGoal?.achievedAt).toBe('number')
+    const remaining = (state.sessionHooks.get(getSessionId())?.hooks.Stop ?? [])
+      .flatMap(m => m.hooks)
+      .filter(h => h.hook.type === 'prompt')
+    expect(remaining).toHaveLength(0)
+  })
+
+  test('is a no-op when no goal is active', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    // Should not throw
+    clearActiveGoalIfActive({ toolUseContext: makeToolUseContext(state, setAppState) })
+    expect(state.activeGoal).toBeNull()
+  })
+
+  test('does NOT clobber achievedAt when the goal is already achieved', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish tests', setAppState, appState: state })
+    clearActiveGoal({ setAppState, appState: state })
+    const firstAchievedAt = state.activeGoal?.achievedAt
+    expect(typeof firstAchievedAt).toBe('number')
+
+    // Second call must NOT reset the achievedAt stamp — otherwise the UI
+    // confirmation window would loop forever on repeated Stop hooks.
+    clearActiveGoalIfActive({ toolUseContext: makeToolUseContext(state, setAppState) })
+    expect(state.activeGoal?.achievedAt).toBe(firstAchievedAt)
+  })
+})
+
+describe('bumpGoalIteration (Stop hook blocking path helper)', () => {
+  test('increments iterations by 1 when goal is active', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish tests', setAppState, appState: state })
+    expect(state.activeGoal?.iterations).toBe(0)
+
+    bumpGoalIteration({ toolUseContext: makeToolUseContext(state, setAppState) })
+
+    expect(state.activeGoal?.iterations).toBe(1)
+    expect(state.activeGoal?.achievedAt).toBeUndefined()
+  })
+
+  test('is a no-op when no goal is active', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    // Should not throw
+    bumpGoalIteration({ toolUseContext: makeToolUseContext(state, setAppState) })
+    expect(state.activeGoal).toBeNull()
+  })
+
+  test('is a no-op when the goal is already achieved', () => {
+    let state: AppState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      state = updater(state)
+    }
+    setActiveGoal({ condition: 'finish tests', setAppState, appState: state })
+    clearActiveGoal({ setAppState, appState: state })
+
+    bumpGoalIteration({ toolUseContext: makeToolUseContext(state, setAppState) })
+
+    // iterations stays at 0 — no point counting after completion
+    expect(state.activeGoal?.iterations).toBe(0)
   })
 })
