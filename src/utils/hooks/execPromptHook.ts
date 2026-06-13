@@ -540,12 +540,12 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         // stop. No-op when no goal is active (non-/goal hooks).
         try {
           bumpGoalIteration({
-            setAppState: toolUseContext.setAppState,
-            appState: toolUseContext.getAppState(),
+            toolUseContext,
           })
         } catch (e) {
           logForDebugging(
-            `Hooks: bumpGoalIteration side-effect failed (non-fatal): ${errorMessage(e)}`,
+            `Hooks: bumpGoalIteration side-effect failed: ${errorMessage(e)}`,
+            { level: 'error' },
           )
         }
         return {
@@ -567,12 +567,12 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
       // no goal is active (non-/goal hooks).
       try {
         clearActiveGoalIfActive({
-          setAppState: toolUseContext.setAppState,
-          appState: toolUseContext.getAppState(),
+          toolUseContext,
         })
       } catch (e) {
         logForDebugging(
-          `Hooks: clearActiveGoalIfActive side-effect failed (non-fatal): ${errorMessage(e)}`,
+          `Hooks: clearActiveGoalIfActive side-effect failed: ${errorMessage(e)}`,
+          { level: 'error' },
         )
       }
       return {
