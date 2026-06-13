@@ -318,11 +318,23 @@ describe('BGRequestSchema', () => {
       proto: 1,
       op: 'dispatch',
       auth: 'secret',
-      job: { mode: 'prompt', args: ['hello'] },
+      job: {
+        proto: 1,
+        short: 'abcd1234',
+        nonce: '12345678',
+        sessionId: 'sess-1',
+        createdAt: 1700000000000,
+        source: 'shell',
+        cwd: '/tmp',
+        env: {},
+        isolation: 'none',
+        respawnFlags: [],
+        launch: { mode: 'prompt', args: ['hello'] },
+      },
     })
     if (r.op !== 'dispatch') throw new Error('op mismatch')
     expect(r.auth).toBe('secret')
-    expect(r.job.mode).toBe('prompt')
+    expect(r.job.launch.mode).toBe('prompt')
   })
 
   test('rejects dispatch without auth', () => {
@@ -543,54 +555,149 @@ describe('BGRequestSchema', () => {
 
 // ---------- JobLaunchSpec ----------
 
-describe('JobLaunchSpecSchema', () => {
+describe('JobLaunchSpecSchema — launch field union', () => {
+  const outerBase = {
+    proto: 1,
+    short: 'abcd1234',
+    nonce: '12345678',
+    sessionId: 'sess-1',
+    createdAt: 1700000000000,
+    source: 'shell' as const,
+    cwd: '/tmp',
+    env: { FOO: 'bar' },
+    isolation: 'none' as const,
+    respawnFlags: [],
+  }
+
   test('accepts prompt mode', () => {
-    const j = JobLaunchSpecSchema.parse({ mode: 'prompt', args: ['hi'] })
-    if (j.mode !== 'prompt') throw new Error('mode mismatch')
-    expect(j.args).toEqual(['hi'])
+    const j = JobLaunchSpecSchema.parse({
+      ...outerBase,
+      launch: { mode: 'prompt', args: ['hi'] },
+    })
+    if (j.launch.mode !== 'prompt') throw new Error('mode mismatch')
+    expect(j.launch.args).toEqual(['hi'])
   })
 
   test('accepts resume mode', () => {
     const j = JobLaunchSpecSchema.parse({
-      mode: 'resume',
-      sessionId: 'sess-1',
-      fork: false,
-      flagArgs: ['--no-color'],
+      ...outerBase,
+      launch: {
+        mode: 'resume',
+        sessionId: 'sess-1',
+        fork: false,
+        flagArgs: ['--no-color'],
+      },
     })
-    if (j.mode !== 'resume') throw new Error('mode mismatch')
-    expect(j.sessionId).toBe('sess-1')
-    expect(j.fork).toBe(false)
-    expect(j.flagArgs).toEqual(['--no-color'])
+    if (j.launch.mode !== 'resume') throw new Error('mode mismatch')
+    expect(j.launch.sessionId).toBe('sess-1')
+    expect(j.launch.fork).toBe(false)
+    expect(j.launch.flagArgs).toEqual(['--no-color'])
   })
 
   test('accepts exec mode', () => {
     const j = JobLaunchSpecSchema.parse({
-      mode: 'exec',
-      cmd: 'npm',
-      args: ['test'],
+      ...outerBase,
+      launch: { mode: 'exec', cmd: 'npm', args: ['test'] },
     })
-    if (j.mode !== 'exec') throw new Error('mode mismatch')
-    expect(j.cmd).toBe('npm')
+    if (j.launch.mode !== 'exec') throw new Error('mode mismatch')
+    expect(j.launch.cmd).toBe('npm')
   })
 
   test('rejects unknown mode', () => {
     expect(() =>
-      JobLaunchSpecSchema.parse({ mode: 'repl', args: [] }),
+      JobLaunchSpecSchema.parse({
+        ...outerBase,
+        launch: { mode: 'repl', args: [] },
+      }),
     ).toThrow()
   })
 
   test('rejects prompt mode missing args', () => {
-    expect(() => JobLaunchSpecSchema.parse({ mode: 'prompt' })).toThrow()
+    expect(() =>
+      JobLaunchSpecSchema.parse({
+        ...outerBase,
+        launch: { mode: 'prompt' },
+      }),
+    ).toThrow()
   })
 
   test('rejects resume mode missing fork', () => {
     expect(() =>
       JobLaunchSpecSchema.parse({
-        mode: 'resume',
-        sessionId: 's',
-        flagArgs: [],
+        ...outerBase,
+        launch: { mode: 'resume', sessionId: 's', flagArgs: [] },
       }),
     ).toThrow()
+  })
+})
+
+describe('JobLaunchSpecSchema — outer shared fields', () => {
+  const validBase = {
+    proto: 1,
+    short: 'abcd1234',
+    nonce: '12345678',
+    sessionId: 'sess-1',
+    createdAt: 1700000000000,
+    source: 'shell' as const,
+    cwd: '/tmp',
+    launch: { mode: 'prompt' as const, args: ['hi'] },
+    env: { FOO: 'bar' },
+    isolation: 'none' as const,
+    respawnFlags: [],
+  }
+
+  test('parses full canonical dispatch payload', () => {
+    expect(JobLaunchSpecSchema.parse(validBase)).toBeTruthy()
+  })
+
+  test('rejects missing proto', () => {
+    const { proto, ...rest } = validBase
+    expect(() => JobLaunchSpecSchema.parse(rest)).toThrow()
+  })
+
+  test('rejects missing short', () => {
+    const { short, ...rest } = validBase
+    expect(() => JobLaunchSpecSchema.parse(rest)).toThrow()
+  })
+
+  test('rejects invalid short format', () => {
+    expect(() => JobLaunchSpecSchema.parse({ ...validBase, short: 'XYZ' })).toThrow()
+  })
+
+  test('rejects unknown source', () => {
+    expect(() =>
+      JobLaunchSpecSchema.parse({ ...validBase, source: 'unknown' }),
+    ).toThrow()
+  })
+
+  test('rejects unknown isolation', () => {
+    expect(() =>
+      JobLaunchSpecSchema.parse({ ...validBase, isolation: 'docker' }),
+    ).toThrow()
+  })
+
+  test('accepts optional worktree', () => {
+    expect(() =>
+      JobLaunchSpecSchema.parse({
+        ...validBase,
+        worktree: { path: '/wt', ownershipToken: 'tok' },
+      }),
+    ).not.toThrow()
+  })
+
+  test('accepts optional seed', () => {
+    expect(() =>
+      JobLaunchSpecSchema.parse({
+        ...validBase,
+        seed: { intent: 'fix bug', name: 'fix-bug-1' },
+      }),
+    ).not.toThrow()
+  })
+
+  test('accepts optional cols/rows', () => {
+    expect(() =>
+      JobLaunchSpecSchema.parse({ ...validBase, cols: 80, rows: 24 }),
+    ).not.toThrow()
   })
 })
 

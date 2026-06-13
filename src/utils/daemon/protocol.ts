@@ -127,16 +127,34 @@ export type ErrorCode = z.infer<typeof ErrorCodeSchema>
 
 // ---------- Job launch spec ----------
 
+export const JobSourceSchema = z.enum([
+  'shell',
+  'slash',
+  'fleet',
+  'spare',
+  'respawn',
+])
+
+export type JobSource = z.infer<typeof JobSourceSchema>
+
+export const IsolationSchema = z.enum(['none', 'worktree'])
+
+export type Isolation = z.infer<typeof IsolationSchema>
+
 /**
- * `dispatch` carries a `JobLaunchSpec` discriminated by `mode`:
+ * `dispatch` carries a `JobLaunchSpec` — the **outer shared envelope** that
+ * wraps a 3-mode `launch` discriminated union (prompt / resume / exec).
  *
- * - `prompt`  — fresh agent invocation from a user prompt
- * - `resume`  — continue an existing session, optionally forking
- * - `exec`    — run an external command (`!` shorthand)
+ * Outer fields (proto, short, nonce, sessionId, createdAt, source, cwd,
+ * env, isolation, respawnFlags) are shared by all dispatch payloads; the
+ * `launch` field holds the mode-specific payload. Optional fields
+ * (reattachEnv, worktree, attachStallRespawns, agent, routine, seed, cols,
+ * rows) are filled in by the caller when relevant and ignored by the
+ * daemon otherwise.
  *
  * Field names match upstream 2.1.177 verbatim.
  */
-export const JobLaunchSpecSchema = z.discriminatedUnion('mode', [
+const LaunchSpecSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('prompt'),
     args: z.array(z.string()),
@@ -154,23 +172,33 @@ export const JobLaunchSpecSchema = z.discriminatedUnion('mode', [
   }),
 ])
 
+export const JobLaunchSpecSchema = z.object({
+  proto: z.literal(BG_PROTO),
+  short: JobShortIdSchema,
+  nonce: z.string(),
+  sessionId: z.string(),
+  createdAt: z.number(),
+  source: JobSourceSchema,
+  cwd: z.string(),
+  launch: LaunchSpecSchema,
+  env: z.record(z.string(), z.string()),
+  reattachEnv: z.record(z.string(), z.string()).optional(),
+  worktree: z
+    .object({ path: z.string(), ownershipToken: z.string() })
+    .optional(),
+  isolation: IsolationSchema,
+  respawnFlags: z.array(z.string()),
+  attachStallRespawns: z.number().optional(),
+  agent: z.string().optional(),
+  routine: z.string().optional(),
+  seed: z.object({ intent: z.string(), name: z.string().optional() }).optional(),
+  cols: z.number().optional(),
+  rows: z.number().optional(),
+})
+
 export type JobLaunchSpec = z.infer<typeof JobLaunchSpecSchema>
 
 // ---------- Job record (returned by `list`) ----------
-
-export const JobSourceSchema = z.enum([
-  'shell',
-  'slash',
-  'fleet',
-  'spare',
-  'respawn',
-])
-
-export type JobSource = z.infer<typeof JobSourceSchema>
-
-export const IsolationSchema = z.enum(['none', 'worktree'])
-
-export type Isolation = z.infer<typeof IsolationSchema>
 
 export const JobRecordSchema = z.object({
   short: JobShortIdSchema,
