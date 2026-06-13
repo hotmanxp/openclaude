@@ -115,7 +115,7 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     effortUpdate: {
       value: effortValue
     },
-    metaMessages,
+    ...(metaMessages?.length ? { metaMessages } : {}),
   };
 }
 export function showCurrentEffort(appStateEffort: EffortValue | undefined, model: string): EffortCommandResult {
@@ -167,7 +167,7 @@ function unsetEffortLevel(): EffortCommandResult {
     effortUpdate: {
       value: undefined
     },
-    metaMessages,
+    ...(metaMessages?.length ? { metaMessages } : {}),
   };
 }
 export function executeEffort(args: string): EffortCommandResult {
