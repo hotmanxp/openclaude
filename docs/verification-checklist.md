@@ -191,7 +191,7 @@ compare the version reported in:
 3. `/status` output (`版本 : X.Y.Z`)
 
 All three must show the version captured in Phase 1. If they
-diverge (e.g. splash shows `v0.14.0` but `/status` shows `v0.16.1`),
+diverge (e.g. splash shows `v0.14.0` but `/status` shows `v0.17.0`),
 that's a stale `MACRO.VERSION` vs `MACRO.DISPLAY_VERSION`
 reference — fix before commit.
 
