@@ -169,7 +169,6 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       // already current, so without this the on-disk file stays at the old
       // version indefinitely.
       await saveStatsCache(migrated)
-      // [SHOT_STATS] was: feature('SHOT_STATS') &&
       if (!migrated.shotDistribution) {
         logForDebugging(
           'Migrated stats cache missing shotDistribution, forcing recomputation',
@@ -383,7 +382,7 @@ export function mergeCacheWithNewStats(
       newStats.totalSpeculationTimeSavedMs,
   }
 
-  // [SHOT_STATS] was: if (feature('SHOT_STATS')) { ... }
+  // Merge shot distribution (SHOT_STATS is always-on)
   const shotDistribution: { [shotCount: number]: number } = {
     ...(existingCache.shotDistribution || {}),
   }
