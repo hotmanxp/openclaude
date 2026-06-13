@@ -19,8 +19,14 @@ import {
   expect,
   test,
 } from 'bun:test'
-import {mkdtempSync, readdirSync, rmSync, writeFileSync} from 'node:fs'
-import {stat} from 'node:fs/promises'
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import {readdir, stat, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {
@@ -36,6 +42,18 @@ import {JobShortIdSchema} from './protocol.js'
 
 function freshDir(): string {
   return mkdtempSync(join(tmpdir(), 'roster-'))
+}
+
+/**
+ * Tests must place roster files under a `.claude` subdir so they
+ * satisfy the path-root assertion in `atomicWriteFile`. This helper
+ * returns a fresh `.claude` directory under a temp parent.
+ */
+function freshClaudeDir(): string {
+  const parent = freshDir()
+  const claude = join(parent, '.claude')
+  mkdirSync(claude, {recursive: true})
+  return claude
 }
 
 const sampleJob = (short: string, sessionId: string) => ({
@@ -79,8 +97,8 @@ function trackDir(d: string): string {
 
 describe('saveRoster + loadRoster round-trip', () => {
   test('saves and loads a roster with one job', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     const r: Roster = {
       version: ROSTER_VERSION,
       updatedAt: 100,
@@ -93,8 +111,8 @@ describe('saveRoster + loadRoster round-trip', () => {
   })
 
   test('saves and loads a roster with multiple jobs', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     const r: Roster = {
       version: ROSTER_VERSION,
       updatedAt: 200,
@@ -116,8 +134,8 @@ describe('saveRoster + loadRoster round-trip', () => {
   })
 
   test('loadRoster on missing file returns empty roster', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     const r = await loadRoster({path})
     expect(r.version).toBe(ROSTER_VERSION)
     expect(r.jobs).toEqual({})
@@ -180,6 +198,16 @@ describe('corrupt file handling', () => {
     )
   })
 
+  test('quarantines an empty (zero-byte) file', async () => {
+    const dir = trackDir(freshDir())
+    const path = join(dir, 'roster.json')
+    await writeFile(path, '', 'utf8')
+    const r = await loadRoster({path})
+    expect(r.jobs).toEqual({})
+    const files = await readdir(dir)
+    expect(files.some(f => f.includes('.corrupt.'))).toBe(true)
+  })
+
   test('silent flag suppresses the stderr warning on parse failure', async () => {
     const dir = trackDir(freshDir())
     const path = join(dir, 'roster.json')
@@ -212,8 +240,8 @@ describe('corrupt file handling', () => {
 
 describe('file mode', () => {
   test('saveRoster writes file with mode 0o600', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     await saveRoster(
       {version: ROSTER_VERSION, updatedAt: 0, supervisorPid: 0, jobs: {}},
       {path},
@@ -223,15 +251,28 @@ describe('file mode', () => {
     expect(st.mode & 0o777).toBe(0o600)
   })
 
-  test('saveRoster creates parent directory if missing', async () => {
+  test('saveRoster creates target file when parent exists', async () => {
     const dir = trackDir(freshDir())
-    const path = join(dir, 'nested', 'deeper', 'roster.json')
+    const claudeDir = join(dir, '.claude')
+    mkdirSync(claudeDir, {recursive: true})
+    const path = join(claudeDir, 'roster.json')
     await saveRoster(
       {version: ROSTER_VERSION, updatedAt: 0, supervisorPid: 0, jobs: {}},
       {path},
     )
-    const loaded = await loadRoster({path})
-    expect(loaded.jobs).toEqual({})
+    const files = readdirSync(claudeDir)
+    expect(files).toContain('roster.json')
+  })
+
+  test('saveRoster refuses paths outside ~/.claude', async () => {
+    const dir = trackDir(freshDir())
+    const badPath = join(dir, 'evil.json')
+    await expect(() =>
+      saveRoster(
+        {version: ROSTER_VERSION, updatedAt: 0, supervisorPid: 0, jobs: {}},
+        {path: badPath},
+      ),
+    ).toThrow(/outside.*\.claude/i)
   })
 })
 
@@ -239,8 +280,8 @@ describe('file mode', () => {
 
 describe('updateRoster serialization', () => {
   test('serializes concurrent updates (no lost writes)', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     const initial: Roster = {
       version: ROSTER_VERSION,
       updatedAt: 0,
@@ -275,8 +316,8 @@ describe('updateRoster serialization', () => {
   })
 
   test('stamps supervisorPid and updatedAt on each update', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
 
     await updateRoster(r => r, {path})
     const loaded = await loadRoster({path})
@@ -286,8 +327,8 @@ describe('updateRoster serialization', () => {
   })
 
   test('preserves caller-set supervisorPid if provided', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     await updateRoster(
       r => ({
         ...r,
@@ -300,8 +341,8 @@ describe('updateRoster serialization', () => {
   })
 
   test('an update failure does not poison subsequent updates', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
 
     await expect(
       updateRoster(
@@ -322,8 +363,8 @@ describe('updateRoster serialization', () => {
   })
 
   test('async transforms are awaited', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
 
     const r = await updateRoster(
       async roster => {
@@ -344,13 +385,13 @@ describe('updateRoster serialization', () => {
 
 describe('atomic write', () => {
   test('saveRoster creates and renames a tmp file (no leftover on success)', async () => {
-    const dir = trackDir(freshDir())
-    const path = join(dir, 'roster.json')
+    const claudeDir = trackDir(freshClaudeDir())
+    const path = join(claudeDir, 'roster.json')
     await saveRoster(
       {version: ROSTER_VERSION, updatedAt: 0, supervisorPid: 0, jobs: {}},
       {path},
     )
-    const files = readdirSync(dir)
+    const files = readdirSync(claudeDir)
     expect(files).toContain('roster.json')
     expect(files.some(f => f.includes('.tmp.'))).toBe(false)
   })

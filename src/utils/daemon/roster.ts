@@ -14,15 +14,21 @@
  * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T4
  */
 import {existsSync} from 'node:fs'
-import {chmod, mkdir, readFile, rename, writeFile} from 'node:fs/promises'
+import {chmod, readFile, rename, writeFile} from 'node:fs/promises'
 import {homedir} from 'node:os'
-import {dirname, join} from 'node:path'
+import {join, sep} from 'node:path'
 import {z} from 'zod/v4'
 import {JobRecordSchema} from './protocol.js'
 
 // ---------- Constants ----------
 
-export const ROSTER_PATH = join(homedir(), '.claude', 'roster.json')
+/** Production root: `~/.claude`. The supervisor (T5) owns this
+ *  directory's lifecycle; this module must not silently create
+ *  intermediate dirs or accept arbitrary call sites that might point
+ *  elsewhere (e.g. `/etc/passwd`). */
+export const ROSTER_ROOT = join(homedir(), '.claude')
+
+export const ROSTER_PATH = join(ROSTER_ROOT, 'roster.json')
 
 export const ROSTER_VERSION = 1
 
@@ -66,18 +72,50 @@ function emptyRoster(): Roster {
 }
 
 /**
+ * Throw if `path` does not look like it lives under a `.claude`
+ * root. The supervisor (T5) owns `~/.claude`; this module must not
+ * silently create intermediate dirs or accept arbitrary call sites
+ * that might point elsewhere (e.g. `/etc/passwd`).
+ *
+ * The check is intentionally segment-based (a `.claude` directory
+ * component anywhere in the path) rather than strictly
+ * filesystem-location-based, so tests can use `mkdtempSync(...)/.claude`
+ * without touching the real home directory.
+ */
+function assertUnderRosterRoot(path: string): void {
+  const claudeSegment = `${sep}.claude${sep}`
+  const claudeSegmentTail = `${sep}.claude`
+  if (
+    !path.includes(claudeSegment) &&
+    !path.endsWith(claudeSegmentTail) &&
+    path !== '.claude'
+  ) {
+    throw new Error(
+      `roster: refusing to write outside ${ROSTER_ROOT}: ${path}`,
+    )
+  }
+}
+
+/**
  * Atomic write: tmp file in the same directory → rename. `rename` is
  * atomic on POSIX when source and destination are on the same
  * filesystem, which they always are here because the tmp file lives in
  * `dirname(target)`. Avoids half-written files on crash.
+ *
+ * Preconditions (callers must satisfy):
+ *   - `path` is under `~/.claude` (asserted via
+ *     {@link assertUnderRosterRoot}).
+ *   - The parent directory exists. The supervisor (T5) owns the
+ *     `~/.claude/sock/` and similar lifecycle; this helper no longer
+ *     silently `mkdir`s intermediate dirs.
  */
 async function atomicWriteFile(
   path: string,
   contents: string,
   mode: number,
 ): Promise<void> {
+  assertUnderRosterRoot(path)
   const tmp = `${path}.tmp.${process.pid}.${Date.now()}`
-  await mkdir(dirname(path), {recursive: true})
   await writeFile(tmp, contents, {mode})
   await rename(tmp, path)
   await chmod(path, mode)
