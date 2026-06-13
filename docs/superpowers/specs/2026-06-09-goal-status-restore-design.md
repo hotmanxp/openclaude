@@ -13,7 +13,7 @@
 ## 1. 目标
 
 恢复 `/goal` 命令在状态栏（footer）右侧的状态指示器
-`◎goal active (12s)`，该指示器在 upstream sync PR #1293
+`◎ /goal active (12s)`，该指示器在 upstream sync PR #1293
 （commit `9a23a692`）重构 `/goal` 时被破坏。
 
 同时清理随之残留的 `AppState.goalState` 死字段。
@@ -88,7 +88,7 @@ context.setAppState(prev => ({ ...prev, goal }))
 
 - `GoalStatusIndicator` 的 `status !== 'active'` 提前 return 逻辑保留
   （用户原意：只显示 active 状态）
-- 渲染文本 `◎goal active ({duration})` 保留
+- 渲染文本 `◎ /goal active ({duration})` 保留
 - `Date.parse(goal.startedAt)` 算式保留（refactor 已正确迁移）
 - `StatusLine.tsx` 不动（refactor 已彻底清理其 goal 集成）
 - `GoalDialog.tsx` 不恢复（已被 refactor 删除，本地无意恢复独立 dialog 形态；
@@ -122,7 +122,7 @@ GoalStatusIndicator() 触发 useAppState 重渲染
   ↓
 const goal = useAppState(s => s.goal)
   ↓
-goal?.status === 'active' → 渲染 ◎goal active (Ns)
+goal?.status === 'active' → 渲染 ◎ /goal active (Ns)
 ```
 
 ---
@@ -142,7 +142,7 @@ goal?.status === 'active' → 渲染 ◎goal active (Ns)
    # 然后在 REPL 输入
    /goal 提交一个测试目标
    ```
-   期望在 footer 右侧看到 `◎goal active (0s)` 字样，
+   期望在 footer 右侧看到 `◎ /goal active (0s)` 字样，
    等待数秒后秒数递增，
    输入 `/goal clear` 之后字样立即消失。
    非交互式 `node dist/cli.mjs -p` 模式不渲染 footer，无法验证此项。
