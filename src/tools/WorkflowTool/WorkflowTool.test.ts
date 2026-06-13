@@ -413,6 +413,50 @@ describe('WorkflowTool.checkPermissions', () => {
   })
 })
 
+describe('WORKFLOW_DESCRIPTION upstream tail (Task 3)', () => {
+  // Task 3: WORKFLOW_DESCRIPTION must include the verbatim downstream tail
+  // from claude-code 2.1.177 (binary offset 210896000–210904000).
+  // The LLM needs this content to know when to call WorkflowTool (ultracode
+  // opt-in, hybrid scout+pipeline pattern, common workflow names, the
+  // Ultracode standing-opt-in rule).
+  //
+  // Boundary: prose ends before the script-syntax section
+  // (`export const meta = {...}`). The LLM already knows script syntax
+  // from other docs; we only need the behavioural/orchestration guidance.
+  test('WORKFLOW_DESCRIPTION contains the verbatim upstream tail from 2.1.177', async () => {
+    // Use `tool` (the cast version) — WorkflowTool.prompt() in the Tool
+    // interface is typed as (options) => Promise<string>, but the runtime
+    // implementation takes no args (returns static copy). Same pattern as
+    // the existing test at line 39.
+    const desc = await tool.prompt()
+
+    // The Ultracode standing-opt-in paragraph
+    expect(desc).toContain(
+      '**Ultracode.** When a system-reminder confirms ultracode is on, that opt-in is standing',
+    )
+
+    // Common single-phase workflows header + all five named patterns
+    expect(desc).toContain('Common single-phase workflows you can chain across turns:')
+    expect(desc).toContain('**Understand**')
+    expect(desc).toContain('**Design**')
+    expect(desc).toContain('**Review**')
+    expect(desc).toContain('**Research**')
+    expect(desc).toContain('**Migrate**')
+
+    // Hybrid scout+pipeline guidance
+    expect(desc).toContain('right move is often **hybrid**')
+
+    // Loop invariant
+    expect(desc).toContain('You stay in the loop; each workflow is one well-scoped fan-out')
+
+    // Opt-in revert rule
+    expect(desc).toContain('opt-in rule above')
+
+    // Ask-skip continuation of the last paragraph from lines 117-119
+    expect(desc).toContain("Mention they can ask for one with")
+  })
+})
+
 describe('WorkflowTool resumeFromRunId (Plan12 Task2: port upstream)', () => {
   test('rejects resumeFromRunId that does not match upstream regex', () => {
     // Schema-level validation: malformed run IDs are caught by the

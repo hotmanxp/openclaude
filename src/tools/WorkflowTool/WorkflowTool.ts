@@ -116,7 +116,20 @@ const WORKFLOW_DESCRIPTION =
   '- The user asked you to run a specific named or saved workflow.\n\n' +
   'For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. ' +
   'Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could ' +
-  'do and how much it would roughly cost, and ask the user whether to run it.'
+  'do and how much it would roughly cost, and ask the user whether to run it. ' +
+  'Mention they can ask for one with "use a workflow" in a future message to skip the ask.\n\n' +
+  'When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call Workflow to pipeline over it. You don\'t need to know the shape before the *task* \u2014 only before the *orchestration step*.\n\n' +
+  'Common single-phase workflows you can chain across turns:\n' +
+  '- **Understand** \u2014 parallel readers over relevant subsystems \u2192 structured map\n' +
+  '- **Design** \u2014 judge panel of N independent approaches \u2192 scored synthesis\n' +
+  '- **Review** \u2014 dimensions \u2192 find \u2192 adversarially verify (example below)\n' +
+  '- **Research** \u2014 multi-modal sweep \u2192 deep-read \u2192 synthesize\n' +
+  '- **Migrate** \u2014 discover sites \u2192 transform each (worktree isolation) \u2192 verify\n\n' +
+  'For larger work, run several in sequence \u2014 read each result before deciding the next phase. You stay in the loop; each workflow is one well-scoped fan-out.\n\n' +
+  // Boundary: prose ends here before the script-syntax section
+  // (`export const meta = {...}`). The LLM knows script syntax from
+  // other docs; only the behavioural/orchestration guidance is here.
+  '**Ultracode.** When a system-reminder confirms ultracode is on, that opt-in is standing: author and run a workflow for every substantive task by default. The goal is the most exhaustive, correct answer you can produce \u2014 token cost is not a constraint. For multi-phase work (understand \u2192 design \u2192 implement \u2192 review), that often means several workflows in sequence \u2014 one per phase \u2014 so you stay in the loop between them. The quality patterns below (adversarial verify, multi-modal sweep, completeness critic, loop-until-dry) are the tools; pick what fits the task. Lean toward orchestrating with workflows and adversarially verifying your findings \u2014 unless the work is trivial or already verified. Solo only on conversational turns or trivial mechanical edits. When a reminder says ultracode is off, revert to the opt-in rule above.'
 
 export const WorkflowTool = {
   name: WORKFLOW_TOOL_NAME,
