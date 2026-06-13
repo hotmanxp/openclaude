@@ -18,6 +18,15 @@ const version = pkg.version
 // Feature flags for the open build.
 // Most Anthropic-internal features stay off; open-build features can be
 // selectively enabled here when their full source exists in the mirror.
+//
+// As of 2026-06-13, all 22 `=true` flags below have been "solidified" in
+// src/: their `feature('XXX')` runtime guards were removed and the true
+// branches inlined. The `bun:bundle` preprocess step still runs (for
+// build-time constant folding) but the resulting `if (true) { ... }`
+// guards no longer exist in source. See docs/feature-gating.md for the
+// 4-state feature flag lifecycle (enabled / disabled / solidified / stubbed)
+// and the build-time guard `scripts/check-feature-solidify.ts` that
+// prevents re-introducing a guard for a `=true` flag.
 const featureFlags: Record<string, boolean> = {
   // ── Disabled: require Anthropic infrastructure or missing source ─────
   VOICE_MODE: false,              // Push-to-talk STT via claude.ai OAuth endpoint
