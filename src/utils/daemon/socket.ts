@@ -71,9 +71,17 @@ export function getSockPath(): string {
         `daemon runs on demand instead`,
     )
   }
-  // `process.getuid` is POSIX-only; fall back to `userInfo()` for safety.
-  const uid = process.getuid?.() ?? userInfo().uid
-  return join(homedir(), '.claude', 'sock', `cc-daemon-${uid}`)
+  // On darwin, `process.getuid()` is always defined; the `userInfo()`
+  // fallback is defensive (e.g. running under a weird emulation layer
+  // where `getuid` is missing). Both return a number on POSIX. We coerce
+  // to Number and assert isInteger so the filename suffix stays stable
+  // and we fail loudly instead of producing `cc-daemon-undefined` if
+  // the OS path resolution ever breaks.
+  const uidNum = process.getuid?.() ?? Number(userInfo().uid)
+  if (!Number.isInteger(uidNum)) {
+    throw new Error(`getSockPath: unable to determine uid (got ${uidNum})`)
+  }
+  return join(homedir(), '.claude', 'sock', `cc-daemon-${uidNum}`)
 }
 
 // ---------- Connect ----------
@@ -154,7 +162,17 @@ export async function requestOnPath(
   timeoutMs = 5000,
 ): Promise<BGResponse> {
   // Validate early so we don't open a socket just to discover a typo.
-  const parsedReq = BGRequestSchema.parse(req)
+  // Wrap as DaemonError('EPROTO') so callers can switch on err.code
+  // uniformly for both client- and server-side validation failures.
+  let parsedReq: BGRequest
+  try {
+    parsedReq = BGRequestSchema.parse(req)
+  } catch (err) {
+    throw new DaemonError(
+      'EPROTO',
+      err instanceof Error ? err.message : String(err),
+    )
+  }
   const sock = await connectToPath(sockPath, timeoutMs)
   return new Promise<BGResponse>((resolve, reject) => {
     let settled = false
@@ -189,18 +207,42 @@ export async function requestOnPath(
           resolve(parsed)
         })
       } catch (err) {
+        // Wrap zod + JSON.parse failures as DaemonError('EPROTO') so
+        // callers (T7 pingDaemon consumers, T10 relaunch marker) can
+        // branch on err.code consistently. The raw ZodError/SyntaxError
+        // has no .code property and would break the documented contract.
         finish(() => {
           sock.destroy()
           reject(
-            err instanceof Error
-              ? err
-              : new DaemonError('EUNKNOWN', String(err)),
+            new DaemonError(
+              'EPROTO',
+              err instanceof Error ? err.message : String(err),
+            ),
           )
         })
       }
     })
 
-    sock.on('data', (chunk: Buffer) => reader.feed(chunk))
+    sock.on('data', (chunk: Buffer) => {
+      // FrameReader.tryReadFrame throws synchronously on oversize
+      // frames (len > BG_MAX_FRAME_BYTES) or unknown kind bytes.
+      // Without this try/catch the throw escapes the 'data' listener
+      // as an uncaught exception and crashes the process. Convert
+      // to a DaemonError(EPROTO) and tear the socket down cleanly.
+      try {
+        reader.feed(chunk)
+      } catch (err) {
+        finish(() => {
+          sock.destroy()
+          reject(
+            new DaemonError(
+              'EPROTO',
+              `oversize frame: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          )
+        })
+      }
+    })
     sock.on('error', err => {
       finish(() => {
         reject(
@@ -224,12 +266,28 @@ export async function requestOnPath(
       })
     })
 
-    sock.write(
-      encodeFrame({
-        kind: 0,
-        body: Buffer.from(JSON.stringify(parsedReq), 'utf8'),
-      }),
-    )
+    // Same try/catch discipline: a synchronous throw from
+    // sock.write on a half-closed socket must not crash the process.
+    // (We already parsed the request above, so a parse throw here
+    // is not possible — the catch is for net-layer write errors.)
+    try {
+      sock.write(
+        encodeFrame({
+          kind: 0,
+          body: Buffer.from(JSON.stringify(parsedReq), 'utf8'),
+        }),
+      )
+    } catch (err) {
+      finish(() => {
+        sock.destroy()
+        reject(
+          new DaemonError(
+            'EPROTO',
+            err instanceof Error ? err.message : String(err),
+          ),
+        )
+      })
+    }
   })
 }
 

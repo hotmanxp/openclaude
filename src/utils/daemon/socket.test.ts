@@ -397,6 +397,106 @@ describe('requestOnPath', () => {
   })
 })
 
+// ---------- T3 review nits: error wrapping + oversize frames ----------
+
+describe('requestOnPath error wrapping (T3 nits)', () => {
+  // Issue #1a: server returns a payload that fails BGResponseSchema
+  // (the 'list' op requires a `jobs` array; omit it to force the
+  // discriminated union member for `list` to reject the payload).
+  // Wrap as DaemonError('EPROTO', ...) so callers can switch on err.code.
+  test('wraps response zod failure as DaemonError(EPROTO)', async () => {
+    const srv = trackServer(
+      await startFakeServer(() => ({
+        ok: true,
+        op: 'list',
+        // missing required `jobs` array — fails BGResponseSchema
+      })),
+    )
+    let err: unknown
+    try {
+      await requestOnPath(
+        srv.path,
+        { proto: BG_PROTO, op: 'list' },
+        1000,
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(DaemonError)
+    expect((err as DaemonError).code).toBe('EPROTO')
+  })
+
+  // Issue #1b: client-side validation throws before connect. Should be
+  // wrapped as DaemonError('EPROTO', ...) so the documented contract
+  // (callers branch on err.code) holds for client errors too.
+  test('wraps request zod failure as DaemonError(EPROTO)', async () => {
+    // Path doesn't matter — parse fails before connect.
+    const badReq = { proto: 999, op: 'ping' } as unknown as Parameters<
+      typeof requestOnPath
+    >[1]
+    let err: unknown
+    try {
+      await requestOnPath('/tmp/nonexistent.sock', badReq, 200)
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(DaemonError)
+    expect((err as DaemonError).code).toBe('EPROTO')
+  })
+
+  // Issue #2: server sends a frame header that claims a body length
+  // exceeding BG_MAX_FRAME_BYTES. Without the try/catch around
+  // reader.feed(chunk), the FrameReader's synchronous throw escapes the
+  // 'data' listener as an uncaught exception. With the fix, it rejects
+  // the request promise with DaemonError('EPROTO') and destroys the
+  // socket cleanly.
+  test('rejects oversize frame with DaemonError(EPROTO) and destroys socket', async () => {
+    const tmp = trackTmp()
+    const sockPath = join(tmp, 'oversize.sock')
+    const server = createServer(sock => {
+      sock.on('error', () => {
+        // client disconnect; nothing to do
+      })
+      sock.on('data', () => {
+        // Send a header that claims a 2 MiB body — exceeds
+        // BG_MAX_FRAME_BYTES (1 MiB). Don't actually send the bytes.
+        const header = Buffer.alloc(5)
+        header.writeUInt32BE(2 * 1_048_576, 0)
+        header.writeUInt8(0, 4)
+        try {
+          sock.write(header)
+        } catch {
+          // socket may already be torn down by the client's destroy()
+        }
+      })
+    })
+    await new Promise<void>(resolve =>
+      server.listen(sockPath, () => resolve()),
+    )
+    trackServer({
+      server,
+      path: sockPath,
+      close: () => new Promise<void>(r => server.close(() => r())),
+    })
+
+    let err: unknown
+    try {
+      await requestOnPath(
+        sockPath,
+        { proto: BG_PROTO, op: 'ping' },
+        1000,
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(DaemonError)
+    expect((err as DaemonError).code).toBe('EPROTO')
+    // The message should mention the oversize condition so the caller
+    // can diagnose it without inspecting internal types.
+    expect((err as DaemonError).message).toMatch(/oversize|frame too large/i)
+  })
+})
+
 // ---------- pingDaemon ----------
 
 describe('pingDaemon', () => {
