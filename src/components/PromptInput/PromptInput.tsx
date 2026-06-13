@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
 import * as path from 'path';
@@ -2376,11 +2375,12 @@ function getInitialPasteId(messages: Message[]): number {
       // Check image paste IDs
       if (message.imagePasteIds) {
         for (const id of message.imagePasteIds) {
-          if (id > maxId) maxId = id;
+          const numericId = Number(id);
+          if (Number.isFinite(numericId) && numericId > maxId) maxId = numericId;
         }
       }
       // Check text paste references in message content
-      if (Array.isArray(message.message.content)) {
+      if (message.message && Array.isArray(message.message.content)) {
         for (const block of message.message.content) {
           if (block.type === 'text') {
             const refs = parseReferences(block.text);
