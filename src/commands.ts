@@ -1,4 +1,3 @@
-// @ts-nocheck
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
@@ -24,7 +23,6 @@ import dream from './commands/dream/index.js'
 import handoff from './commands/handoff/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
-import onboardGithub from './commands/onboard-github/index.js'
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
@@ -100,11 +98,8 @@ const webCmd = feature('CCR_REMOTE_SETUP')
       require('./commands/remote-setup/index.js') as typeof import('./commands/remote-setup/index.js')
     ).default
   : null
-const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? (
-      require('./services/skillSearch/localSearch.js') as typeof import('./services/skillSearch/localSearch.js')
-    ).clearSkillIndexCache
-  : null
+// [FORK_SUBAGENT] was: feature-gated require, but ./services/skillSearch/ never existed
+const clearSkillIndexCache: (() => void) | null = null
 const subscribePr = feature('KAIROS_GITHUB_WEBHOOKS')
   ? require('./commands/subscribe-pr.js').default
   : null
@@ -112,11 +107,8 @@ const ultraplan = feature('ULTRAPLAN')
   ? require('./commands/ultraplan.js').default
   : null
 const torch = feature('TORCH') ? require('./commands/torch.js').default : null
-const peersCmd = feature('UDS_INBOX')
-  ? (
-      require('./commands/peers/index.js') as typeof import('./commands/peers/index.js')
-    ).default
-  : null
+// [FORK_SUBAGENT] was: feature-gated require, but ./commands/peers/ never existed
+const peersCmd: null = null
 // [FORK_SUBAGENT] was: feature-gated require, but ./commands/fork/ never existed
 const forkCmd = null
 const buddy = isBuddyEnabled()
@@ -184,7 +176,6 @@ import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
 import remoteEnv from './commands/remote-env/index.js'
 import upgrade from './commands/upgrade/index.js'
-import workflows from './commands/workflows/index.js'
 import {
   extraUsage,
   extraUsageNonInteractive,
@@ -275,9 +266,10 @@ const codegraph = (cwd: string): Command => {
     argumentHint: '<查询内容>',
     whenToUse: '需要查询代码符号、调用链、影响范围时使用',
     progressMessage: '查询中',
+    contentLength: 0,
     isHidden: false,
     isEnabled: () => existsSync(codegraphDir),
-    getPromptForCommand(args) {
+    async getPromptForCommand(args, _context) {
       if (!existsSync(dbPath)) {
         // .codegraph dir exists but no db — prompt user to initialize
         return [{
