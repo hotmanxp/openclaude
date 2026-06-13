@@ -1,0 +1,536 @@
+/**
+ * Tests for the bg daemon CLI surface.
+ *
+ * The `daemon` subcommand has two responsibilities in T5:
+ *
+ *   1. `daemon run` — the supervisor itself. Listens on the loopback
+ *      Unix socket, dispatches each frame to an op handler, supports
+ *      graceful shutdown on SIGTERM/SIGINT, and writes a heartbeat
+ *      (supervisor pid + timestamp) to the roster every 5s.
+ *   2. `daemon status` — reports the daemon's liveness state for the
+ *      operator. Four states: running / not running / installed-but-
+ *      down / not installed.
+ *
+ * `install/uninstall/start/stop/restart` are stubs that throw
+ * "not implemented in T5" — launchd plist integration lands in T6.
+ *
+ * Tests use `mkdtempSync` paths for the socket + roster so they never
+ * touch the real `~/.claude`. We invoke `runSupervisor` / `daemonStatus`
+ * directly with the override path rather than going through the CLI
+ * argv parser (the latter is exercised by the build, not by unit tests).
+ *
+ * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T5
+ */
+import {
+  afterEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
+import {
+  connect as netConnect,
+  type Socket,
+} from 'node:net'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  BG_PROTO,
+  encodeFrame,
+  FrameReader,
+  type JobShortId,
+} from '../../utils/daemon/protocol.js'
+import { requestOnPath } from '../../utils/daemon/socket.js'
+import {
+  ROSTER_VERSION,
+  loadRoster,
+} from '../../utils/daemon/roster.js'
+import {
+  formatBgDaemonStatus,
+  getBgDaemonStatus,
+  runSupervisor,
+  handleDaemonSubcommand,
+} from './daemon.js'
+
+// ---------- Temp dirs / socket / roster overrides ----------
+
+const tmpDirs: string[] = []
+
+function freshDir(): string {
+  const d = mkdtempSync(join(tmpdir(), 'bg-daemon-test-'))
+  tmpDirs.push(d)
+  return d
+}
+
+afterEach(() => {
+  for (const d of tmpDirs) {
+    try {
+      rmSync(d, {recursive: true, force: true})
+    } catch {
+      // best-effort
+    }
+  }
+  tmpDirs.length = 0
+})
+
+/**
+ * Build an object pointing at fresh `.claude/sock/` and
+ * `.claude/roster.json` paths. Tests pass this to `runSupervisor` /
+ * `getBgDaemonStatus` so they never touch the real home directory.
+ */
+function freshOverrides() {
+  const parent = freshDir()
+  const claudeDir = join(parent, '.claude')
+  mkdirSync(claudeDir, {recursive: true})
+  return {
+    claudeDir,
+    sockPath: join(claudeDir, 'sock', 'cc-daemon-test'),
+    rosterPath: join(claudeDir, 'roster.json'),
+  }
+}
+async function waitForSock(sockPath: string, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (existsSync(sockPath)) return
+    await new Promise(r => setTimeout(r, 10))
+  }
+  throw new Error(`socket not visible after ${timeoutMs}ms: ${sockPath}`)
+}
+
+function rawConnect(sockPath: string): Promise<ReturnType<typeof netConnect>> {
+  return new Promise((resolve, reject) => {
+    const sock = netConnect(sockPath)
+    sock.once('error', reject)
+    sock.once('connect', () => {
+      sock.off('error', reject)
+      resolve(sock)
+    })
+  })
+}
+
+/**
+ * Send a single payload frame on an open sock and wait for the
+ * matching response frame. Uses an internal `FrameReader` so the
+ * caller's `sock.on('data', ...)` listener is preserved.
+ */
+function sendAndReceive(
+  sock: Socket,
+  payload: unknown,
+  timeoutMs = 2000,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      sock.removeListener('data', onData)
+      reject(new Error(`sendAndReceive: timeout after ${timeoutMs}ms`))
+    }, timeoutMs)
+    const reader = new FrameReader(frame => {
+      if (frame.kind !== 0) return
+      clearTimeout(timer)
+      sock.removeListener('data', onData)
+      try {
+        resolve(JSON.parse(frame.body.toString('utf8')))
+      } catch (err) {
+        reject(err)
+      }
+    })
+    const onData = (chunk: Buffer): void => {
+      try {
+        reader.feed(chunk)
+      } catch (err) {
+        clearTimeout(timer)
+        sock.removeListener('data', onData)
+        reject(err)
+      }
+    }
+    sock.on('data', onData)
+    sock.write(
+      encodeFrame({kind: 0, body: Buffer.from(JSON.stringify(payload), 'utf8')}),
+    )
+  })
+}
+
+// ---------- daemonStatus (4 states) ----------
+
+describe('daemonStatus: getBgDaemonStatus', () => {
+  test('returns state="not-installed" when no socket and no plist', async () => {
+    const ov = freshOverrides()
+    const status = await getBgDaemonStatus({
+      sockPath: ov.sockPath,
+      rosterPath: ov.rosterPath,
+      plistPath: join(ov.claudeDir, 'nope.plist'),
+      pingTimeoutMs: 100,
+    })
+    expect(status.state).toBe('not-installed')
+    expect(status.sockPath).toBe(ov.sockPath)
+    expect(status.rosterPath).toBe(ov.rosterPath)
+  })
+
+  test('returns state="installed-but-down" when plist exists but socket is dead', async () => {
+    const ov = freshOverrides()
+    const plistPath = join(ov.claudeDir, 'fake.plist')
+    writeFileSync(plistPath, '<?xml version="1.0"?><plist/>', 'utf8')
+    const status = await getBgDaemonStatus({
+      sockPath: ov.sockPath,
+      rosterPath: ov.rosterPath,
+      plistPath,
+      pingTimeoutMs: 100,
+    })
+    expect(status.state).toBe('installed-but-down')
+  })
+
+  test('returns state="running" with pid when a live supervisor is on the socket', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const status = await getBgDaemonStatus({
+        sockPath: ov.sockPath,
+        rosterPath: ov.rosterPath,
+        plistPath: join(ov.claudeDir, 'nope.plist'),
+        pingTimeoutMs: 500,
+      })
+      expect(status.state).toBe('running')
+      expect(status.supervisorPid).toBe(process.pid)
+      expect(status.sockPath).toBe(ov.sockPath)
+    } finally {
+      await stop()
+    }
+  })
+
+  test('returns state="installed-but-down" when plist exists but socket is dead', async () => {
+    const ov = freshOverrides()
+    const plistPath = join(ov.claudeDir, 'fake.plist')
+    writeFileSync(plistPath, '<?xml version="1.0"?><plist/>', 'utf8')
+    const status = await getBgDaemonStatus({
+      sockPath: ov.sockPath,
+      rosterPath: ov.rosterPath,
+      plistPath,
+      pingTimeoutMs: 100,
+    })
+    expect(status.state).toBe('installed-but-down')
+  })
+  test('formats the running state with pid + sock path', () => {
+    const text = formatBgDaemonStatus({
+      state: 'running',
+      sockPath: '/Users/test/.claude/sock/cc-daemon-501',
+      supervisorPid: 12345,
+      rosterPath: '/Users/test/.claude/roster.json',
+      plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
+    })
+    expect(text).toContain('running')
+    expect(text).toContain('12345')
+    expect(text).toContain('cc-daemon-501')
+  })
+
+  test('formats the not-running state', () => {
+    const text = formatBgDaemonStatus({
+      state: 'not-running',
+      sockPath: '/Users/test/.claude/sock/cc-daemon-501',
+      rosterPath: '/Users/test/.claude/roster.json',
+      plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
+    })
+    expect(text).toMatch(/not running/i)
+  })
+
+  test('formats the installed-but-down state', () => {
+    const text = formatBgDaemonStatus({
+      state: 'installed-but-down',
+      sockPath: '/Users/test/.claude/sock/cc-daemon-501',
+      rosterPath: '/Users/test/.claude/roster.json',
+      plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
+    })
+    expect(text).toMatch(/installed/i)
+    expect(text).toMatch(/not running/i)
+  })
+
+  test('formats the not-installed state with install hint', () => {
+    const text = formatBgDaemonStatus({
+      state: 'not-installed',
+      sockPath: '/Users/test/.claude/sock/cc-daemon-501',
+      rosterPath: '/Users/test/.claude/roster.json',
+      plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
+    })
+    expect(text).toMatch(/not installed/i)
+    expect(text).toContain('claude daemon install')
+  })
+})
+
+// ---------- Supervisor: round-trip ----------
+
+describe('runSupervisor', () => {
+  test('listens on the socket and accepts ping round-trips', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const resp = await requestOnPath(
+        ov.sockPath,
+        {proto: BG_PROTO, op: 'ping'},
+        1000,
+      )
+      expect(resp).toEqual({ok: true, op: 'ping'})
+    } finally {
+      await stop()
+    }
+  })
+
+  test('round-trips nudge and yield', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const nudge = await requestOnPath(ov.sockPath, {proto: BG_PROTO, op: 'nudge'}, 1000)
+      expect(nudge).toEqual({ok: true, op: 'nudge'})
+      const yld = await requestOnPath(ov.sockPath, {proto: BG_PROTO, op: 'yield'}, 1000)
+      expect(yld).toEqual({ok: true, op: 'yield'})
+    } finally {
+      await stop()
+    }
+  })
+
+  test('list returns empty jobs array for a fresh supervisor', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const resp = await requestOnPath(ov.sockPath, {proto: BG_PROTO, op: 'list'}, 1000)
+      expect(resp).toEqual({ok: true, op: 'list', jobs: []})
+    } finally {
+      await stop()
+    }
+  })
+
+  test('lease registers a lease client visible via leases', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      // Hold a single connection open across both the `lease` write and
+      // the `leases` read so the lease isn't released by sock close.
+      const sock = await rawConnect(ov.sockPath)
+      try {
+        const leaseResp = await sendAndReceive(sock, {
+          proto: BG_PROTO,
+          op: 'lease',
+          label: 'test-lease',
+          cwd: '/tmp',
+          pid: 99999,
+        })
+        expect(leaseResp).toEqual({ok: true, op: 'lease'})
+        const leases = await sendAndReceive(sock, {proto: BG_PROTO, op: 'leases'})
+        expect(leases).toMatchObject({ok: true, op: 'leases'})
+        const clients = (leases as {clients: Array<{label: string; cwd: string; pid: number}>})
+          .clients
+        expect(clients.length).toBe(1)
+        expect(clients[0]?.label).toBe('test-lease')
+        expect(clients[0]?.cwd).toBe('/tmp')
+        expect(clients[0]?.pid).toBe(99999)
+      } finally {
+        sock.destroy()
+      }
+    } finally {
+      await stop()
+    }
+  })
+
+  test('has returns present=false, ready=false for an unknown short', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const resp = await requestOnPath(
+        ov.sockPath,
+        {proto: BG_PROTO, op: 'has', short: 'abcd1234' as JobShortId},
+        1000,
+      )
+      expect(resp).toEqual({
+        ok: true,
+        op: 'has',
+        short: 'abcd1234' as JobShortId,
+        present: false,
+        ready: false,
+      })
+    } finally {
+      await stop()
+    }
+  })
+
+  test('kill returns ENOJOB for an unknown short', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const resp = await requestOnPath(
+        ov.sockPath,
+        {proto: BG_PROTO, op: 'kill', short: 'abcd1234' as JobShortId},
+        1000,
+      )
+      expect(resp).toMatchObject({ok: false, code: 'ENOJOB'})
+    } finally {
+      await stop()
+    }
+  })
+
+  // ---------- Error paths ----------
+
+  test('returns EPROTO for a request with the wrong proto', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const sock = await rawConnect(ov.sockPath)
+      try {
+        // Bypass the client-side zod check by hand-crafting a frame
+        // with a bogus proto.
+        const parsed = await sendAndReceive(
+          sock,
+          {proto: 999, op: 'ping'},
+        )
+        expect(parsed.ok).toBe(false)
+        expect(parsed.code).toBe('EPROTO')
+        expect(parsed.serverProto).toBe(BG_PROTO)
+      } finally {
+        sock.destroy()
+      }
+    } finally {
+      await stop()
+    }
+  })
+
+  test('returns EUNKNOWN for malformed JSON', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const sock = await rawConnect(ov.sockPath)
+      try {
+        // Send a frame with a non-JSON body; bypass sendAndReceive's
+        // payload-encoding helper for this case.
+        await new Promise<void>((resolve, reject) => {
+          const reader = new FrameReader(frame => {
+            if (frame.kind !== 0) return
+            const parsed = JSON.parse(frame.body.toString('utf8')) as {ok: boolean; code: string}
+            expect(parsed.ok).toBe(false)
+            expect(parsed.code).toBe('EUNKNOWN')
+            resolve()
+          })
+          sock.on('data', chunk => {
+            try {
+              reader.feed(chunk as Buffer)
+            } catch (err) {
+              reject(err)
+            }
+          })
+          sock.write(
+            encodeFrame({kind: 0, body: Buffer.from('{not valid json', 'utf8')}),
+          )
+        })
+      } finally {
+        sock.destroy()
+      }
+    } finally {
+      await stop()
+    }
+  })
+
+  test('closes the socket when the client sends an oversize frame', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const sock = await rawConnect(ov.sockPath)
+      const header = Buffer.alloc(5)
+      header.writeUInt32BE(2 * 1_048_576, 0)
+      header.writeUInt8(0, 4)
+      sock.write(header)
+      const closed = await new Promise<boolean>(resolve => {
+        sock.once('close', () => resolve(true))
+        sock.once('error', () => resolve(true))
+        setTimeout(() => resolve(false), 1000)
+      })
+      expect(closed).toBe(true)
+    } finally {
+      await stop()
+    }
+  })
+
+  test('stub ops (dispatch) return EUNKNOWN with "not implemented in T5"', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    try {
+      await waitForSock(ov.sockPath)
+      const resp = await requestOnPath(
+        ov.sockPath,
+        {
+          proto: BG_PROTO,
+          op: 'dispatch',
+          auth: 'fake-auth',
+          job: {
+            proto: BG_PROTO,
+            short: 'abcd1234' as JobShortId,
+            nonce: 'nonce',
+            sessionId: 'sess-1',
+            createdAt: 1,
+            source: 'shell',
+            cwd: '/tmp',
+            launch: {mode: 'prompt', args: ['echo', 'hi']},
+            env: {},
+            isolation: 'none',
+            respawnFlags: [],
+          },
+        },
+        1000,
+      )
+      expect(resp).toMatchObject({ok: false, code: 'EUNKNOWN'})
+      const err = resp as {error: string; code: string}
+      expect(err.error).toMatch(/not implemented in T5/i)
+    } finally {
+      await stop()
+    }
+  })
+
+  // ---------- Shutdown ----------
+
+  test('stop() closes the socket and removes the file', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    await waitForSock(ov.sockPath)
+    await stop()
+    await new Promise(r => setTimeout(r, 50))
+    let err: unknown
+    try {
+      await requestOnPath(ov.sockPath, {proto: BG_PROTO, op: 'ping'}, 200)
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(Error)
+  })
+
+  test('writes a roster heartbeat on shutdown with the supervisor pid', async () => {
+    const ov = freshOverrides()
+    const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
+    await waitForSock(ov.sockPath)
+    await stop()
+    if (existsSync(ov.rosterPath)) {
+      const r = await loadRoster({path: ov.rosterPath, silent: true})
+      expect(r.version).toBe(ROSTER_VERSION)
+      expect(r.supervisorPid).toBe(process.pid)
+    }
+  })
+})
+
+// ---------- Stubs for install/uninstall/start/stop/restart ----------
+
+describe('install/uninstall/start/stop/restart stubs', () => {
+  test('throw "not implemented in T5" — T6 will add launchd plist', async () => {
+    for (const sub of ['install', 'uninstall', 'start', 'stop', 'restart'] as const) {
+      await expect(handleDaemonSubcommand(sub)).rejects.toThrow(/not implemented in T5/i)
+    }
+  })
+})
