@@ -99,9 +99,24 @@ export const workflowInputSchema = z
  */
 const WORKFLOW_DESCRIPTION =
   'Run a dynamic workflow: a JavaScript script that orchestrates subagents at scale. ' +
-  'Use this when a task needs parallel work across many agents (e.g., multi-angle research, ' +
-  'codebase audit, migration). The workflow script receives `args` and `spawnSubagent(prompt, opts)` ' +
-  'and must return a single string report.'
+  'Workflows run in the background — this tool returns immediately with a task ID, and a ' +
+  '<task-notification> arrives when the workflow completes. Use /workflows to watch live progress.\n\n' +
+  'A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), ' +
+  'to be confident (independent perspectives and adversarial checks before committing), or to take on scale ' +
+  'one context can\'t hold (migrations, audits, broad sweeps). The script is where you encode that structure: ' +
+  'what fans out, what verifies, what synthesizes.\n\n' +
+  'ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can ' +
+  'spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not ' +
+  'have it inferred. Explicit opt-in means one of:\n' +
+  '- The user included the keyword "ultracode" in their prompt (you\'ll see a system-reminder confirming it).\n' +
+  '- Ultracode is on for the session (a system-reminder confirms it) — see **Ultracode** below.\n' +
+  '- The user directly asked you to run a workflow or use multi-agent orchestration in their own words ' +
+  '("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents").\n' +
+  '- The user invoked a skill or slash command whose instructions tell you to call Workflow.\n' +
+  '- The user asked you to run a specific named or saved workflow.\n\n' +
+  'For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. ' +
+  'Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could ' +
+  'do and how much it would roughly cost, and ask the user whether to run it.'
 
 export const WorkflowTool = {
   name: WORKFLOW_TOOL_NAME,
