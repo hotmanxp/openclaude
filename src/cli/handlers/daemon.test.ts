@@ -563,12 +563,105 @@ describe('runSupervisor', () => {
   })
 })
 
-// ---------- Stubs for install/uninstall/start/stop/restart ----------
+// ---------- install/uninstall/start/stop/restart (T6 wiring) ----------
 
-describe('install/uninstall/start/stop/restart stubs', () => {
-  test('throw "not implemented in T5" — T6 will add launchd plist', async () => {
+describe('install/uninstall/start/stop/restart (T6)', () => {
+  // T6 wires these into daemon-install.ts. The dispatch in
+  // handleDaemonSubcommand must reach the helpers and bubble up any
+  // failure (real launchctl or stub). We use the daemon-install test
+  // hooks so we never touch the real ~/Library/LaunchAgents.
+  test('non-darwin: dispatch reaches daemon-install and rejects with the spec error', async () => {
+    if (process.platform === 'darwin') {
+      // On darwin we use the darwin-specific test below.
+      return
+    }
     for (const sub of ['install', 'uninstall', 'start', 'stop', 'restart'] as const) {
-      await expect(handleDaemonSubcommand(sub)).rejects.toThrow(/not implemented in T5/i)
+      let err: unknown
+      try {
+        await handleDaemonSubcommand(sub)
+      } catch (e) {
+        err = e
+      }
+      expect(err).toBeInstanceOf(Error)
+      expect((err as Error).message).toMatch(/service install not available/i)
+    }
+  })
+
+  test('darwin: dispatch reaches daemon-install (stubbed launchctl, no real I/O)', async () => {
+    if (process.platform !== 'darwin') return
+    // Stub launchctl and redirect plist to a tmp path so we never touch
+    // the real ~/Library/LaunchAgents. This mirrors the darwin test
+    // surface in daemon-install.test.ts but goes through the
+    // handleDaemonSubcommand dispatch to prove the wiring is correct.
+    const {__test__} = await import('./daemon-install.js')
+    const tmp = mkdtempSync(join(tmpdir(), 'bg-daemon-wiring-'))
+    tmpDirs.push(tmp)
+    const fakePlist = join(tmp, 'fake.plist')
+    const stub = (
+      _args: string[],
+    ): Promise<{ok: boolean; stdout: string; stderr: string}> =>
+      Promise.resolve({ok: true, stdout: '', stderr: ''})
+    __test__.setPlistPath(fakePlist)
+    __test__.setRunLaunchctl(stub as Parameters<typeof __test__.setRunLaunchctl>[0])
+
+    try {
+      // Each of the 5 subcommands should now reach daemon-install and
+      // surface a successful launchctl stub result (which
+      // handleDaemonSubcommand converts into a silent success).
+      for (const sub of ['install', 'uninstall', 'start', 'stop', 'restart'] as const) {
+        await handleDaemonSubcommand(sub)
+      }
+      // install wrote the plist; uninstall unlinked it; subsequent
+      // start/stop/restart are no-ops on disk.
+      // We don't assert exact file state because restart's order of
+      // stop → unlink-style operations is non-trivial — the assertion
+      // we care about is "no 'not implemented in T5' error".
+    } finally {
+      __test__.reset()
+      try {
+        rmSync(tmp, {recursive: true, force: true})
+      } catch {
+        // best-effort
+      }
+    }
+  })
+
+  test('darwin: dispatch surfaces launchctl errors as throws (not the old T5 stub message)', async () => {
+    if (process.platform !== 'darwin') return
+    const {__test__} = await import('./daemon-install.js')
+    const tmp = mkdtempSync(join(tmpdir(), 'bg-daemon-wiring-'))
+    tmpDirs.push(tmp)
+    const fakePlist = join(tmp, 'fake.plist')
+    const stub = (
+      _args: string[],
+    ): Promise<{ok: boolean; error: string; stdout: string; stderr: string}> =>
+      Promise.resolve({
+        ok: false,
+        error: 'launchctl exited 1: simulated',
+        stdout: '',
+        stderr: 'simulated',
+      })
+    __test__.setPlistPath(fakePlist)
+    __test__.setRunLaunchctl(stub as Parameters<typeof __test__.setRunLaunchctl>[0])
+
+    try {
+      let err: unknown
+      try {
+        await handleDaemonSubcommand('start')
+      } catch (e) {
+        err = e
+      }
+      expect(err).toBeInstanceOf(Error)
+      // Old T5 message must be gone; new error must mention launchctl.
+      expect((err as Error).message).not.toMatch(/not implemented in T5/i)
+      expect((err as Error).message).toMatch(/launchctl exited 1: simulated/)
+    } finally {
+      __test__.reset()
+      try {
+        rmSync(tmp, {recursive: true, force: true})
+      } catch {
+        // best-effort
+      }
     }
   })
 })

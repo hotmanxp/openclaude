@@ -45,6 +45,13 @@ import {
   ROSTER_PATH,
 } from '../../utils/daemon/roster.js'
 import { formatBgDaemonStatus, getBgDaemonStatus } from './daemonStatus.js'
+import {
+  installPlist,
+  restartPlist,
+  startPlist,
+  stopPlist,
+  uninstallPlist,
+} from './daemon-install.js'
 
 // Re-export for downstream consumers.
 export { formatBgDaemonStatus, getBgDaemonStatus } from './daemonStatus.js'
@@ -70,9 +77,11 @@ export interface DaemonSubcommandOptions {
  * `src/entrypoints/cli.tsx` calls this after stripping `daemon` from
  * `process.argv`.
  *
- * `install/uninstall/start/stop/restart` are stubs in T5 — they throw
- * so the user gets a clear "T6 will land this" error rather than a
- * silent no-op. `run` and `status` are fully implemented.
+ * `install/uninstall/start/stop/restart` route to the macOS launchd
+ * plist helpers in {@link ./daemon-install.js} (T6). On non-darwin
+ * platforms those helpers reject with a spec error message so the user
+ * gets a clear "the daemon runs on demand instead" hint. `run` and
+ * `status` are fully implemented.
  */
 export async function handleDaemonSubcommand(
   sub: DaemonSubcommand,
@@ -80,18 +89,33 @@ export async function handleDaemonSubcommand(
 ): Promise<void> {
   switch (sub) {
     case 'install':
+      return installPlist().then(resultOrThrow)
     case 'uninstall':
+      return uninstallPlist().then(resultOrThrow)
     case 'start':
+      return startPlist().then(resultOrThrow)
     case 'stop':
+      return stopPlist().then(resultOrThrow)
     case 'restart':
-      throw new Error(
-        `claude daemon ${sub}: not implemented in T5 — see T6 (macOS launchd plist) in the bg-agent-view plan`,
-      )
+      return restartPlist().then(resultOrThrow)
     case 'run':
       return daemonRun()
     case 'status':
       return daemonStatus({json: opts.json})
   }
+}
+
+/**
+ * Bridge {@link LaunchctlResult} into the CLI's throw-on-error
+ * contract. We print `error` to stderr (so it shows up in
+ * `claude daemon install < /dev/null`) and throw so the CLI exits
+ * non-zero — same shape as the old T5 stubs.
+ */
+function resultOrThrow(r: {ok: boolean; error?: string}): void {
+  if (r.ok) return
+  // biome-ignore lint/suspicious/noConsole:: intentional stderr
+  console.error(r.error ?? 'launchctl invocation failed')
+  throw new Error(r.error ?? 'launchctl invocation failed')
 }
 
 // ---------- daemon status ----------
