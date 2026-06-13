@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type WsWebSocket from 'ws'
 import { logEvent } from '../../services/analytics/index.js'
