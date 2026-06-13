@@ -1,6 +1,7 @@
 import { getInitialSettings } from './settings/settings.js'
 import { isUltracodeReminderOn } from './ultracodeReminder.js'
 import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
+import { createUserMessage } from './messages.js'
 
 /**
  * Ultracode is xhigh effort + standing dynamic-workflow orchestration.
@@ -136,23 +137,28 @@ export function buildKeywordTurnRequest(
   trigger: { triggered: boolean; keyword: string; rest: string },
 ): {
   userInput: string
-  metaMessages: Array<{
-    type: 'user'
-    content: Array<{ type: 'text'; text: string }>
-    isMeta: true
-  }>
+  // Return shape: createUserMessage() output (proper UserMessage wrapper).
+  // We don't import the UserMessage type because it's not exported from
+  // messages.ts; structural typing covers it.
+  metaMessages: ReturnType<typeof createUserMessage>[]
 } {
   if (!trigger.triggered) {
     return { userInput: input, metaMessages: [] }
   }
   return {
     userInput: trigger.rest,
+    // Use createUserMessage so the reminder carries the full UserMessage
+    // shape (message.{role, content} wrapper, uuid, timestamp) that
+    // normalizeMessages() in src/utils/messages.ts requires. Hand-rolling
+    // the message object crashes the bundle at MessagesImpl render with
+    // "Cannot read properties of undefined (reading 'content')" because
+    // the user-case branch accesses `message.message.content` and
+    // `message.message` is undefined for the hand-rolled object.
     metaMessages: [
-      {
-        type: 'user',
+      createUserMessage({
         content: [{ type: 'text', text: KEYWORD_TURN_REMINDER }],
         isMeta: true,
-      },
+      }),
     ],
   }
 }

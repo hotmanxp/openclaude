@@ -18,17 +18,21 @@ describe('buildKeywordTurnRequest', () => {
       const trigger = { triggered: true, keyword: 'ultracode', rest: 'fix the bug' }
       const result = buildKeywordTurnRequest('ultracode fix the bug', trigger)
       expect(result.metaMessages).toHaveLength(1)
-      expect(result.metaMessages[0]).toEqual({
-        type: 'user' as const,
-        content: [{ type: 'text' as const, text: UPSTREAM_VERBATIM_REMINDER }],
-        isMeta: true,
-      })
+      // Use createUserMessage's UserMessage shape: {type, message:{role, content}, isMeta, ...}
+      // (not the hand-rolled {type, content, isMeta} which crashes normalizeMessages
+      // because it lacks the message wrapper, see commit fixing runtime crash.)
+      expect(result.metaMessages[0].type).toBe('user')
+      expect(result.metaMessages[0].isMeta).toBe(true)
+      expect(result.metaMessages[0].message.role).toBe('user')
+      expect(result.metaMessages[0].message.content).toEqual([
+        { type: 'text', text: UPSTREAM_VERBATIM_REMINDER },
+      ])
     })
 
     it('uses the detected keyword in the reminder text', () => {
       const trigger = { triggered: true, keyword: 'ultracode', rest: 'do something' }
       const result = buildKeywordTurnRequest('ultracode do something', trigger)
-      expect(result.metaMessages[0].content[0].text).toContain('"ultracode"')
+      expect(result.metaMessages[0].message.content[0].text).toContain('"ultracode"')
     })
   })
 

@@ -23,9 +23,12 @@ describe('applyKeywordTrigger integration', () => {
       }
       const result = applyKeywordTrigger('ultracode fix the bug', trigger, setMessages)
       expect(messages).toHaveLength(1)
+      // Use createUserMessage's UserMessage shape (message.{role, content} wrapper)
+      // so normalizeMessages doesn't crash at runtime.
       expect(messages[0].isMeta).toBe(true)
       expect(messages[0].type).toBe('user')
-      expect(messages[0].content[0].text).toContain('ultracode')
+      expect(messages[0].message.role).toBe('user')
+      expect(messages[0].message.content[0].text).toContain('ultracode')
     })
 
     it('returns trigger.rest as userInput (not the system-reminder prefix)', () => {
