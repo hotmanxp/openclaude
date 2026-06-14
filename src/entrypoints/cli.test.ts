@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Regression tests for issue #402 — NODE_OPTIONS heap cap
  * Closes: Gitlawb/openclaude#402 — JavaScript heap OOM during large tasks
@@ -51,20 +50,39 @@ describe('cli.tsx — NODE_OPTIONS --max-old-space-size (issue #402)', () => {
   })
 })
 
-describe('useMemoryUsage.ts — threshold constants (issue #402)', () => {
-  it('HIGH_MEMORY_THRESHOLD documented as 1.5 GB', async () => {
-    const src = await Bun.file(
-      `${import.meta.dir}/../hooks/useMemoryUsage.ts`,
-    ).text()
+describe('cli.tsx — --provider startup ordering', () => {
+  it('remembers --provider so settings.env reloads cannot clobber it', async () => {
+    const src = await Bun.file(`${import.meta.dir}/cli.tsx`).text()
 
-    expect(src).toContain('HIGH_MEMORY_THRESHOLD = 1.5 * 1024 * 1024 * 1024')
+    const earlyProviderApplyIndex = src.indexOf('applyProviderFlagFromArgs(args')
+    const rememberOptionIndex = src.indexOf(
+      'rememberForSettingsEnv: true',
+      earlyProviderApplyIndex,
+    )
+    const settingsEnvApplyIndex = src.indexOf(
+      'applySafeConfigEnvironmentVariables()',
+    )
+
+    expect(earlyProviderApplyIndex).toBeGreaterThanOrEqual(0)
+    expect(rememberOptionIndex).toBeGreaterThan(earlyProviderApplyIndex)
+    expect(settingsEnvApplyIndex).toBeGreaterThan(earlyProviderApplyIndex)
   })
 
-  it('CRITICAL_MEMORY_THRESHOLD documented as 2.5 GB', async () => {
-    const src = await Bun.file(
-      `${import.meta.dir}/../hooks/useMemoryUsage.ts`,
-    ).text()
+  it('reapplies remembered --provider after every managed settings env merge', async () => {
+    const src = await Bun.file(`${import.meta.dir}/../utils/managedEnv.ts`).text()
+    const safeApplyIndex = src.indexOf('export function applySafeConfigEnvironmentVariables')
+    const configApplyIndex = src.indexOf('export function applyConfigEnvironmentVariables')
+    const safeReapplyIndex = src.indexOf(
+      'reapplyRememberedProviderFlag()',
+      safeApplyIndex,
+    )
+    const configReapplyIndex = src.indexOf(
+      'reapplyRememberedProviderFlag()',
+      configApplyIndex,
+    )
 
-    expect(src).toContain('CRITICAL_MEMORY_THRESHOLD = 2.5 * 1024 * 1024 * 1024')
+    expect(safeReapplyIndex).toBeGreaterThan(safeApplyIndex)
+    expect(safeReapplyIndex).toBeLessThan(configApplyIndex)
+    expect(configReapplyIndex).toBeGreaterThan(configApplyIndex)
   })
 })

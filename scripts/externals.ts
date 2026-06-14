@@ -106,8 +106,6 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'semver',
   'shell-quote',
   'signal-exit',
-  'stack-utils',
-  'code-excerpt',
   'type-fest',
   // Networking
   'axios',
