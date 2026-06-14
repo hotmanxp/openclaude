@@ -1137,7 +1137,7 @@ async function run(): Promise<CommanderCommand> {
     let fileDownloadPromise: Promise<DownloadResult[]> | undefined;
     const agentsJson = options.agents;
     const agentCli = options.agent;
-    if (feature('BG_SESSIONS') && agentCli) {
+    if (agentCli) {
       process.env.CLAUDE_CODE_AGENT = agentCli;
     }
 

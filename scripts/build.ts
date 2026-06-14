@@ -162,11 +162,32 @@ result = await Bun.build({
     {
       name: 'bun-bundle-shim',
       setup(build) {
-        const internalFeatureStubModules = new Map([
+        // For T12.1/T12.2 entries we now have real source files. The
+        // stubs are still injected when the corresponding feature flag
+        // is off (so any leftover import path still resolves), but the
+        // build treats the path as "real source" when the flag is on.
+        // Other stub-only modules (templateJobs, environment-runner,
+        // self-hosted-runner) are still always-stub because no real
+        // source exists yet — they're genuinely off in the open build.
+        const alwaysStubModules = new Map<string, string>([
           [
             '../daemon/workerRegistry.js',
             'export async function runDaemonWorker() { throw new Error("Daemon worker is unavailable in the open build."); }',
           ],
+          [
+            '../cli/handlers/templateJobs.js',
+            'export async function templatesMain() { throw new Error("Template jobs are unavailable in the open build."); }',
+          ],
+          [
+            '../environment-runner/main.js',
+            'export async function environmentRunnerMain() { throw new Error("Environment runner is unavailable in the open build."); }',
+          ],
+          [
+            '../self-hosted-runner/main.js',
+            'export async function selfHostedRunnerMain() { throw new Error("Self-hosted runner is unavailable in the open build."); }',
+          ],
+        ])
+        const flagStubModules = new Map<string, string>([
           [
             '../daemon/main.js',
             'export async function daemonMain() { throw new Error("Daemon mode is unavailable in the open build."); }',
@@ -181,19 +202,9 @@ export async function killHandler() { throw new Error("Background sessions are u
 export async function handleBgFlag() { throw new Error("Background sessions are unavailable in the open build."); }
 `,
           ],
-          [
-            '../cli/handlers/templateJobs.js',
-            'export async function templatesMain() { throw new Error("Template jobs are unavailable in the open build."); }',
-          ],
-          [
-            '../environment-runner/main.js',
-            'export async function environmentRunnerMain() { throw new Error("Environment runner is unavailable in the open build."); }',
-          ],
-          [
-            '../self-hosted-runner/main.js',
-            'export async function selfHostedRunnerMain() { throw new Error("Self-hosted runner is unavailable in the open build."); }',
-          ],
-        ] as const)
+        ])
+        const alwaysStubPaths = new Set(alwaysStubModules.keys())
+        const flagStubPaths = new Set(flagStubModules.keys())
 
         // bun:bundle feature() replacement is handled by featureFlagPreprocessPlugin.
         // The previous onResolve/onLoad shim was ineffective in Bun
@@ -203,21 +214,34 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
         build.onResolve(
           { filter: /^\.\.\/(daemon\/workerRegistry|daemon\/main|cli\/bg|cli\/handlers\/templateJobs|environment-runner\/main|self-hosted-runner\/main)\.js$/ },
           args => {
-            if (!internalFeatureStubModules.has(args.path)) return null
-            return {
-              path: args.path,
-              namespace: 'internal-feature-stub',
+            // Always-stub modules: stub unconditionally (no real source exists).
+            if (alwaysStubPaths.has(args.path)) return null
+            // Flag-gated modules: stub only when the corresponding feature
+            // flag is false. When the flag is true, return null so bun:bundle
+            // resolves the real source file we now ship (T12.1/T12.2).
+            if (flagStubPaths.has(args.path)) {
+              const flag = args.path === '../daemon/main.js' ? 'DAEMON' : 'BG_SESSIONS'
+              if (featureFlags[flag]) return null
+              return {
+                path: args.path,
+                namespace: 'internal-feature-stub',
+              }
             }
+            return null
           },
         )
         build.onLoad(
           { filter: /.*/, namespace: 'internal-feature-stub' },
-          args => ({
-            contents:
-              internalFeatureStubModules.get(args.path) ??
-              'export {}',
-            loader: 'js',
-          }),
+          args => {
+            const stub =
+              alwaysStubModules.get(args.path) ??
+              flagStubModules.get(args.path) ??
+              'export {}'
+            return {
+              contents: `// missing-module-stub:${args.path}\n${stub}`,
+              loader: 'js',
+            }
+          },
         )
 
         // Resolve react/compiler-runtime to the standalone package
@@ -992,6 +1016,9 @@ if (result?.success) {
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
+    'src/daemon/workerRegistry',
+    'src/utils/taskSummary',
+    'src/utils/udsClient',
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer

@@ -29,10 +29,8 @@ function getSessionsDir(): string {
  * Gated so the env-var string is DCE'd from external builds.
  */
 function envSessionKind(): SessionKind | undefined {
-  if (feature('BG_SESSIONS')) {
-    const k = process.env.CLAUDE_CODE_SESSION_KIND
-    if (k === 'bg' || k === 'daemon' || k === 'daemon-worker') return k as SessionKind
-  }
+  const k = process.env.CLAUDE_CODE_SESSION_KIND
+  if (k === 'bg' || k === 'daemon' || k === 'daemon-worker') return k as SessionKind
   return undefined
 }
 
@@ -86,13 +84,9 @@ export async function registerSession(): Promise<boolean> {
         ...(feature('UDS_INBOX')
           ? { messagingSocketPath: process.env.CLAUDE_CODE_MESSAGING_SOCKET }
           : {}),
-        ...(feature('BG_SESSIONS')
-          ? {
-              name: process.env.CLAUDE_CODE_SESSION_NAME,
-              logPath: process.env.CLAUDE_CODE_SESSION_LOG,
-              agent: process.env.CLAUDE_CODE_AGENT,
-            }
-          : {}),
+        name: process.env.CLAUDE_CODE_SESSION_NAME,
+        logPath: process.env.CLAUDE_CODE_SESSION_LOG,
+        agent: process.env.CLAUDE_CODE_AGENT,
       }),
     )
     // --resume / /resume mutates getSessionId() via switchSession. Without
@@ -156,7 +150,6 @@ export async function updateSessionActivity(patch: {
   status?: SessionStatus
   waitingFor?: string
 }): Promise<void> {
-  if (!feature('BG_SESSIONS')) return
   await updatePidFile({ ...patch, updatedAt: Date.now() })
 }
 

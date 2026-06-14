@@ -1218,12 +1218,10 @@ export function REPL({
   // Push status to the PID file for `claude ps`. Fire-and-forget; ps falls
   // back to transcript-tail derivation when this is missing/stale.
   useEffect(() => {
-    if (feature('BG_SESSIONS')) {
-      void updateSessionActivity({
-        status: sessionStatus,
-        waitingFor
-      });
-    }
+    void updateSessionActivity({
+      status: sessionStatus,
+      waitingFor
+    });
   }, [sessionStatus, waitingFor]);
 
   // 3P default: off — OSC 21337 is internal-only while the spec stabilizes.
@@ -3819,7 +3817,7 @@ export function REPL({
     // In bg sessions, always detach instead of kill — even when a worktree is
     // active. Without this guard, the worktree branch below short-circuits into
     // ExitFlow (which calls gracefulShutdown) before exit.tsx is ever loaded.
-    if (feature('BG_SESSIONS') && isBgSession()) {
+    if (isBgSession()) {
       spawnSync('tmux', ['detach-client'], {
         stdio: 'ignore'
       });
