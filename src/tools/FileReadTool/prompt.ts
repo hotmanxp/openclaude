@@ -8,7 +8,8 @@ export const FILE_UNCHANGED_STUB =
 
 export const MAX_LINES_TO_READ = 2000
 
-export const DESCRIPTION = 'Read a file from the local filesystem.'
+export const DESCRIPTION =
+  'Reads a file from the local filesystem. You can access any file directly by using this tool.'
 
 export const LINE_FORMAT_INSTRUCTION =
   '- Results are returned using cat -n format, with line numbers starting at 1'
