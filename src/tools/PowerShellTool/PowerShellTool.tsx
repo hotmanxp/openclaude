@@ -286,7 +286,7 @@ export const PowerShellTool = buildTool({
   async description({
     description
   }: Partial<PowerShellToolInput>): Promise<string> {
-    return description || 'Run PowerShell command';
+    return description || 'Executes a PowerShell command. Working directory persists between commands; shell state does not. On Windows native, sandbox is unavailable. Set run_in_background: true for long-running commands.';
   },
   async prompt(): Promise<string> {
     return getPrompt();
