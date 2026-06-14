@@ -1,6 +1,6 @@
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
 export { FILE_WRITE_TOOL_NAME } from './constants.js'
-export const DESCRIPTION = 'Write a file to the local filesystem.'
+export const DESCRIPTION = 'Writes a file to the local filesystem, overwriting if one exists.'
 
 function getPreReadInstruction(): string {
   return `\n- If this is an existing file, you MUST use the ${FILE_READ_TOOL_NAME} tool first to read the file's contents. This tool will fail if you did not read the file first.`
