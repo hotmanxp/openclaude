@@ -98,7 +98,7 @@ export const FileWriteTool = buildTool({
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
-    return 'Write a file to the local filesystem.'
+    return 'Writes a file to the local filesystem, overwriting if one exists.'
   },
   userFacingName,
   getToolUseSummary,
