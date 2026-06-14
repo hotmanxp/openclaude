@@ -745,9 +745,26 @@ different SHA / subject.
 | `94d2a6a5` | `ci: split typecheck into its own PR-checks job (#1599)` — CI config, fork has its own CI |
 | `b0064575` | `chore(main): release 0.18.0 (#1548)` — release chore, OpenCC ships its own version |
 
+### Tier 2 (2026-06-14, post tier 1 push, 1 new type-fix candidate)
+
+Scope: 1 commit surfaced after `origin/main-opencc` advanced to `bd299563` (bg-agent fast-forward from fork) plus the new tip `f4aa180c`. Background-agent work (BD plumbing on main-opencc) is **not** in scope per the "type-fixing commits" mandate.
+
+| Upstream | Result |
+|---|---|
+| `3752dfe6` | `fix(typecheck): recreate missing CLI Transport interface (#1581)`. 9 source files in `src/bridge/` and `src/cli/transports/` (plus 2 test files). 3way: 7 clean, 6 auto-merged to ours (CCR client + cooldown test + analyze context + agent test), 2 missing in fork (`model.openai-shim-providers.test.ts`, `tsconfig.type-tests.json` — provider-shim/CI-only). **3way silent noop** — net diff is zero. Fork's existing transport layer is already in lockstep with upstream's interface recreation. `bun run typecheck` → 0 errors. **No commit needed.** |
+
 ### Verification (2026-06-14, all 19 type-fix candidates)
 
 - `bun run typecheck` → **0 errors** (held baseline across all 3way attempts)
 - Working tree: 2 unpushed commits (`f967c16d` + `9f1d80c6`) + 1 user WIP `src/query.ts` + 1 untracked `docs/superpowers/plans/2026-06-13-feat-solidify-plan.md`
 - `git push origin main-opencc` → `53a8a995..9f1d80c6` (2 commits)
 - All applied work: `git apply --3way` only, never `cherry-pick` (per AGENTS.md + prior session rule)
+
+### Verification (2026-06-14, tier 2)
+
+- Pulled `origin/main-opencc` fast-forward: `4fb88b0e → bd299563` (bg-agent plumbing, 2 commits, 17 files, +1423/-105)
+- WIP stashed: `src/query.ts` → `stash@{0}: opencc-wip-2026-06-14`
+- `git show 3752dfe6 | git apply --3way` → 7 clean, 6 3way-merged, 2 missing-in-fork
+- `git diff --stat` post-apply: empty (3way silent noop)
+- `git diff --cached --stat`: empty
+- `bun run typecheck` → **0 errors**
