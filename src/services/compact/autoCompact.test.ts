@@ -23,7 +23,6 @@ type ImportAutoCompactOptions = {
 }
 
 async function importAutoCompact(options: ImportAutoCompactOptions = {}) {
-  mock.restore()
   mock.module('../../utils/config.js', () => ({
     ...realConfig,
     getGlobalConfig: () => ({ autoCompactEnabled: true }),
