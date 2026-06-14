@@ -348,6 +348,23 @@ const ShutdownSchema = z.object({
   reapWorkers: z.boolean().optional(),
 })
 
+// `inbox` — drain pending daemon-to-client messages (bg-agent
+// completions, kills, etc.) since the last ack cursor. Each call
+// returns messages with id > `ackThrough` and updates the server-side
+// ack cursor to `highestId`. New in this port (not in upstream 2.1.177).
+//
+// `clientId` is required: identifies which REPL session is asking
+// (port-specific OpenCC extension; upstream uses appState.inbox which
+// is implicit). The daemon only returns messages belonging to this
+// client; bg-agent events from other opencc sessions are NOT leaked.
+const InboxSchema = z.object({
+  proto,
+  op: z.literal('inbox'),
+  clientId: z.string().min(1),
+  /** Return only messages with id > ackThrough. Default 0 = all. */
+  ackThrough: z.number().int().nonnegative().optional(),
+})
+
 /**
  * Discriminated union of all 18 IPC ops.
  *
@@ -373,6 +390,7 @@ export const BGRequestSchema = z.discriminatedUnion('op', [
   PermissionResponseSchema,
   RespawnStaleSchema,
   ShutdownSchema,
+  InboxSchema,
 ])
 
 export type BGRequest = z.infer<typeof BGRequestSchema>
@@ -424,6 +442,17 @@ export const BGResponseOkSchema = z.discriminatedUnion('op', [
   z.object({ ...BGBaseOkShape, op: z.literal('permission-response') }),
   z.object({ ...BGBaseOkShape, op: z.literal('respawn-stale') }),
   z.object({ ...BGBaseOkShape, op: z.literal('shutdown') }),
+  z.object({
+    ...BGBaseOkShape,
+    op: z.literal('inbox'),
+    messages: z.array(
+      z.discriminatedUnion('type', [
+        z.object({type: z.literal('idle_notification')}).passthrough(),
+        z.object({type: z.literal('task_completed')}).passthrough(),
+      ]),
+    ),
+    highestId: z.number(),
+  }),
 ])
 
 export type BGResponseOk = z.infer<typeof BGResponseOkSchema>

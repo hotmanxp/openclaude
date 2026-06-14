@@ -59,6 +59,7 @@ import {
   createToolUseSummaryMessage,
   createMicrocompactBoundaryMessage,
 } from './utils/messages.js'
+import { buildInboxSystemReminder } from './utils/daemon/inboxSection.js'
 import { analyzeContinuationIntent } from './utils/continuation.js'
 import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummaryGenerator.js'
 import { prependUserContext, appendSystemContext } from './utils/api.js'
@@ -126,11 +127,6 @@ import {
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 import { snipCompactIfNeeded } from './services/compact/snipCompact.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 function* yieldMissingToolResultBlocks(
   assistantMessages: AssistantMessage[],
@@ -417,6 +413,47 @@ async function* queryLoop(
     }
 
     let messagesForQuery = [...getMessagesAfterCompactBoundary(messages)]
+
+    // Drain bg-daemon mailbox (bg-agent completions) and prepend as a
+    // `<system-reminder>` block to the last user message. Per
+    // upstream 2.1.177 `G_K`/`InboxPoller` pattern: reminders live
+    // in the user-message stream, not the system prompt, so the API
+    // prompt cache is preserved across turns with no new completions.
+    // Port: a new user message is prepended to keep the implementation
+    // simple; upstream's `loK` trims `<system-reminder>` blocks from
+    // the start of subsequent user messages to prevent accumulation
+    // — we apply the same trim here.
+    {
+      const reminder = await buildInboxSystemReminder()
+      if (reminder) {
+        const SYSTEM_REMINDER_END = '</system-reminder>'
+        messagesForQuery = messagesForQuery.map(m => {
+          if (m.type !== 'user') return m
+          // Strip any leading `<system-reminder>...</system-reminder>`
+          // blocks from this user message so we only keep the latest.
+          let text =
+            typeof m.message.content === 'string' ? m.message.content : ''
+          if (!text) return m
+          while (text.trimStart().startsWith('<system-reminder>')) {
+            const end = text.indexOf(SYSTEM_REMINDER_END)
+            if (end === -1) break
+            text = text.slice(end + SYSTEM_REMINDER_END.length).trimStart()
+          }
+          if (text === m.message.content) return m
+          return {...m, message: {...m.message, content: text}}
+        })
+        // Prepend a new user message carrying the reminder.
+        messagesForQuery = [
+          {
+            type: 'user',
+            message: {role: 'user', content: reminder},
+            uuid: `bg-inbox-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+          } as (typeof messagesForQuery)[number],
+          ...messagesForQuery,
+        ]
+      }
+    }
 
     // Extract facts and update phase from the latest message (user input or tool result)
     if (
@@ -2099,29 +2136,6 @@ async function* queryLoop(
 
     // Each time we have tool results and are about to recurse, that's a turn
     const nextTurnCount = turnCount + 1
-
-    // Periodic task summary for `claude ps` — fires mid-turn so a
-    // long-running agent still refreshes what it's working on. Gated
-    // only on !agentId so every top-level conversation (REPL, SDK, HFI,
-    // remote) generates summaries; subagents/forks don't.
-    if (feature('BG_SESSIONS')) {
-      if (
-        !toolUseContext.agentId &&
-        taskSummaryModule!.shouldGenerateTaskSummary()
-      ) {
-        taskSummaryModule!.maybeGenerateTaskSummary({
-          systemPrompt,
-          userContext,
-          systemContext,
-          toolUseContext,
-          forkContextMessages: [
-            ...messagesForQuery,
-            ...assistantMessages,
-            ...toolResults,
-          ],
-        })
-      }
-    }
 
     // Check if we've reached the max turns limit
     if (maxTurns && nextTurnCount > maxTurns) {

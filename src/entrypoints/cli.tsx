@@ -252,8 +252,22 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude daemon [subcommand]`: long-running supervisor.
+  // Fast-path for `opencc damon [subcommand]`: long-running supervisor.
   if (args[0] === 'daemon') {
+    // Runtime gate: refuse before any module load / socket bind.
+    // Defense in depth — `runSupervisor()` ALSO checks, but this
+    // saves the bootstrap cost for the common "feature off" case.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const {isBgAgentRuntimeEnabled} = require('../utils/daemon/mailbox.js') as {
+      isBgAgentRuntimeEnabled: () => boolean
+    }
+    if (!isBgAgentRuntimeEnabled()) {
+      // biome-ignore lint/suspicious/noConsole:: intentional stderr
+      console.error(
+        'daemon: bg-agent feature disabled (default-off; set CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or settings.enableAgentView)',
+      )
+      process.exit(1)
+    }
     profileCheckpoint('cli_daemon_path');
     const {
       enableConfigs
@@ -265,7 +279,7 @@ async function main(): Promise<void> {
     initSinks();
     const {
       daemonMain
-    } = await import('../daemon/main.js');
+    } = await import('./daemon/main.js');
     await daemonMain(args.slice(1));
     return;
   }

@@ -4308,6 +4308,31 @@ async function run(): Promise<CommanderCommand> {
     await agentsHandler();
     process.exit(0);
   });
+
+  // bg-agents command - list daemon-managed background agent jobs (T7).
+  // Pairs with `/background` slash command which renders an interactive view;
+  // this CLI subcommand is the non-interactive / scriptable sibling.
+  // Returns exit code 1 with stderr guidance when the bg daemon is not running.
+  // Runtime gate: when the bg-agent feature is disabled
+  // (default-off; opt-in via CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or
+  // settings.enableAgentView), this subcommand prints a "feature
+  // disabled" message and exits 1 without ever touching the daemon
+  // socket.
+  program.command('bg-agents').description('List background daemon-managed agents').action(async () => {
+    const {isBgAgentRuntimeEnabled} = await import('./utils/daemon/mailbox.js')
+    if (!isBgAgentRuntimeEnabled()) {
+      // biome-ignore lint/suspicious/noConsole:: intentional stderr
+      console.error(
+        'bg-agents: feature disabled (set CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or settings.enableAgentView to enable)',
+      )
+      process.exit(1)
+    }
+    const {
+      handleBgAgentsCommand
+    } = await import('./cli/handlers/bgAgents.js');
+    const result = await handleBgAgentsCommand();
+    process.exit(result.exitCode);
+  });
   if (true) {
     // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).
     // Reads from disk cache — GrowthBook isn't initialized at registration time.

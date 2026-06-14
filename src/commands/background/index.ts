@@ -10,10 +10,10 @@ import type { Command } from '../../commands.js'
  * kill routes to the daemon's `kill` op rather than the in-process
  * task registry.
  *
- * Respects the T1 agent-view killswitch — when
- * `ManagedSettings.disableAgentView` is true or
- * `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, the guard in `background.tsx`
- * renders an inline notice instead of mounting the dialog.
+ * Runtime gate: when the bg-agent feature is disabled
+ * (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or settings.disableAgentView),
+ * the command is NOT registered at all (rather than mounted and
+ * shown a "disabled" notice). The user can't even type `/background`.
  *
  * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T8 §T9
  */
@@ -22,6 +22,11 @@ const background = {
   name: 'background',
   description: 'Show background tasks (daemon-managed bg agents)',
   load: () => import('./background.js'),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  isEnabled: () =>
+    (require('../../utils/daemon/mailbox.js') as {
+      isBgAgentRuntimeEnabled: () => boolean
+    }).isBgAgentRuntimeEnabled(),
 } satisfies Command
 
 export default background

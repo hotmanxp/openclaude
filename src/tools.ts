@@ -1,6 +1,8 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
+import { BackgroundAgentTool } from './tools/BackgroundAgentTool/index.js'
+import { BackgroundAgentResultTool } from './tools/BackgroundAgentResultTool/index.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
@@ -170,8 +172,21 @@ export function getToolsForDefaultPreset(): string[] {
  * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/claude_code_global_system_caching, in order to cache the system prompt across users.
  */
 export function getAllBaseTools(): Tools {
+  // Runtime gate: when the bg-agent feature is disabled
+  // (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or settings.disableAgentView),
+  // do NOT register the related tools at all. Goes one step beyond
+  // the buildTool `isEnabled()` filter — the LLM never sees these
+  // tool names anywhere (no prompts, no help text, no Nothing).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const {isBgAgentRuntimeEnabled} = require('./utils/daemon/mailbox.js') as {
+    isBgAgentRuntimeEnabled: () => boolean
+  }
+  const bgTools = isBgAgentRuntimeEnabled()
+    ? [BackgroundAgentTool, BackgroundAgentResultTool]
+    : []
   return [
     AgentTool,
+    ...bgTools,
     TaskOutputTool,
     BashTool,
     // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
