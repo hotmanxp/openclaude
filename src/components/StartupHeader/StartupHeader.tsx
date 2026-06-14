@@ -2,14 +2,17 @@
 import { Box, Text } from '../../ink.js'
 import * as React from 'react'
 import { useMemo } from 'react'
+import { getSdkBetas } from '../../bootstrap/state.js'
 import { useAppState } from '../../state/AppState.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
+import { getContextWindowForModel } from '../../utils/context.js'
 import { getCwd } from '../../utils/cwd.js'
 import { getEffortSuffix } from '../../utils/effort.js'
 import { renderModelSetting } from '../../utils/model/model.js'
 import { expandTilde, truncatePath } from './StartupHeader.pure.js'
 import { ClaudeMascot } from './ClaudeMascot.js'
+import { formatContextWindow } from './StartupHeader.contextWindow.js'
 
 function safeGetCwd(): string {
   try {
@@ -27,6 +30,15 @@ function safeRenderModel(name: string): string {
   }
 }
 
+function safeContextWindowDisplay(name: string): string {
+  try {
+    const tokens = getContextWindowForModel(name, getSdkBetas())
+    return ` (${formatContextWindow(tokens)})`
+  } catch {
+    return ''
+  }
+}
+
 export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   const model = useMainLoopModel()
   const effortValue = useAppState(s => s.effortValue)
@@ -36,6 +48,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
   const dirMax = Math.max(10, columns - 30)
   const dir = useMemo(() => truncatePath(expanded, dirMax), [expanded, dirMax])
   const modelDisplay = model ? safeRenderModel(model) : '(no model)'
+  const contextWindowDisplay = model ? safeContextWindowDisplay(model) : ''
   const effortSuffix = model ? getEffortSuffix(model, effortValue) : ''
   const version = MACRO.DISPLAY_VERSION ?? MACRO.VERSION ?? 'unknown'
 
@@ -47,7 +60,7 @@ export const StartupHeader: React.FC = React.memo(function StartupHeader() {
           <Text bold>OpenCC</Text> <Text dimColor>v{version}</Text>
         </Text>
         <Text dimColor>
-          {modelDisplay}{effortSuffix}
+          {modelDisplay}{contextWindowDisplay}{effortSuffix}
         </Text>
         <Text dimColor>{dir}</Text>
       </Box>
