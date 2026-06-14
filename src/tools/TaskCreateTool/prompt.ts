@@ -1,6 +1,7 @@
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 
-export const DESCRIPTION = 'Create a new task in the task list'
+export const DESCRIPTION =
+  'Create a new task in the task list. Use this to track progress, organize complex multi-step work, and demonstrate thoroughness. Tasks support metadata for tracking additional context.'
 
 export function getPrompt(): string {
   const teammateContext = isAgentSwarmsEnabled()
