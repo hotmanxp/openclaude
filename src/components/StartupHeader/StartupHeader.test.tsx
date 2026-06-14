@@ -103,8 +103,8 @@ describe('StartupHeader (Claude-style)', () => {
   test('renders mascot + brand + version + model + cwd at 80 cols', async () => {
     testState.currentModel = 'claude-sonnet-4-6'
     const frame = await renderHeader(80)
-    expect(frame).toContain('▐▛███▜▌')  // mascot head
-    expect(frame).toContain('▝▜█████▛▘') // mascot body
+    expect(frame).toContain('◖▐▟▙')   // woodpecker head (original B)
+    expect(frame).toContain('▐███▙▖') // woodpecker body
     expect(frame).toContain('OpenCC')
     expect(frame).toContain('v0.11.1-test')
     expect(frame).toContain('/Users/test/code/opencc')

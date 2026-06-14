@@ -51,11 +51,13 @@ async function renderMascot(): Promise<string> {
 }
 
 describe('ClaudeMascot', () => {
-  test('renders the 3-row Claude mascot sprite', async () => {
+  test('renders the 3-row woodpecker mascot sprite (original B: left-facing)', async () => {
     const frame = await renderMascot()
-    expect(frame).toContain('▐▛███▜▌')
-    expect(frame).toContain('▝▜█████▛▘')
-    expect(frame).toContain('▘▘')
-    expect(frame).toContain('▝▝')
+    // Row 1: head with short beak tip
+    expect(frame).toContain('◖▐▟▙')
+    // Row 2: body
+    expect(frame).toContain('▐███▙▖')
+    // Row 3: tail prop + feet
+    expect(frame).toContain('▝▝  ▝▝')
   })
 })
