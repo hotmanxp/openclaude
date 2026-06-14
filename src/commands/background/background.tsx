@@ -21,11 +21,11 @@ import { isAgentViewEnabled } from '../../utils/settings/agentView.js'
  * semantics — this slash command is just a thin mount that passes the
  * `onDone` callback through.
  *
- * Respects the T1 agent-view killswitch: when
- * `ManagedSettings.disableAgentView` is true or
- * `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, `BackgroundGuard` renders an
- * inline notice instead of mounting the dialog. The full CLI wiring
- * (T12) funnels all three gating points through the same helper.
+ * Respects the T1 agent-view opt-in: when
+ * `ManagedSettings.enableAgentView` is true or
+ * `CLAUDE_CODE_ENABLE_AGENT_VIEW=1`, the dialog mounts (default
+ * is off per the §17 semantic flip from disable→enable). The
+ * BackgroundGuard renders an inline notice when off.
  */
 export async function call(
   onDone: LocalJSXCommandOnDone,

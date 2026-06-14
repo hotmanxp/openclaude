@@ -230,17 +230,18 @@ export interface SupervisorHandle {
  */
 export async function runSupervisor(opts: SupervisorOptions = {}): Promise<SupervisorHandle> {
   // Runtime gate: refuse to start the supervisor when the bg-agent
-  // feature is disabled (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or
-  // ManagedSettings.disableAgentView). The CLI fast-path also
-  // checks this; defense in depth in case some other entry path
-  // (SDK, test, future) calls runSupervisor directly.
+  // feature is disabled (default-off; opt-in via
+  // CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or ManagedSettings.enableAgentView).
+  // The CLI fast-path also checks this; defense in depth in case
+  // some other entry path (SDK, test, future) calls runSupervisor
+  // directly.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const {isBgAgentRuntimeEnabled} = require('../../utils/daemon/mailbox.js') as {
     isBgAgentRuntimeEnabled: () => boolean
   }
   if (!isBgAgentRuntimeEnabled()) {
     throw new Error(
-      'daemon: bg-agent feature disabled (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or settings.disableAgentView)',
+      'daemon: bg-agent feature disabled (default-off; set CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or settings.enableAgentView)',
     )
   }
 

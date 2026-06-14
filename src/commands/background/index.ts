@@ -11,9 +11,10 @@ import type { Command } from '../../commands.js'
  * task registry.
  *
  * Runtime gate: when the bg-agent feature is disabled
- * (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or settings.disableAgentView),
- * the command is NOT registered at all (rather than mounted and
- * shown a "disabled" notice). The user can't even type `/background`.
+ * (default-off; opt-in via CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or
+ * settings.enableAgentView), the command is NOT registered at
+ * all (rather than mounted and shown a "disabled" notice). The user
+ * can't even type `/background`.
  *
  * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T8 §T9
  */

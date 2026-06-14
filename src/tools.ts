@@ -173,10 +173,11 @@ export function getToolsForDefaultPreset(): string[] {
  */
 export function getAllBaseTools(): Tools {
   // Runtime gate: when the bg-agent feature is disabled
-  // (CLAUDE_CODE_DISABLE_AGENT_VIEW=1 or settings.disableAgentView),
-  // do NOT register the related tools at all. Goes one step beyond
-  // the buildTool `isEnabled()` filter — the LLM never sees these
-  // tool names anywhere (no prompts, no help text, no Nothing).
+  // (default-off; opt-in via CLAUDE_CODE_ENABLE_AGENT_VIEW=1 or
+  // settings.enableAgentView), do NOT register the related tools
+  // at all. Goes one step beyond the buildTool `isEnabled()` filter
+  // — the LLM never sees these tool names anywhere (no prompts, no
+  // help text, nothing).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const {isBgAgentRuntimeEnabled} = require('./utils/daemon/mailbox.js') as {
     isBgAgentRuntimeEnabled: () => boolean

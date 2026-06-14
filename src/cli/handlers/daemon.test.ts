@@ -248,7 +248,7 @@ describe('daemonStatus: getBgDaemonStatus', () => {
       plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
     })
     expect(text).toMatch(/not installed/i)
-    expect(text).toContain('claude daemon install')
+    expect(text).toContain('opencc damon install')
   })
 })
 
@@ -336,7 +336,9 @@ describe('runSupervisor', () => {
     // listener never fires, so the lease lives forever without the TTL).
     const state: DaemonState = {
       jobs: new Map(),
+      workers: new Map(),
       leases: new Map(),
+      inboxes: new Map(),
     }
     const now = Date.now()
     state.leases.set('stale', {
