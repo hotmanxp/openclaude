@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../../test/sharedMutationLock.js'
 
 type MarketplaceEntry = {
   name: string
@@ -23,8 +27,22 @@ let config = {
 }
 let addMarketplaceSourceFn = mock(() => {})
 
+await acquireSharedMutationLock('utils/plugins/lspRecommendation.test.ts')
+
 mock.module('./marketplaceManager.js', () => ({
+  addMarketplaceSource: addMarketplaceSourceFn,
+  getMarketplaceCacheOnly: async (name: string) => ({
+    plugins: marketplaces[name] ?? [],
+  }),
+  getMarketplacesCacheDir: () => '/tmp/openclaude-marketplaces',
   loadKnownMarketplacesConfig: async () =>
+    Object.fromEntries(
+      Object.keys(marketplaces).map(name => [
+        name,
+        { installLocation: `/tmp/${name}` },
+      ]),
+    ),
+  loadKnownMarketplacesConfigSafe: async () =>
     Object.fromEntries(
       Object.keys(marketplaces).map(name => [
         name,
@@ -34,7 +52,9 @@ mock.module('./marketplaceManager.js', () => ({
   getMarketplace: async (name: string) => ({
     plugins: marketplaces[name] ?? [],
   }),
-  addMarketplaceSource: addMarketplaceSourceFn,
+  getPluginById: async () => undefined,
+  getPluginByIdCacheOnly: async () => undefined,
+  saveKnownMarketplacesConfig: mock(async () => {}),
 }))
 
 mock.module('../binaryCheck.js', () => ({
@@ -42,20 +62,102 @@ mock.module('../binaryCheck.js', () => ({
 }))
 
 mock.module('./installedPluginsManager.js', () => ({
+  addInstalledPlugin: mock(() => {}),
+  addPluginInstallation: mock(() => {}),
+  clearInstalledPluginsCache: mock(() => {}),
+  getInMemoryInstalledPlugins: () => ({ installations: {}, schemaVersion: 2 }),
+  getGitCommitSha: async () => undefined,
+  getPendingUpdateCount: () => 0,
+  getPendingUpdatesDetails: () => [],
+  hasPendingUpdates: () => false,
+  loadInstalledPluginsFromDisk: () => ({
+    installations: {},
+    schemaVersion: 2,
+  }),
+  removeAllPluginsForMarketplace: () => ({ removed: 0 }),
+  removeInstalledPlugin: mock(() => {}),
+  removePluginInstallation: mock(() => {}),
+  resetInMemoryState: mock(() => {}),
   isPluginInstalled: (pluginId: string) => installedPlugins.has(pluginId),
+  isPluginGloballyInstalled: (pluginId: string) => installedPlugins.has(pluginId),
+  updateInstallationPathOnDisk: mock(() => {}),
 }))
 
+// Spread the real config module to preserve all exports. The marketplace
+// module body transitively imports many of these; missing entries
+// (e.g. `normalizeMaxMessagesCompactionThreshold` added in PR #1605) break
+// any downstream test that re-imports the mocked path in the same Bun
+// process. The `?real=...` cache-bust ensures the import bypasses this
+// file's own mock.module() registration for the same path.
+const realConfig = await import(
+  `../config.js?real=${Date.now()}-${Math.random()}`
+)
 mock.module('../config.js', () => ({
+  ...realConfig,
+  checkHasTrustDialogAccepted: () => true,
+  enableConfigs: mock(() => {}),
+  getCurrentProjectConfig: () => ({}),
   getGlobalConfig: () => config,
+  getGlobalConfigWriteCount: () => 0,
+  getAutoUpdaterDisabledReason: () => null,
+  formatAutoUpdaterDisabledReason: () => 'enabled',
+  getManagedClaudeRulesDir: () => '/tmp/openclaude-managed-rules',
+  getMemoryPath: () => '/tmp/openclaude-memory.md',
+  getOrCreateUserID: () => 'test-user-id',
+  getProjectPathForConfig: () => '/tmp/openclaude-project-config.json',
+  getRemoteControlAtStartup: () => false,
+  getUserClaudeRulesDir: () => '/tmp/openclaude-user-rules',
+  isAutoUpdaterDisabled: () => false,
+  recordFirstStartTime: mock(() => {}),
+  getCustomApiKeyStatus: () => ({ hasCustomApiKey: false }),
+  isGlobalConfigKey: () => false,
+  isPathTrusted: () => true,
+  isProjectConfigKey: () => false,
+  resetTrustDialogAcceptedCacheForTesting: mock(() => {}),
+  shouldSkipPluginAutoupdate: () => false,
   saveGlobalConfig: mock((updater: (current: typeof config) => typeof config) => {
     config = updater(config)
   }),
+  saveCurrentProjectConfig: mock(() => {}),
 }))
 
-const {
-  getMatchingLspPlugins,
-  listLspPluginCandidates,
-} = await import('./lspRecommendation.js')
+let getMatchingLspPlugins: typeof import('./lspRecommendation.js').getMatchingLspPlugins
+let listLspPluginCandidates: typeof import('./lspRecommendation.js').listLspPluginCandidates
+
+function resetTestState(): void {
+  marketplaces = {
+    'claude-plugins-official': [
+      lspPlugin('typescript-lsp', 'typescript-language-server', [
+        '.ts',
+        '.tsx',
+        '.js',
+      ]),
+      lspPlugin('pyright-lsp', 'pyright-langserver', ['.py', '.pyi']),
+    ],
+    community: [lspPlugin('rust-analyzer-lsp', 'rust-analyzer', ['.rs'])],
+  }
+  installedPlugins = new Set()
+  installedBinaries = new Set(['typescript-language-server'])
+  config = {
+    lspRecommendationDisabled: false,
+    lspRecommendationNeverPlugins: [],
+    lspRecommendationIgnoredCount: 0,
+  }
+  addMarketplaceSourceFn.mockClear()
+}
+
+resetTestState()
+const mod = await import('./lspRecommendation.js')
+getMatchingLspPlugins = mod.getMatchingLspPlugins
+listLspPluginCandidates = mod.listLspPluginCandidates
+
+afterAll(() => {
+  try {
+    mock.restore()
+  } finally {
+    releaseSharedMutationLock()
+  }
+})
 
 function lspPlugin(
   name: string,
@@ -78,25 +180,7 @@ function lspPlugin(
 }
 
 beforeEach(() => {
-  marketplaces = {
-    'claude-plugins-official': [
-      lspPlugin('typescript-lsp', 'typescript-language-server', [
-        '.ts',
-        '.tsx',
-        '.js',
-      ]),
-      lspPlugin('pyright-lsp', 'pyright-langserver', ['.py', '.pyi']),
-    ],
-    community: [lspPlugin('rust-analyzer-lsp', 'rust-analyzer', ['.rs'])],
-  }
-  installedPlugins = new Set()
-  installedBinaries = new Set(['typescript-language-server'])
-  config = {
-    lspRecommendationDisabled: false,
-    lspRecommendationNeverPlugins: [],
-    lspRecommendationIgnoredCount: 0,
-  }
-  addMarketplaceSourceFn.mockClear()
+  resetTestState()
 })
 
 describe('listLspPluginCandidates', () => {
