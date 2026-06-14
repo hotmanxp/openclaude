@@ -434,7 +434,7 @@ export const BashTool = buildTool({
   async description({
     description
   }) {
-    return description || 'Run shell command';
+    return description || 'Executes a shell command in a sandbox. The working directory persists between commands; shell state does not. Set run_in_background: true to allow ctrl-c to interrupt long-running commands (\u226510s).';
   },
   async prompt() {
     return getSimplePrompt();
