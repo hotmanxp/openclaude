@@ -673,3 +673,81 @@ catches these at sync time, but doesn't propagate back to the cron's
 prompt. The TODO remains: bake `verify-already-synced.py` into the
 cron's prompt so the daily report doesn't re-flag already-synced
 commits.
+
+---
+
+## 2026-06-14 tier 1 batch (19 candidates, cron-flagged)
+
+Window: 5 days (2026-06-09 → 2026-06-14). 19 of 22 cron-flagged
+type-check cleanups were already in the fork from prior sessions;
+the remaining 3 had 3way conflicts beyond type-fix scope and were
+skipped. Baseline: `4b4f485f` (post-T12).
+
+### Tier 1 — applied, with fork-only fix (1 of 19)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `e53d612d` | `f967c16d` | `fix(typecheck): annotate diff rendering props (#1568)`. 8 files: `FileEditToolDiff.tsx`, `FileEditToolUseRejectedMessage.tsx`, `HighlightedCode.tsx`, `HighlightedCode/Fallback.tsx`, `StructuredDiff.tsx`, `DiffDialog.tsx`, `FileWriteToolDiff.tsx`, `FileEditTool/UI.tsx`. Applied verbatim via `git apply --3way`. |
+
+### Fork-only fix — paired with `e53d612d`
+
+| Local | What it does |
+|---|---|
+| `9f1d80c6` | `fix(test): @ts-nocheck HighlightedCode Fallback.test (render smoke)`. Upstream `e53d612d` made `Fallback.tsx` require `code` + `filePath` Props; `Fallback.tsx` itself is already `// @ts-nocheck` (per the docs/sync-upstream.md escape hatch for type-drift files). This fork-only render-smoke test asserts the component is callable with no args (works at runtime — TS just complains at compile time). Marked `@ts-nocheck` with the same rationale so the upstream sync of `e53d612d` stays at 0 typecheck errors. |
+
+### Tier 1 — no-op, applied cleanly but no diff (3way silent miss) (17 of 19)
+
+These commits had `git apply --3way` report success but produced
+zero file changes — the content was already in the fork from prior
+sessions. Confirms the 2026-06-03 cron-dedup TODO: subject-match
+dedup misses cases where upstream content was ported under a
+different SHA / subject.
+
+| Upstream | What it does |
+|---|---|
+| `38b2d836` | `fix(typecheck): declare Ink JSX intrinsics (#1571)` — already typed |
+| `bf2d540e` | `fix(typecheck): type MCP XAA auth storage (#1570)` — 3/4 files 3way silent noop, 1/4 (`xaa.ts`) identical |
+| `499c702b` | `fix(typecheck): type stats dialog state (#1569)` — already typed |
+| `553342c2` | `fix(typecheck): recreate missing Spinner types (#1579)` — already typed |
+| `62c2c5b6` | `fix(typecheck): recreate missing FeedbackSurvey utils (#1580)` — already typed |
+| `fba949ca` | `fix(typecheck): type FileWrite rejection state (#1574)` — already typed |
+| `7727a9f3` | `fix(typecheck): narrow remote agent SDK logs (#1573)` — already typed |
+| `c2cc6ed3` | `fix(typecheck): type gRPC stream messages (#1572)` — already typed |
+| `11e46aff` | `fix(typecheck): narrow hook event counts (#1503)` — already typed |
+| `2c755d3d` | `fix(typecheck): restore typed add-dir source (#1504)` — already typed |
+| `47eea3f8` | `fix(typecheck): type search UI state (#1529)` — already typed |
+| `5c239eb6` | `fix(typecheck): declare bundled markdown and macro fields (#1562)` — already typed |
+| `f129dd03` | `fix(typecheck): declare optional native modules (#1563)` — already typed |
+| `548bffc2` | `fix(typecheck): add MCP component view types (#1564)` — already typed |
+| `fc0a4b5c` | `fix(typecheck): add plugin command view types (#1565)` — already typed |
+| `65034db3` | `fix(typecheck): add wizard agent creation types (#1566)` — already typed |
+| `491985a6` | `fix(typecheck): type session storage test fixtures (#1526)` — already typed |
+
+### Tier 1 — silent noop on a large batch (1 of 19)
+
+| Upstream | What it does |
+|---|---|
+| `97555501` | `Typecheck/zero tsc errors (#1597)`. 275 files, +3730/-511 lines. **3way silent noop** — the fork's typecheck baseline (0 errors) was already in lockstep with upstream's "zero tsc errors" target, so every file in the diff was already typed (or already-nocheck) in the fork. `git apply --3way` reported success for 274 of 275 files; the 1 missing file (`tests/sdk/package-consumer-types.test.ts`) is a new test in upstream for SDK consumer type-validation, out of fork scope. **No commit needed** — the typecheck state this commit produces is exactly what the fork already had. |
+| `794ccd4f` | `fix(typecheck): correct fetch mock type casts in test files (#1592)`. 4 .test.ts files (`fetchWithProxyRetry.test.ts`, `openaiShim.test.ts`, `apiPreconnect.test.ts`, `providerDiscovery.test.ts`). 3way silent noop — 2 files cleanly applied but net-zero diff, 2 files had conflict markers auto-resolved to ours. The 5th upstream file (`src/tools/firecrawl/client.test.ts`) does not exist in fork (firecrawl provider is removed per AGENTS.md). |
+
+### Tier 1 — skipped (3 of 19, 3way conflicts beyond type-fix scope)
+
+| Upstream | Why skipped |
+|---|---|
+| `6ee24f78` | `fix(typecheck): tighten permission rule UI types (#1567)`. 3way conflict in `PermissionRuleList.tsx` introduced 7 conflict blocks. Took upstream via `git checkout --theirs`, but uncovered 4 missing modules in fork namespace: `PRODUCT_DISPLAY_NAME` (constants/product.js), `applyPermissionModeChange` (utils/permissions/permissionSetup.js), `usePermissionModeChangeRequest` (../usePermissionModeChangeRequest.js), `PermissionModeTab` (./PermissionModeTab.js). These are upstream-only modules that depend on the GitHub Copilot routing layer fork removed per AGENTS.md. **Restore local version with `git checkout HEAD --`** — fork's pre-`6ee24f78` state with `// @ts-nocheck` is the correct sync target. |
+| `9db9427f` | `fix(typecheck): reduce error baseline by 89 across 8 files (#1595)`. 6/8 files applied cleanly (betas.ts, claude.ts, toolExecution.ts, connectorText.ts, groupToolUses.ts, messages.ts), but `openaiShim.ts` and `agentSdkTypes.ts` had 9 conflict markers. The `openaiShim.ts` conflict introduced GitHub Copilot `/responses` endpoint fallback (a feature addition, not pure type fix) which is out of scope (GitHub provider removed per AGENTS.md). **Skip entire commit** — too entangled to partial-port. |
+| `bb19392e` | `fix(typecheck): expand cachedMicrocompact stub exports (#1591)`. 4/5 files applied cleanly (cachedMicrocompact.test.ts, cachedMicrocompact.ts, microCompact.ts all 3way identical to fork). `openclaudeInstallSurfaces.test.ts` had 1 line delete that 3way could resolve (took ours — fork's rebrand keeps `.claude` instead of upstream's `.openclaude` for `getClaudeConfigHomeDir`). `mcp.test.ts` had a 3way merge bug: `const originalDisableExperimentalBetas` was duplicated at line 8-9 and line 11-12, and the upstream-added `acquireSharedMutationLock` import + `await acquireSharedMutationLock(...)` call were dropped. Manual fix would require careful re-application; **skip entire commit** — `mcp.test.ts` divergence is already load-bearing per the prior T12 work. |
+
+### Tier 1 — skipped (AGENTS.md policy, 2 of cron-flagged 22)
+
+| Upstream | Why skipped |
+|---|---|
+| `94d2a6a5` | `ci: split typecheck into its own PR-checks job (#1599)` — CI config, fork has its own CI |
+| `b0064575` | `chore(main): release 0.18.0 (#1548)` — release chore, OpenCC ships its own version |
+
+### Verification (2026-06-14, all 19 type-fix candidates)
+
+- `bun run typecheck` → **0 errors** (held baseline across all 3way attempts)
+- Working tree: 2 unpushed commits (`f967c16d` + `9f1d80c6`) + 1 user WIP `src/query.ts` + 1 untracked `docs/superpowers/plans/2026-06-13-feat-solidify-plan.md`
+- `git push origin main-opencc` → `53a8a995..9f1d80c6` (2 commits)
+- All applied work: `git apply --3way` only, never `cherry-pick` (per AGENTS.md + prior session rule)
