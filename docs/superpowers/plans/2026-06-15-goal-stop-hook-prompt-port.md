@@ -424,9 +424,9 @@ cd /Users/ethan/code/opencc && bun test src/utils/hooks/execPromptHook.goal.test
 
 Expected: First test FAILS — current schema accepts `{ok:true}` without reason, so the 1st attempt is treated as success, model called only once (not twice). The assertion `mock.calls.length).toBe(2)` fails. Second test likely passes (impossible field is silently ignored today, so schema doesn't fail).
 
-- [ ] **Step 3: Edit the schema**
+- [ ] **Step 3: Edit the JSON schema sent to the LLM (outputFormat)**
 
-In `src/utils/hooks/execPromptHook.ts`, find the `outputFormat` block around lines 377-388. The current code is:
+In `src/utils/hooks/execPromptHook.ts`, find the `outputFormat` block. The current code is:
 
 ```typescript
             outputFormat: {
@@ -463,6 +463,88 @@ Replace with:
               },
             },
 ```
+
+- [ ] **Step 3a: Update the zod schema in hookHelpers.ts (REQUIRED for test to pass)**
+
+The outputFormat above is what the LLM is TOLD to return. The actual validation in OpenCC uses a zod schema in `src/utils/hooks/hookHelpers.ts:16-24`. Without updating zod, the response is accepted even if missing `reason`, and the test's "retry" expectation will not fire.
+
+In `src/utils/hooks/hookHelpers.ts`, find lines 16-24:
+
+```typescript
+export const hookResponseSchema = lazySchema(() =>
+  z.object({
+    ok: z.boolean().describe('Whether the condition was met'),
+    reason: z
+      .string()
+      .describe('Reason, if the condition was not met')
+      .optional(),
+  }),
+)
+```
+
+Replace with:
+
+```typescript
+export const hookResponseSchema = lazySchema(() =>
+  z.object({
+    ok: z.boolean().describe('Whether the condition was met'),
+    reason: z
+      .string()
+      .describe('Reason for the verdict (required per upstream 2.1.177)'),
+    impossible: z
+      .boolean()
+      .optional()
+      .describe('Optional: condition is genuinely unachievable in this session'),
+  }),
+)
+```
+
+Key changes: `reason` is now required (no `.optional()`); new `impossible: z.boolean().optional()` field.
+
+- [ ] **Step 3b: Move zod validation INTO the retry loop (REQUIRED for test to pass)**
+
+The current code at `src/utils/hooks/execPromptHook.ts:477-483` exits the retry loop as soon as JSON.parse succeeds — it does NOT validate against zod. Then at line 537, the zod check happens AFTER the loop and returns `non_blocking_error` on failure (no retry).
+
+For the test "schema failure → retry" to work, the zod validation must happen INSIDE the retry loop. Find lines 477-483:
+
+```typescript
+        if (parsedJson !== null) {
+          json = parsedJson
+          lastRawResponse = fullResponse
+          lastParseErr = parseErrMsg
+          succeededOnAttempt = attempt
+          break
+        }
+```
+
+Replace with:
+
+```typescript
+        if (parsedJson !== null) {
+          // Schema validation INSIDE the loop so that a response that
+          // parses but doesn't conform (e.g. missing required `reason`)
+          // triggers a retry, matching upstream claude-code 2.1.177
+          // behavior. The post-loop zod check is kept as a final safety
+          // net for the case where the retry budget is exhausted.
+          const schemaCheck = hookResponseSchema().safeParse(parsedJson)
+          if (schemaCheck.success) {
+            json = parsedJson
+            lastRawResponse = fullResponse
+            lastParseErr = parseErrMsg
+            succeededOnAttempt = attempt
+            break
+          } else {
+            logForDebugging(
+              `Hooks[execPromptHook DIAG]: attempt ${attempt} JSON parsed but schema check failed: ${schemaCheck.error.message}; rawResponse=${JSON.stringify(fullResponse).slice(0, 500)}`,
+            )
+            lastRawResponse = fullResponse
+            lastParseErr = schemaCheck.error.message
+            // Continue the for-loop to retry
+          }
+        }
+```
+
+This change does NOT alter the post-loop zod check at line 537 (kept as a final safety net) but adds an in-loop check that triggers retry on schema failure.
 
 - [ ] **Step 3.5: Update existing test fixture (REQUIRED before running tests)**
 
@@ -501,13 +583,23 @@ Expected: PASS, 2 tests / 0 fail.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/utils/hooks/execPromptHook.ts src/utils/hooks/execPromptHook.goal.test.ts
+git add src/utils/hooks/execPromptHook.ts src/utils/hooks/execPromptHook.goal.test.ts src/utils/hooks/hookHelpers.ts
 git commit -m "$(cat <<'EOF'
 fix(goal): require 'reason' + accept 'impossible' in hook schema (TDD test #3)
 
 Schema now requires both 'ok' AND 'reason' per upstream claude-code
 2.1.177 (was 'ok' only). New optional 'impossible: boolean' field is
 accepted but not yet acted on (Task 5 will add the handler).
+
+Three changes to enforce the new schema contract:
+1. outputFormat (execPromptHook.ts): tell the LLM to return reason +
+   optional impossible field
+2. hookResponseSchema (hookHelpers.ts): make 'reason' required at the
+   zod layer; add 'impossible' optional
+3. zod validation moved INTO the retry loop: a response that parses
+   but fails schema (e.g. missing required 'reason') now triggers a
+   retry, matching upstream behavior. Post-loop zod check remains as
+   a final safety net for exhausted-retry cases.
 
 The RETRY_SYSTEM_PROMPT already instructs the model to output
 "{ok:true} OR {ok:false, reason:...}", so the new required field is
@@ -516,7 +608,7 @@ to the existing strict-default fallbackHookResult.
 
 TDD: red (model returns ok:true without reason, old schema accepts it
 as success on first try, no retry — fails the mock.calls.length
-assertion), green via required:[ok, reason] + impossible optional.
+assertion), green via all 3 schema changes.
 
 Step 4 of 5 for /goal Stop-hook prompt port.
 
