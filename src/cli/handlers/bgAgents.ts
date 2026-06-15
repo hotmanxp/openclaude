@@ -199,7 +199,7 @@ export async function handleBgAgentsCommand(
   const live = await pingOnPath(sockPath, pingTimeoutMs)
   if (!live) {
     console.error(
-      'No background daemon is running. Run `claude daemon install` to set it up as a persistent service.',
+      'No background daemon is running. Run `opencc daemon install` to set it up as a persistent service.',
     )
     return { exitCode: 1 }
   }

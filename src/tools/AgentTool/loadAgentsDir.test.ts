@@ -18,7 +18,7 @@ const originalEnv = {
 let tempDir: string
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'openclaude-agents-test-'))
+  tempDir = await mkdtemp(join(tmpdir(), 'opencc-agents-test-'))
   process.env.CLAUDE_CONFIG_DIR = join(tempDir, '.claude')
   process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH = '1'
   delete process.env.CLAUDE_CODE_SIMPLE

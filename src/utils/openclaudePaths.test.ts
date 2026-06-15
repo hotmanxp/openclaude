@@ -69,8 +69,8 @@ describe('OpenCC paths', () => {
     const { getDefaultPlansDirectory } = await importFreshPlans()
 
     expect(
-      getDefaultPlansDirectory({ configDirEnv: '/tmp/custom-openclaude' }),
-    ).toBe(join('/tmp/custom-openclaude', 'plans'))
+      getDefaultPlansDirectory({ configDirEnv: '/tmp/custom-opencc' }),
+    ).toBe(join('/tmp/custom-opencc', 'plans'))
   })
 
   test('default plans directory normalizes generated path to NFC', async () => {
@@ -85,21 +85,21 @@ describe('OpenCC paths', () => {
     const { getDefaultPlansDirectory } = await importFreshPlans()
 
     expect(
-      getDefaultPlansDirectory({ configDirEnv: '/tmp/cafe\u0301-openclaude' }),
-    ).toBe(join('/tmp/caf\u00e9-openclaude', 'plans'))
+      getDefaultPlansDirectory({ configDirEnv: '/tmp/cafe\u0301-opencc' }),
+    ).toBe(join('/tmp/caf\u00e9-opencc', 'plans'))
   })
 
   test('uses CLAUDE_CONFIG_DIR override when provided', async () => {
-    process.env.CLAUDE_CONFIG_DIR = '/tmp/custom-openclaude'
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/custom-opencc'
     const { getClaudeConfigHomeDir, resolveClaudeConfigHomeDir } =
       await importFreshEnvUtils()
 
-    expect(getClaudeConfigHomeDir()).toBe('/tmp/custom-openclaude')
+    expect(getClaudeConfigHomeDir()).toBe('/tmp/custom-opencc')
     expect(
       resolveClaudeConfigHomeDir({
-        configDirEnv: '/tmp/custom-openclaude',
+        configDirEnv: '/tmp/custom-opencc',
       }),
-    ).toBe('/tmp/custom-openclaude')
+    ).toBe('/tmp/custom-opencc')
   })
 
   test('project and local settings paths use .claude', async () => {
@@ -146,7 +146,7 @@ describe('OpenCC paths', () => {
     ).toBe(true)
   })
 
-  test('candidate local install dirs include both openclaude and legacy claude paths', async () => {
+  test('candidate local install dirs include both opencc and legacy claude paths', async () => {
     const { getCandidateLocalInstallDirs } = await importFreshLocalInstaller()
 
     expect(

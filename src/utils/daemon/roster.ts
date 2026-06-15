@@ -150,7 +150,7 @@ export async function loadRoster(
     }
     if (!opts.silent) {
       // Surface for telemetry; in this slice we log to stderr so an
-      // operator running `claude daemon run` sees it in the terminal.
+      // operator running `opencc daemon run` sees it in the terminal.
       console.warn(
         `roster: parse failed, quarantined to ${corruptPath}: ${
           (err as Error).message

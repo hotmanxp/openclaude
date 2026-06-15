@@ -14,7 +14,7 @@ import { sanitizePath } from '../sessionStoragePortable.js'
 
 describe('SQLite Storage Layer', () => {
   const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
-  const configDir = mkdtempSync(join(tmpdir(), 'openclaude-sqlite-'))
+  const configDir = mkdtempSync(join(tmpdir(), 'opencc-sqlite-'))
   process.env.CLAUDE_CONFIG_DIR = configDir
   const cwd = process.cwd()
 

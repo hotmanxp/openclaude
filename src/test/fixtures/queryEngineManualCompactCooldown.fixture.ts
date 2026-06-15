@@ -37,7 +37,7 @@ async function drain(generator: AsyncGenerator<unknown>): Promise<void> {
 
 const savedSessionPersistenceDisabled = isSessionPersistenceDisabled()
 const fixtureCwd = mkdtempSync(
-  join(tmpdir(), 'openclaude-query-engine-cooldown-'),
+  join(tmpdir(), 'opencc-query-engine-cooldown-'),
 )
 
 try {

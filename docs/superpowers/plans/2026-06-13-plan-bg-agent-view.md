@@ -25,7 +25,7 @@ process. The `BackgroundTasksDialog.tsx` UI already exists, so the panel itself
 is 80% built — what's missing is:
 
 - Daemon process + IPC protocol
-- macOS launchd service install (`claude daemon install`)
+- macOS launchd service install (`opencc daemon install`)
 - `claude agents` CLI subcommand + `/background` slash + `--bg` CLI flag
 - Relaunch marker mechanism (env-key based terminal handoff)
 
@@ -238,14 +238,14 @@ update serialized, file mode 0600 enforced.
 **Unlocks:** T5, T7
 
 ### T5: Daemon supervisor (CLI mode)
-**File:** `src/cli/handlers/daemon.ts` (new), `src/bin/cli.tsx` (route `claude daemon <sub>`)
+**File:** `src/cli/handlers/daemon.ts` (new), `src/bin/cli.tsx` (route `opencc daemon <sub>`)
 
 CLI surface:
-- `claude daemon install` — generate launchd plist, `launchctl bootstrap` (Darwin); "not available" error elsewhere
-- `claude daemon uninstall` — `launchctl bootout` + unlink plist
-- `claude daemon start|stop|restart` — `launchctl kickstart`/`kill`
-- `claude daemon run` — **the supervisor itself**: socket listen loop + 18-op dispatch
-- `claude daemon status` — `getBgDaemonStatus` + `formatBgDaemonStatus` (port verbatim from binary)
+- `opencc daemon install` — generate launchd plist, `launchctl bootstrap` (Darwin); "not available" error elsewhere
+- `opencc daemon uninstall` — `launchctl bootout` + unlink plist
+- `opencc daemon start|stop|restart` — `launchctl kickstart`/`kill`
+- `opencc daemon run` — **the supervisor itself**: socket listen loop + 18-op dispatch
+- `opencc daemon status` — `getBgDaemonStatus` + `formatBgDaemonStatus` (port verbatim from binary)
 
 `run` mode loops:
 1. `mkdir -p ~/.claude/sock`
@@ -280,7 +280,7 @@ non-Darwin → `{ok:false, error:"service install not available on <plat> — th
 **File:** `src/cli/handlers/agents.ts` (new), `src/cli/handlers/index.ts` (route `agents`)
 
 Flow:
-1. `pingDaemon()` — if fails, print `No background daemon is running. Run \`claude daemon install\` to set it up as a persistent service.` and exit 1
+1. `pingDaemon()` — if fails, print `No background daemon is running. Run \`opencc daemon install\` to set it up as a persistent service.` and exit 1
 2. `requestDaemon({op:'list', proto:1})` — if `EPROTO`, retry with `proto:1` (shouldn't happen since server is hardcoded `JO=1`)
 3. Map `jobs[]` to `BackgroundAgentViewDialog` rows: `{short, label, kind, status, startedAt}`
 4. Interactive list: `↑/↓` select, `Enter` view detail, `x` kill, `←/Esc` quit

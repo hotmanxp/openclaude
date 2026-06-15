@@ -64,7 +64,7 @@ beforeEach(() => {
   for (const key of RESTORED_KEYS) {
     delete process.env[key]
   }
-  testConfigDir = mkdtempSync(join(tmpdir(), 'openclaude-provider-config-'))
+  testConfigDir = mkdtempSync(join(tmpdir(), 'opencc-provider-config-'))
   process.env.CLAUDE_CONFIG_DIR = testConfigDir
 })
 
@@ -552,7 +552,7 @@ describe('getProviderPresetDefaults', () => {
 
 describe('setActiveProviderProfile', () => {
   test('sets OPENAI_MODEL env var when switching to an openai-type provider', async () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'openclaude-provider-config-'))
+    const configDir = mkdtempSync(join(tmpdir(), 'opencc-provider-config-'))
     process.env.CLAUDE_CONFIG_DIR = configDir
 
     try {

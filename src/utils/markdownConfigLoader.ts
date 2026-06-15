@@ -43,7 +43,7 @@ const PROJECT_CONFIG_DIR_NAMES = ['.claude', '.opencc'] as const
 // Concurrency cap for parallel readFile + parseFrontmatter when loading
 // commands/agents/skills/etc. With unbounded Promise.all, a directory holding
 // thousands of markdown files (e.g., an Obsidian vault symlinked into
-// ~/.openclaude/agents — see issue #769) opens that many fds and blocks the
+// ~/.claude/agents — see issue #769) opens that many fds and blocks the
 // event loop on parse work, freezing the REPL at startup. Batching keeps fd
 // pressure and CPU bursts bounded.
 const MARKDOWN_LOAD_BATCH_SIZE = 32

@@ -305,7 +305,7 @@ test('ignores repeated clipboard export input while content is rendering', async
 
 test('saves the selected format to a normalized file path', async () => {
   const { ExportDialog } = await importExportDialog()
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-export-dialog-test-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-export-dialog-test-'))
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
     stdout: stdout as unknown as NodeJS.WriteStream,
@@ -357,7 +357,7 @@ test('saves the selected format to a normalized file path', async () => {
 
 test('uses the default format extension when saving to a file', async () => {
   const { ExportDialog } = await importExportDialog()
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-export-dialog-test-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-export-dialog-test-'))
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
     stdout: stdout as unknown as NodeJS.WriteStream,
@@ -409,7 +409,7 @@ test('uses the default format extension when saving to a file', async () => {
 
 test('preserves .markdown filename extension when saving Markdown from the dialog', async () => {
   const { ExportDialog } = await importExportDialog()
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-export-dialog-test-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-export-dialog-test-'))
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
     stdout: stdout as unknown as NodeJS.WriteStream,
@@ -456,7 +456,7 @@ test('preserves .markdown filename extension when saving Markdown from the dialo
 
 test('ignores repeated file export submit while content is rendering', async () => {
   const { ExportDialog } = await importExportDialog()
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-export-dialog-test-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-export-dialog-test-'))
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
     stdout: stdout as unknown as NodeJS.WriteStream,

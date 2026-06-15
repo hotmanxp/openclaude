@@ -1,6 +1,6 @@
 /**
  * Tests for src/entrypoints/daemon/main.js — argv dispatch for
- * `claude daemon <sub>`. Covers:
+ * `opencc daemon <sub>`. Covers:
  *  - --help prints usage and does not throw
  *  - unknown subcommand exits 1 with usage on stderr
  *  - status subcommand prints formatted output (darwin: "not installed")
@@ -68,7 +68,7 @@ describe('daemonMain argv dispatch', () => {
   test('--help prints usage and returns', async () => {
     const {daemonMain} = await freshImport()
     await daemonMain(['--help'])
-    expect(lines.log.join('\n')).toContain('Usage: claude daemon')
+    expect(lines.log.join('\n')).toContain('Usage: opencc daemon')
     expect(lines.log.join('\n')).toContain('install')
     expect(lines.log.join('\n')).toContain('run')
     expect(lines.error.join('\n')).toBe('')
@@ -77,13 +77,13 @@ describe('daemonMain argv dispatch', () => {
   test('-h prints usage and returns', async () => {
     const {daemonMain} = await freshImport()
     await daemonMain(['-h'])
-    expect(lines.log.join('\n')).toContain('Usage: claude daemon')
+    expect(lines.log.join('\n')).toContain('Usage: opencc daemon')
   })
 
   test('no args prints usage and returns', async () => {
     const {daemonMain} = await freshImport()
     await daemonMain([])
-    expect(lines.log.join('\n')).toContain('Usage: claude daemon')
+    expect(lines.log.join('\n')).toContain('Usage: opencc daemon')
   })
 
   test('unknown subcommand exits 1 with usage', async () => {

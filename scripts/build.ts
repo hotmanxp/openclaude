@@ -33,14 +33,14 @@ const featureFlags: Record<string, boolean> = {
   PROACTIVE: false,               // Autonomous agent mode (missing proactive/ module)
   KAIROS: false,                  // Persistent assistant/session mode (cloud backend)
   BRIDGE_MODE: false,             // Remote desktop bridge via CCR infrastructure
-  DAEMON: false,                  // Background daemon process (stubbed in open build)
+  DAEMON: true,                   // Background daemon process (T12 port complete; E2E-validated 2026-06-14)
   AGENT_TRIGGERS: false,          // Scheduled remote agent triggers
   ABLATION_BASELINE: false,       // A/B testing harness for eval experiments
   CONTEXT_COLLAPSE: false,        // Context collapsing optimization (stubbed)
   COMMIT_ATTRIBUTION: false,      // Co-Authored-By metadata in git commits
   HISTORY_SNIP: true,             // Model-callable snip tool for context management
   UDS_INBOX: false,               // Unix Domain Socket inter-session messaging
-  BG_SESSIONS: false,             // Background sessions via tmux (stubbed)
+  BG_SESSIONS: true,              // Background sessions via tmux (T10 port complete; E2E-validated 2026-06-14)
   WEB_BROWSER_TOOL: false,        // Built-in browser automation (source not mirrored)
   CHICAGO_MCP: false,             // Computer-use MCP (native Swift modules stubbed)
   COWORKER_TYPE_TELEMETRY: false, // Telemetry for agent/coworker type classification
@@ -150,10 +150,10 @@ result = await Bun.build({
     'MACRO.DISPLAY_VERSION': JSON.stringify(version),
     'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
     'MACRO.ISSUES_EXPLAINER':
-      JSON.stringify('report the issue at https://github.com/Gitlawb/openclaude/issues'),
+      JSON.stringify('report the issue at https://github.com/hotmanxp/opencc/issues'),
     'MACRO.FEEDBACK_CHANNEL':
-      JSON.stringify('https://github.com/Gitlawb/openclaude/issues'),
-    'MACRO.PACKAGE_URL': JSON.stringify('@gitlawb/openclaude'),
+      JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
+    'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
   },
   plugins: [
@@ -501,12 +501,12 @@ if (!result.success) {
   }
   process.exitCode = 1
 } else {
-  console.log(`✓ Built openclaude v${version} → dist/cli.mjs`)
+  console.log(`✓ Built opencc v${version} → dist/cli.mjs`)
 }
 
 // ── SDK Bundle Build ──────────────────────────────────────────────────────
 // SDK is a separate bundle for npm consumption - must NOT bundle React/Ink
-// OpenCC/openclaude fork does NOT publish an SDK bundle — skip the build
+// OpenCC/opencc fork does NOT publish an SDK bundle — skip the build
 // when the SDK entry point is absent (e.g. partial cherry-pick of #1497).
 if (!existsSync('./src/entrypoints/sdk/index.ts')) {
   console.log('⏭️  Skipping SDK bundle (no src/entrypoints/sdk/index.ts)')
@@ -528,10 +528,10 @@ sdkResult = await Bun.build({
     'MACRO.DISPLAY_VERSION': JSON.stringify(version),
     'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
     'MACRO.ISSUES_EXPLAINER':
-      JSON.stringify('report the issue at https://github.com/Gitlawb/openclaude/issues'),
+      JSON.stringify('report the issue at https://github.com/hotmanxp/opencc/issues'),
     'MACRO.FEEDBACK_CHANNEL':
-      JSON.stringify('https://github.com/Gitlawb/openclaude/issues'),
-    'MACRO.PACKAGE_URL': JSON.stringify('@gitlawb/openclaude'),
+      JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
+    'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
   },
   // External: everything TUI-related + native modules
@@ -1017,14 +1017,13 @@ if (result?.success) {
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
     'src/daemon/workerRegistry',
-    'src/utils/taskSummary',
     'src/utils/udsClient',
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer
   // scanner records each stub as the resolved absolute source path, which
-  // differs only by the repo-root prefix (`/home/ubuntu/.../openclaude` locally
-  // vs `/home/runner/work/openclaude/openclaude` on CI). Diffing raw text made
+  // differs only by the repo-root prefix (`/home/ubuntu/.../opencc` locally
+  // vs `/home/runner/work/opencc/opencc` on CI). Diffing raw text made
   // CI fail on already-allowlisted stubs and report them stale. Key on the
   // repo-relative path from `src/` onward without extension: stable across hosts
   // yet still path-specific, so a stub named `constants.ts` in one directory

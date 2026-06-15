@@ -11,7 +11,7 @@ import { unlink } from 'node:fs/promises'
 import { mkdirSync, rmSync } from 'fs'
 
 describe('sessionPersistence', () => {
-  const testSessionDir = join(process.env.TEMP_DIR ?? '/tmp', 'openclaude-test-sessions')
+  const testSessionDir = join(process.env.TEMP_DIR ?? '/tmp', 'opencc-test-sessions')
 
   beforeEach(async () => {
     process.env.OPENCLAUDE_TEST_SESSIONS_DIR = testSessionDir

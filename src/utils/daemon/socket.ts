@@ -306,7 +306,7 @@ export function requestDaemon(
 
 /**
  * Boolean liveness check used by `claude agents` to decide whether to
- * print the "no daemon is running, run `claude daemon install`" help
+ * print the "no daemon is running, run `opencc daemon install`" help
  * or the live job list.
  *
  * Swallows all errors and returns false on any failure (timeout,

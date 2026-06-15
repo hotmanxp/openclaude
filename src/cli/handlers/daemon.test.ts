@@ -248,7 +248,7 @@ describe('daemonStatus: getBgDaemonStatus', () => {
       plistPath: '/Users/test/Library/LaunchAgents/com.anthropic.claude-daemon.plist',
     })
     expect(text).toMatch(/not installed/i)
-    expect(text).toContain('opencc damon install')
+    expect(text).toContain('opencc daemon install')
   })
 })
 

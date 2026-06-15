@@ -1,7 +1,7 @@
 /**
  * Background daemon CLI surface.
  *
- * The `opencc damon <sub>` subcommand tree is split into two layers:
+ * The `opencc daemon <sub>` subcommand tree is split into two layers:
  *
  *   1. {@link handleDaemonSubcommand} — the argv parser. Takes the
  *      subcommand string and a `{json}` flag, dispatches to the right
@@ -80,7 +80,7 @@ export interface DaemonSubcommandOptions {
 }
 
 /**
- * Dispatch a `opencc damon <sub>` invocation. The CLI fast-path in
+ * Dispatch a `opencc daemon <sub>` invocation. The CLI fast-path in
  * `src/entrypoints/cli.tsx` calls this after stripping `daemon` from
  * `process.argv`.
  *
@@ -115,7 +115,7 @@ export async function handleDaemonSubcommand(
 /**
  * Bridge {@link LaunchctlResult} into the CLI's throw-on-error
  * contract. We print `error` to stderr (so it shows up in
- * `opencc damon install < /dev/null`) and throw so the CLI exits
+ * `opencc daemon install < /dev/null`) and throw so the CLI exits
  * non-zero — same shape as the old T5 stubs.
  */
 function resultOrThrow(r: {ok: boolean; error?: string}): void {

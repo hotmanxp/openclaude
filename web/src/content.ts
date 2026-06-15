@@ -30,6 +30,6 @@ export const features = [
 export const navLinks = [
   { href: '#features', label: 'features' },
   { href: '#install', label: 'install' },
-  { href: 'https://github.com/hotmanxp/openclaude', label: 'github' },
-  { href: 'https://gitlawb.com/node/repos/z6MkqDnb/openclaude', label: 'gitlawb' },
+  { href: 'https://github.com/hotmanxp/opencc', label: 'github' },
+  { href: 'https://gitlawb.com/node/repos/z6MkqDnb/opencc', label: 'gitlawb' },
 ] as const

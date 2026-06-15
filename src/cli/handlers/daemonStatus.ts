@@ -1,7 +1,7 @@
 /**
  * Background daemon status helper.
  *
- * `claude daemon status` is a read-only liveness probe. It reports
+ * `opencc daemon status` is a read-only liveness probe. It reports
  * one of four states so the operator (and the smoke script in T11)
  * can decide what to do next:
  *
@@ -108,7 +108,7 @@ export function getBgDaemonPlistPath(): string {
  *   2. If the socket is dead, check for the plist. If present, the
  *      daemon is `installed-but-down` (operator should restart).
  *   3. Otherwise the daemon is `not-installed` and the operator
- *      should run `claude daemon install`.
+ *      should run `opencc daemon install`.
  */
 export async function getBgDaemonStatus(
   opts: BgDaemonStatusOptions = {},
@@ -153,12 +153,12 @@ export async function getBgDaemonStatus(
  * Human-readable rendering of {@link BgDaemonStatus}. Used by
  * `daemon status` (non-JSON mode) and the T11 smoke script.
  *
- * Format mirrors upstream's `claude daemon status`:
+ * Format mirrors upstream's `opencc daemon status`:
  *
  *   Background daemon: running (pid 12345, socket: /Users/...sock)
  *   Background daemon: not running
  *   Background daemon: installed (LaunchAgent loaded) but not running
- *   Background daemon: not installed (run `claude daemon install` to set up)
+ *   Background daemon: not installed (run `opencc daemon install` to set up)
  */
 export function formatBgDaemonStatus(s: BgDaemonStatus): string {
   switch (s.state) {
@@ -169,6 +169,6 @@ export function formatBgDaemonStatus(s: BgDaemonStatus): string {
     case 'installed-but-down':
       return 'Background daemon: installed (LaunchAgent loaded) but not running'
     case 'not-installed':
-      return 'Background daemon: not installed (run `claude daemon install` to set up)'
+      return 'Background daemon: not installed (run `opencc daemon install` to set up)'
   }
 }

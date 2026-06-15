@@ -56,7 +56,7 @@ process.env.COREPACK_ENABLE_AUTO_PIN = '0';
 // CCR (Claude Code Remote / container) environments are covered by the same
 // unconditional assignment — the previous CLAUDE_CODE_REMOTE guard was too
 // restrictive, preventing local users from benefiting from the raised limit.
-// Closes: Gitlawb/openclaude#402 — JavaScript heap OOM during large tasks.
+// Closes: hotmanxp/opencc#402 — JavaScript heap OOM during large tasks.
 // eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level, custom-rules/safe-env-boolean-check
 if (!process.env.NODE_OPTIONS?.includes('--max-old-space-size')) {
   // eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level
@@ -252,7 +252,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `opencc damon [subcommand]`: long-running supervisor.
+  // Fast-path for `opencc daemon [subcommand]`: long-running supervisor.
   if (args[0] === 'daemon') {
     // Runtime gate: refuse before any module load / socket bind.
     // Defense in depth — `runSupervisor()` ALSO checks, but this

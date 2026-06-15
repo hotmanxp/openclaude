@@ -188,7 +188,7 @@ describe('handleBgAgentsCommand', () => {
       expect(result.exitCode).toBe(1)
       const combined = out.stderr.join('\n')
       expect(combined).toContain('No background daemon is running')
-      expect(combined).toContain('claude daemon install')
+      expect(combined).toContain('opencc daemon install')
     } finally {
       out.restore()
       setBgAgentsSockPathForTesting(null)

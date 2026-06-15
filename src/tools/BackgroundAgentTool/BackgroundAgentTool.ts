@@ -90,7 +90,7 @@ function generateShortId(): JobShortId {
 //
 // When the bg daemon is not running (ENOCONN), the tool can either:
 //   1. Return a graceful "not running" error and force the user to manually
-//      `opencc damon install` — high friction, easy to miss.
+//      `opencc daemon install` — high friction, easy to miss.
 //   2. Auto-spawn `daemon run` detached, wait for it to come up, and retry.
 //
 // We pick (2) by default because the tool's whole point is convenience.
@@ -103,7 +103,7 @@ const AUTOSTART_POLL_MS = 200
 const AUTOSTART_TIMEOUT_MS = 5_000
 
 /**
- * Spawn the same binary as `opencc damon run` detached, then poll the
+ * Spawn the same binary as `opencc daemon run` detached, then poll the
  * loopback socket until it answers ping or we hit the timeout.
  * Returns true if the daemon came up; false otherwise.
  *
@@ -195,8 +195,8 @@ export const BackgroundAgentTool = buildTool({
       '**Multi-agent parallel:** this tool is safe to call multiple times in a ' +
       'single turn. Each call becomes an independent daemon-managed job that ' +
       'runs concurrently. Use this to fan out independent subtasks.\n\n' +
-      '**Required:** the bg daemon must be running (`opencc damon install` for ' +
-      'persistent, or `opencc damon run` for foreground). If the daemon is ' +
+      '**Required:** the bg daemon must be running (`opencc daemon install` for ' +
+      'persistent, or `opencc daemon run` for foreground). If the daemon is ' +
       'not running, the tool returns a helpful error instead of failing silently.\n\n' +
       '**Output:** a 8-hex `shortId`. The worker\'s stdout+stderr is captured ' +
       'to `~/.claude/background/<shortId>.log` (NOT returned inline). ' +
@@ -318,7 +318,7 @@ export const BackgroundAgentTool = buildTool({
                   'Use `/background` to view, `claude bg-agents kill ' +
                   shortId +
                   '` to stop. To install persistently, run ' +
-                  '`opencc damon install` once.',
+                  '`opencc daemon install` once.',
               },
             }
           } catch (retryErr) {
@@ -342,7 +342,7 @@ export const BackgroundAgentTool = buildTool({
               message:
                 'Background daemon is not running. Auto-start is disabled ' +
                 '(CLAUDE_CODE_DISABLE_DAEMON_AUTOSTART=1). Run ' +
-                '`opencc damon install` (persistent) or `opencc damon run` ' +
+                '`opencc daemon install` (persistent) or `opencc daemon run` ' +
                 '(foreground) yourself, then retry. The job was NOT enqueued.',
             },
           }
@@ -355,7 +355,7 @@ export const BackgroundAgentTool = buildTool({
               'Background daemon is not running and auto-start did not bring ' +
               'it up within ' +
               `${Math.round(AUTOSTART_TIMEOUT_MS / 1000)}s. ` +
-              'Run `opencc damon install` (persistent) or `opencc damon run` ' +
+              'Run `opencc daemon install` (persistent) or `opencc daemon run` ' +
               '(foreground) yourself, then retry. The job was NOT enqueued.',
           },
         }

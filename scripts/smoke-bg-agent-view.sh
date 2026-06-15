@@ -9,7 +9,7 @@
 #   STATUS (2026-06-13, worktree feat/bg-agent-view, HEAD 38e8350e)
 # ============================================================
 #
-# The plan was written assuming T6/T7/T10 wired `claude daemon`,
+# The plan was written assuming T6/T7/T10 wired `opencc daemon`,
 # `claude bg-agents`, and `--bg` into src/entrypoints/cli.tsx.
 # Reality check on this worktree:
 #
@@ -144,7 +144,7 @@ section "Step 2: dist/cli.mjs daemon install — DISPATCH GAP"
 printf "${YLW}Reality check (T11, 2026-06-13):${RST}\n"
 printf "  scripts/build.ts:27 sets DAEMON=false, so src/entrypoints/cli.tsx\n"
 printf "  strips the daemon fast-path at build time. There is also no\n"
-printf "  fallback argv check, so 'claude daemon install' falls through\n"
+printf "  fallback argv check, so 'opencc daemon install' falls through\n"
 printf "  to the full TUI Ink stack. Expected on this build: TUI error\n"
 printf "  'Raw mode is not supported on the current process.stdin' or\n"
 printf "  the Ink REPL prompts for input instead of installing.\n\n"

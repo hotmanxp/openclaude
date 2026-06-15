@@ -13,7 +13,7 @@ const originalEnv = {
 let tempDir: string
 
 beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), 'openclaude-env-test-'))
+  tempDir = mkdtempSync(join(tmpdir(), 'opencc-env-test-'))
   process.env.CLAUDE_CONFIG_DIR = tempDir
   delete process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL
   delete process.env.USER_TYPE

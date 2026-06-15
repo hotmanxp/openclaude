@@ -6,8 +6,8 @@ import type { DiagnosticInfo } from '../utils/doctorDiagnostic.js'
 const diagnostic: DiagnosticInfo = {
   installationType: 'npm-global',
   version: '1.2.3',
-  installationPath: '/usr/local/bin/openclaude',
-  invokedBinary: '/usr/local/bin/openclaude',
+  installationPath: '/usr/local/bin/opencc',
+  invokedBinary: '/usr/local/bin/opencc',
   configInstallMethod: 'not set',
   autoUpdates: 'enabled',
   hasUpdatePermissions: null,

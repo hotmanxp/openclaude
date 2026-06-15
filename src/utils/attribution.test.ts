@@ -25,7 +25,7 @@ const originalEnv = {
 const originalClientType = getClientType()
 
 const defaultPrAttribution =
-  '🤖 Generated with [OpenClaude](https://github.com/Gitlawb/openclaude)'
+  '🤖 Generated with [OpenCC](https://github.com/hotmanxp/opencc)'
 
 function useSettings(settings: SettingsJson): void {
   setSessionSettingsCache({ settings, errors: [] })

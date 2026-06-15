@@ -23,7 +23,7 @@ async function importFreshInstaller() {
 
 // SKIPPED: env.ts mock is incomplete - many exports not mocked (JETBRAINS_IDES, getHostPlatformForAnalytics, etc)
 // These tests have complex module loading dependencies that require significant rework
-test.skip('install command displays ~/.local/bin/openclaude on non-Windows', async () => {
+test.skip('install command displays ~/.local/bin/opencc on non-Windows', async () => {
   mock.module('../utils/env.js', () => ({
     env: { platform: 'darwin' },
     getHostPlatformForAnalytics: () => 'darwin',
@@ -31,10 +31,10 @@ test.skip('install command displays ~/.local/bin/openclaude on non-Windows', asy
 
   const { getInstallationPath } = await importFreshInstallCommand()
 
-  expect(getInstallationPath()).toBe('~/.local/bin/openclaude')
+  expect(getInstallationPath()).toBe('~/.local/bin/opencc')
 })
 
-test.skip('install command displays openclaude.exe path on Windows', async () => {
+test.skip('install command displays opencc.exe path on Windows', async () => {
   mock.module('../utils/env.js', () => ({
     env: { platform: 'win32' },
     getHostPlatformForAnalytics: () => 'win32',
@@ -43,11 +43,11 @@ test.skip('install command displays openclaude.exe path on Windows', async () =>
   const { getInstallationPath } = await importFreshInstallCommand()
 
   expect(getInstallationPath()).toBe(
-    join(homedir(), '.local', 'bin', 'openclaude.exe').replace(/\//g, '\\'),
+    join(homedir(), '.local', 'bin', 'opencc.exe').replace(/\//g, '\\'),
   )
 })
 
-test.skip('cleanupNpmInstallations removes both openclaude and legacy claude local install dirs', async () => {
+test.skip('cleanupNpmInstallations removes both opencc and legacy claude local install dirs', async () => {
   const removedPaths: string[] = []
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@hotmanxp/opencc',

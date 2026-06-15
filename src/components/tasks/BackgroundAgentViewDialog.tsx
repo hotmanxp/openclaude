@@ -221,7 +221,7 @@ export function useBackgroundAgentJobs(
  * same string in both the CLI and the `/background` slash.
  */
 export const INSTALL_HINT =
-  'No background daemon is running. Run `claude daemon install` to set it up as a persistent service.'
+  'No background daemon is running. Run `opencc daemon install` to set it up as a persistent service.'
 
 // ---------- Component ----------
 
@@ -436,8 +436,8 @@ function BackgroundAgentViewDialogBody({
       <Box flexDirection="column">
         <Text dimColor>No background agents running.</Text>
         <Text dimColor>
-          Use the <Text color="cyan">&amp;</Text> shell operator or
-          <Text color="cyan"> --bg</Text> to start one.
+          Use a <Text color="cyan">BackgroundAgent</Text> tool call to start
+          one.
         </Text>
       </Box>
     )

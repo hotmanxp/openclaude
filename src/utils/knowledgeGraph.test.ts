@@ -32,14 +32,14 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
   })
 
   it('persists entities across loads', async () => {
-    await addGlobalEntity('tool', 'openclaude', { status: 'alpha' })
+    await addGlobalEntity('tool', 'opencc', { status: 'alpha' })
     const path = getProjectGraphPath(cwd)
     expect(existsSync(path)).toBe(true)
 
     // Clear memory cache and reload
     clearMemoryOnly()
     const graph = loadProjectGraph(cwd)
-    const entities = Object.values(graph.entities).filter(e => e.name === 'openclaude')
+    const entities = Object.values(graph.entities).filter(e => e.name === 'opencc')
     expect(entities.length).toBe(1)
     expect(entities[0].attributes.status).toBe('alpha')
   })
@@ -55,11 +55,11 @@ describe('KnowledgeGraph Global Persistence & RAG', () => {
   })
 
   it('deduplicates entities and updates attributes', async () => {
-    await addGlobalEntity('tool', 'openclaude', { status: 'alpha' })
-    await addGlobalEntity('tool', 'openclaude', { status: 'beta', version: '0.6.0' })
+    await addGlobalEntity('tool', 'opencc', { status: 'alpha' })
+    await addGlobalEntity('tool', 'opencc', { status: 'beta', version: '0.6.0' })
 
     const graph = loadProjectGraph(cwd)
-    const entities = Object.values(graph.entities).filter(e => e.name === 'openclaude')
+    const entities = Object.values(graph.entities).filter(e => e.name === 'opencc')
     expect(entities.length).toBe(1)
     expect(entities[0].attributes.status).toBe('beta')
     expect(entities[0].attributes.version).toBe('0.6.0')

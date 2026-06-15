@@ -40,7 +40,7 @@ export type AttributionTexts = {
 }
 
 const DEFAULT_PR_ATTRIBUTION =
-  '🤖 Generated with [OpenClaude](https://github.com/Gitlawb/openclaude)'
+  '🤖 Generated with [OpenCC](https://github.com/hotmanxp/opencc)'
 
 function sanitizeCoAuthorNamePart(value: string): string {
   return value

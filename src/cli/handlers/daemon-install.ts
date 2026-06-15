@@ -3,11 +3,11 @@
  *
  * Five CLI subcommands live on top of this module:
  *
- *  - `claude daemon install`    — write the plist + `launchctl bootstrap`
- *  - `claude daemon uninstall`  — `launchctl bootout` + unlink plist
- *  - `claude daemon start`      — `launchctl kickstart -k`
- *  - `claude daemon stop`       — `launchctl kill SIGTERM`
- *  - `claude daemon restart`    — stop + wait up to 10s + kickstart
+ *  - `opencc daemon install`    — write the plist + `launchctl bootstrap`
+ *  - `opencc daemon uninstall`  — `launchctl bootout` + unlink plist
+ *  - `opencc daemon start`      — `launchctl kickstart -k`
+ *  - `opencc daemon stop`       — `launchctl kill SIGTERM`
+ *  - `opencc daemon restart`    — stop + wait up to 10s + kickstart
  *
  * Darwin-only per AGENTS.md scope. On other platforms every public
  * helper rejects with the spec error message

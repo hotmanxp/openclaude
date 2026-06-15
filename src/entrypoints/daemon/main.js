@@ -1,5 +1,5 @@
 /**
- * Entrypoint for `claude daemon <sub>`. Routes to:
+ * Entrypoint for `opencc daemon <sub>`. Routes to:
  * - install/uninstall/start/stop/restart → daemon-install.ts (launchd plist)
  * - run → daemon.ts (the supervisor itself)
  * - status → daemonStatus() (4-state detection)
@@ -23,7 +23,7 @@ import {
   formatBgDaemonStatus,
 } from '../../cli/handlers/daemonStatus.js'
 
-const USAGE = `Usage: claude daemon <sub>
+const USAGE = `Usage: opencc daemon <sub>
 
 Subcommands:
   install     Write launchd plist and bootstrap the agent
@@ -73,7 +73,7 @@ export async function daemonMain(args) {
       return
     }
     default:
-      console.error(`claude daemon: unknown subcommand '${sub}'`)
+      console.error(`opencc daemon: unknown subcommand '${sub}'`)
       console.error(USAGE)
       process.exit(1)
   }
@@ -83,12 +83,12 @@ async function runOrExit(fn, name) {
   try {
     const result = await fn()
     if (result && result.ok === false) {
-      console.error(`claude daemon ${name}: ${result.error ?? 'failed'}`)
+      console.error(`opencc daemon ${name}: ${result.error ?? 'failed'}`)
       process.exit(1)
     }
     // Successful daemon operation: print nothing extra
   } catch (err) {
-    console.error(`claude daemon ${name}: ${err.message}`)
+    console.error(`opencc daemon ${name}: ${err.message}`)
     process.exit(1)
   }
 }

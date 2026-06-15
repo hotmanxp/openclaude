@@ -17,7 +17,7 @@ import { getFsImplementation } from '../fsOperations.js'
 
 describe('SQLite Masterpiece: Edge Cases & Multi-Project Isolation', () => {
   const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
-  const rootTestDir = mkdtempSync(join(tmpdir(), 'openclaude-masterpiece-'))
+  const rootTestDir = mkdtempSync(join(tmpdir(), 'opencc-masterpiece-'))
   process.env.CLAUDE_CONFIG_DIR = rootTestDir
   
   const project1Dir = join(rootTestDir, 'proj1')
