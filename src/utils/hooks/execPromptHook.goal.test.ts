@@ -226,3 +226,39 @@ describe('execPromptHook — Stop-condition prompt content (gap #1)', () => {
     expect(capturedSystemPrompt).not.toContain('Claude Code')
   })
 })
+
+describe('execPromptHook — Stop user-message wrapper (gap #2)', () => {
+  test('Stop hook user message is wrapped as "Condition: <prompt>"', async () => {
+    // Capture the messages array passed to queryModelWithoutStreaming
+    let capturedMessages: any[] = []
+    queryModelWithoutStreamingMock.mockImplementation(async (opts: any) => {
+      capturedMessages = opts?.messages ?? []
+      return { message: { content: [{ type: 'text', text: '{"ok": true, "reason": "all tests pass"}' }] } }
+    })
+
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'finish tests')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    await execPromptHook(
+      hook,
+      'goal-stop',
+      'Stop',
+      JSON.stringify({ session_id: 'test' }),
+      new AbortController().signal,
+      toolUseContext,
+      [],
+    )
+
+    // The last user message should have "Condition: " prefix
+    const userMessages = capturedMessages.filter((m: any) => m?.type === 'user')
+    expect(userMessages.length).toBeGreaterThan(0)
+    const lastUser = userMessages[userMessages.length - 1]
+    const content = lastUser?.message?.content ?? lastUser?.content
+    const text = typeof content === 'string' ? content : (content?.[0]?.text ?? '')
+    expect(text).toContain('Condition:')
+    expect(text).toContain('finish tests')
+    // The "Condition: " prefix should appear before the original condition
+    expect(text.indexOf('Condition:')).toBeLessThan(text.indexOf('finish tests'))
+  })
+})

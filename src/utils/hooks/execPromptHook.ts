@@ -287,7 +287,14 @@ export async function execPromptHook(
 
     // Create user message directly - no need for processUserInput which would
     // trigger UserPromptSubmit hooks and cause infinite recursion
-    const userMessage = createUserMessage({ content: processedPrompt })
+    // Per upstream claude-code 2.1.177: when the hook event is Stop, wrap
+    // the condition with "Condition: " prefix so the LLM evaluator has
+    // immediate context about what to evaluate. Non-Stop prompt hooks
+    // (UserPromptSubmit, etc.) pass the prompt through unchanged.
+    const userMessageContent = hookEvent === 'Stop'
+      ? `Condition: ${processedPrompt}`
+      : processedPrompt
+    const userMessage = createUserMessage({ content: userMessageContent })
 
     // Prepend conversation history if provided
     const messagesToQuery: Message[] =
