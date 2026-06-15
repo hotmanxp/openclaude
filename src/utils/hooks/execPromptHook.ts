@@ -8,6 +8,7 @@ import {
 import {
   GOAL_HOOK_GENERIC_PROMPT,
   GOAL_STOP_CONDITION_PROMPT,
+  RETRY_PROMPT,
 } from '../../services/goal/prompts.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { HookResultMessage, Message } from '../../types/message.js'
@@ -325,12 +326,7 @@ export async function execPromptHook(
         ? GOAL_STOP_CONDITION_PROMPT
         : GOAL_HOOK_GENERIC_PROMPT
 
-    const RETRY_SYSTEM_PROMPT = `You are evaluating a hook in Open CC. Your previous response could not be parsed as JSON.
-
-CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
-- Return ONLY the JSON object, with NO surrounding prose, NO markdown code fences, NO leading/trailing text.
-- Output exactly: {"ok": true}  OR  {"ok": false, "reason": "..."}
-- Do not include greetings, explanations, or anything outside the braces.`
+    const RETRY_SYSTEM_PROMPT = RETRY_PROMPT
 
     const MAX_ATTEMPTS = 2
 
