@@ -18,8 +18,11 @@ export const hookResponseSchema = lazySchema(() =>
     ok: z.boolean().describe('Whether the condition was met'),
     reason: z
       .string()
-      .describe('Reason, if the condition was not met')
-      .optional(),
+      .describe('Reason for the verdict (required per upstream 2.1.177)'),
+    impossible: z
+      .boolean()
+      .optional()
+      .describe('Optional: condition is genuinely unachievable in this session'),
   }),
 )
 

@@ -264,15 +264,7 @@ describe('execPromptHook — Stop user-message wrapper (gap #2)', () => {
 })
 
 describe('execPromptHook — Stop schema (gap #3)', () => {
-  // TODO(gap#3): schema validation. The `outputFormat.json_schema` is
-  // configured to require both `ok` and `reason` (see execPromptHook.ts
-  // around the model call), but the response validator inside
-  // execPromptHook only checks "is this parseable JSON?" — it does NOT
-  // yet verify the parsed object has the required fields. So a model
-  // (or test mock) returning `{ok: true}` without `reason` is currently
-  // accepted, and the retry-on-schema-fail path never fires. Skip this
-  // test until the validator is implemented.
-  test.skip('schema requires reason field; {ok:true} without reason fails validation', async () => {
+  test('schema requires reason field; {ok:true} without reason fails validation', async () => {
     // Mock returns {ok:true} WITHOUT reason — should fail schema validation
     // and trigger RETRY. Second mock returns valid {ok:true, reason:"X"}.
     queryModelWithoutStreamingMock.mockReset()

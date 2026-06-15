@@ -396,8 +396,12 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
                 properties: {
                   ok: { type: 'boolean' },
                   reason: { type: 'string' },
+                  impossible: { type: 'boolean' },
                 },
-                required: ['ok'],
+                // Per upstream claude-code 2.1.177: both `ok` and `reason`
+                // are required. `impossible` is optional (escape hatch for
+                // genuinely unachievable conditions; see Task 5).
+                required: ['ok', 'reason'],
                 additionalProperties: false,
               },
             },
@@ -471,11 +475,26 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         }
 
         if (parsedJson !== null) {
-          json = parsedJson
-          lastRawResponse = fullResponse
-          lastParseErr = parseErrMsg
-          succeededOnAttempt = attempt
-          break
+          // Schema validation INSIDE the loop so that a response that
+          // parses but doesn't conform (e.g. missing required `reason`)
+          // triggers a retry, matching upstream claude-code 2.1.177
+          // behavior. The post-loop zod check is kept as a final safety
+          // net for the case where the retry budget is exhausted.
+          const schemaCheck = hookResponseSchema().safeParse(parsedJson)
+          if (schemaCheck.success) {
+            json = parsedJson
+            lastRawResponse = fullResponse
+            lastParseErr = parseErrMsg
+            succeededOnAttempt = attempt
+            break
+          } else {
+            logForDebugging(
+              `Hooks[execPromptHook DIAG]: attempt ${attempt} JSON parsed but schema check failed: ${schemaCheck.error.message}; rawResponse=${JSON.stringify(fullResponse).slice(0, 500)}`,
+            )
+            lastRawResponse = fullResponse
+            lastParseErr = schemaCheck.error.message
+            // Continue the for-loop to retry
+          }
         }
 
         // All strategies failed for this attempt. Remember the response for
