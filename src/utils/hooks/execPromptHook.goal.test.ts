@@ -231,7 +231,7 @@ describe('execPromptHook — Stop user-message wrapper (gap #2)', () => {
   test('Stop hook user message is wrapped as "Condition: <prompt>"', async () => {
     // Capture the messages array passed to queryModelWithoutStreaming
     let capturedMessages: any[] = []
-    queryModelWithoutStreamingMock.mockImplementation(async (opts: any) => {
+    ;(queryModelWithoutStreamingMock as any).mockImplementation(async (opts: any) => {
       capturedMessages = opts?.messages ?? []
       return { message: { content: [{ type: 'text', text: '{"ok": true, "reason": "all tests pass"}' }] } }
     })
