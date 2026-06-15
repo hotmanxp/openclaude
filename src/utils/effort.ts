@@ -44,7 +44,7 @@ export function modelSupportsEffort(model: string): boolean {
     return true
   }
   // Supported by a subset of Claude 4 models
-  if (m.includes('opus-4-6') || m.includes('sonnet-4-6')) {
+  if (m.includes('opus-4-6') || m.includes('sonnet-4-6') || m.includes('minimax-m3')) {
     return true
   }
   // Exclude any other known legacy models (haiku, older opus/sonnet variants)
@@ -81,7 +81,8 @@ export function modelSupportsMaxEffort(model: string): boolean {
 // xhigh is the "deepest" effort tier marker. Currently the opus-4-6 family.
 // Used to gate ultracode (which requires xhigh effort + workflow orchestration).
 function modelSupportsXhighEffort(model: string): boolean {
-  return model.toLowerCase().includes('opus-4-6')
+  const m = model.toLowerCase()
+  return m.includes('opus-4-6') || m.includes('minimax-m3')
 }
 
 // Ultracode requires an xhigh-capable model + workflow support. Mirror

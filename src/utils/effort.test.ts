@@ -24,6 +24,12 @@ describe('ultracode effort level', () => {
     test('returns false for sonnet-4-6', () => {
       expect(modelSupportsUltracode('claude-sonnet-4-6')).toBe(false)
     })
+    test('returns true for MiniMax-M3 (MiniMax family accepted)', () => {
+      expect(modelSupportsUltracode('MiniMax-M3')).toBe(true)
+    })
+    test('returns true for minimax-m3 (lowercase variant)', () => {
+      expect(modelSupportsUltracode('minimax-m3')).toBe(true)
+    })
   })
 })
 
