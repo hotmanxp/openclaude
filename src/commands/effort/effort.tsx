@@ -54,6 +54,9 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
     logEvent('tengu_effort_command', {
       effort: 'ultracode' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
+    logEvent('tengu_ultra_effort', {
+      type: 'enter' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    });
     return {
       message: 'Set effort level to ultracode (this session only): xhigh + dynamic workflow orchestration. Workflows are now standing — substantive tasks will use the Workflow tool by default.',
       effortUpdate: {
@@ -69,6 +72,9 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   if (isUltracodeActive()) {
     metaMessages = queueUltracodeReminder('exit');
     updateSettingsForSource('userSettings', { ultracode: false });
+    logEvent('tengu_ultra_effort', {
+      type: 'exit' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    });
   }
 
   const persistable = toPersistableEffort(effortValue);
@@ -137,6 +143,9 @@ function unsetEffortLevel(): EffortCommandResult {
   if (isUltracodeActive()) {
     metaMessages = queueUltracodeReminder('exit');
     updateSettingsForSource('userSettings', { ultracode: false });
+    logEvent('tengu_ultra_effort', {
+      type: 'exit' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    });
   }
   const result = updateSettingsForSource('userSettings', {
     effortLevel: undefined

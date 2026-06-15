@@ -166,6 +166,25 @@ describe('effort /ultracode meta messages', () => {
     });
   });
 
+  test('setEffortValue("ultracode") emits tengu_ultra_effort analytics with type=enter', async () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    const calls: Array<{ name: string; meta: unknown }> = [];
+    mock.module('../../services/analytics/index.js', () => ({
+      logEvent: (name: string, meta: unknown) => {
+        calls.push({ name, meta });
+      },
+    }));
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    resetUltracodeReminderState();
+    mod.setEffortValue('ultracode');
+    const enterCalls = calls.filter(c => c.name === 'tengu_ultra_effort');
+    expect(enterCalls.length).toBeGreaterThan(0);
+    expect(enterCalls[0]?.meta).toEqual({ type: 'enter' });
+  });
+
   test('setEffortValue("low") after ultracode was on returns EXIT meta message', () => {
     mock.module(
       '../../utils/settings/settings.js',
@@ -191,6 +210,27 @@ describe('effort /ultracode meta messages', () => {
       const result = mod.setEffortValue('low');
       expect(result.metaMessages).toBeUndefined();
     });
+  });
+
+  test('setEffortValue("low") after ultracode was on emits tengu_ultra_effort with type=exit', async () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock({ updateSettingsForSource: () => ({ error: null }) }),
+    );
+    const calls: Array<{ name: string; meta: unknown }> = [];
+    mock.module('../../services/analytics/index.js', () => ({
+      logEvent: (name: string, meta: unknown) => {
+        calls.push({ name, meta });
+      },
+    }));
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    resetUltracodeReminderState();
+    mod.setEffortValue('ultracode'); // enter
+    calls.length = 0; // discard enter event(s), only inspect exit
+    mod.setEffortValue('low'); // exit
+    const exitCalls = calls.filter(c => c.name === 'tengu_ultra_effort');
+    expect(exitCalls.length).toBeGreaterThan(0);
+    expect(exitCalls[0]?.meta).toEqual({ type: 'exit' });
   });
 
   test('executeEffort("auto") after ultracode was on returns EXIT meta message', () => {
