@@ -11,6 +11,7 @@ import { isWorkflowsDisabled } from '../../utils/envUtils.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { isUltracodeActive } from '../../utils/ultracode.js';
 import { queueUltracodeReminder } from '../../utils/ultracodeReminder.js';
+import { ULTRACODE_OPT_IN_BLOCK } from '../../utils/ultracodePrompt.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
   message: string;
@@ -42,7 +43,17 @@ export function setEffortValue(effortValue: EffortValue): EffortCommandResult {
       };
     }
     // Queue the enter reminder (full or short depending on state machine state)
-    const metaMessages = queueUltracodeReminder('enter');
+    // Prepend the verbatim upstream `**Ultracode.**` opt-in block + a
+    // `<system-reminder>ultracode is on</system-reminder>` state reminder
+    // so the LLM sees both the opt-in instruction and the current state.
+    // Upstream delivers these as user-role messages with isMeta:true
+    // (binary extract line 532977); we match that delivery here.
+    const effortMeta = queueUltracodeReminder('enter')
+    const metaMessages = [
+      ULTRACODE_OPT_IN_BLOCK,
+      '<system-reminder>ultracode is on</system-reminder>',
+      ...effortMeta,
+    ]
     const ultracodeResult = updateSettingsForSource('userSettings', {
       ultracode: true
     });

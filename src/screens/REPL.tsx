@@ -227,6 +227,7 @@ import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
 import { buildKeywordTurnRequest, detectUltracodeTrigger } from '../utils/ultracode.js';
 import { queueUltracodeReminder } from '../utils/ultracodeReminder.js';
+import { ULTRACODE_OPT_IN_BLOCK } from '../utils/ultracodePrompt.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 import { MCPConnectionManager } from 'src/services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from 'src/components/FeedbackSurvey/useFeedbackSurvey.js';
@@ -3466,9 +3467,28 @@ export function REPL({
       if (result.metaMessages.length > 0) {
         // Activate the ultracode state machine for this keyword-triggered turn.
         const effortMetaMessages = queueUltracodeReminder('enter')
+        // Prepend the verbatim upstream `**Ultracode.**` opt-in block +
+        // a `<system-reminder>ultracode is on</system-reminder>` state
+        // reminder. Upstream delivers these as user-role messages with
+        // isMeta:true (binary extract line 532977), so we match that
+        // delivery mechanism here. ULTRACODE_OPT_IN_BLOCK comes from
+        // src/utils/ultracodePrompt.ts.
+        const optInBlock = createUserMessage({
+          content: [{ type: 'text', text: ULTRACODE_OPT_IN_BLOCK }],
+          isMeta: true,
+        })
+        const stateReminder = createUserMessage({
+          content: [{ type: 'text', text: '<system-reminder>ultracode is on</system-reminder>' }],
+          isMeta: true,
+        })
         const allMeta = effortMetaMessages.length > 0
-          ? [...effortMetaMessages.map(content => createUserMessage({ content: [{ type: 'text', text: content }], isMeta: true })), ...result.metaMessages]
-          : result.metaMessages
+          ? [
+              optInBlock,
+              stateReminder,
+              ...effortMetaMessages.map(content => createUserMessage({ content: [{ type: 'text', text: content }], isMeta: true })),
+              ...result.metaMessages,
+            ]
+          : [optInBlock, stateReminder, ...result.metaMessages]
         setMessages(oldMessages => [...allMeta, ...oldMessages])
       }
       return result.userInput

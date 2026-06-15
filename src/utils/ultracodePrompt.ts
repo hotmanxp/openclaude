@@ -14,6 +14,26 @@
 
 import { getUltracodeReminder, isUltracodeActive } from './ultracode.js'
 
+/**
+ * Main-session opt-in block for the ultracode keyword trigger.
+ *
+ * Verbatim from upstream claude-code v2.1.177 (binary extract line 530459).
+ * This is the upstream `**Ultracode.**` paragraph that the LLM sees as
+ * part of the user-meta message queue when the user types the keyword
+ * `ultracode X` or sets `/effort ultracode`. Upstream delivers this as a
+ * user-role message with `isMeta: true` (see binary extract line 532977
+ * `workflow_keyword_request` / `ultra_effort_enter` dispatch) — NOT as a
+ * system-role instruction. OpenCC matches that delivery mechanism:
+ * appended to the user-meta message list via `applyKeywordTrigger` and
+ * `setEffortValue('ultracode')`.
+ *
+ * The full quality-pattern taxonomy (Composing patterns / Quality patterns
+ * / Scale section) lives in the WorkflowTool tool description (line 129)
+ * and in `ULTRACODE_SUBAGENT_PROMPT` for spawned sub-agents. This
+ * main-session block is just the opt-in paragraph.
+ */
+export const ULTRACODE_OPT_IN_BLOCK = `**Ultracode.** When a system-reminder confirms ultracode is on, that opt-in is standing: author and run a workflow for every substantive task by default. The goal is the most exhaustive, correct answer you can produce \u2014 token cost is not a constraint. For multi-phase work (understand \u2192 design \u2192 implement \u2192 review), that often means several workflows in sequence \u2014 one per phase \u2014 so you stay in the loop between them. The quality patterns below (adversarial verify, multi-modal sweep, completeness critic, loop-until-dry) are the tools; pick what fits the task. Lean toward orchestrating with workflows and adversarially verifying your findings \u2014 unless the work is trivial or already verified. Solo only on conversational turns or trivial mechanical edits. When a reminder says ultracode is off, revert to the opt-in rule above.`
+
 export const ULTRACODE_SUBAGENT_PROMPT = `You are a subagent spawned by a workflow orchestration script. Use the tools available to complete the task.
 
 ---

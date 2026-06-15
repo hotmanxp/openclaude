@@ -202,11 +202,15 @@ describe('effort /ultracode meta messages', () => {
     return import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`).then(mod => {
       resetUltracodeReminderState();
       const result = mod.setEffortValue('ultracode');
-      expect(result.metaMessages).toEqual([
-        'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\u2019s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.',
-      ]);
+      // metaMessages now contains: opt-in block, system-reminder, FULL enter
+      expect(result.metaMessages).toHaveLength(3)
+      expect(result.metaMessages?.[0]).toContain('**Ultracode.** When a system-reminder confirms ultracode is on')
+      expect(result.metaMessages?.[1]).toBe('<system-reminder>ultracode is on</system-reminder>')
+      expect(result.metaMessages?.[2]).toBe(
+        'Ultracode is on: optimize for the most exhaustive, correct answer — not the fastest or cheapest. Use the Workflow tool on every substantive task; token cost is not a constraint. See the Workflow tool\u2019s **Ultracode** section and quality patterns. Solo only on conversational/trivial turns.'
+      )
     });
-  });
+  })
 
   test('setEffortValue("ultracode") second time returns SHORT enter meta message', () => {
     mock.module(
@@ -217,10 +221,12 @@ describe('effort /ultracode meta messages', () => {
       resetUltracodeReminderState();
       mod.setEffortValue('ultracode'); // first
       const result = mod.setEffortValue('ultracode'); // second
-      expect(result.metaMessages).toEqual([
-        'Ultracode is still on — use the Workflow tool; see its Ultracode section.',
-      ]);
-    });
+      // metaMessages: opt-in block, system-reminder, SHORT enter
+      expect(result.metaMessages).toHaveLength(3)
+      expect(result.metaMessages?.[2]).toBe(
+        'Ultracode is still on — use the Workflow tool; see its Ultracode section.'
+      )
+    })
   });
 
   test('setEffortValue("ultracode") emits tengu_ultra_effort analytics with type=enter', async () => {
