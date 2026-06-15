@@ -1,4 +1,5 @@
-// @ts-nocheck — fork rebrand 残留 + 上游 #1198 引入未同步组件，临时跳过
+
+// @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { feature } from 'bun:bundle';
@@ -104,16 +105,7 @@ const useVoiceIntegration: typeof import('../hooks/useVoiceIntegration.js').useV
   resetAnchor: () => { }
 });
 const VoiceKeybindingHandler: typeof import('../hooks/useVoiceIntegration.js').VoiceKeybindingHandler = feature('VOICE_MODE') ? require('../hooks/useVoiceIntegration.js').VoiceKeybindingHandler : () => null;
-// Frustration detection is internal-only (dogfooding). Conditional require so external
-// builds eliminate the module entirely (including its two O(n) useMemos that run
-// on every messages change, plus the GrowthBook fetch).
-const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection = IS_ANT_EMPLOYEE ? require('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection : () => ({
-  state: 'closed',
-  handleTranscriptSelect: () => { }
-});
-// Ant-only org warning. Conditional require so the org UUID list is
-// eliminated from external builds (one UUID is on excluded-strings).
-const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification = IS_ANT_EMPLOYEE ? require('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification : () => { };
+// Coordinator mode is unconditionally on — require the helper directly
 // Coordinator mode is unconditionally on — require the helper directly
 const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
   name: string;
@@ -816,7 +808,6 @@ export function REPL({
   useFastModeNotification();
   useDeprecationWarningNotification(mainLoopModel);
   useNpmDeprecationNotification();
-  useAntOrgWarningNotification();
   useInstallMessages();
   useChromeExtensionNotification();
   useOfficialMarketplaceNotification();
@@ -1797,9 +1788,6 @@ export function REPL({
   const memorySurvey = useMemorySurvey(messages, isLoading, hasActivePrompt, {
     enabled: !isRemoteSession
   });
-
-  // Frustration detection: show transcript sharing prompt after detecting frustrated messages
-  const frustrationDetection = useFrustrationDetection(messages, isLoading, hasActivePrompt, feedbackSurvey.state !== 'closed' || postCompactSurvey.state !== 'closed' || memorySurvey.state !== 'closed');
 
   // Initialize IDE integration
   useIDEIntegration({
@@ -5079,8 +5067,6 @@ export function REPL({
           {!toolJSX?.shouldHidePromptInput && !focusedInputDialog && !isExiting && !disabled && !cursor && !isShuttingDown() && <>
             {autoRunIssueReason && <AutoRunIssueNotification onRun={handleAutoRunIssue} onCancel={handleCancelAutoRunIssue} reason={getAutoRunIssueReasonText(autoRunIssueReason)} />}
             {postCompactSurvey.state !== 'closed' ? <FeedbackSurvey state={postCompactSurvey.state} lastResponse={postCompactSurvey.lastResponse} handleSelect={postCompactSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} /> : memorySurvey.state !== 'closed' ? <FeedbackSurvey state={memorySurvey.state} lastResponse={memorySurvey.lastResponse} handleSelect={memorySurvey.handleSelect} handleTranscriptSelect={memorySurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} message="How well did Claude use its memory? (optional)" /> : <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} handleTranscriptSelect={feedbackSurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
-            {/* Frustration-triggered transcript sharing prompt */}
-            {frustrationDetection.state !== 'closed' && <FeedbackSurvey state={frustrationDetection.state} lastResponse={null} handleSelect={() => { }} handleTranscriptSelect={frustrationDetection.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
             {/* Skill improvement survey - appears when improvements detected (internal-only) */}
             {isAntEmployee() && skillImprovementSurvey.suggestion && <SkillImprovementSurvey isOpen={skillImprovementSurvey.isOpen} skillName={skillImprovementSurvey.suggestion.skillName} updates={skillImprovementSurvey.suggestion.updates} handleSelect={skillImprovementSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} />}
             {showIssueFlagBanner && <IssueFlagBanner />}
