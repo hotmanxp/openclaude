@@ -318,6 +318,36 @@ describe('effort /ultracode meta messages', () => {
   });
 });
 
+describe('effort xhigh warning on non-ultracode-capable model (plan11 D2)', () => {
+  beforeEach(() => {
+    mock.restore();
+    resetUltracodeReminderState();
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('setEffortValue("ultracode") shows "Ultracode runs at xhigh effort" warning with valid options list when model is not opus-4-6', async () => {
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-haiku-4-5',
+      getDefaultMainLoopModelSetting: () => 'haiku',
+    }));
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    const result = mod.setEffortValue('ultracode');
+    expect(result.message).toContain('Ultracode runs at xhigh effort');
+    expect(result.message).toContain('Valid options are: low, medium, high, xhigh, max, auto');
+    expect(result.effortUpdate).toBeUndefined();
+  });
+});
+
 describe('effort /ultracode validation', () => {
   beforeEach(() => {
     mock.restore();
