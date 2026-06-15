@@ -287,7 +287,15 @@ export function execFileNoThrowWithCwd(
       finalTimeout > 0
         ? setTimeout(() => {
             timedOut = true
-            child.kill()
+            // Defensive: cross-spawn normally returns a ChildProcess
+            // with a .kill() method, but on some platforms / failure
+            // paths (e.g. the file vanished between validation and
+            // spawn) the value can be undefined and we'd otherwise
+            // throw a TypeError from the timer callback that escapes
+            // as an unhandled error after the Promise already settled.
+            if (child && typeof child.kill === 'function') {
+              child.kill()
+            }
           }, finalTimeout)
         : undefined
 

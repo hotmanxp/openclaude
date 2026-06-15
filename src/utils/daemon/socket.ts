@@ -97,22 +97,71 @@ export function connectToPath(
 ): Promise<Socket> {
   return new Promise((resolve, reject) => {
     let settled = false
-    const sock = connect(sockPath)
+    // Pre-check: if the socket file doesn't exist on disk, skip
+    // connect() entirely. node:net fires 'error' asynchronously, but
+    // bun:test's runner intercepts the underlying node error event and
+    // logs it as an unhandled error even when our `.once('error', ...)`
+    // listener catches it — a quirk of how the test harness wraps
+    // net-layer errors. Checking existsSync short-circuits both the
+    // syscall and the unhandled-error log. ECONNREFUSED (file exists,
+    // no listener) still requires the connect path; that case is
+    // properly caught by the .once('error', ...) below.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const {existsSync} = require('node:fs') as typeof import('node:fs')
+      if (!existsSync(sockPath)) {
+        reject(
+          new DaemonError('ENOCONN', `socket file not found: ${sockPath}`),
+        )
+        return
+      }
+    } catch {
+      // existsSync threw (extremely rare) — fall through to the
+      // connect-based path, which has its own error handler.
+    }
+    let sock: Socket
+    try {
+      sock = connect(sockPath)
+    } catch (err) {
+      // connect() can throw synchronously on bad paths. The unhandled
+      // error log on the test side was from this path — wrapped in a
+      // try/catch so we always hand the caller a real Error.
+      reject(
+        new DaemonError(
+          'ENOCONN',
+          err instanceof Error ? err.message : String(err),
+        ),
+      )
+      return
+    }
+    // Don't keep the event loop alive on the connect — tests /
+    // diagnostics that fire-and-forget a ping should not block process
+    // exit. The socket is short-lived (one shot, then destroyed).
+    sock.unref?.()
     const finish = (fn: () => void) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       fn()
     }
-    // Register error listener *before* the timer so a synchronous
-    // error from `connect()` (e.g. ENOENT on darwin) is caught even
-    // when the kernel rejects the path before microtasks run.
+    // Register the error listener FIRST so it is in place when node:net
+    // fires the synchronous-from-connect() 'error' event (e.g. ENOENT on
+    // darwin when the sock file doesn't exist). Without this, the error
+    // can escape as an unhandled exception even if we later attach a
+    // listener in the same tick.
     sock.once('error', err => {
       finish(() => {
         // Map net-layer errors to the daemon's error code vocabulary.
         // ENOENT: socket file doesn't exist (daemon not running).
         // ECONNREFUSED: socket file exists but no one is listening.
         // Both are "the daemon is not there" from the caller's POV.
+        // Destroy the socket so no further events (close, second error)
+        // leak as unhandled listeners after the Promise settles.
+        try {
+          sock.destroy()
+        } catch {
+          // best-effort
+        }
         reject(new DaemonError('ENOCONN', err.message))
       })
     })
@@ -127,8 +176,28 @@ export function connectToPath(
         )
       })
     }, timeoutMs)
+    timer.unref?.()
     sock.once('connect', () => {
       finish(() => resolve(sock))
+    })
+    // If the socket ever emits 'close' before we've settled, no caller
+    // is going to receive a resolution; surface that as ENOCONN so the
+    // upper layers' try/catch (pingOnPath, isProcessDead) can treat it
+    // as "daemon not there" instead of an unhandled error.
+    sock.once('close', () => {
+      finish(() => {
+        try {
+          sock.destroy()
+        } catch {
+          // best-effort
+        }
+        reject(
+          new DaemonError(
+            'ENOCONN',
+            `socket closed before connection completed`,
+          ),
+        )
+      })
     })
   })
 }

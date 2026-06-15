@@ -17,7 +17,15 @@
  *
  * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T12.2
  */
-import { afterEach, beforeEach, describe, expect, test, spyOn } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, spyOn } from 'bun:test'
+
+// The bg-agent feature is default-off; these tests exercise the bg
+// CLI/daemon path which is gated by `isBgAgentRuntimeEnabled()`. Enable
+// it for the entire file (each test that needs the kill-switch state
+// restores it explicitly).
+beforeAll(() => {
+  process.env.CLAUDE_CODE_ENABLE_AGENT_VIEW = '1'
+})
 
 // ---------- Output capture ----------
 

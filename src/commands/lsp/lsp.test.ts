@@ -96,8 +96,7 @@ const discoverWorkspaceExtensions = async (pathspec?: string) =>
       ? []
       : ['.ts']
 
-const { discoverWorkspaceExtensions: discoverRealWorkspaceExtensions, runLspCommand } =
-  await import('./lsp.js')
+const { runLspCommand } = await import('./lsp.js')
 
 const EMPTY_CONTEXT = {
   setAppState: () => {},
@@ -369,6 +368,40 @@ describe('/lsp recommend', () => {
   })
 
   test('falls back to filesystem scanning when git cannot enumerate workspace files', async () => {
+    // We test the *fallback* contract — git fails, filesystem scan
+    // runs, extensions are ranked. We don't need real git here: stub
+    // `execFileNoThrowWithCwd` so the git call returns a non-zero exit
+    // code immediately, and the implementation falls through to the
+    // filesystem path. This keeps the test fast and isolated from
+    // system load (a real `git ls-files` against an empty temp dir
+    // takes 5s+ in a saturated smoke run, which trips the default 5s
+    // test timeout). See `git ls-files` timeout in
+    // `src/commands/lsp/lsp.ts:discoverWorkspaceExtensions`.
+    const stubExec = (() => {
+      const calls: unknown[] = []
+      const fn = (...args: unknown[]) => {
+        calls.push(args)
+        return Promise.resolve({
+          stdout: '',
+          stderr: '',
+          code: 128, // git's "fatal" exit code — triggers the fallback
+          error: 'fatal: not a git repository',
+        })
+      }
+      return Object.assign(fn, {calls, mockRestore: () => {}})
+    })()
+    // Install the stub on the module's already-registered specifier.
+    // `lsp.ts` imports `execFileNoThrowWithCwd` via a normal
+    // `import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'`
+    // and bun freezes the namespace object so we can't assign to it.
+    // Use `mock.module` on a fresh specifier instead.
+    mock.module('../../utils/execFileNoThrow.js', () => ({
+      execFileNoThrowWithCwd: stubExec,
+      execFileNoThrow: stubExec,
+      execSyncWithDefaults_DEPRECATED: () => {
+        throw new Error('not used in this test')
+      },
+    }))
     const tempDir = await mkdtemp(join(tmpdir(), 'opencc-lsp-'))
     try {
       await mkdir(join(tempDir, 'src'), { recursive: true })
@@ -376,7 +409,15 @@ describe('/lsp recommend', () => {
       await writeFile(join(tempDir, 'src', 'style.css'), '.root {}\n')
       await writeFile(join(tempDir, 'logo.png'), '')
 
-      const extensions = await discoverRealWorkspaceExtensions(undefined, tempDir)
+      // Force a fresh import of lsp.js so it picks up the stubbed
+      // `execFileNoThrow.js` (bun caches the prior bare specifier).
+      const fresh = await import(
+        `./lsp.js?stub=${Date.now()}-${Math.random()}`
+      )
+      const extensions = await fresh.discoverWorkspaceExtensions(
+        undefined,
+        tempDir,
+      )
 
       expect(extensions).toContain('.ts')
       expect(extensions).toContain('.css')

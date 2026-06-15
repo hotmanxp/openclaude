@@ -25,7 +25,7 @@ import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider } from './model/providers.js'
+import { getAPIProvider, isGithubNativeAnthropicMode } from './model/providers.js'
 import { getInitialSettings } from './settings/settings.js'
 
 /**
@@ -365,8 +365,9 @@ export function getMergedBetas(
 ): string[] {
   // Beta headers are Anthropic-specific. Non-Anthropic providers (OpenAI,
   // Gemini, Codex, etc.) do not understand them and may reject requests
-  // containing unknown headers. GitHub Native Anthropic mode is an exception.
-  if (!isAnthropicProvider()) {
+  // containing unknown headers. GitHub Native Anthropic mode is an exception:
+  // CLAUDE_CODE_USE_GITHUB=1 + a Claude model is treated as first-party.
+  if (!isAnthropicProvider() && !isGithubNativeAnthropicMode(model)) {
     return []
   }
 

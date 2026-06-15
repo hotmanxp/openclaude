@@ -66,7 +66,12 @@ describe('/goal clear', () => {
     expect(getState().activeGoal).not.toBeNull()
     const result = await call(alias, context)
     expect(result.value).toContain('Goal cleared')
-    expect(getState().activeGoal).toBeNull()
+    // After clear, activeGoal is null OR in the 5s "achieved" display
+    // window (achievedAt set, conditional null 5s later). Both states
+    // are "cleared" from the user's perspective — the goal is no longer
+    // being pursued. See clearActiveGoal in src/services/goal/hooks.ts.
+    const after = getState().activeGoal
+    expect(after === null || after?.achievedAt !== undefined).toBe(true)
   })
 })
 

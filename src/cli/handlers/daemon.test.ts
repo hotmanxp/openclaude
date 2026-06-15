@@ -23,6 +23,7 @@
  */
 import {
   afterEach,
+  beforeAll,
   describe,
   expect,
   test,
@@ -62,6 +63,13 @@ import {
 } from './daemon.js'
 
 // ---------- Temp dirs / socket / roster overrides ----------
+
+// The bg-agent feature is default-off; runSupervisor / getBgDaemonStatus
+// gate on `isBgAgentRuntimeEnabled()` and throw otherwise. Enable it
+// for the whole file so the T5/T6 wiring tests can actually run.
+beforeAll(() => {
+  process.env.CLAUDE_CODE_ENABLE_AGENT_VIEW = '1'
+})
 
 const tmpDirs: string[] = []
 
@@ -482,7 +490,7 @@ describe('runSupervisor', () => {
     }
   })
 
-  test('stub ops (dispatch) return EUNKNOWN with "not implemented in T5"', async () => {
+  test('dispatch op registers a job and returns ok:true (T5 stub removed; bg-agent-mailbox-push-impl-2026-06-14 fully wired it)', async () => {
     const ov = freshOverrides()
     const {stop} = await runSupervisor({sockPath: ov.sockPath, rosterPath: ov.rosterPath})
     try {
@@ -509,9 +517,10 @@ describe('runSupervisor', () => {
         },
         1000,
       )
-      expect(resp).toMatchObject({ok: false, code: 'EUNKNOWN'})
-      const err = resp as {error: string; code: string}
-      expect(err.error).toMatch(/not implemented in T5/i)
+      // Dispatch is no longer a T5 stub — it registers the job in the
+      // roster and returns ok:true. The worker then runs in the
+      // background; the response is just the dispatch ack.
+      expect(resp).toMatchObject({ok: true, op: 'dispatch'})
     } finally {
       await stop()
     }

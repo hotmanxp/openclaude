@@ -3,11 +3,57 @@ import { isEnvTruthy } from '../envUtils.js'
 
 export type APIProvider = 'firstParty' | 'openai'
 
+/**
+ * Legacy / fork-removed provider env vars that route to a non-Anthropic
+ * model family. Listed here so `getAPIProvider()` can short-circuit them
+ * out of the 'firstParty' branch (they would otherwise hit the default
+ * firstParty branch and silently enable Anthropic-specific behavior —
+ * beta headers, account-flow, etc).
+ *
+ * Per OpenCC AGENTS.md, only three providers are supported: anthropic,
+ * ollama, openai-compatible. The legacy vars exist in the codebase
+ * (CLAUDE_CODE_USE_BEDROCK / USE_VERTEX / USE_FOUNDRY / USE_GITHUB)
+ * but are deliberately routed to 'firstParty' or 'openai' depending on
+ * whether the underlying transport is Anthropic-native or OpenAI-shaped.
+ */
+const NON_FIRST_PARTY_ENV_KEYS = [
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_USE_MISTRAL',
+  // GitHub Copilot is OpenAI-shaped by default; the "native Claude"
+  // exception is a per-model gate in isGithubNativeAnthropicMode, but
+  // getAPIProvider has no model context, so we conservatively route
+  // GitHub to 'openai' here and let the caller (betas.ts) re-promote
+  // it to first-party when the model is a Claude model.
+  'CLAUDE_CODE_USE_GITHUB',
+  // 3P API keys (provider is the API surface, not Anthropic even if
+  // the model name happens to be "claude-*" on X.AI / minimax et al).
+  'XAI_API_KEY',
+  'MINIMAX_API_KEY',
+] as const
+
 export function getAPIProvider(): APIProvider {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
-    return 'openai'
+  for (const key of NON_FIRST_PARTY_ENV_KEYS) {
+    if (is3PApiKey(key)) {
+      // 3P API keys (XAI_API_KEY, MINIMAX_API_KEY, ...) — any
+      // non-empty value signals the user is using that provider, so
+      // a placeholder like "xai-test-key" still routes correctly. The
+      // actual auth happens elsewhere; we just need the gate to fire.
+      if (process.env[key]) return 'openai'
+    } else {
+      if (isEnvTruthy(process.env[key])) return 'openai'
+    }
   }
   return 'firstParty'
+}
+
+const API_KEY_ENV_KEYS = new Set([
+  'XAI_API_KEY',
+  'MINIMAX_API_KEY',
+])
+
+function is3PApiKey(key: string): boolean {
+  return API_KEY_ENV_KEYS.has(key)
 }
 
 export function usesAnthropicAccountFlow(): boolean {
@@ -38,4 +84,25 @@ export function isFirstPartyAnthropicBaseUrl(): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * GitHub Copilot has a special native-Claude path for Claude models:
+ * when CLAUDE_CODE_USE_GITHUB=1 is set AND the active model is a Claude
+ * model, the runtime routes through the native Anthropic path (not the
+ * OpenAI shim) to enable prompt caching. This is the gate that the
+ * beta-header logic in `betas.ts` consults to decide whether to send
+ * Anthropic-specific headers on a GitHub-Copilot-shaped request.
+ *
+ * Returns true only when BOTH conditions hold; any other combination
+ * (github env unset, OR non-Claude model on the github provider) returns
+ * false so beta headers are correctly stripped.
+ *
+ * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md
+ * @see src/integrations/gateways/github.ts
+ */
+export function isGithubNativeAnthropicMode(model?: string): boolean {
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)) return false
+  if (!model) return false
+  return model.toLowerCase().includes('claude')
 }
