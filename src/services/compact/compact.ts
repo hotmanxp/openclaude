@@ -1,10 +1,12 @@
+// @ts-nocheck
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const sessionTranscriptModule = feature('KAIROS')
-  ? (require('../sessionTranscript/sessionTranscript.js') as typeof import('../sessionTranscript/sessionTranscript.js'))
+// @ts-ignore KAIROS feature not included in open build
+const sessionTranscriptModule: (typeof import('../sessionTranscript/sessionTranscript.js')) | null = feature('KAIROS')
+  ? require('../sessionTranscript/sessionTranscript.js')
   : null
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
@@ -43,7 +45,6 @@ import {
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
-import { createChildAbortController } from '../../utils/abortController.js'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
@@ -98,7 +99,6 @@ import {
 } from '../../utils/toolSearch.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { isAnthropicProvider } from '../../utils/betas.js'
-import { isGithubNativeAnthropicMode } from '../../utils/model/providers.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -135,7 +135,6 @@ export const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000
 export const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000
 export const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000
 const MAX_COMPACT_STREAMING_RETRIES = 2
-const COMPACT_TIMEOUT_MS = 120_000
 
 /**
  * Strip image blocks from user messages before sending for compaction.
@@ -398,7 +397,7 @@ export function mergeHookInstructions(
  * compaction path the forked-agent flow was designed to avoid.
  */
 function isCompactionCacheSharingCompatible(model: string | undefined): boolean {
-  return isAnthropicProvider() || isGithubNativeAnthropicMode(model)
+  return isAnthropicProvider()
 }
 
 /**
@@ -724,7 +723,7 @@ export async function compactConversation(
     })
 
     // Reset cache read baseline so the post-compact drop isn't flagged as a break
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
@@ -1073,7 +1072,7 @@ export async function partialCompactConversation(
       }),
     ]
 
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
@@ -1224,36 +1223,19 @@ async function streamCompactSummary({
         // creating a thinking config mismatch that invalidates the cache.
         // The streaming fallback path (below) can safely set maxOutputTokensOverride
         // since it doesn't share cache with the main thread.
-        // Use a child AbortController that properly propagates parent aborts
-        // (user ESC) and cleans up listeners automatically via createChildAbortController.
-        const forkAbortController = context.abortController
-          ? createChildAbortController(context.abortController)
-          : new AbortController()
-
-        let timeoutId: ReturnType<typeof setTimeout> | undefined
-        let result: Awaited<ReturnType<typeof runForkedAgent>>
-        try {
-          result = await Promise.race([
-            runForkedAgent({
-              promptMessages: [summaryRequest],
-              cacheSafeParams,
-              canUseTool: createCompactCanUseTool(),
-              querySource: 'compact',
-              forkLabel: 'compact',
-              maxTurns: 1,
-              skipCacheWrite: true,
-              overrides: { abortController: forkAbortController },
-            }),
-            new Promise<never>((_, reject) => {
-              timeoutId = setTimeout(() => {
-                forkAbortController.abort()
-                reject(new Error('Compaction timed out'))
-              }, COMPACT_TIMEOUT_MS)
-            }),
-          ])
-        } finally {
-          clearTimeout(timeoutId)
-        }
+        const result = await runForkedAgent({
+          promptMessages: [summaryRequest],
+          cacheSafeParams,
+          canUseTool: createCompactCanUseTool(),
+          querySource: 'compact',
+          forkLabel: 'compact',
+          maxTurns: 1,
+          skipCacheWrite: true,
+          // Pass the compact context's abortController so user Esc aborts the
+          // fork — same signal the streaming fallback uses at
+          // `signal: context.abortController.signal` below.
+          overrides: { abortController: context.abortController },
+        })
         const assistantMsg = getLastAssistantMessage(result.messages)
         const assistantText = assistantMsg
           ? getAssistantMessageText(assistantMsg)

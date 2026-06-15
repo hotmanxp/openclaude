@@ -25,7 +25,7 @@ import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider, isGithubNativeAnthropicMode } from './model/providers.js'
+import { getAPIProvider } from './model/providers.js'
 import { getInitialSettings } from './settings/settings.js'
 
 /**
@@ -356,7 +356,7 @@ export const getModelBetas = memoize((model: string): string[] => {
  */
 export function isAnthropicProvider(): boolean {
   const provider = getAPIProvider()
-  return provider === 'firstParty' || provider === 'bedrock' || provider === 'vertex' || provider === 'foundry'
+  return provider === 'firstParty'
 }
 
 export function getMergedBetas(
@@ -366,7 +366,7 @@ export function getMergedBetas(
   // Beta headers are Anthropic-specific. Non-Anthropic providers (OpenAI,
   // Gemini, Codex, etc.) do not understand them and may reject requests
   // containing unknown headers. GitHub Native Anthropic mode is an exception.
-  if (!isAnthropicProvider() && !isGithubNativeAnthropicMode(model)) {
+  if (!isAnthropicProvider()) {
     return []
   }
 
