@@ -20,7 +20,7 @@ import type { MCPServerConnection } from '../../services/mcp/types.js';
 import { useAppState } from '../../state/AppState.js';
 import type { ToolPermissionContext } from '../../Tool.js';
 import type { Message } from '../../types/message.js';
-import { formatTokenCount } from './goalFormat.js';
+import { formatGoalDuration, formatTokenCount } from './goalFormat.js';
 import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
@@ -225,17 +225,19 @@ function GoalStatusIndicator(): React.ReactNode {
     const tokens = Math.max(0, (goal.tokensAtEnd ?? 0) - goal.tokensAtStart);
     return (
       <Text color="suggestion" wrap="truncate">
-        ✔ Goal achieved ({durSec}s · {turnText} · {formatTokenCount(tokens)}{' '}
-        tokens)
+        ✔ Goal achieved ({formatGoalDuration(durSec)} · {turnText} ·{' '}
+        {formatTokenCount(tokens)} tokens)
       </Text>
     );
   }
 
-  // Active: `◎ /goal active (Ns)`, ticking every second.
+  // Active: `◎ /goal active (Ns · Xm Ys)`, ticking every second. Duration
+  // switches from `Ns` to `Xm Ys` once the goal has been running for ≥60s so
+  // the pill width stays bounded as time accumulates.
   const durSec = Math.max(0, Math.floor((Date.now() - goal.setAt) / 1000));
   return (
     <Text color="suggestion" wrap="truncate">
-      ◎ /goal active ({durSec}s)
+      ◎ /goal active ({formatGoalDuration(durSec)})
     </Text>
   );
 }

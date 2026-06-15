@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatTokenCount } from './goalFormat.js'
+import { formatGoalDuration, formatTokenCount } from './goalFormat.js'
 
 describe('formatTokenCount', () => {
   test('zero renders as "0"', () => {
@@ -28,5 +28,33 @@ describe('formatTokenCount', () => {
   test('trims trailing ".0" from k/M form (e.g. 1.0k → 1k)', () => {
     expect(formatTokenCount(2000)).toBe('2k')
     expect(formatTokenCount(3_000_000)).toBe('3M')
+  })
+})
+
+describe('formatGoalDuration', () => {
+  test('zero renders as "0s"', () => {
+    expect(formatGoalDuration(0)).toBe('0s')
+  })
+
+  test('values below 60s render as plain seconds', () => {
+    expect(formatGoalDuration(1)).toBe('1s')
+    expect(formatGoalDuration(45)).toBe('45s')
+    expect(formatGoalDuration(59)).toBe('59s')
+  })
+
+  test('values ≥60s render as "Xm Ys" (no zero-padding on seconds)', () => {
+    expect(formatGoalDuration(60)).toBe('1m 0s')
+    expect(formatGoalDuration(90)).toBe('1m 30s')
+    expect(formatGoalDuration(125)).toBe('2m 5s')
+  })
+
+  test('handles long durations (status-bar 2145s example)', () => {
+    expect(formatGoalDuration(2145)).toBe('35m 45s')
+  })
+
+  test('clamps negative input to "0s"', () => {
+    // Math.max(0, ...) at the call site is the real guard, but a negative
+    // argument should still render sensibly (not "−1s").
+    expect(formatGoalDuration(-5)).toBe('0s')
   })
 })

@@ -14,3 +14,18 @@ export function formatTokenCount(n: number): string {
   const s = (n / 1_000_000).toFixed(1)
   return s.endsWith('.0') ? s.slice(0, -2) + 'M' : s + 'M'
 }
+
+/**
+ * Format a goal-loop duration for the footer status pill. Below 60s renders
+ * as "Ns" (e.g. "45s"); at or above 60s switches to "Xm Ys" (e.g. "35m 45s")
+ * so the pill width stays predictable as a goal runs past the one-minute mark.
+ * Negative input clamps to "0s" — the call sites always pass
+ * `Math.max(0, …)`, but defensive here keeps the helper safe in isolation.
+ */
+export function formatGoalDuration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}m ${r}s`
+}
