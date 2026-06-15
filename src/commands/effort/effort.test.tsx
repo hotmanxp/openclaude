@@ -119,6 +119,63 @@ describe('effort /ultracode', () => {
   });
 });
 
+describe('effort option order + verbatim help text (plan11 B4 + C1)', () => {
+  beforeEach(() => {
+    mock.restore();
+    mock.module('../../utils/envUtils.js', () => ({
+      isWorkflowsDisabled: () => false,
+    }));
+    mock.module('../../utils/model/model.js', () => ({
+      getMainLoopModel: () => 'claude-opus-4-6',
+      getDefaultMainLoopModelSetting: () => 'opus',
+    }));
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('executeEffort error message lists options in upstream order: low, medium, high, xhigh, max, ultracode, auto', async () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    const result = mod.executeEffort('bogus');
+    expect(result.message).toMatch(/low, medium, high, xhigh, max, ultracode, auto/);
+  });
+
+  test('call("help") onDone output contains upstream verbatim "ultracode" help line', async () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    let captured: string | undefined;
+    const onDone = (msg: string) => {
+      captured = msg;
+    };
+    await mod.call(onDone, {}, 'help');
+    expect(captured).toBeDefined();
+    expect(captured).toContain('- ultracode: xhigh + dynamic workflow orchestration (this session only)');
+  });
+
+  test('call("help") onDone output lists options in upstream order: low|medium|high|xhigh|max|ultracode|auto', async () => {
+    mock.module(
+      '../../utils/settings/settings.js',
+      () => makeCompleteSettingsMock(),
+    );
+    const mod = await import(`./effort.tsx?ts=${Date.now()}-${Math.random()}`);
+    let captured: string | undefined;
+    const onDone = (msg: string) => {
+      captured = msg;
+    };
+    await mod.call(onDone, {}, 'help');
+    expect(captured).toBeDefined();
+    expect(captured).toContain('low|medium|high|xhigh|max|ultracode|auto');
+  });
+});
+
 describe('effort /ultracode meta messages', () => {
   beforeEach(() => {
     mock.restore();
