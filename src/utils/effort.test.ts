@@ -12,6 +12,11 @@ describe('ultracode effort level', () => {
     expect(desc).toContain('workflow')
   })
 
+  test('getEffortLevelDescription("ultracode") matches upstream verbatim "Current effort level" parenthesized text', () => {
+    const desc = getEffortLevelDescription('ultracode')
+    expect(desc).toBe('xhigh + dynamic workflow orchestration; this session only')
+  })
+
   describe('modelSupportsUltracode', () => {
     test('returns true for opus-4-6', () => {
       expect(modelSupportsUltracode('claude-opus-4-6')).toBe(true)

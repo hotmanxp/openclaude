@@ -326,7 +326,7 @@ export function getEffortLevelDescription(level: EffortLevel | OpenAIEffortLevel
     case 'xhigh':
       return 'Extra high reasoning effort for complex tasks (OpenAI/Codex)'
     case 'ultracode':
-      return 'xhigh effort + standing dynamic-workflow orchestration. Requires workflows to be enabled and an xhigh-capable model.'
+      return 'xhigh + dynamic workflow orchestration; this session only'
   }
 }
 
