@@ -393,3 +393,42 @@ describe('execPromptHook — impossible:true handler (gap #4)', () => {
     expect((state.activeGoal as any)?.iterations).toBe(1)
   })
 })
+
+describe('execPromptHook — strict-default regression (gap #5, no impl change)', () => {
+  test('parse failure across both attempts → fallbackHookResult strict {ok:false} → blocking', async () => {
+    // 1st attempt: unparseable. 2nd attempt: unparseable.
+    // fallbackHookResult (strict per 2026-06-13 memory) returns {ok:false}
+    // → outcome 'blocking', goal NOT cleared, iterations bumped.
+    queryModelWithoutStreamingMock.mockReset()
+    queryModelWithoutStreamingMock
+      .mockImplementationOnce(async () => ({
+        message: { content: [{ type: 'text', text: 'this is not json at all' }] },
+      }))
+      .mockImplementationOnce(async () => ({
+        message: { content: [{ type: 'text', text: 'still not json' }] },
+      }))
+
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'finish tests')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    const result = await execPromptHook(
+      hook,
+      'goal-stop',
+      'Stop',
+      JSON.stringify({ session_id: 'test' }),
+      new AbortController().signal,
+      toolUseContext,
+      [],
+    )
+
+    // Strict default: blocking (not success).
+    expect(result.outcome).toBe('blocking')
+    // Goal must NOT have been cleared.
+    expect(state.activeGoal).not.toBeNull()
+    // Iterations should have bumped (blocking path increments).
+    expect((state.activeGoal as any)?.iterations).toBe(1)
+    // Model was called exactly twice (1st + retry).
+    expect(queryModelWithoutStreamingMock.mock.calls.length).toBe(2)
+  })
+})
