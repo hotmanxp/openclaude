@@ -569,6 +569,46 @@ CRITICAL — your reply will be fed to JSON.parse and MUST succeed:
         }
       }
 
+      // Per upstream claude-code 2.1.177: {ok:false, impossible:true} is
+      // success-with-flag (escape hatch for genuinely unachievable conditions).
+      // This is INDEPENDENT of the parse-failure strict-default fallback —
+      // impossible:true is a parseable, reasoned signal; we trust it.
+      //   - {ok:false, impossible:true}: model LEGITIMATELY says "I can't satisfy
+      //     this in this session." Allow stop + clear goal.
+      //   - parse failure → fallbackHookResult returns {ok:false} (STRICT per
+      //     memory: strict-default-over-permissive-for-unparseable-hook-llm).
+      //     Unparseable ≠ impossible; we err on more work when uncertain.
+      if (!parsed.data.ok && parsed.data.impossible === true) {
+        logForDebugging(
+          `Hooks: Prompt hook condition judged impossible: ${parsed.data.reason}`,
+        )
+        // /goal: clear the active goal so the footer pill transitions to
+        // "Goal achieved (Xs · N turn · Nk tokens)". No-op when no goal
+        // is active (non-/goal hooks).
+        try {
+          clearActiveGoalIfActive({
+            toolUseContext,
+          })
+        } catch (e) {
+          logForDebugging(
+            `Hooks: clearActiveGoalIfActive on impossible failed: ${errorMessage(e)}`,
+            { level: 'error' },
+          )
+        }
+        return {
+          hook,
+          outcome: 'success',
+          stopReason: parsed.data.reason,
+          message: createAttachmentMessage({
+            type: 'hook_success',
+            hookName,
+            toolUseID: effectiveToolUseID,
+            hookEvent,
+            content: '',
+          }) as unknown as HookResultMessage,
+        }
+      }
+
       // Failed to meet condition
       if (!parsed.data.ok) {
         logForDebugging(

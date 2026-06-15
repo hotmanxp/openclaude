@@ -324,3 +324,72 @@ describe('execPromptHook — Stop schema (gap #3)', () => {
     expect(result.outcome).not.toBe('non_blocking_error')
   })
 })
+
+describe('execPromptHook — impossible:true handler (gap #4)', () => {
+  test('{ok:false, impossible:true, reason:"X"} → success-with-flag, goal cleared', async () => {
+    queryModelWithoutStreamingMock.mockReset()
+    queryModelWithoutStreamingMock.mockImplementation(async () => ({
+      message: { content: [{ type: 'text', text: '{"ok": false, "impossible": true, "reason": "no internet access"}' }] },
+    }))
+
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'access online docs')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    const result = await execPromptHook(
+      hook,
+      'goal-stop',
+      'Stop',
+      JSON.stringify({ session_id: 'test' }),
+      new AbortController().signal,
+      toolUseContext,
+      [],
+    )
+
+    // Per upstream: impossible:true is success-with-flag (not blocking).
+    expect(result.outcome).toBe('success')
+    // The stopReason is the model's reason for judging impossible
+    // (HookResult type may have stopReason — check defensively).
+    const r = result as any
+    if ('stopReason' in r) {
+      expect(r.stopReason).toBe('no internet access')
+    }
+    // Goal should be cleared (activeGoal.achievedAt stamped, then nulled after 5s)
+    // We can verify the side effect happened: activeGoal should be either null
+    // (after 5s) or have achievedAt set.
+    const goal = state.activeGoal
+    if (goal !== null) {
+      expect(goal.achievedAt).toBeDefined()
+    }
+    // Blocking should NOT fire
+    expect(result.outcome).not.toBe('blocking')
+  })
+
+  test('{ok:false, impossible:false|undefined, reason:"X"} → still blocking (control)', async () => {
+    queryModelWithoutStreamingMock.mockReset()
+    queryModelWithoutStreamingMock.mockImplementation(async () => ({
+      message: { content: [{ type: 'text', text: '{"ok": false, "reason": "tests failing on test_foo"}' }] },
+    }))
+
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'finish tests')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    const result = await execPromptHook(
+      hook,
+      'goal-stop',
+      'Stop',
+      JSON.stringify({ session_id: 'test' }),
+      new AbortController().signal,
+      toolUseContext,
+      [],
+    )
+
+    // Without impossible, ok:false is still blocking.
+    expect(result.outcome).toBe('blocking')
+    // Goal should NOT be cleared.
+    expect(state.activeGoal).not.toBeNull()
+    // Iterations should have bumped.
+    expect((state.activeGoal as any)?.iterations).toBe(1)
+  })
+})
