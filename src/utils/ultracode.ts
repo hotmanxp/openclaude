@@ -1,5 +1,6 @@
 import { getInitialSettings } from './settings/settings.js'
 import { isUltracodeReminderOn } from './ultracodeReminder.js'
+import { isUltracodeKeywordIgnored } from './ultracodeKeywordIgnored.js'
 import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
 import { createUserMessage } from './messages.js'
 import {
@@ -113,6 +114,26 @@ export function findUltracodeTriggerPositions(
 /** Convenience: any ultracode trigger detected in text? */
 export function isUltracodeKeywordTriggered(text: string): boolean {
   return findUltracodeTriggerPositions(text).length > 0
+}
+
+/**
+ * Combined helper: detect trigger + check if keyword was ignored.
+ * Caller can use this to drive both 'active' and 'ignored' notifications.
+ *
+ * See Task 4 of docs/superpowers/plans/2026-06-15-plan11-ultracode-complete-port.md.
+ */
+export function checkUltracodeKeywordState(
+  input: string,
+  keyword: string,
+  enabled: boolean,
+): { triggered: boolean; ignored: boolean; keyword: string; rest: string } {
+  const t = detectUltracodeTrigger(input, keyword, enabled)
+  return {
+    triggered: t.triggered,
+    ignored: isUltracodeKeywordIgnored(input, keyword, enabled, t.triggered),
+    keyword: t.keyword,
+    rest: t.rest,
+  }
 }
 
 /**

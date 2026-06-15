@@ -97,6 +97,10 @@ import {
   findUltracodeTriggerPositions,
   isWorkflowKeywordTriggerEnabled,
 } from '../../utils/ultracode.js';
+import {
+  isUltracodeKeywordIgnored,
+  KEYWORD_IGNORED_TEXT,
+} from '../../utils/ultracodeKeywordIgnored.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
@@ -834,6 +838,40 @@ function PromptInput({
       removeNotification('workflow-keyword-active');
     }
   }, [addNotification, removeNotification, ultracodeTriggers.length]);
+
+  // Show "workflow-keyword-ignored" notification when the user types a
+  // prompt containing the ultracode keyword but the trigger regex did
+  // NOT match (e.g. "tell me about ultracode" — keyword present but no
+  // leading keyword+whitespace). Mirrors upstream v2.1.177
+  // `workflow-keyword-ignored` toast (binary extract line 398920).
+  // Mutually exclusive with 'workflow-keyword-active' (which only fires
+  // when the trigger matches).
+  //
+  // UX gap: OpenCC's notification system is timer-only — no dismiss /
+  // undo action button. Upstream's "to undo" is a clickable label that
+  // we render as static text via the verbatim KEYWORD_IGNORED_TEXT.
+  useEffect(() => {
+    const enabled = isWorkflowKeywordTriggerEnabled();
+    const ignored = isUltracodeKeywordIgnored(
+      displayedValue,
+      'ultracode',
+      enabled,
+      // active path is handled by 'workflow-keyword-active' above; if
+      // ultracodeTriggers.length > 0 here, the trigger regex did not
+      // match, so `triggered=false` from the user's perspective.
+      false,
+    );
+    if (ultracodeTriggers.length && enabled && ignored) {
+      addNotification({
+        key: 'workflow-keyword-ignored',
+        text: KEYWORD_IGNORED_TEXT,
+        priority: 'immediate',
+        timeoutMs: 5000,
+      });
+    } else {
+      removeNotification('workflow-keyword-ignored');
+    }
+  }, [addNotification, removeNotification, ultracodeTriggers.length, displayedValue]);
 
   // Track input length for stash hint
   const prevInputLengthRef = useRef(input.length);
