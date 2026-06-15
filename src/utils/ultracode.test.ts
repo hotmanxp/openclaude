@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 
 import {
   detectUltracodeTrigger,
@@ -56,6 +56,35 @@ describe('ultracode core utilities', () => {
       const result = detectUltracodeTrigger('ultracode', 'ultracode', true)
       expect(result.triggered).toBe(false)
       expect(result.keyword).toBe('ultracode')
+    })
+  })
+
+  describe('detectUltracodeTrigger analytics', () => {
+    it('emits tengu_workflow_keyword when triggered=true', async () => {
+      const calls: Array<{ name: string; meta: unknown }> = []
+      mock.module('../services/analytics/index.js', () => ({
+        logEvent: (name: string, meta: unknown) => {
+          calls.push({ name, meta })
+        },
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      mod.detectUltracodeTrigger('ultracode fix the bug', 'ultracode', true)
+      const workflowCalls = calls.filter(c => c.name === 'tengu_workflow_keyword')
+      expect(workflowCalls.length).toBeGreaterThan(0)
+      expect(workflowCalls[0]?.meta).toEqual({ keyword: 'ultracode' })
+    })
+
+    it('does not emit tengu_workflow_keyword when triggered=false', async () => {
+      const calls: Array<{ name: string; meta: unknown }> = []
+      mock.module('../services/analytics/index.js', () => ({
+        logEvent: (name: string, meta: unknown) => {
+          calls.push({ name, meta })
+        },
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      mod.detectUltracodeTrigger('fix the bug', 'ultracode', true)
+      const workflowCalls = calls.filter(c => c.name === 'tengu_workflow_keyword')
+      expect(workflowCalls.length).toBe(0)
     })
   })
 })

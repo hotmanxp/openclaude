@@ -2,6 +2,10 @@ import { getInitialSettings } from './settings/settings.js'
 import { isUltracodeReminderOn } from './ultracodeReminder.js'
 import { findKeywordTriggerPositions } from './ultraplan/keyword.js'
 import { createUserMessage } from './messages.js'
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from '../services/analytics/index.js'
 
 /**
  * Ultracode is xhigh effort + standing dynamic-workflow orchestration.
@@ -80,6 +84,9 @@ export function detectUltracodeTrigger(
   if (!match) {
     return { triggered: false, keyword, rest: input }
   }
+  logEvent('tengu_workflow_keyword', {
+    keyword: keyword as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  })
   return { triggered: true, keyword, rest: match[1]! }
 }
 
