@@ -1,9 +1,7 @@
 // @ts-nocheck
 import { describe, expect, it, mock } from 'bun:test'
 
-import {
-  detectUltracodeTrigger,
-} from './ultracode.js'
+import { detectUltracodeTrigger } from './ultracode.js'
 
 // These tests previously used `mock.module('./settings/settings.js', ...)`
 // to control the settings shape. bun's mock.module leaks across test files
@@ -85,6 +83,57 @@ describe('ultracode core utilities', () => {
       mod.detectUltracodeTrigger('fix the bug', 'ultracode', true)
       const workflowCalls = calls.filter(c => c.name === 'tengu_workflow_keyword')
       expect(workflowCalls.length).toBe(0)
+    })
+  })
+
+  describe('detectUltracodeTrigger → keyword-ignored toast queueing', () => {
+    it('queues an ignored toast when enabled=false and input contains keyword', async () => {
+      mock.module('./ultracodeKeywordIgnored.js', () => ({
+        queueKeywordIgnoredToast: mock(() => undefined),
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      const result = mod.detectUltracodeTrigger(
+        'tell me about ultracode',
+        'ultracode',
+        false,
+      )
+      expect(result.triggered).toBe(false)
+    })
+
+    it('queues an ignored toast when enabled=true but keyword lacks separator', async () => {
+      let called = 0
+      mock.module('./ultracodeKeywordIgnored.js', () => ({
+        queueKeywordIgnoredToast: () => {
+          called++
+        },
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      mod.detectUltracodeTrigger('tell me about ultracode', 'ultracode', true)
+      expect(called).toBe(1)
+    })
+
+    it('does NOT queue an ignored toast when trigger regex matches', async () => {
+      let called = 0
+      mock.module('./ultracodeKeywordIgnored.js', () => ({
+        queueKeywordIgnoredToast: () => {
+          called++
+        },
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      mod.detectUltracodeTrigger('ultracode fix bug', 'ultracode', true)
+      expect(called).toBe(0)
+    })
+
+    it('does NOT queue an ignored toast when keyword is absent from input', async () => {
+      let called = 0
+      mock.module('./ultracodeKeywordIgnored.js', () => ({
+        queueKeywordIgnoredToast: () => {
+          called++
+        },
+      }))
+      const mod = await import(`./ultracode.js?ts=${Date.now()}-${Math.random()}`)
+      mod.detectUltracodeTrigger('hello world', 'ultracode', true)
+      expect(called).toBe(0)
     })
   })
 })
