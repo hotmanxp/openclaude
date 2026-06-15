@@ -1,10 +1,10 @@
 {
-  "name": "@gitlawb/openclaude",
-  "version": "0.18.0",
+  "name": "@hotmanxp/opencc",
+  "version": "0.17.0",
   "description": "OpenClaude opens coding-agent workflows to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
-    "openclaude": "./bin/openclaude"
+    "opencc": "./bin/opencc"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -20,15 +20,14 @@
     "dist/sdk.mjs",
     "src/entrypoints/sdk.d.ts",
     "src/entrypoints/sdk/coreTypes.generated.ts",
-    "scripts/windows/openclaude-aliases.ps1",
-    "docs/windows-aliases-and-launchers.md",
-    "README.md"
+    "README.md",
+    "vendor/"
   ],
   "scripts": {
-    "build": "bun run scripts/build.ts",
+    "build": "bun run scripts/check-feature-solidify.ts && bun run scripts/build.ts",
     "integrations:generate": "bun run scripts/generate-integrations-artifacts.ts",
     "integrations:check": "bun run scripts/generate-integrations-artifacts.ts --check",
-    "dev": "bun run build && node bin/openclaude",
+    "dev": "bun run build && node bin/opencc",
     "dev:profile": "bun run scripts/provider-launch.ts",
     "dev:profile:fast": "bun run scripts/provider-launch.ts auto --fast --bare",
     "dev:codex": "bun run scripts/provider-launch.ts codex",
@@ -47,7 +46,7 @@
     "dev:code": "bun run profile:code && bun run dev:profile",
     "dev:grpc": "bun run scripts/start-grpc.ts",
     "dev:grpc:cli": "bun run scripts/grpc-cli.ts",
-    "start": "node bin/openclaude",
+    "start": "node bin/opencc",
     "web:dev": "bun run --cwd web dev",
     "web:build": "bun run --cwd web build",
     "web:preview": "bun run --cwd web preview",
@@ -61,8 +60,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:type-tests": "bun run scripts/typecheck-type-tests.ts",
     "smoke": "bun run build && node dist/cli.mjs --version",
-    "deadcode": "knip --include files,dependencies",
-    "check": "bun run smoke && bun run deadcode && bun run test:full",
+    "smoke:bg-agent-view": "bash scripts/smoke-bg-agent-view.sh",
+    "check": "bun run smoke && bun run typecheck:type-tests && bun run test:full",
     "verify:privacy": "bun run scripts/verify-no-phone-home.ts",
     "build:verified": "bun run build && bun run verify:privacy",
     "test:provider": "bun test --max-concurrency=1 src/services/api/*.test.ts src/utils/context.test.ts",
@@ -78,23 +77,26 @@
     "@anthropic-ai/bedrock-sdk": "0.29.1",
     "@anthropic-ai/foundry-sdk": "0.2.3",
     "@anthropic-ai/sandbox-runtime": "0.0.46",
-    "@anthropic-ai/sdk": "0.94.0",
+    "@anthropic-ai/sdk": "0.91.1",
     "@anthropic-ai/vertex-sdk": "0.16.0",
     "@commander-js/extra-typings": "12.1.0",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
+    "@mendable/firecrawl-js": "4.23.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@orama/orama": "^3.1.18",
     "@orama/plugin-data-persistence": "^3.1.18",
     "@vscode/ripgrep": "^1.17.1",
-    "ajv": "8.18.0",
+    "acorn": "^8.15",
+    "ajv": "^8",
     "auto-bind": "5.0.1",
-    "axios": "1.16.0",
+    "axios": "1.15.2",
     "bidi-js": "1.0.3",
     "chalk": "5.6.2",
     "chokidar": "4.0.3",
     "cli-boxes": "3.0.0",
     "cli-highlight": "2.1.11",
+    "code-excerpt": "4.0.0",
     "commander": "12.1.0",
     "cross-spawn": "7.0.6",
     "diff": "8.0.3",
@@ -125,6 +127,7 @@
     "sharp": "^0.34.5",
     "shell-quote": "1.8.3",
     "signal-exit": "4.1.0",
+    "stack-utils": "2.0.6",
     "supports-hyperlinks": "3.2.0",
     "tree-kill": "1.2.2",
     "turndown": "7.2.2",
@@ -139,10 +142,14 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@testing-library/react-hooks": "^8.0.1",
+    "@types/asciichart": "^1.5.8",
     "@types/bun": "1.3.11",
     "@types/node": "25.5.0",
     "@types/react": "19.2.14",
-    "knip": "^6.16.1",
+    "asciichart": "^1.5.25",
+    "react-test-renderer": "^19.2.6",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3"
   },
   "engines": {
@@ -167,7 +174,6 @@
     "access": "public"
   },
   "overrides": {
-    "ip-address": "10.2.0",
     "lodash-es": "4.18.1"
   }
 }
