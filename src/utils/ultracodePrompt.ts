@@ -2,17 +2,12 @@
 //
 // Appended to workflow-spawned subagent system prompts when isUltracodeActive() is true.
 //
-// Source:
-// - The "**Ultracode.**" opt-in rule paragraph is VERBATIM from upstream
-//   claude-code v2.1.170 (Workflow tool description, extracted from the
-//   compiled binary as the `Ut8` template literal).
-// - The "Composing patterns" code block, "Quality patterns" list, and
-//   "Scale to what the user asked for" guidance are reconstructed from
-//   upstream's intent (the patterns are documented upstream but as separate
-//   bullets, not a single contiguous block). The structural shape matches
-//   upstream's documented quality-pattern taxonomy; the prose may differ.
-// - The "You are a subagent spawned by a workflow orchestration script"
-//   preamble is the standard upstream subagent intro and is verbatim.
+// Source: VERBATIM from upstream claude-code v2.1.170 (Workflow tool
+// description, extracted from the compiled binary as the `Ut8` template
+// literal at offset 530459). Re-verified verbatim against v2.1.177
+// binary extract on 2026-06-15 — all four sections (Ultracode opt-in
+// rule, Composing patterns, Quality patterns, Scale to what the user
+// asked for) appear contiguously in the upstream template.
 //
 // This file is the single source of truth for ultracode subagent text.
 // See Task 4 of docs/superpowers/plans/2026-06-10-plan9-ultracode-sync.md.
