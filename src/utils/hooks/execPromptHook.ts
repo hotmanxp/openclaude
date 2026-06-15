@@ -5,6 +5,10 @@ import {
   bumpGoalIteration,
   clearActiveGoalIfActive,
 } from '../../services/goal/hooks.js'
+import {
+  GOAL_HOOK_GENERIC_PROMPT,
+  GOAL_STOP_CONDITION_PROMPT,
+} from '../../services/goal/prompts.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { HookResultMessage, Message } from '../../types/message.js'
 import { createAttachmentMessage } from '../attachments.js'
@@ -304,11 +308,15 @@ export async function execPromptHook(
 
     // First-attempt system prompt. The `Retry` variant below is more
     // aggressive — used when the first response isn't parseable JSON.
-    const FIRST_SYSTEM_PROMPT = `You are evaluating a hook in Open CC.
-
-Your response must be a JSON object matching one of the following schemas:
-1. If the condition is met, return: {"ok": true}
-2. If the condition is not met, return: {"ok": false, "reason": "Reason for why it is not met"}`
+    //
+    // Select prompt by hook event:
+    //   - Stop → detailed 3-shape guidance with "impossible" semantics
+    //     (matches upstream claude-code 2.1.177)
+    //   - Other events → generic 2-shape (UserPromptSubmit etc.)
+    const FIRST_SYSTEM_PROMPT =
+      hookEvent === 'Stop'
+        ? GOAL_STOP_CONDITION_PROMPT
+        : GOAL_HOOK_GENERIC_PROMPT
 
     const RETRY_SYSTEM_PROMPT = `You are evaluating a hook in Open CC. Your previous response could not be parsed as JSON.
 

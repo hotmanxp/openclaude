@@ -188,3 +188,41 @@ describe('execPromptHook — /goal Stop-hook blocking path integration', () => {
     expect(state.activeGoal?.achievedAt).toBeUndefined()
   })
 })
+
+describe('execPromptHook — Stop-condition prompt content (gap #1)', () => {
+  test('Stop hook fires with detailed 3-shape prompt (not terse 2-shape)', async () => {
+    // Capture the systemPrompt passed to queryModelWithoutStreaming.
+    // The brand `SystemPrompt` is `readonly string[]` (see asSystemPrompt),
+    // so the captured value is an array of strings, not blocks.
+    let capturedSystemPrompt: string = ''
+    ;(queryModelWithoutStreamingMock as any).mockImplementation(async (opts: any) => {
+      const sys = opts?.systemPrompt
+      capturedSystemPrompt = Array.isArray(sys)
+        ? sys.join('\n')
+        : String(sys ?? '')
+      return { message: { content: [{ type: 'text', text: '{"ok": true, "reason": "all tests pass"}' }] } }
+    })
+
+    const state: AppState = makeAppState()
+    seedActiveGoal(state, 'finish tests')
+    const toolUseContext: ToolUseContext = makeToolUseContext(state)
+
+    await execPromptHook(
+      hook,
+      'goal-stop',
+      'Stop',
+      JSON.stringify({ session_id: 'test' }),
+      new AbortController().signal,
+      toolUseContext,
+      [],
+    )
+
+    // 3 distinguishing markers from the new STOP_CONDITION_PROMPT
+    expect(capturedSystemPrompt).toContain('stop-condition hook')
+    expect(capturedSystemPrompt).toContain('insufficient evidence in transcript')
+    expect(capturedSystemPrompt).toContain('"impossible": true')
+    // Brand must be "Open CC", not "Claude Code"
+    expect(capturedSystemPrompt).toContain('Open CC')
+    expect(capturedSystemPrompt).not.toContain('Claude Code')
+  })
+})
