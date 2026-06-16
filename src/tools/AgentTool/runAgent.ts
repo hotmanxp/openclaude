@@ -60,7 +60,7 @@ import { executeSubagentStartHooks } from '../../utils/hooks.js'
 import { createUserMessage } from '../../utils/messages.js'
 import { getAgentModel } from '../../utils/model/agent.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
-import { resolveAgentRunModelRouting } from '../../services/api/agentRouting.js'
+import { resolveAgentRunModelRouting, shouldEnforceModelAllowlist } from '../../services/api/agentRouting.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
 import {
@@ -369,7 +369,14 @@ export async function* runAgent({
       settings,
     })
 
-  if (providerOverride && !isModelAllowed(effectiveModel)) {
+  if (
+    shouldEnforceModelAllowlist(
+      resolvedAgentModel,
+      effectiveModel,
+      providerOverride !== undefined,
+    ) &&
+    !isModelAllowed(effectiveModel)
+  ) {
     throw new Error(
       `Model '${effectiveModel}' is not available. Your organization restricts model selection.`,
     )
