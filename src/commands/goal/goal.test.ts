@@ -67,11 +67,13 @@ describe('/goal clear', () => {
     const result = await call(alias, context)
     expect(result.value).toContain('Goal cleared')
     // After clear, activeGoal is null OR in the 5s "achieved" display
-    // window (achievedAt set, conditional null 5s later). Both states
-    // are "cleared" from the user's perspective — the goal is no longer
-    // being pursued. See clearActiveGoal in src/services/goal/hooks.ts.
+    // v2 of the transcript-restore port split clearActiveGoal into
+    // markGoalAchieved (5s achieved window, used by Stop-hook success)
+    // and forceClearActiveGoal (immediately null, used by /goal clear).
+    // /goal clear is the user-explicit "stop" path — no achieved window,
+    // no setTimeout. Verify the active goal is gone right away.
     const after = getState().activeGoal
-    expect(after === null || after?.achievedAt !== undefined).toBe(true)
+    expect(after).toBeNull()
   })
 })
 
