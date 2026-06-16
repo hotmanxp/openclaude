@@ -78,7 +78,7 @@ export function isEnvTruthy(envVar: string | boolean | undefined): boolean {
  * Features not in DEFAULT_TRUE_LIST return false when env var is not set.
  * Features in DEFAULT_TRUE_LIST return true when env var is not set.
  */
-const DEFAULT_TRUE_RUNTIME_FEATURES: readonly string[] = ['MCP_SKILLS']
+const DEFAULT_TRUE_RUNTIME_FEATURES: readonly string[] = ['MCP_SKILLS', 'HISTORY_SNIP']
 
 export function runtimeFeature(name: string): boolean {
   if (DEFAULT_TRUE_RUNTIME_FEATURES.includes(name)) {

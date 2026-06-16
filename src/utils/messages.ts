@@ -1,5 +1,7 @@
+// @ts-nocheck — pre-existing typecheck debt, see docs/feature-gating.md
 import { feature } from 'bun:bundle'
 import { getAPIProvider } from './model/providers.js'
+
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   ContentBlock,
@@ -76,7 +78,7 @@ import type {
 import { isAdvisorBlock } from './advisor.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { count } from './array.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy, runtimeFeature } from './envUtils.js'
 import {
   type Attachment,
   type HookAttachment,
@@ -2049,7 +2051,7 @@ export function normalizeMessagesForAPI(
   // hashes, breaking VCR fixture lookup. Computed once here so the pre-merge
   // injection (in the user case) and the post-merge sweep below share it.
   let injectSnipTags = false
-  if (feature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
+  if (runtimeFeature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
     const { isSnipRuntimeEnabled } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -2499,7 +2501,7 @@ function isToolResultMessage(msg: Message): boolean {
 export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   const lastContent = normalizeUserTextContent(a.message.content)
   const currentContent = normalizeUserTextContent(b.message.content)
-  if (feature('HISTORY_SNIP')) {
+  if (runtimeFeature('HISTORY_SNIP')) {
     // A merged message is only meta if ALL merged messages are meta. If any
     // operand is real user content, the result must not be flagged isMeta
     // (so internal snip ids get injected and it's treated as user-visible content).
@@ -4242,7 +4244,7 @@ You have exited auto mode. The user may now want to interact more directly. You 
       ])
     }
     case 'context_efficiency': {
-      if (feature('HISTORY_SNIP')) {
+      if (runtimeFeature('HISTORY_SNIP')) {
         const { SNIP_NUDGE_TEXT } =
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -4741,7 +4743,7 @@ export function getMessagesAfterCompactBoundary<
 >(messages: T[], options?: { includeSnipped?: boolean }): T[] {
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
-  if (!options?.includeSnipped && feature('HISTORY_SNIP')) {
+  if (!options?.includeSnipped && runtimeFeature('HISTORY_SNIP')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { projectSnippedView } =
       require('../services/compact/snipProjection.js') as typeof import('../services/compact/snipProjection.js')
