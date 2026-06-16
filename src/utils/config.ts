@@ -623,6 +623,22 @@ export type GlobalConfig = {
 
   // Knowledge Graph configuration
   knowledgeGraphEnabled: boolean
+
+  // Startup splash logo color scheme — set via /logo. See
+  // src/components/StartupScreen.palettes.ts for valid values. Stored as a
+  // plain string (validated on read) to avoid pulling a UI module into the
+  // config layer. Falls back to 'sunset' if missing or unrecognized.
+  logoColor?: string
+
+  // Message-count-based compaction threshold. Set via /config.
+  // 'off' = disabled (default). Otherwise, one of '100', '200', '500', '1000'.
+  // When enabled, triggers forced compaction if the message count exceeds the
+  // chosen threshold, regardless of token usage.
+  maxMessagesCompactionThreshold?: MaxMessagesCompactionThreshold
+
+  // Use a different (e.g. cheaper/faster) model for compaction.
+  // Defaults to mainLoopModel when unset.
+  compactModel?: string
 }
 
 /**
@@ -721,6 +737,9 @@ export const GLOBAL_CONFIG_KEYS = [
   'remoteControlAtStartup',
   'remoteDialogSeen',
   'knowledgeGraphEnabled',
+  'logoColor',
+  'maxMessagesCompactionThreshold',
+  'compactModel',
 ] as const
 
 export type GlobalConfigKey = (typeof GLOBAL_CONFIG_KEYS)[number]
