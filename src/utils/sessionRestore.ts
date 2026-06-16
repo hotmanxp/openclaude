@@ -43,6 +43,13 @@ import { fileHistoryRestoreStateFromLog } from './fileHistory.js'
 import { createSystemMessage } from './messages.js'
 import { parseUserSpecifiedModel } from './model/model.js'
 import { getPlansDirectory } from './plans.js'
+import {
+  getActiveGoalFromTranscript,
+  GOAL_HOOK_MATCHER,
+  GOAL_HOOK_TIMEOUT_S,
+} from '../services/goal/hooks.js'
+import { createActiveGoal } from '../services/goal/activeGoal.js'
+import { addSessionHook } from './hooks/sessionHooks.js'
 import { setCwd } from './Shell.js'
 import {
   adoptResumedSessionFile,
@@ -149,9 +156,57 @@ export function restoreSessionStateFromLog(
     }
   }
 
-  // Clear session-scoped auto-continuation goal on resume. /goal tracking
-  // is not persisted across sessions — see /goal command behavior.
-  setAppState(prev => ({ ...prev, activeGoal: null }))
+  // Restore /goal state from the goal_status attachment in messages (if
+  // any). Mirrors upstream 2.1.177 `restoreGoalFromTranscript`.
+  //
+  // setActiveGoal / markGoalAchieved / forceClearActiveGoal each push a
+  // goal_status attachment on every state-change so --resume can
+  // rehydrate:
+  //
+  //   - 'active'   → re-activate the goal (re-register Stop prompt hook)
+  //   - 'achieved' → achieved-pill for 5s
+  //   - 'cleared'  → user explicitly cleared; do NOT re-activate
+  //
+  // See docs/sync-upstream-system-reminder-parity.md §42.
+  const restored = result.messages
+    ? getActiveGoalFromTranscript(result.messages)
+    : null
+  if (restored && restored.state === 'active') {
+    // Full restore: rebuild the ActiveGoal AND re-register the Stop
+    // prompt hook so the LLM can re-evaluate the condition on the
+    // next user message. Without re-registering, the restored
+    // activeGoal would be UI-only and never trigger execPromptHook on
+    // Stop (the LLM would just exit when it wanted to).
+    const goal = createActiveGoal(restored.condition, restored.tokensAtStart)
+    goal.iterations = restored.iterations
+    setAppState(prev => ({ ...prev, activeGoal: goal }))
+    const sessionId = getSessionId()
+    addSessionHook(setAppState, sessionId, 'Stop', GOAL_HOOK_MATCHER, {
+      type: 'prompt',
+      prompt: restored.condition,
+      timeout: GOAL_HOOK_TIMEOUT_S,
+    })
+  } else if (restored && restored.state === 'achieved') {
+    // Achieved-pill restore: the user already hit the goal before quit,
+    // so the footer pill should show "✔ Goal achieved (Xs · Y turn ·
+    // Zk tokens)" on resume. The 5s setTimeout in markGoalAchieved
+    // will clear it after resume. We do NOT re-register the Stop
+    // prompt hook — the goal is done.
+    const goal = createActiveGoal(restored.condition, 0)
+    goal.iterations = restored.iterations
+    setAppState(prev => ({
+      ...prev,
+      activeGoal: {
+        ...goal,
+        achievedAt: restored.achievedAt,
+        tokensAtEnd: restored.tokensAtEnd,
+      },
+    }))
+  } else {
+    // Either no goal was ever set, or the user explicitly cleared the
+    // goal before quit (state:'cleared'). Either way: do not re-activate.
+    setAppState(prev => ({ ...prev, activeGoal: null }))
+  }
 }
 
 /**

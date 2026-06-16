@@ -6,7 +6,9 @@ import {
   checkGoalGate,
   clearActiveGoal,
   clearActiveGoalIfActive,
+  forceClearActiveGoal,
   getActiveGoalFromTranscript,
+  markGoalAchieved,
   setActiveGoal,
 } from './hooks.js'
 import type { Message } from '../../types/message.js'
@@ -118,74 +120,92 @@ describe('clearActiveGoal', () => {
   })
 })
 
-describe('getActiveGoalFromTranscript', () => {
+describe('getActiveGoalFromTranscript (v2: state-based resume)', () => {
+  // v2 returns a discriminated union: {state: 'active' | 'achieved' | 'cleared', ...}
+  // so sessionRestore can branch on what to rehydrate. See
+  // docs/sync-upstream-system-reminder-parity.md §42 for the v2 design.
+
   test('returns null when no goal_status attachment in messages', () => {
     const messages: Message[] = []
     expect(getActiveGoalFromTranscript(messages)).toBeNull()
   })
 
-  test('returns the most recent non-sentinel met goal_status', () => {
+  test('returns {state:"active"} for the most recent set/bump entry', () => {
+    // /goal X writes a 'set' attachment. bumpGoalIteration writes 'bump'
+    // attachments. Both are state:"active" on resume — meaning the
+    // session was still in progress when it ended.
     const messages: Message[] = [
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: true, condition: 'A' },
+        attachment: { type: 'goal_status', state: 'set', condition: 'A' },
       } as unknown as Message,
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: false, condition: 'A', iterations: 3 },
+        attachment: { type: 'goal_status', state: 'bump', condition: 'A', iterations: 3 },
       } as unknown as Message,
     ]
-    expect(getActiveGoalFromTranscript(messages)?.iterations).toBe(3)
+    const r = getActiveGoalFromTranscript(messages)
+    expect(r).not.toBeNull()
+    const active = r as Extract<NonNullable<typeof r>, { state: 'active' }>
+    expect(active.state).toBe('active')
+    expect(active.condition).toBe('A')
+    expect(active.iterations).toBe(3)
   })
 
-  test('skips unmet entries when mixed with met entries', () => {
+  test('returns {state:"achieved"} when the most recent entry is achieve', () => {
     const messages: Message[] = [
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: false, condition: 'A', iterations: 2 },
+        attachment: { type: 'goal_status', state: 'set', condition: 'A' },
       } as unknown as Message,
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: false, sentinel: false, condition: 'B', iterations: 5 },
+        attachment: { type: 'goal_status', state: 'achieve', condition: 'A', iterations: 3, tokens: 4200 },
       } as unknown as Message,
     ]
-    // Walks back-to-front; the unmet B comes first, so the most recent met is A.
-    expect(getActiveGoalFromTranscript(messages)?.condition).toBe('A')
-    expect(getActiveGoalFromTranscript(messages)?.iterations).toBe(2)
+    const r = getActiveGoalFromTranscript(messages)
+    const achieved = r as Extract<NonNullable<typeof r>, { state: 'achieved' }>
+    expect(achieved.state).toBe('achieved')
+    expect(achieved.condition).toBe('A')
+    expect(achieved.iterations).toBe(3)
   })
 
-  test('returns the most recent met entry when multiple met entries exist', () => {
+  test('returns {state:"cleared"} when the most recent entry is clear', () => {
+    // The user explicitly cleared — resume should NOT re-activate.
     const messages: Message[] = [
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: false, condition: 'older', iterations: 1 },
+        attachment: { type: 'goal_status', state: 'set', condition: 'A' },
       } as unknown as Message,
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: false, condition: 'newer', iterations: 7 },
+        attachment: { type: 'goal_status', state: 'clear', condition: 'A' },
       } as unknown as Message,
     ]
-    expect(getActiveGoalFromTranscript(messages)?.condition).toBe('newer')
-    expect(getActiveGoalFromTranscript(messages)?.iterations).toBe(7)
+    const r = getActiveGoalFromTranscript(messages)
+    expect(r!.state).toBe('cleared')
+    expect(r!.condition).toBe('A')
   })
 
   test('skips non-goal_status attachments', () => {
     const messages: Message[] = [
       {
         type: 'attachment',
-        attachment: { type: 'tool_result', met: true, condition: 'noise' },
+        attachment: { type: 'tool_result', condition: 'noise' },
       } as unknown as Message,
       {
         type: 'attachment',
-        attachment: { type: 'image', met: true, condition: 'noise' },
+        attachment: { type: 'image', condition: 'noise' },
       } as unknown as Message,
       {
         type: 'attachment',
-        attachment: { type: 'goal_status', met: true, sentinel: false, condition: 'real', iterations: 4 },
+        attachment: { type: 'goal_status', state: 'bump', condition: 'real', iterations: 4 },
       } as unknown as Message,
     ]
-    expect(getActiveGoalFromTranscript(messages)?.condition).toBe('real')
-    expect(getActiveGoalFromTranscript(messages)?.iterations).toBe(4)
+    const r = getActiveGoalFromTranscript(messages)
+    const active = r as Extract<NonNullable<typeof r>, { state: 'active' }>
+    expect(active.condition).toBe('real')
+    expect(active.iterations).toBe(4)
   })
 })
 
@@ -270,10 +290,12 @@ describe('Stop prompt hook (upstream-style architecture)', () => {
 function makeToolUseContext(
   state: AppState,
   setAppState: (updater: (prev: AppState) => AppState) => void,
+  messages: Message[] = [],
 ): Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext'] {
   return {
     getAppState: () => state,
     setAppState,
+    messages,
   } as unknown as Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext']
 }
 
@@ -362,3 +384,166 @@ describe('bumpGoalIteration (Stop hook blocking path helper)', () => {
     expect(state.activeGoal?.iterations).toBe(0)
   })
 })
+
+// ============================================================
+// v2 transcript-restore: emitters push real goal_status attachments
+// into the messages array, mirroring upstream 2.1.177 `vlK()`.
+// See docs/sync-upstream-system-reminder-parity.md §42.
+// ============================================================
+
+describe('v2 emitter: setActiveGoal pushes a "set" attachment', () => {
+  test('emits {state:"set", condition, timestamp, iterations:0}', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({
+      condition: 'finish tests',
+      setAppState,
+      appState,
+      messages,
+    })
+    const goalAtts = messages.filter(
+      isGoalStatusAttachment,
+    ) as GoalStatusAttachmentMsg[]
+    expect(goalAtts.length).toBe(1)
+    expect(goalAtts[0]!.attachment.state).toBe('set')
+    expect(goalAtts[0]!.attachment.condition).toBe('finish tests')
+    expect(goalAtts[0]!.attachment.iterations).toBe(0)
+  })
+
+  test('legacy callers without messages still work (no crash)', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    expect(() =>
+      setActiveGoal({ condition: 'X', setAppState, appState }),
+    ).not.toThrow()
+  })
+})
+
+describe('v2 emitter: markGoalAchieved pushes an "achieve" attachment', () => {
+  test('emits {state:"achieve", condition, iterations, tokens}', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({ condition: 'X', setAppState, appState, messages })
+    markGoalAchieved({ setAppState, appState, messages })
+    const goalAtts = messages.filter(
+      isGoalStatusAttachment,
+    ) as GoalStatusAttachmentMsg[]
+    expect(goalAtts.length).toBe(2) // set + achieve
+    expect(goalAtts[0]!.attachment.state).toBe('set')
+    expect(goalAtts[1]!.attachment.state).toBe('achieve')
+    expect(typeof goalAtts[1]!.attachment.tokens).toBe('number')
+  })
+})
+
+describe('v2 emitter: bumpGoalIteration pushes a "bump" attachment', () => {
+  test('emits {state:"bump", iterations: n+1}', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({ condition: 'X', setAppState, appState, messages })
+    bumpGoalIteration({
+      toolUseContext: makeToolUseContext(appState, setAppState, messages),
+    })
+    const goalAtts = messages.filter(
+      isGoalStatusAttachment,
+    ) as GoalStatusAttachmentMsg[]
+    expect(goalAtts.length).toBe(2) // set + bump
+    expect(goalAtts[1]!.attachment.state).toBe('bump')
+    expect(goalAtts[1]!.attachment.iterations).toBe(1)
+  })
+})
+
+describe('v2 emitter: forceClearActiveGoal pushes a "clear" attachment', () => {
+  test('emits {state:"clear"} and immediately nulls activeGoal', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({ condition: 'X', setAppState, appState, messages })
+    expect(appState.activeGoal).not.toBeNull()
+    forceClearActiveGoal({ setAppState, appState, messages })
+    // /goal clear is the user-explicit "stop" path: immediately null,
+    // no 5s achieved window.
+    expect(appState.activeGoal).toBeNull()
+    const goalAtts = messages.filter(
+      isGoalStatusAttachment,
+    ) as GoalStatusAttachmentMsg[]
+    expect(goalAtts.length).toBe(2) // set + clear
+    expect(goalAtts[1]!.attachment.state).toBe('clear')
+  })
+
+  test('also removes the Stop prompt hook', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({ condition: 'X', setAppState, appState, messages })
+    const before =
+      appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length ?? 0
+    expect(before).toBe(1)
+    forceClearActiveGoal({ setAppState, appState, messages })
+    // After removal the Stop key may be deleted entirely (length is
+    // undefined in that case) or be an empty array (length is 0). Both
+    // mean the hook is gone.
+    const after =
+      appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length ?? 0
+    expect(after).toBe(0)
+  })
+})
+
+describe('v2 emitter: clearActiveGoal is now an alias for markGoalAchieved (backward compat)', () => {
+  // The existing 5 callsites (and the original /goal clear path before
+  // this refactor) all use clearActiveGoal. To avoid breaking them, we
+  // keep clearActiveGoal as an alias that still pushes the "achieve"
+  // sentinel. /goal clear is the only path that should call
+  // forceClearActiveGoal.
+  test('clearActiveGoal emits "achieve" (not "clear")', () => {
+    const appState = makeAppState()
+    const setAppState = (updater: (prev: AppState) => AppState) => {
+      Object.assign(appState, updater(appState))
+    }
+    const messages: Message[] = []
+    setActiveGoal({ condition: 'X', setAppState, appState, messages })
+    clearActiveGoal({ setAppState, appState, messages })
+    const goalAtts = messages.filter(
+      isGoalStatusAttachment,
+    ) as GoalStatusAttachmentMsg[]
+    expect(goalAtts[goalAtts.length - 1]!.attachment.state).toBe('achieve')
+  })
+})
+
+// helper — returns the message if it carries a goal_status attachment,
+// else null. Note: Array.prototype.filter keeps the original element, NOT
+// the predicate's return value, so this returns the message and tests
+// access `goalAtts[i].attachment.state` (cast as GoalStatusAttachmentMsg
+// to bypass the pre-existing type lie in createAttachmentMessage's
+// declared return type — see src/utils/attachments.goal_status.test.ts).
+type GoalStatusAttachmentMsg = Message & {
+  attachment: {
+    type: 'goal_status'
+    state: 'set' | 'bump' | 'achieve' | 'clear'
+    condition: string
+    iterations?: number
+    tokens?: number
+    timestamp?: number
+  }
+}
+
+function isGoalStatusAttachment(m: Message): GoalStatusAttachmentMsg | null {
+  if (m.type !== 'attachment') return null
+  const a = (m as unknown as { attachment?: { type?: string } }).attachment
+  if (a?.type !== 'goal_status') return null
+  return m as unknown as GoalStatusAttachmentMsg
+}
