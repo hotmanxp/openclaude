@@ -870,10 +870,10 @@ async function* queryLoop(
         const content =
           retryDelayMs !== undefined && retryDelayMs > 0
             ? 'The conversation is over the auto-compact threshold, but automatic compaction is cooling down after repeated failures. ' +
-              'OpenClaude stopped before sending another oversized request. ' +
+              'OpenCC stopped before sending another oversized request. ' +
               `Retry after ${formatAutoCompactRetryDelay(retryDelayMs)}, run /compact, or start a new session with /new.`
             : 'The conversation is over the auto-compact threshold and automatic compaction has failed repeatedly. ' +
-              'OpenClaude stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.'
+              'OpenCC stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.'
         yield createAssistantAPIErrorMessage({
           content,
           error: 'invalid_request',

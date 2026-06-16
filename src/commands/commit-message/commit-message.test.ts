@@ -15,9 +15,9 @@ describe('commit-message command helpers', () => {
   })
 
   it('parses co-author trailers with angle-bracket emails', () => {
-    expect(parseCoAuthor('OpenClaude (gpt-5.5) <noreply@opencc.dev>')).toEqual(
+    expect(parseCoAuthor('OpenCC (gpt-5.5) <noreply@opencc.dev>')).toEqual(
       {
-        name: 'OpenClaude (gpt-5.5)',
+        name: 'OpenCC (gpt-5.5)',
         email: 'noreply@opencc.dev',
       },
     )
@@ -29,21 +29,21 @@ describe('commit-message command helpers', () => {
   })
 
   it('strips one pair of matching quotes from custom attribution text', () => {
-    expect(stripMatchingQuotes('"Generated with OpenClaude"')).toBe(
-      'Generated with OpenClaude',
+    expect(stripMatchingQuotes('"Generated with OpenCC"')).toBe(
+      'Generated with OpenCC',
     )
-    expect(stripMatchingQuotes("'Generated with OpenClaude'")).toBe(
-      'Generated with OpenClaude',
+    expect(stripMatchingQuotes("'Generated with OpenCC'")).toBe(
+      'Generated with OpenCC',
     )
-    expect(stripMatchingQuotes('"Generated with OpenClaude')).toBe(
-      '"Generated with OpenClaude',
+    expect(stripMatchingQuotes('"Generated with OpenCC')).toBe(
+      '"Generated with OpenCC',
     )
   })
 
   it('formats a sanitized co-author trailer', () => {
     expect(
-      formatCoAuthorTrailer('OpenClaude <gpt>\n', '<noreply@opencc.dev>'),
-    ).toBe('Co-Authored-By: OpenClaude gpt <noreply@opencc.dev>')
+      formatCoAuthorTrailer('OpenCC <gpt>\n', '<noreply@opencc.dev>'),
+    ).toBe('Co-Authored-By: OpenCC gpt <noreply@opencc.dev>')
   })
 
   it('makes set scope explicit with example text', () => {
@@ -51,7 +51,7 @@ describe('commit-message command helpers', () => {
       'Controls only the attribution text appended after /commit messages.',
     )
     expect(USAGE).toContain(
-      '/commit-message set "Generated with OpenClaude using GPT-5.5"',
+      '/commit-message set "Generated with OpenCC using GPT-5.5"',
     )
     expect(USAGE).not.toContain('/commit-message set-attribution')
   })

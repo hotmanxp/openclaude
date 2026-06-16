@@ -63,7 +63,7 @@ ${prompt}
 }
 
 describe('agent definition loading', () => {
-  test('loads user agents from the OpenClaude config dir in simple mode', async () => {
+  test('loads user agents from the OpenCC config dir in simple mode', async () => {
     await writeAgent(
       join(process.env.CLAUDE_CONFIG_DIR!, 'agents', 'user-agent.md'),
       'user-agent',
