@@ -634,6 +634,32 @@ export type Attachment =
     }
   | AsyncHookResponseAttachment
   | {
+      // Goal-status sentinel — see src/services/goal/hooks.ts.
+      //
+      // Persisted to the messages JSONL so /goal tracking survives
+      // --resume (transcript restore). The `state` field discriminates
+      // between the four goal lifecycle events:
+      //   - 'set'      : /goal X was set (active goal, not yet achieved)
+      //   - 'bump'     : Stop-hook iteration was bumped (active goal)
+      //   - 'achieve'  : Stop-hook LLM returned ok:true (achieved-pill)
+      //   - 'clear'    : /goal clear was issued (user explicitly cleared,
+      //                  resume should NOT re-activate)
+      //
+      // sessionRestore reads the most recent entry and rehydrates the
+      // appropriate state. Render path in messages.ts returns [] (UI-only
+      // surfacing via the footer pill, not prompt injection). Mirrors
+      // upstream 2.1.177 `poK.goal_status = () => []`.
+      type: 'goal_status'
+      state: 'set' | 'bump' | 'achieve' | 'clear'
+      condition: string
+      /** Wall-clock ms at the time the sentinel was appended. */
+      timestamp?: number
+      /** Stop-hook iteration count when the sentinel was appended. */
+      iterations?: number
+      /** tokensAtEnd at the time the sentinel was appended (achieve only). */
+      tokens?: number
+    }
+  | {
       type: 'token_usage'
       used: number
       total: number
