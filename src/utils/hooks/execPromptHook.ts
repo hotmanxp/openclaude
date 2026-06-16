@@ -615,7 +615,14 @@ export async function execPromptHook(
         // stop. No-op when no goal is active (non-/goal hooks).
         try {
           bumpGoalIteration({
-            toolUseContext,
+            toolUseContext: {
+              ...toolUseContext,
+              // Persist the bumped iteration to the messages JSONL so
+              // --resume restores the same iteration count. Without
+              // this the bumped-iteration attachments never land and
+              // sessionRestore would rehydrate a stale iter count.
+              messages: toolUseContext.messages,
+            },
           })
         } catch (e) {
           logForDebugging(

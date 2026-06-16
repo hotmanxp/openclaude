@@ -4,7 +4,7 @@ import {
   type GateResult,
   normalizeCondition,
   setActiveGoal,
-  clearActiveGoal,
+  forceClearActiveGoal,
 } from '../../services/goal/hooks.js'
 
 export function createGoalCall(deps?: {
@@ -31,7 +31,16 @@ export function createGoalCall(deps?: {
       if (!appState.activeGoal) {
         return { type: 'text', value: 'No goal set.' }
       }
-      clearActiveGoal({ setAppState: context.setAppState, appState })
+      // /goal clear is the user-explicit "stop" path. forceClearActiveGoal
+      // immediately nulls activeGoal and pushes a state:'clear' attachment
+      // so --resume knows the user explicitly cleared and should NOT
+      // re-activate. This is distinct from markGoalAchieved (Stop-hook
+      // success path) which shows the achieved-pill for 5s.
+      forceClearActiveGoal({
+        setAppState: context.setAppState,
+        appState,
+        messages: context.messages,
+      })
       return { type: 'text', value: 'Goal cleared.' }
     }
 
@@ -45,6 +54,7 @@ export function createGoalCall(deps?: {
       condition: normalized,
       setAppState: context.setAppState,
       appState: context.getAppState(),
+      messages: context.messages,
     })
 
     return {

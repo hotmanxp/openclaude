@@ -16,6 +16,7 @@ import { getSessionId } from '../../bootstrap/state.js'
 import type { Message } from '../../types/message.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { AppState } from '../../state/AppState.js'
+import { createAttachmentMessage } from '../../utils/attachments.js'
 import {
   createActiveGoal,
   incrementIteration,
@@ -79,7 +80,7 @@ export function normalizeCondition(raw: string): string | { error: string } {
   return trimmed
 }
 
-export { MAX_CONDITION_CHARS, GOAL_HOOK_TIMEOUT_S }
+export { MAX_CONDITION_CHARS, GOAL_HOOK_TIMEOUT_S, GOAL_HOOK_MATCHER }
 
 const GOAL_STATUS_ATTACHMENT_TYPE = 'goal_status'
 
@@ -107,6 +108,10 @@ export function setActiveGoal(opts: {
   condition: string
   setAppState: (updater: (prev: AppState) => AppState) => void
   appState: AppState
+  /** Optional messages array — when provided, the goal_status sentinel is
+   *  pushed here so --resume can restore /goal state from the JSONL.
+   *  See docs/sync-upstream-system-reminder-parity.md §42. */
+  messages?: Message[]
 }): { goal: ActiveGoal } {
   const sessionId = getSessionId()
   // tokensAtStart records input+output token count at goal-set time so the
@@ -144,19 +149,23 @@ export function setActiveGoal(opts: {
     goalPromptHook,
   )
 
-  // 4. Append sentinel attachment (not-met) for transcript restore
+  // 4. Append sentinel attachment (state=set) for transcript restore
   appendGoalStatusAttachment({
     setAppState: opts.setAppState,
-    met: false,
+    messages: opts.messages,
+    state: 'set',
     condition: opts.condition,
+    iterations: 0,
   })
 
   return { goal }
 }
 
-export function clearActiveGoal(opts: {
+export function markGoalAchieved(opts: {
   setAppState: (updater: (prev: AppState) => AppState) => void
   appState: AppState
+  /** Optional messages array — see setActiveGoal for the contract. */
+  messages?: Message[]
 }): void {
   const sessionId = getSessionId()
   const existing = opts.appState.activeGoal
@@ -166,7 +175,7 @@ export function clearActiveGoal(opts: {
   const promptHooks = findGoalPromptHooks(opts.appState, sessionId)
   if (promptHooks.length === 0) {
     logForDebugging(
-      `clearActiveGoal: no goal prompt hook found for condition "${existing.condition}" — possible race or caller misuse`,
+      `markGoalAchieved: no goal prompt hook found for condition "${existing.condition}" — possible race or caller misuse`,
       { level: 'warn' },
     )
   } else {
@@ -186,11 +195,14 @@ export function clearActiveGoal(opts: {
     activeGoal: { ...existing, achievedAt, tokensAtEnd },
   }))
 
-  // 3. Append sentinel attachment (met) for transcript restore
+  // 3. Append sentinel attachment (state=achieve) for transcript restore
   appendGoalStatusAttachment({
     setAppState: opts.setAppState,
-    met: true,
+    messages: opts.messages,
+    state: 'achieve',
     condition: existing.condition,
+    iterations: existing.iterations,
+    tokens: tokensAtEnd,
   })
 
   // 4. Schedule the achieved window to clear so the footer pill eventually
@@ -206,46 +218,165 @@ export function clearActiveGoal(opts: {
   }, ACHIEVED_DISPLAY_MS)
 }
 
+/**
+ * Backward-compat alias. The original API name `clearActiveGoal` is used
+ * by 5+ callsites and historically meant "the goal was achieved, mark it
+ * done". After v2 of the transcript-restore port we renamed the Stop-hook
+ * success path to `markGoalAchieved` (clearer intent). The /goal clear
+ * user-command path is now `forceClearActiveGoal`. This alias keeps the
+ * existing 5+ callsites working without changes.
+ *
+ * @deprecated Use `markGoalAchieved` or `forceClearActiveGoal` directly.
+ */
+export const clearActiveGoal = markGoalAchieved
+
+/**
+ * /goal clear path — user explicitly cancels the active goal.
+ *
+ * Distinct from markGoalAchieved (Stop-hook success). Here we:
+ * 1. Immediately null activeGoal (no 5s achieved window)
+ * 2. Remove the Stop prompt hook so the LLM no longer evaluates
+ * 3. Push a state=clear attachment so --resume knows the user
+ *    explicitly cleared and should NOT re-activate
+ */
+export function forceClearActiveGoal(opts: {
+  setAppState: (updater: (prev: AppState) => AppState) => void
+  appState: AppState
+  /** Optional messages array — see setActiveGoal for the contract. */
+  messages?: Message[]
+}): void {
+  const sessionId = getSessionId()
+  const existing = opts.appState.activeGoal
+  if (!existing) return
+
+  // 1. Remove all goal prompt hooks (mirrors upstream `a1_`).
+  const promptHooks = findGoalPromptHooks(opts.appState, sessionId)
+  for (const hook of promptHooks) {
+    removeSessionHook(opts.setAppState, sessionId, 'Stop', hook)
+  }
+
+  // 2. Immediately null activeGoal — no achieved window for explicit clear
+  opts.setAppState(prev => ({ ...prev, activeGoal: null }))
+
+  // 3. Append sentinel attachment (state=clear) for transcript restore.
+  //    sessionRestore treats this as "user said stop, do not re-activate".
+  appendGoalStatusAttachment({
+    setAppState: opts.setAppState,
+    messages: opts.messages,
+    state: 'clear',
+    condition: existing.condition,
+  })
+}
+
 function appendGoalStatusAttachment(opts: {
   setAppState: (updater: (prev: AppState) => AppState) => void
-  met: boolean
+  messages?: Message[]
+  state: 'set' | 'bump' | 'achieve' | 'clear'
   condition: string
+  iterations?: number
+  tokens?: number
 }): void {
-  // Sentinel markers are recorded in appState.goalSentinel for transcript
-  // restore. OpenCC lacks an applyMessageOp equivalent, so the marker lives
-  // in appState (a known gap from the Stop-hook port spec).
+  // Write the in-memory sentinel for fast-path reads (backward compat).
+  // Mirrors the v1 in-memory goalSentinel field — getActiveGoalFromTranscript
+  // doesn't read this anymore (it scans the messages array), but the
+  // footer pill and other UI consumers may read it.
   opts.setAppState(prev => ({
     ...prev,
     goalSentinel: {
-      met: opts.met,
+      met: opts.state === 'achieve',
       condition: opts.condition,
       timestamp: Date.now(),
     },
   }))
+
+  // Persist a goal_status attachment to the messages array when one is
+  // available. Mirrors upstream 2.1.177 `vlK()` which yields a
+  // goal_status attachment on every met/not-yet-met event. The `state`
+  // field tells sessionRestore what to do on --resume:
+  //   - 'set'|'bump' → re-activate the goal (re-register Stop hook)
+  //   - 'achieve'    → achieved-pill for 5s
+  //   - 'clear'      → user explicitly cleared; do NOT re-activate
+  if (opts.messages) {
+    opts.messages.push(
+      createAttachmentMessage({
+        type: 'goal_status',
+        state: opts.state,
+        condition: opts.condition,
+        timestamp: Date.now(),
+        iterations: opts.iterations,
+        tokens: opts.tokens,
+      }) as unknown as Message,
+    )
+  }
 }
 
+export type GoalState =
+  | {
+      state: 'active'
+      condition: string
+      iterations: number
+      tokensAtStart: number
+      setAt: number
+    }
+  | {
+      state: 'achieved'
+      condition: string
+      iterations: number
+      tokensAtEnd: number
+      achievedAt: number
+    }
+  | { state: 'cleared'; condition: string }
+
+/**
+ * Reverse-scan the messages array for the most recent goal_status
+ * attachment and return the goal state it represents. Returns null if
+ * no goal was ever set in the session.
+ *
+ * Walks back-to-front: the LAST goal_status attachment is the most
+ * recent state. This matches the upstream `restoreGoalFromTranscript`
+ * shape (the in-memory ActiveGoal is always the latest state, not
+ * the first).
+ */
 export function getActiveGoalFromTranscript(
   messages: Message[],
-): { condition: string; iterations: number; tokens: number } | null {
+): GoalState | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m?.type !== 'attachment') continue
     const att = (m as unknown as {
       attachment?: {
         type?: string
-        met?: boolean
-        sentinel?: boolean
+        state?: 'set' | 'bump' | 'achieve' | 'clear'
         condition?: string
         iterations?: number
         tokens?: number
+        timestamp?: number
       }
     }).attachment
     if (att?.type !== GOAL_STATUS_ATTACHMENT_TYPE) continue
-    if (!att.met || att.sentinel) continue
-    return {
-      condition: att.condition ?? '',
-      iterations: att.iterations ?? 0,
-      tokens: att.tokens ?? 0,
+    if (!att.state) continue
+
+    const condition = att.condition ?? ''
+    switch (att.state) {
+      case 'set':
+      case 'bump':
+        return {
+          state: 'active',
+          condition,
+          iterations: att.iterations ?? 0,
+          tokensAtStart: 0, // unknown on resume; the running token counter
+          setAt: att.timestamp ?? Date.now(),
+        }
+      case 'achieve':
+        return {
+          state: 'achieved',
+          condition,
+          iterations: att.iterations ?? 0,
+          tokensAtEnd: att.tokens ?? 0,
+          achievedAt: att.timestamp ?? Date.now(),
+        }
+      case 'clear':
+        return { state: 'cleared', condition }
     }
   }
   return null
@@ -295,7 +426,10 @@ export function clearActiveGoalIfActive(opts: {
  * Returns `true` if iterations were bumped, `false` if no-op.
  */
 export function bumpGoalIteration(opts: {
-  toolUseContext: Pick<ToolUseContext, 'getAppState' | 'setAppState'>
+  toolUseContext: Pick<
+    ToolUseContext,
+    'getAppState' | 'setAppState'
+  > & { messages?: Message[] }
 }): boolean {
   const appState = opts.toolUseContext.getAppState()
   const existing = appState.activeGoal
@@ -304,5 +438,16 @@ export function bumpGoalIteration(opts: {
     ...prev,
     activeGoal: incrementIteration(prev.activeGoal as ActiveGoal),
   }))
+  // Persist the bumped iteration as a goal_status attachment so
+  // --resume restores the same iteration count. Mirrors upstream
+  // 2.1.177 `vlK()` which yields a goal_status attachment on every
+  // Stop-hook iteration.
+  appendGoalStatusAttachment({
+    setAppState: opts.toolUseContext.setAppState,
+    messages: opts.toolUseContext.messages,
+    state: 'bump',
+    condition: existing.condition,
+    iterations: existing.iterations + 1,
+  })
   return true
 }

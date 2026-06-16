@@ -146,10 +146,9 @@ describe('getActiveGoalFromTranscript (v2: state-based resume)', () => {
     ]
     const r = getActiveGoalFromTranscript(messages)
     expect(r).not.toBeNull()
-    const active = r as Extract<NonNullable<typeof r>, { state: 'active' }>
-    expect(active.state).toBe('active')
-    expect(active.condition).toBe('A')
-    expect(active.iterations).toBe(3)
+    expect(r!.state).toBe('active')
+    expect(r!.condition).toBe('A')
+    expect(r!.iterations).toBe(3)
   })
 
   test('returns {state:"achieved"} when the most recent entry is achieve', () => {
@@ -164,10 +163,9 @@ describe('getActiveGoalFromTranscript (v2: state-based resume)', () => {
       } as unknown as Message,
     ]
     const r = getActiveGoalFromTranscript(messages)
-    const achieved = r as Extract<NonNullable<typeof r>, { state: 'achieved' }>
-    expect(achieved.state).toBe('achieved')
-    expect(achieved.condition).toBe('A')
-    expect(achieved.iterations).toBe(3)
+    expect(r!.state).toBe('achieved')
+    expect(r!.condition).toBe('A')
+    expect(r!.iterations).toBe(3)
   })
 
   test('returns {state:"cleared"} when the most recent entry is clear', () => {
@@ -203,9 +201,8 @@ describe('getActiveGoalFromTranscript (v2: state-based resume)', () => {
       } as unknown as Message,
     ]
     const r = getActiveGoalFromTranscript(messages)
-    const active = r as Extract<NonNullable<typeof r>, { state: 'active' }>
-    expect(active.condition).toBe('real')
-    expect(active.iterations).toBe(4)
+    expect(r!.condition).toBe('real')
+    expect(r!.iterations).toBe(4)
   })
 })
 
@@ -290,12 +287,10 @@ describe('Stop prompt hook (upstream-style architecture)', () => {
 function makeToolUseContext(
   state: AppState,
   setAppState: (updater: (prev: AppState) => AppState) => void,
-  messages: Message[] = [],
 ): Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext'] {
   return {
     getAppState: () => state,
     setAppState,
-    messages,
   } as unknown as Parameters<typeof clearActiveGoalIfActive>[0]['toolUseContext']
 }
 
@@ -404,13 +399,11 @@ describe('v2 emitter: setActiveGoal pushes a "set" attachment', () => {
       appState,
       messages,
     })
-    const goalAtts = messages.filter(
-      isGoalStatusAttachment,
-    ) as GoalStatusAttachmentMsg[]
+    const goalAtts = messages.filter(isGoalStatusAttachment)
     expect(goalAtts.length).toBe(1)
-    expect(goalAtts[0]!.attachment.state).toBe('set')
-    expect(goalAtts[0]!.attachment.condition).toBe('finish tests')
-    expect(goalAtts[0]!.attachment.iterations).toBe(0)
+    expect(goalAtts[0]!.state).toBe('set')
+    expect(goalAtts[0]!.condition).toBe('finish tests')
+    expect(goalAtts[0]!.iterations).toBe(0)
   })
 
   test('legacy callers without messages still work (no crash)', () => {
@@ -433,13 +426,11 @@ describe('v2 emitter: markGoalAchieved pushes an "achieve" attachment', () => {
     const messages: Message[] = []
     setActiveGoal({ condition: 'X', setAppState, appState, messages })
     markGoalAchieved({ setAppState, appState, messages })
-    const goalAtts = messages.filter(
-      isGoalStatusAttachment,
-    ) as GoalStatusAttachmentMsg[]
+    const goalAtts = messages.filter(isGoalStatusAttachment)
     expect(goalAtts.length).toBe(2) // set + achieve
-    expect(goalAtts[0]!.attachment.state).toBe('set')
-    expect(goalAtts[1]!.attachment.state).toBe('achieve')
-    expect(typeof goalAtts[1]!.attachment.tokens).toBe('number')
+    expect(goalAtts[0]!.state).toBe('set')
+    expect(goalAtts[1]!.state).toBe('achieve')
+    expect(typeof goalAtts[1]!.tokens).toBe('number')
   })
 })
 
@@ -454,12 +445,10 @@ describe('v2 emitter: bumpGoalIteration pushes a "bump" attachment', () => {
     bumpGoalIteration({
       toolUseContext: makeToolUseContext(appState, setAppState, messages),
     })
-    const goalAtts = messages.filter(
-      isGoalStatusAttachment,
-    ) as GoalStatusAttachmentMsg[]
+    const goalAtts = messages.filter(isGoalStatusAttachment)
     expect(goalAtts.length).toBe(2) // set + bump
-    expect(goalAtts[1]!.attachment.state).toBe('bump')
-    expect(goalAtts[1]!.attachment.iterations).toBe(1)
+    expect(goalAtts[1]!.state).toBe('bump')
+    expect(goalAtts[1]!.iterations).toBe(1)
   })
 })
 
@@ -476,11 +465,9 @@ describe('v2 emitter: forceClearActiveGoal pushes a "clear" attachment', () => {
     // /goal clear is the user-explicit "stop" path: immediately null,
     // no 5s achieved window.
     expect(appState.activeGoal).toBeNull()
-    const goalAtts = messages.filter(
-      isGoalStatusAttachment,
-    ) as GoalStatusAttachmentMsg[]
+    const goalAtts = messages.filter(isGoalStatusAttachment)
     expect(goalAtts.length).toBe(2) // set + clear
-    expect(goalAtts[1]!.attachment.state).toBe('clear')
+    expect(goalAtts[1]!.state).toBe('clear')
   })
 
   test('also removes the Stop prompt hook', () => {
@@ -490,15 +477,10 @@ describe('v2 emitter: forceClearActiveGoal pushes a "clear" attachment', () => {
     }
     const messages: Message[] = []
     setActiveGoal({ condition: 'X', setAppState, appState, messages })
-    const before =
-      appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length ?? 0
+    const before = appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length
     expect(before).toBe(1)
     forceClearActiveGoal({ setAppState, appState, messages })
-    // After removal the Stop key may be deleted entirely (length is
-    // undefined in that case) or be an empty array (length is 0). Both
-    // mean the hook is gone.
-    const after =
-      appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length ?? 0
+    const after = appState.sessionHooks.get(getSessionId())?.hooks.Stop?.length
     expect(after).toBe(0)
   })
 })
@@ -517,33 +499,18 @@ describe('v2 emitter: clearActiveGoal is now an alias for markGoalAchieved (back
     const messages: Message[] = []
     setActiveGoal({ condition: 'X', setAppState, appState, messages })
     clearActiveGoal({ setAppState, appState, messages })
-    const goalAtts = messages.filter(
-      isGoalStatusAttachment,
-    ) as GoalStatusAttachmentMsg[]
-    expect(goalAtts[goalAtts.length - 1]!.attachment.state).toBe('achieve')
+    const goalAtts = messages.filter(isGoalStatusAttachment)
+    expect(goalAtts[goalAtts.length - 1]!.state).toBe('achieve')
   })
 })
 
 // helper — returns the message if it carries a goal_status attachment,
 // else null. Note: Array.prototype.filter keeps the original element, NOT
 // the predicate's return value, so this returns the message and tests
-// access `goalAtts[i].attachment.state` (cast as GoalStatusAttachmentMsg
-// to bypass the pre-existing type lie in createAttachmentMessage's
-// declared return type — see src/utils/attachments.goal_status.test.ts).
-type GoalStatusAttachmentMsg = Message & {
-  attachment: {
-    type: 'goal_status'
-    state: 'set' | 'bump' | 'achieve' | 'clear'
-    condition: string
-    iterations?: number
-    tokens?: number
-    timestamp?: number
-  }
-}
-
-function isGoalStatusAttachment(m: Message): GoalStatusAttachmentMsg | null {
+// access `goalAtts[i].attachment.state`.
+function isGoalStatusAttachment(m: Message): Message | null {
   if (m.type !== 'attachment') return null
   const a = (m as unknown as { attachment?: { type?: string } }).attachment
   if (a?.type !== 'goal_status') return null
-  return m as unknown as GoalStatusAttachmentMsg
+  return m
 }
