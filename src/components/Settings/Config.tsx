@@ -1663,7 +1663,7 @@ export function Config({
               <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
             </Byline>
           </Text>
-        </> : showSubmenu === 'ExternalIncludes' && pendingScope ? <>
+        </> : showSubmenu === 'ExternalIncludes' ? <>
           <ClaudeMdExternalIncludesDialog onDone={() => {
         setShowSubmenu(null);
         setTabsHidden(false);

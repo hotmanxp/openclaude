@@ -182,6 +182,26 @@ export type DiffTool = 'terminal' | 'auto'
 export type ShowCacheStatsMode = 'off' | 'compact' | 'full'
 export const SHOW_CACHE_STATS_MODES = ['off', 'compact', 'full'] as const satisfies readonly ShowCacheStatsMode[]
 
+export const MAX_MESSAGES_COMPACTION_THRESHOLDS = [
+  'off',
+  '100',
+  '200',
+  '500',
+  '1000',
+] as const
+export type MaxMessagesCompactionThreshold =
+  (typeof MAX_MESSAGES_COMPACTION_THRESHOLDS)[number]
+
+export function normalizeMaxMessagesCompactionThreshold(
+  value: unknown,
+): MaxMessagesCompactionThreshold {
+  return MAX_MESSAGES_COMPACTION_THRESHOLDS.includes(
+    value as MaxMessagesCompactionThreshold,
+  )
+    ? (value as MaxMessagesCompactionThreshold)
+    : 'off'
+}
+
 export type OutputStyle = string
 
 export type Providers = typeof PROVIDERS[number]

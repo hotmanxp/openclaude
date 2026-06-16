@@ -290,7 +290,9 @@ export async function initReplBridge(
         )
           continue
         if (!msg.message) continue
-        const rawContent = getContentText(msg.message.content)
+        const rawContent = getContentText(
+          msg.message.content as Parameters<typeof getContentText>[0],
+        )
         if (!rawContent) continue
         const derived = deriveTitle(rawContent)
         if (!derived) continue

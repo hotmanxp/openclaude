@@ -74,6 +74,7 @@ const _realProjectInstructionsModule = await import(
 function userMessage(content: string): Message {
   return {
     type: 'user',
+    content,
     message: { role: 'user', content },
     uuid: randomUUID(),
     timestamp: new Date().toISOString(),
@@ -83,6 +84,7 @@ function userMessage(content: string): Message {
 function assistantMessage(text: string): Message {
   return {
     type: 'assistant',
+    content: text,
     message: {
       role: 'assistant',
       content: [{ type: 'text', text }],
@@ -306,13 +308,14 @@ function registerCommonCompactStubs(options: CompactMockOptions = {}) {
       timestamp: new Date().toISOString(),
     })),
     getAssistantMessageText: mock(
-      (msg: Message) =>
-        typeof msg.message.content === 'string'
-          ? msg.message.content
-          : (Array.isArray(msg.message.content) &&
-              msg.message.content[0]?.type === 'text')
-            ? msg.message.content[0].text
-            : '',
+      (msg: Message) => {
+        const content = msg.message?.content
+        if (typeof content === 'string') return content
+        if (Array.isArray(content) && content[0]?.type === 'text') {
+          return content[0].text
+        }
+        return ''
+      },
     ),
     getLastAssistantMessage: mock(
       (msgs: Message[]) => msgs.findLast(m => m.type === 'assistant') ?? null,
