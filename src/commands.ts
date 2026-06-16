@@ -229,7 +229,6 @@ export const INTERNAL_ONLY_COMMANDS = [
   bughunter,
   commit,
   commitPushPr,
-  ctx_viz,
   goodClaude,
   issue,
   initVerifiers,
@@ -317,6 +316,7 @@ const COMMANDS = memoize((): Command[] => [
   context,
   contextNonInteractive,
   cost,
+  ctx_viz,
   diff,
   dream,
   doctor,
@@ -680,6 +680,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   color, // Change agent color
   vim, // Toggle vim mode
   cost, // Show session cost (local cost tracking)
+  ctx_viz, // Context window usage
   usage, // Show usage info
   copy, // Copy last message
   btw, // Quick note
@@ -709,6 +710,7 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
     compact, // Shrink context — useful mid-session from a phone
     clear, // Wipe transcript
     cost, // Show session cost
+    ctx_viz, // Context window usage
     summary, // Summarize conversation
     releaseNotes, // Show changelog
     files, // List tracked files
