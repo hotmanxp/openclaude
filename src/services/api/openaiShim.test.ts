@@ -2893,6 +2893,9 @@ test.skip('self-heals tool-call incompatibility by retrying local Ollama request
 })
 
 test('preserves valid tool_result and drops orphan tool_result', async () => {
+  // Mistral mode is opt-in via env var; the shim only injects the
+  // boundary placeholder when Mistral is active.
+  process.env.CLAUDE_CODE_USE_MISTRAL = '1'
   let requestBody: Record<string, unknown> | undefined
 
   globalThis.fetch = (async (_input, init) => {
@@ -3063,6 +3066,9 @@ test('drops empty assistant message when only redacted_thinking block was presen
 })
 
 test('injects semantic assistant message when tool result is followed by user message', async () => {
+  // Mistral mode is opt-in via env var; the shim only injects the
+  // boundary placeholder when Mistral is active. Other providers skip it.
+  process.env.CLAUDE_CODE_USE_MISTRAL = '1'
   let requestBody: Record<string, unknown> | undefined
 
   globalThis.fetch = (async (_input, init) => {
@@ -3108,6 +3114,66 @@ test('injects semantic assistant message when tool result is followed by user me
   expect(semanticMsg.content).toBe('[Tool results received]')
   expect(semanticMsg.content).not.toContain('interrupted')
   expect(semanticMsg.content).not.toContain('user')
+})
+
+test('non-Mistral OpenAI-compatible providers do NOT inject semantic assistant message between tool and user', async () => {
+  // Repro for: After tool call, the user sees "[Tool results received]" echoed
+  // back as the assistant's response, ending the conversation turn prematurely.
+  // Root cause: convertMessages() unconditionally injected a fake
+  // assistant("[Tool results received]") between tool and user messages to
+  // satisfy Mistral/Devstral strict role alternation. This made the model
+  // treat "[Tool results received]" as its own prior reply and echo it back.
+  // Fix: only inject when CLAUDE_CODE_USE_MISTRAL is set. For other providers
+  // (OpenAI, MiniMax, etc.) the standard tool → user alternation is allowed
+  // and no fake assistant message is needed.
+  delete process.env.CLAUDE_CODE_USE_MISTRAL
+  process.env.OPENAI_BASE_URL = 'https://api.minimax.chat/v1'
+  process.env.OPENAI_API_KEY = 'minimax-test'
+
+  let requestBody: Record<string, unknown> | undefined
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body))
+    return new Response(JSON.stringify({
+      id: 'chatcmpl-1',
+      object: 'chat.completion',
+      created: 123456789,
+      model: 'MiniMax-M3',
+      choices: [{ message: { role: 'assistant', content: 'Real response after tool.' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+    }), { headers: { 'Content-Type': 'application/json' } })
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await client.beta.messages.create({
+    model: 'MiniMax-M3',
+    messages: [
+      { role: 'user', content: 'List files' },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'Bash', input: { command: 'ls' } }],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'file.txt' }],
+      },
+      { role: 'user', content: 'What is in the file?' },
+    ],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  const messages = requestBody?.messages as Array<Record<string, unknown>>
+  // Roles should NOT contain a synthetic assistant "[Tool results received]"
+  // boundary. The standard tool → user pattern is allowed for OpenAI-compatible
+  // providers that don't enforce strict role alternation.
+  const roles = messages.map(m => m.role)
+  expect(roles).toEqual(['user', 'assistant', 'tool', 'user'])
+
+  const placeholderMessages = messages.filter(
+    m => m.role === 'assistant' && String(m.content) === '[Tool results received]',
+  )
+  expect(placeholderMessages.length).toBe(0)
 })
 
 

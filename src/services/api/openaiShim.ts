@@ -384,9 +384,18 @@ function convertMessages(
     content?: unknown
   }>,
   system: unknown,
-  options?: { preserveReasoningContent?: boolean },
+  options?: { preserveReasoningContent?: boolean; injectSemanticBoundary?: boolean },
 ): OpenAIMessage[] {
   const preserveReasoningContent = options?.preserveReasoningContent === true
+  // Mistral/Devstral enforce strict role alternation (tool → assistant is
+  // mandatory); inject a neutral assistant boundary so the next message is
+  // assistant-prefixed. Other OpenAI-compatible providers (OpenAI, MiniMax,
+  // vLLM, etc.) accept tool → user directly — and crucially, the injected
+  // placeholder gets treated by the model as its own prior reply, so it
+  // echoes "[Tool results received]" back as the assistant's actual response
+  // and the turn ends with no real answer. Gate the injection strictly on
+  // the caller (which knows whether Mistral mode is active).
+  const injectSemanticBoundary = options?.injectSemanticBoundary === true
   const result: OpenAIMessage[] = []
   const knownToolCallIds = new Set<string>()
 
@@ -616,7 +625,10 @@ function convertMessages(
     // assistant boundary to satisfy the strict role sequence without implying
     // that the user interrupted or cancelled anything:
     // ... -> assistant (calls) -> tool (results) -> assistant (semantic) -> user (next)
-    if (prev && prev.role === 'tool' && msg.role === 'user') {
+    // Only enabled when the caller sets `injectSemanticBoundary: true`
+    // (i.e. Mistral mode is active). For other providers the placeholder
+    // would be echoed back by the model, ending the turn with no real answer.
+    if (injectSemanticBoundary && prev && prev.role === 'tool' && msg.role === 'user') {
       coalesced.push({
         role: 'assistant',
         content: '[Tool results received]',
@@ -1758,6 +1770,12 @@ class OpenAIShimMessages {
       // reasoning_content when its thinking feature is active. Echo it back
       // from the thinking block we captured on the inbound response.
       preserveReasoningContent: isMoonshotBaseUrl(request.baseUrl),
+      // Mistral/Devstral require tool → assistant alternation. Other
+      // OpenAI-compatible providers (OpenAI, MiniMax, vLLM, etc.) accept
+      // tool → user directly — and crucially, the injected "[Tool results
+      // received]" placeholder would be echoed back as the assistant's
+      // actual response, ending the conversation turn with no real answer.
+      injectSemanticBoundary: isMistralMode(),
     })
 
     const body: Record<string, unknown> = {
