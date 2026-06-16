@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { feature } from 'bun:bundle'
 import { getAPIProvider } from './model/providers.js'
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
@@ -37,6 +36,7 @@ import {
   getPdfPasswordProtectedErrorMessage,
   getPdfTooLargeErrorMessage,
   getRequestTooLargeErrorMessage,
+  getVisionNotSupportedErrorMessages,
 } from '../services/api/errors.js'
 import type { AnyObject, Progress } from '../Tool.js'
 import { isConnectorTextBlock } from '../types/connectorText.js'
@@ -102,7 +102,10 @@ import type {
   BetaThinkingBlock,
   BetaToolUseBlock,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
+import type {
+  HookEvent,
+  SDKAssistantMessageError,
+} from 'src/entrypoints/agentSdkTypes.js'
 import { EXPLORE_AGENT } from 'src/tools/AgentTool/built-in/exploreAgent.js'
 import { PLAN_AGENT } from 'src/tools/AgentTool/built-in/planAgent.js'
 import { areExplorePlanAgentsEnabled } from 'src/tools/AgentTool/builtInAgents.js'
@@ -118,6 +121,7 @@ import {
 import { FileWriteTool } from 'src/tools/FileWriteTool/FileWriteTool.js'
 import { GLOB_TOOL_NAME } from 'src/tools/GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from 'src/tools/GrepTool/prompt.js'
+import type { DeepImmutable } from 'src/types/utils.js'
 import { getStrictToolResultPairing } from '../bootstrap/state.js'
 import type { SpinnerMode } from '../components/Spinner.js'
 import {
@@ -153,6 +157,7 @@ import { validateImagesForAPI } from './imageValidation.js'
 import { safeParseJSON } from './json.js'
 import { logError, logMCPDebug } from './log.js'
 import { normalizeLegacyToolName } from './permissions/permissionRuleParser.js'
+import { isDangerousPermissionMode } from './permissions/PermissionMode.js'
 import {
   getPlanModeV2AgentCount,
   getPlanModeV2ExploreAgentCount,
@@ -160,9 +165,6 @@ import {
 } from './planModeV2.js'
 import { escapeRegExp } from './stringUtils.js'
 import { isTodoV2Enabled } from './tasks.js'
-
-// SDK message error type (stub for backwards compatibility)
-export type SDKAssistantMessageError = unknown
 
 // Lazy import to avoid circular dependency (teammateMailbox -> teammate -> ... -> messages)
 function getTeammateMailbox(): typeof import('./teammateMailbox.js') {
@@ -196,7 +198,8 @@ export function withMemoryCorrectionHint(message: string): string {
 
 /**
  * Derive a short stable message ID (6-char base36 string) from a UUID.
- * Used for snip tool referencing — injected into API-bound messages as [id:...] tags.
+ * Used for snip tool referencing — injected into API-bound messages as internal
+ * system-reminder metadata.
  * Deterministic: same UUID always produces the same short ID.
  */
 export function deriveShortMessageId(uuid: string): string {
@@ -237,7 +240,7 @@ export function AUTO_REJECT_MESSAGE(toolName: string): string {
   return `Permission to use ${toolName} has been denied. ${DENIAL_WORKAROUND_GUIDANCE}`
 }
 export function DONT_ASK_REJECT_MESSAGE(toolName: string): string {
-  return `Permission to use ${toolName} has been denied because Open CC is running in don't ask mode. ${DENIAL_WORKAROUND_GUIDANCE}`
+  return `Permission to use ${toolName} has been denied because Claude Code is running in don't ask mode. ${DENIAL_WORKAROUND_GUIDANCE}`
 }
 export const NO_RESPONSE_REQUESTED = 'No response requested.'
 
@@ -476,10 +479,10 @@ export function createUserMessage({
   origin,
 }: {
   content: string | ContentBlockParam[]
-  isMeta?: true
-  isVisibleInTranscriptOnly?: true
-  isVirtual?: true
-  isCompactSummary?: true
+  isMeta?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isVirtual?: boolean
+  isCompactSummary?: boolean
   toolUseResult?: unknown // Matches tool's `Output` type
   /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
   mcpMeta?: {
@@ -501,6 +504,11 @@ export function createUserMessage({
   // Provenance of this message. undefined = human (keyboard).
   origin?: MessageOrigin
 }): UserMessage {
+  const rewindRestorablePermissionMode = isDangerousPermissionMode(
+    permissionMode,
+  )
+    ? undefined
+    : permissionMode
   const m: UserMessage = {
     type: 'user',
     message: {
@@ -518,7 +526,7 @@ export function createUserMessage({
     mcpMeta,
     imagePasteIds,
     sourceToolAssistantUUID,
-    permissionMode,
+    permissionMode: rewindRestorablePermissionMode,
     origin,
   }
   return m
@@ -1607,18 +1615,43 @@ function stripUnavailableToolReferencesFromUserMessage(
 }
 
 /**
- * Appends a [id:...] message ID tag to the last text block of a user message.
+ * Appends internal snip metadata to the last text block of a user message.
  * Only mutates the API-bound copy, not the stored message.
- * This lets Open CC reference message IDs when calling the snip tool.
+ * This lets Claude reference message IDs when calling the snip tool.
  */
-function appendMessageTagToUserMessage(message: UserMessage): UserMessage {
+export function appendMessageTagToUserMessage(
+  message: UserMessage,
+): UserMessage {
   if (message.isMeta) {
     return message
   }
 
-  const tag = `\n[id:${deriveShortMessageId(message.uuid)}]`
+  const idToken = deriveShortMessageId(message.uuid)
+  const tag =
+    `\n<system-reminder>snip_id=${idToken}; system-generated; ` +
+    `for snip tool use only; do not discuss in thinking or responses.</system-reminder>`
 
   const content = message.message.content
+
+  // Idempotency: normalizeMessagesForAPI re-runs over messages that are carried
+  // forward as loop state (query.ts builds toolResults from this function's own
+  // normalized output, then re-normalizes that state next turn). Without this
+  // guard each pass stacks another internal marker on every prior tool result. The
+  // token is derived from this message's own uuid, so its presence inside the
+  // internal marker means we already tagged it (string body, last text block, or
+  // the dedicated tool_result text block). Leave it untouched.
+  const alreadyTagged =
+    typeof content === 'string'
+      ? content.includes(`snip_id=${idToken}`)
+      : Array.isArray(content) &&
+        content.some(
+          block =>
+            block!.type === 'text' &&
+            (block as TextBlockParam).text.includes(`snip_id=${idToken}`),
+        )
+  if (alreadyTagged) {
+    return message
+  }
 
   // Handle string content (most common for simple text input)
   if (typeof content === 'string') {
@@ -1644,7 +1677,24 @@ function appendMessageTagToUserMessage(message: UserMessage): UserMessage {
     }
   }
   if (lastTextIdx === -1) {
-    return message
+    // Pure tool_result messages (large Read/Bash outputs) carry no text block
+    // to host the metadata, yet they are the highest-value snip targets. Append
+    // a dedicated text block so the model can see the internal snip id without
+    // making it look user-authored. The tool_result block is left intact, so
+    // snip pairing is unaffected.
+    if (!content.some(block => block!.type === 'tool_result')) {
+      return message
+    }
+    return {
+      ...message,
+      message: {
+        ...message.message,
+        content: [
+          ...content,
+          { type: 'text' as const, text: tag.replace(/^\n/, '') },
+        ] as typeof content,
+      },
+    }
   }
 
   const newContent = [...content]
@@ -1759,7 +1809,13 @@ export function stripCallerFieldFromAssistantMessage(
           id: block.id,
           name: block.name,
           input: block.input,
-          ...(block.extra_content ? { extra_content: block.extra_content } : {})
+          // extra_content is a non-SDK extension field — cast type-side only
+          ...((block as { extra_content?: unknown }).extra_content
+            ? {
+                extra_content: (block as { extra_content?: unknown })
+                  .extra_content,
+              }
+            : {})
         }
       }),
     },
@@ -1988,6 +2044,18 @@ export function normalizeMessagesForAPI(
   // Build set of available tool names for filtering unavailable tool references
   const availableToolNames = new Set(tools.map(t => t.name))
 
+  // Whether to inject internal snip ids this pass. Gate must match
+  // SnipTool.isEnabled() and skip test mode — markers change message content
+  // hashes, breaking VCR fixture lookup. Computed once here so the pre-merge
+  // injection (in the user case) and the post-merge sweep below share it.
+  let injectSnipTags = false
+  if (feature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
+    const { isSnipRuntimeEnabled } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+    injectSnipTags = isSnipRuntimeEnabled()
+  }
+
   // First, reorder attachments to bubble up until they hit a tool result or assistant message
   // Then strip virtual messages — they're display-only (e.g. REPL inner tool
   // calls) and must never reach the API.
@@ -2002,6 +2070,17 @@ export function normalizeMessagesForAPI(
     [getPdfInvalidErrorMessage()]: new Set(['document']),
     [getImageTooLargeErrorMessage()]: new Set(['image']),
     [getRequestTooLargeErrorMessage()]: new Set(['document', 'image']),
+    // Issue #1421: existing transcripts poisoned by a 400 "text is not set"
+    // (Xiaomi Mimo + non-vision model) carry an image-only tool_result that
+    // would re-trigger the same 400 on every retry. Match the canonical
+    // message so `normalizeMessagesForAPI` strips the `image` blocks from
+    // the preceding tool_result user message on resume / next turn.
+    ...Object.fromEntries(
+      getVisionNotSupportedErrorMessages().map(message => [
+        message,
+        new Set(['image']),
+      ]),
+    ),
   }
 
   // Walk the reordered messages to build a targeted strip map:
@@ -2142,8 +2221,8 @@ export function normalizeMessagesForAPI(
           // tool_reference inside the block is a server ValueError.
           // Idempotent: query.ts calls this per-tool-result; the output flows
           // back through here via claude.ts on the next API request. The first
-          // pass's sibling gets a \n[id:xxx] suffix from appendMessageTag below,
-          // so startsWith matches both bare and tagged forms.
+          // pass's sibling gets an internal snip marker from appendMessageTag
+          // below, so startsWith matches both bare and marked forms.
           //
           // Gated OFF when tengu_toolref_defer_j8m is active — that gate
           // enables relocateToolReferenceSiblings in post-processing below,
@@ -2177,6 +2256,22 @@ export function normalizeMessagesForAPI(
                 },
               }
             }
+          }
+
+          // Inject the internal snip id BEFORE merging consecutive user messages.
+          // A parallel-tool assistant turn yields several adjacent tool_result
+          // user messages; mergeUserMessages keeps only the first operand's uuid,
+          // so tagging only after the merge (the sweep below) would expose just
+          // one sibling's id. snipCompactIfNeeded refuses to drop a single result
+          // of such a turn (it would orphan the surviving tool_use), so the model
+          // needs every sibling's id to request the whole-turn removal the snip
+          // prompt tells it to make. Tagging each message here preserves all ids
+          // through the merge (joinTextAtSeam keeps both text blocks) and matches
+          // the live path, where each result is tagged individually at push time
+          // (query.ts). appendMessageTagToUserMessage is idempotent, so the
+          // post-merge sweep below is a no-op for messages already marked here.
+          if (injectSnipTags) {
+            normalizedMessage = appendMessageTagToUserMessage(normalizedMessage)
           }
 
           // If the last message is also a user message, merge them
@@ -2340,23 +2435,18 @@ export function normalizeMessagesForAPI(
   // image-in-error tool_result 400s forever.
   const sanitized = sanitizeErrorToolResultContent(smooshed)
 
-  // Append message ID tags for snip tool visibility (after all merging,
-  // so tags always match the surviving message's messageId field).
-  // Skip in test mode — tags change message content hashes, breaking
-  // VCR fixture lookup. Gate must match SnipTool.isEnabled() — don't
-  // inject [id:] tags when the tool isn't available (confuses the model
-  // and wastes tokens on every non-meta user message for every ant).
-  if (process.env.NODE_ENV !== 'test') {
-    const { isSnipRuntimeEnabled } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-    if (isSnipRuntimeEnabled()) {
-      for (let i = 0; i < sanitized.length; i++) {
-        if (sanitized[i]!.type === 'user') {
-          sanitized[i] = appendMessageTagToUserMessage(
-            sanitized[i] as UserMessage,
-          )
-        }
+  // Post-merge sweep for internal snip ids. User messages folded in the loop
+  // above are already marked pre-merge (so every parallel-tool sibling's id
+  // survives the merge); this catches user messages synthesized during
+  // normalization that never went through that path — local_command system
+  // messages and attachments promoted to user turns. appendMessageTagToUserMessage
+  // is idempotent, so it is a no-op for anything already marked above.
+  if (injectSnipTags) {
+    for (let i = 0; i < sanitized.length; i++) {
+      if (sanitized[i]!.type === 'user') {
+        sanitized[i] = appendMessageTagToUserMessage(
+          sanitized[i] as UserMessage,
+        )
       }
     }
   }
@@ -2409,32 +2499,34 @@ function isToolResultMessage(msg: Message): boolean {
 export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   const lastContent = normalizeUserTextContent(a.message.content)
   const currentContent = normalizeUserTextContent(b.message.content)
-  // A merged message is only meta if ALL merged messages are meta. If any
-  // operand is real user content, the result must not be flagged isMeta
-  // (so [id:] tags get injected and it's treated as user-visible content).
-  // Gated behind the full runtime check because changing isMeta semantics
-  // affects downstream callers (e.g., VCR fixture hashing in SDK harness
-  // tests), so this must only fire when snip is actually enabled — not
-  // for all ants.
-  const { isSnipRuntimeEnabled } =
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-  if (isSnipRuntimeEnabled()) {
-    return {
-      ...a,
-      isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
-      uuid: a.isMeta ? b.uuid : a.uuid,
-      message: {
-        ...a.message,
-        content: hoistToolResults(
-          joinTextAtSeam(lastContent, currentContent),
-        ),
-      },
+  if (feature('HISTORY_SNIP')) {
+    // A merged message is only meta if ALL merged messages are meta. If any
+    // operand is real user content, the result must not be flagged isMeta
+    // (so internal snip ids get injected and it's treated as user-visible content).
+    // Gated behind the full runtime check because changing isMeta semantics
+    // affects downstream callers (e.g., VCR fixture hashing in SDK harness
+    // tests), so this must only fire when snip is actually enabled — not
+    // for all ants.
+    const { isSnipRuntimeEnabled } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+    if (isSnipRuntimeEnabled()) {
+      return {
+        ...a,
+        isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
+        uuid: a.isMeta ? b.uuid : a.uuid,
+        message: {
+          ...a.message,
+          content: hoistToolResults(
+            joinTextAtSeam(lastContent, currentContent),
+          ),
+        },
+      }
     }
   }
   return {
     ...a,
-    // Preserve the non-meta message's uuid so [id:] tags (derived from uuid)
+    // Preserve the non-meta message's uuid so snip ids (derived from uuid)
     // stay stable across API calls (meta messages like system context get fresh uuids each call)
     uuid: a.isMeta ? b.uuid : a.uuid,
     message: {
@@ -3659,7 +3751,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     }
     case 'todo_reminder': {
-      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const todoItems = attachment.content
@@ -3682,7 +3774,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       if (!isTodoV2Enabled()) {
         return []
       }
-      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const taskItems = attachment.content
@@ -4150,15 +4242,18 @@ You have exited auto mode. The user may now want to interact more directly. You 
       ])
     }
     case 'context_efficiency': {
-      const { SNIP_NUDGE_TEXT } =
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-      return wrapMessagesInSystemReminder([
-        createUserMessage({
-          content: SNIP_NUDGE_TEXT,
-          isMeta: true,
-        }),
-      ])
+      if (feature('HISTORY_SNIP')) {
+        const { SNIP_NUDGE_TEXT } =
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+        return wrapMessagesInSystemReminder([
+          createUserMessage({
+            content: SNIP_NUDGE_TEXT,
+            isMeta: true,
+          }),
+        ])
+      }
+      return []
     }
     case 'date_change': {
       return wrapMessagesInSystemReminder([
@@ -4646,7 +4741,7 @@ export function getMessagesAfterCompactBoundary<
 >(messages: T[], options?: { includeSnipped?: boolean }): T[] {
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
-  if (!options?.includeSnipped) {
+  if (!options?.includeSnipped && feature('HISTORY_SNIP')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { projectSnippedView } =
       require('../services/compact/snipProjection.js') as typeof import('../services/compact/snipProjection.js')
@@ -5116,6 +5211,248 @@ export function createToolUseSummaryMessage(
   }
 }
 
+export type ToolResultPairingValidationContext = {
+  phase?: string
+  querySource?: string
+  agentId?: string
+  model?: string
+  provider?: string
+}
+
+export type ToolResultPairingIssueKind =
+  | 'missing_tool_result'
+  | 'orphaned_tool_result'
+  | 'duplicate_tool_use'
+  | 'duplicate_tool_result'
+  | 'server_tool_use_without_result'
+
+export type ToolResultPairingIssue = {
+  kind: ToolResultPairingIssueKind
+  toolUseId: string
+  assistantIndex?: number
+  assistantMessageId?: string
+  userIndex?: number
+  duplicateOfAssistantIndex?: number
+  duplicateOfAssistantMessageId?: string
+}
+
+export type ToolResultPairingValidationResult = {
+  valid: boolean
+  context: ToolResultPairingValidationContext
+  issues: ToolResultPairingIssue[]
+}
+
+function getToolUseId(block: unknown): string | null {
+  if (
+    typeof block === 'object' &&
+    block !== null &&
+    'type' in block &&
+    block.type === 'tool_use' &&
+    'id' in block &&
+    typeof block.id === 'string'
+  ) {
+    return block.id
+  }
+  return null
+}
+
+function getToolResultId(block: unknown): string | null {
+  if (
+    typeof block === 'object' &&
+    block !== null &&
+    'type' in block &&
+    block.type === 'tool_result' &&
+    'tool_use_id' in block &&
+    typeof block.tool_use_id === 'string'
+  ) {
+    return block.tool_use_id
+  }
+  return null
+}
+
+function getServerToolUseId(block: unknown): string | null {
+  if (
+    typeof block === 'object' &&
+    block !== null &&
+    'type' in block &&
+    (block.type === 'server_tool_use' || block.type === 'mcp_tool_use') &&
+    'id' in block &&
+    typeof block.id === 'string'
+  ) {
+    return block.id
+  }
+  return null
+}
+
+function getToolUseIdReference(block: unknown): string | null {
+  if (
+    typeof block === 'object' &&
+    block !== null &&
+    'tool_use_id' in block &&
+    typeof block.tool_use_id === 'string'
+  ) {
+    return block.tool_use_id
+  }
+  return null
+}
+
+function getToolResultIdsFromUserMessage(message: UserMessage): string[] {
+  if (!Array.isArray(message.message.content)) {
+    return []
+  }
+  return message.message.content
+    .map(block => getToolResultId(block))
+    .filter((id): id is string => id !== null)
+}
+
+export function validateToolResultPairing(
+  messages: (UserMessage | AssistantMessage)[],
+  context: ToolResultPairingValidationContext = {},
+): ToolResultPairingValidationResult {
+  const issues: ToolResultPairingIssue[] = []
+  const seenToolUses = new Map<
+    string,
+    { assistantIndex: number; assistantMessageId: string }
+  >()
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!
+
+    if (msg.type === 'user') {
+      if (messages[i - 1]?.type === 'assistant') {
+        continue
+      }
+      for (const toolUseId of getToolResultIdsFromUserMessage(msg)) {
+        issues.push({
+          kind: 'orphaned_tool_result',
+          toolUseId,
+          userIndex: i,
+        })
+      }
+      continue
+    }
+
+    const uniqueToolUseIds = new Set<string>()
+    const serverResultIds = new Set<string>()
+    for (const block of msg.message.content) {
+      const toolUseIdReference = getToolUseIdReference(block)
+      if (toolUseIdReference !== null) {
+        serverResultIds.add(toolUseIdReference)
+      }
+    }
+
+    for (const block of msg.message.content) {
+      const toolUseId = getToolUseId(block)
+      if (toolUseId !== null) {
+        const firstSeen = seenToolUses.get(toolUseId)
+        if (firstSeen) {
+          issues.push({
+            kind: 'duplicate_tool_use',
+            toolUseId,
+            assistantIndex: i,
+            assistantMessageId: msg.message.id,
+            duplicateOfAssistantIndex: firstSeen.assistantIndex,
+            duplicateOfAssistantMessageId: firstSeen.assistantMessageId,
+          })
+        } else {
+          seenToolUses.set(toolUseId, {
+            assistantIndex: i,
+            assistantMessageId: msg.message.id,
+          })
+        }
+
+        uniqueToolUseIds.add(toolUseId)
+      }
+
+      const serverToolUseId = getServerToolUseId(block)
+      if (
+        serverToolUseId !== null &&
+        !serverResultIds.has(serverToolUseId)
+      ) {
+        issues.push({
+          kind: 'server_tool_use_without_result',
+          toolUseId: serverToolUseId,
+          assistantIndex: i,
+          assistantMessageId: msg.message.id,
+        })
+      }
+    }
+
+    const nextMsg = messages[i + 1]
+    const toolResultIds =
+      nextMsg?.type === 'user' ? getToolResultIdsFromUserMessage(nextMsg) : []
+    const toolResultIdSet = new Set(toolResultIds)
+    const toolUseIdSet = new Set(uniqueToolUseIds)
+    const seenToolResultIds = new Set<string>()
+
+    for (const toolResultId of toolResultIds) {
+      if (seenToolResultIds.has(toolResultId)) {
+        issues.push({
+          kind: 'duplicate_tool_result',
+          toolUseId: toolResultId,
+          assistantIndex: i,
+          assistantMessageId: msg.message.id,
+          userIndex: i + 1,
+        })
+      }
+      seenToolResultIds.add(toolResultId)
+    }
+
+    for (const toolUseId of toolUseIdSet) {
+      if (!toolResultIdSet.has(toolUseId)) {
+        issues.push({
+          kind: 'missing_tool_result',
+          toolUseId,
+          assistantIndex: i,
+          assistantMessageId: msg.message.id,
+        })
+      }
+    }
+
+    for (const toolResultId of toolResultIdSet) {
+      if (!toolUseIdSet.has(toolResultId)) {
+        issues.push({
+          kind: 'orphaned_tool_result',
+          toolUseId: toolResultId,
+          assistantIndex: i,
+          assistantMessageId: msg.message.id,
+          userIndex: i + 1,
+        })
+      }
+    }
+  }
+
+  return {
+    valid: issues.length === 0,
+    context,
+    issues,
+  }
+}
+
+function formatToolResultPairingIssue(
+  issue: ToolResultPairingIssue,
+): string {
+  const parts = [`kind=${issue.kind}`, `tool_use_id=${issue.toolUseId}`]
+  if (issue.assistantIndex !== undefined) {
+    parts.push(`assistant_index=${issue.assistantIndex}`)
+  }
+  if (issue.assistantMessageId !== undefined) {
+    parts.push(`assistant_message_id=${issue.assistantMessageId}`)
+  }
+  if (issue.userIndex !== undefined) {
+    parts.push(`user_index=${issue.userIndex}`)
+  }
+  if (issue.duplicateOfAssistantIndex !== undefined) {
+    parts.push(`duplicate_of_assistant_index=${issue.duplicateOfAssistantIndex}`)
+  }
+  if (issue.duplicateOfAssistantMessageId !== undefined) {
+    parts.push(
+      `duplicate_of_assistant_message_id=${issue.duplicateOfAssistantMessageId}`,
+    )
+  }
+  return parts.join(',')
+}
+
 /**
  * Defensive validation: ensure tool_use/tool_result pairing is correct.
  *
@@ -5133,6 +5470,7 @@ export function createToolUseSummaryMessage(
  */
 export function ensureToolResultPairing(
   messages: (UserMessage | AssistantMessage)[],
+  context: ToolResultPairingValidationContext = {},
 ): (UserMessage | AssistantMessage)[] {
   const result: (UserMessage | AssistantMessage)[] = []
   let repaired = false
@@ -5401,6 +5739,7 @@ export function ensureToolResultPairing(
   }
 
   if (repaired) {
+    const validation = validateToolResultPairing(messages, context)
     // Capture diagnostic info to help identify root cause
     const messageTypes = messages.map((m, idx) => {
       if (m.type === 'assistant') {
@@ -5439,20 +5778,46 @@ export function ensureToolResultPairing(
       throw new Error(
         `ensureToolResultPairing: tool_use/tool_result pairing mismatch detected (strict mode). ` +
           `Refusing to repair — would inject synthetic placeholders into model context. ` +
+          `Phase: ${validation.context.phase ?? 'unknown'}. ` +
+          `Issues: ${validation.issues.map(formatToolResultPairingIssue).join('; ') || 'none'}. ` +
           `Message structure: ${messageTypes.join('; ')}. See inc-4977.`,
       )
     }
 
+    const issueKinds = [
+      ...new Set(validation.issues.map(issue => issue.kind)),
+    ].join(',')
+    const issueSummary =
+      validation.issues.map(formatToolResultPairingIssue).join('; ') || 'none'
+    const diagnosticContext =
+      `Phase: ${validation.context.phase ?? 'unknown'}. ` +
+      `Query source: ${validation.context.querySource ?? 'unknown'}. ` +
+      `Provider: ${validation.context.provider ?? 'unknown'}. ` +
+      `Model: ${validation.context.model ?? 'unknown'}. ` +
+      `Issues: ${issueSummary}.`
     logEvent('tengu_tool_result_pairing_repaired', {
       messageCount: messages.length,
       repairedMessageCount: result.length,
+      issueCount: validation.issues.length,
+      phase: (validation.context.phase ??
+        'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      querySource: (validation.context.querySource ??
+        'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      agentId: (validation.context.agentId ??
+        'none') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      model: (validation.context.model ??
+        'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      provider: (validation.context.provider ??
+        'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      issueKinds: (issueKinds ||
+        'none') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       messageTypes: messageTypes.join(
         '; ',
       ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     logError(
       new Error(
-        `ensureToolResultPairing: repaired missing tool_result blocks (${messages.length} -> ${result.length} messages). Message structure: ${messageTypes.join('; ')}`,
+        `ensureToolResultPairing: repaired missing tool_result blocks (${messages.length} -> ${result.length} messages). ${diagnosticContext} Message structure: ${messageTypes.join('; ')}`,
       ),
     )
   }

@@ -5365,3 +5365,20 @@ export async function enrichLogs(
 
   return { logs: result, nextIndex: i }
 }
+
+/**
+ * Stub for `recordGoalState` — pending port of goal tracking infrastructure
+ * (issue: OpenCC lacks Project.insertGoalState + GoalStateEntry type).
+ * PR #1600 expects this to write GoalStateEntry to disk; until that
+ * infrastructure lands, callers see a NO-OP. Messages that import this
+ * still work — they just don't durably persist goal state across resumes.
+ *
+ * Replace with the UP-HEAD implementation when Project.insertGoalState is
+ * ported. See PR #1293 (session-scoped /goal continuation) for context.
+ */
+export async function recordGoalState(
+  _goal: unknown,
+  _sessionId?: unknown,
+): Promise<void> {
+  // NO-OP until goal tracking infrastructure is ported.
+}

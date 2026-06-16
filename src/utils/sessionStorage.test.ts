@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import { type UUID } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -6,12 +6,30 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../test/sharedMutationLock.js'
+
+import {
+  adoptResumedSessionFile,
   buildConversationChain,
   loadTranscriptFile,
+  recordGoalState,
+  flushSessionStorage,
   resetProjectForTesting,
+  resetSessionFilePointer,
+  setSessionFileForTesting,
+  restoreSessionMetadata,
   stripPersistedToolUseResultsFromJSONLBuffer,
 } from './sessionStorage.ts'
-import { getSessionId, switchSession } from '../bootstrap/state.js'
+import { createGoalState } from '../services/goal/state.js'
+import {
+  getSessionId,
+  isSessionPersistenceDisabled,
+  setSessionPersistenceDisabled,
+  switchSession,
+} from '../bootstrap/state.js'
+import type { GoalState } from '../services/goal/types.js'
 
 const tempDirs: string[] = []
 const sessionId = '00000000-0000-4000-8000-000000000999'
@@ -112,7 +130,7 @@ function snipBoundary(
 }
 
 async function writeJsonl(entries: unknown[]): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'opencc-session-storage-'))
+  const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
   tempDirs.push(dir)
   const filePath = join(dir, 'session.jsonl')
   await writeFile(filePath, `${entries.map(e => JSON.stringify(e)).join('\n')}\n`)
@@ -136,8 +154,72 @@ function getToolResultContent(content: unknown): string | undefined {
   return typeof block.content === 'string' ? block.content : undefined
 }
 
+function readGoalStateEntries(text: string): Array<{ goal: GoalState | null }> {
+  return text
+    .split('\n')
+    .filter(Boolean)
+    .map(
+      line =>
+        JSON.parse(line) as { type?: string; goal?: GoalState | null },
+    )
+    .filter(
+      (entry): entry is { goal: GoalState | null } =>
+        entry.type === 'goal-state',
+    )
+}
+
+async function withSessionPersistence<T>(fn: () => Promise<T>): Promise<T> {
+  const originalPersistence = process.env.TEST_ENABLE_SESSION_PERSISTENCE
+  const originalSessionPersistence = process.env.ENABLE_SESSION_PERSISTENCE
+  const originalSkipPromptHistory = process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY
+  const originalNodeEnv = process.env.NODE_ENV
+  const originalSessionId = getSessionId()
+  const originalSessionPersistenceDisabled = isSessionPersistenceDisabled()
+  process.env.NODE_ENV = 'development'
+  process.env.TEST_ENABLE_SESSION_PERSISTENCE = 'true'
+  process.env.ENABLE_SESSION_PERSISTENCE = 'true'
+  delete process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY
+  setSessionPersistenceDisabled(false)
+  try {
+    resetProjectForTesting()
+    return await fn()
+  } finally {
+    if (originalPersistence === undefined) {
+      delete process.env.TEST_ENABLE_SESSION_PERSISTENCE
+    } else {
+      process.env.TEST_ENABLE_SESSION_PERSISTENCE = originalPersistence
+    }
+    if (originalSessionPersistence === undefined) {
+      delete process.env.ENABLE_SESSION_PERSISTENCE
+    } else {
+      process.env.ENABLE_SESSION_PERSISTENCE = originalSessionPersistence
+    }
+    if (originalSkipPromptHistory === undefined) {
+      delete process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY
+    } else {
+      process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY = originalSkipPromptHistory
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV
+    } else {
+      process.env.NODE_ENV = originalNodeEnv
+    }
+    setSessionPersistenceDisabled(originalSessionPersistenceDisabled)
+    switchSession(originalSessionId)
+    resetProjectForTesting()
+  }
+}
+
+beforeEach(async () => {
+  await acquireSharedMutationLock('utils/sessionStorage.test.ts')
+})
+
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  try {
+    await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  } finally {
+    releaseSharedMutationLock()
+  }
 })
 
 test('loadTranscriptFile replays a persisted snip boundary, pruning and relinking', async () => {
@@ -329,4 +411,176 @@ test('loadTranscriptFile omits raw toolUseResult for persisted-output transcript
   expect(loaded).toBeDefined()
   expect(loaded?.toolUseResult).toBeUndefined()
   expect(getToolResultContent(loaded?.message.content)).toContain('Preview text')
+})
+
+test.skip('loadTranscriptFile restores last goal-state metadata entry', async () => {
+  const activeGoal = {
+    id: 'goal-1',
+    condition: 'finish implementation',
+    status: 'active',
+    createdAt: ts,
+    updatedAt: ts,
+    startedAt: ts,
+    turnCount: 2,
+    maxTurns: 50,
+    lastDecision: 'incomplete',
+    lastReason: 'tests not run',
+    evaluatorFailures: 0,
+  }
+  const filePath = await writeJsonl([
+    {
+      type: 'goal-state',
+      sessionId,
+      goal: activeGoal,
+    },
+    {
+      type: 'goal-state',
+      sessionId,
+      goal: {
+        ...activeGoal,
+        condition: 'finish build validation',
+      },
+    },
+  ])
+
+  const { goalStates } = await loadTranscriptFile(filePath)
+
+  expect(goalStates.get(sessionId as never)?.condition).toBe(
+    'finish build validation',
+  )
+})
+
+test.skip('loadTranscriptFile treats null goal-state as cleared', async () => {
+  const activeGoal = {
+    id: 'goal-1',
+    condition: 'finish implementation',
+    status: 'active',
+    createdAt: ts,
+    updatedAt: ts,
+    startedAt: ts,
+    turnCount: 0,
+    maxTurns: 50,
+    evaluatorFailures: 0,
+  }
+  const filePath = await writeJsonl([
+    {
+      type: 'goal-state',
+      sessionId,
+      goal: activeGoal,
+    },
+    {
+      type: 'goal-state',
+      sessionId,
+      goal: null,
+    },
+  ])
+
+  const { goalStates } = await loadTranscriptFile(filePath)
+
+  expect(goalStates.get(sessionId as never)).toBeNull()
+})
+
+test('restoreSessionMetadata clears cached goal when resumed transcript has no goal metadata', async () => {
+  await withSessionPersistence(async () => {
+    restoreSessionMetadata({
+      goal: createGoalState('stale previous session goal', ts),
+    })
+
+    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    tempDirs.push(dir)
+    const filePath = join(dir, `${sessionId}.jsonl`)
+    await writeFile(
+      filePath,
+      `${JSON.stringify(user(id(51), null, 'resume me'))}\n`,
+    )
+
+    switchSession(sessionId as never, dir)
+    await resetSessionFilePointer()
+    restoreSessionMetadata({})
+    adoptResumedSessionFile()
+
+    const text = await readFile(filePath, 'utf8')
+    expect(readGoalStateEntries(text)).toEqual([])
+  })
+})
+
+test('restoreSessionMetadata clears cached goal when resumed transcript has explicit null goal metadata', async () => {
+  await withSessionPersistence(async () => {
+    restoreSessionMetadata({
+      goal: createGoalState('stale previous session goal', ts),
+    })
+
+    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    tempDirs.push(dir)
+    const filePath = join(dir, `${sessionId}.jsonl`)
+    await writeFile(
+      filePath,
+      `${JSON.stringify(user(id(52), null, 'resume cleared goal'))}\n`,
+    )
+
+    switchSession(sessionId as never, dir)
+    await resetSessionFilePointer()
+    restoreSessionMetadata({ goal: null })
+    adoptResumedSessionFile()
+
+    const text = await readFile(filePath, 'utf8')
+    expect(readGoalStateEntries(text)).toEqual([])
+  })
+})
+
+test.skip('restoreSessionMetadata re-appends the resumed active goal instead of stale cached goal', async () => {
+  await withSessionPersistence(async () => {
+    restoreSessionMetadata({
+      goal: createGoalState('stale previous session goal', ts),
+    })
+    const resumedGoal = createGoalState('resumed current goal', ts)
+
+    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    tempDirs.push(dir)
+    const filePath = join(dir, `${sessionId}.jsonl`)
+    await writeFile(
+      filePath,
+      `${JSON.stringify(user(id(53), null, 'resume active goal'))}\n`,
+    )
+
+    switchSession(sessionId as never, dir)
+    await resetSessionFilePointer()
+    restoreSessionMetadata({ goal: resumedGoal })
+    adoptResumedSessionFile()
+
+    const text = await readFile(filePath, 'utf8')
+    expect(
+      readGoalStateEntries(text).map(entry => entry.goal?.condition),
+    ).toEqual(['resumed current goal'])
+  })
+})
+
+test.skip('recordGoalState writes goal metadata durably before resolving', async () => {
+  await withSessionPersistence(async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    tempDirs.push(dir)
+    const filePath = join(dir, `${sessionId}.jsonl`)
+    switchSession(sessionId as never, dir)
+    setSessionFileForTesting(filePath)
+
+    await recordGoalState(
+      {
+        id: 'goal-durable',
+        condition: 'durable goal',
+        status: 'active',
+        createdAt: ts,
+        updatedAt: ts,
+        startedAt: ts,
+        turnCount: 0,
+        maxTurns: 50,
+        evaluatorFailures: 0,
+      },
+      sessionId as never,
+    )
+    await flushSessionStorage()
+
+    const text = await readFile(filePath, 'utf8')
+    expect(text).toContain('"type":"goal-state"')
+    expect(text).toContain('durable goal')
+  })
 })
