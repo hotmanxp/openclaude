@@ -1,5 +1,4 @@
 import chalk from 'chalk'
-import { getAPIProvider } from 'src/utils/model/providers.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
   getLatestVersion,
@@ -28,18 +27,15 @@ import { getPackageManager } from 'src/utils/nativeInstaller/packageManagers.js'
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
+import { isThirdPartyBuildBlocked } from 'src/utils/updateStrategy.js'
 
 export async function update() {
   // Block updates for third-party providers using upstream Anthropic builds.
   // The update mechanism downloads from the first-party distribution bucket,
-  // which would silently replace the OpenCC build (with the OpenAI shim) with
-  // the upstream Claude Code binary (without it). However, builds with a
-  // custom PACKAGE_URL (like OpenCC's @hotmanxp/opencc) are safe to
-  // self-update.
-  if (
-    getAPIProvider() !== 'firstParty' &&
-    MACRO.PACKAGE_URL === '@anthropic-ai/claude-code'
-  ) {
+  // which would silently replace the OpenCC build with the upstream
+  // Claude Code binary. However, builds with a custom PACKAGE_URL (like
+  // OpenCC's @hotmanxp/opencc) are safe to self-update.
+  if (isThirdPartyBuildBlocked()) {
     writeToStdout(
       chalk.yellow(
         `Auto-update is not available for third-party provider builds.\n`,
