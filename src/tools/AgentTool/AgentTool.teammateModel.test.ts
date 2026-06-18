@@ -200,7 +200,7 @@ function callTeammateAgentTool(
       team_name: 'review-team',
       name: 'worker-a',
       ...input,
-    },
+    } as never,
     makeToolUseContext(contextOptions),
     mock(async () => ({ behavior: 'allow' })) as never,
     { requestId: 'req-1' } as never,

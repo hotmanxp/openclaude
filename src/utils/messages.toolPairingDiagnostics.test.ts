@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { AssistantMessage, Message, UserMessage } from '../types/message.js'
 import {
   createAssistantMessage,
   createUserMessage,
@@ -8,7 +9,7 @@ import {
   validateToolResultPairing,
 } from './messages.js'
 
-function assistantWithToolUses(...ids: string[]) {
+function assistantWithToolUses(...ids: string[]): AssistantMessage {
   return createAssistantMessage({
     content: ids.map(
       id =>
@@ -22,7 +23,7 @@ function assistantWithToolUses(...ids: string[]) {
   })
 }
 
-function userWithToolResults(...ids: string[]) {
+function userWithToolResults(...ids: string[]): UserMessage {
   return createUserMessage({
     content: ids.map(id => ({
       type: 'tool_result' as const,
@@ -181,7 +182,7 @@ test('selectToolPairSafeMessageRange expands a tool_result start boundary backwa
   const tail = createUserMessage({ content: 'current request' })
 
   const selected = selectToolPairSafeMessageRange(
-    [preamble, assistant, result, tail],
+    [preamble, assistant, result, tail] as Message[],
     2,
     4,
     { projectionName: 'away_summary', querySource: 'away_summary' },
@@ -189,10 +190,10 @@ test('selectToolPairSafeMessageRange expands a tool_result start boundary backwa
 
   expect(selected.start).toBe(1)
   expect(selected.end).toBe(4)
-  expect(selected.messages).toEqual([assistant, result, tail])
+  expect(selected.messages).toEqual([assistant, result, tail] as Message[])
   expect(selected.diagnostics.requestedStartedWithToolResult).toBe(true)
   expect(selected.diagnostics.issueKinds).toContain('orphaned_tool_result')
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange expands an assistant tool_use end boundary forward', () => {
@@ -202,7 +203,7 @@ test('selectToolPairSafeMessageRange expands an assistant tool_use end boundary 
   const tail = createUserMessage({ content: 'current request' })
 
   const selected = selectToolPairSafeMessageRange(
-    [head, assistant, result, tail],
+    [head, assistant, result, tail] as Message[],
     0,
     2,
     { projectionName: 'partial_compact', querySource: 'compact' },
@@ -210,9 +211,9 @@ test('selectToolPairSafeMessageRange expands an assistant tool_use end boundary 
 
   expect(selected.start).toBe(0)
   expect(selected.end).toBe(3)
-  expect(selected.messages).toEqual([head, assistant, result])
+  expect(selected.messages).toEqual([head, assistant, result] as Message[])
   expect(selected.diagnostics.issueKinds).toContain('missing_tool_result')
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange keeps multi-tool assistant messages with their results', () => {
@@ -221,22 +222,22 @@ test('selectToolPairSafeMessageRange keeps multi-tool assistant messages with th
   const tail = createUserMessage({ content: 'current request' })
 
   const selected = selectToolPairSafeMessageRange(
-    [assistant, result, tail],
+    [assistant, result, tail] as Message[],
     0,
     1,
     { projectionName: 'summary_window', querySource: 'away_summary' },
   )
 
-  expect(selected.messages).toEqual([assistant, result])
+  expect(selected.messages).toEqual([assistant, result] as Message[])
   expect(selected.diagnostics.issueKinds).toContain('missing_tool_result')
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange diagnostics omit raw message content', () => {
   const assistant = assistantWithToolUses('toolu_secret')
   const result = userWithToolResults('toolu_secret')
 
-  const selected = selectToolPairSafeMessageRange([assistant, result], 1, 2, {
+  const selected = selectToolPairSafeMessageRange([assistant, result] as Message[], 1, 2, {
     projectionName: 'away_summary',
     querySource: 'away_summary',
   })
@@ -260,15 +261,15 @@ test('selectToolPairSafeMessageRange does not re-expand across a dropped orphane
   const tail = createUserMessage({ content: 'current request' })
 
   const selected = selectToolPairSafeMessageRange(
-    [earlierAssistantPart, orphanedResult, laterAssistantPart, tail],
+    [earlierAssistantPart, orphanedResult, laterAssistantPart, tail] as Message[],
     1,
     4,
     { projectionName: 'away_summary', querySource: 'away_summary' },
   )
 
   expect(selected.start).toBe(3)
-  expect(selected.messages).toEqual([tail])
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(selected.messages).toEqual([tail] as Message[])
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange still expands available results when pending tool uses are allowed', () => {
@@ -276,14 +277,14 @@ test('selectToolPairSafeMessageRange still expands available results when pendin
   const assistant = assistantWithToolUses('toolu_pending_allowed')
   const result = userWithToolResults('toolu_pending_allowed')
 
-  const selected = selectToolPairSafeMessageRange([head, assistant, result], 0, 2, {
+  const selected = selectToolPairSafeMessageRange([head, assistant, result] as Message[], 0, 2, {
     projectionName: 'live_turn',
     querySource: 'repl_main_thread',
     allowPendingToolUse: true,
   })
 
-  expect(selected.messages).toEqual([head, assistant, result])
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(selected.messages).toEqual([head, assistant, result] as Message[])
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange does not treat out-of-range results as pending tool uses', () => {
@@ -293,7 +294,7 @@ test('selectToolPairSafeMessageRange does not treat out-of-range results as pend
   const result = userWithToolResults('toolu_not_pending')
 
   const selected = selectToolPairSafeMessageRange(
-    [head, assistant, filler, result],
+    [head, assistant, filler, result] as Message[],
     0,
     2,
     {
@@ -304,8 +305,8 @@ test('selectToolPairSafeMessageRange does not treat out-of-range results as pend
     },
   )
 
-  expect(selected.messages).toEqual([head])
-  expect(validateToolResultPairing(selected.messages).valid).toBe(true)
+  expect(selected.messages).toEqual([head] as Message[])
+  expect(validateToolResultPairing(selected.messages as (UserMessage | AssistantMessage)[]).valid).toBe(true)
 })
 
 test('selectToolPairSafeMessageRange drops a partial assistant group when the earlier sibling is outside the expansion budget', () => {
@@ -320,7 +321,7 @@ test('selectToolPairSafeMessageRange drops a partial assistant group when the ea
   const tail = createUserMessage({ content: 'current request' })
 
   const selected = selectToolPairSafeMessageRange(
-    [earlierAssistantPart, filler, laterAssistantPart, tail],
+    [earlierAssistantPart, filler, laterAssistantPart, tail] as Message[],
     2,
     4,
     {
@@ -330,7 +331,7 @@ test('selectToolPairSafeMessageRange drops a partial assistant group when the ea
     },
   )
 
-  expect(selected.messages).toEqual([tail])
+  expect(selected.messages).toEqual([tail] as Message[])
 })
 
 test('selectToolPairSafeMessageRange drops a partial assistant group when the later sibling is outside the expansion budget', () => {
@@ -345,7 +346,7 @@ test('selectToolPairSafeMessageRange drops a partial assistant group when the la
   laterAssistantPart.message.id = earlierAssistantPart.message.id
 
   const selected = selectToolPairSafeMessageRange(
-    [head, earlierAssistantPart, filler, laterAssistantPart],
+    [head, earlierAssistantPart, filler, laterAssistantPart] as Message[],
     0,
     2,
     {
@@ -355,5 +356,5 @@ test('selectToolPairSafeMessageRange drops a partial assistant group when the la
     },
   )
 
-  expect(selected.messages).toEqual([head])
+  expect(selected.messages).toEqual([head] as Message[])
 })

@@ -229,15 +229,6 @@ const SAFE_PROMPT_CACHE_PROVIDER_ROUTES = new Set<string>([
   'anthropic',
   'openai',
   'custom',
-  'gemini',
-  'mistral',
-  'github',
-  'bedrock',
-  'vertex',
-  'nvidia-nim',
-  'minimax',
-  'xiaomi-mimo',
-  'xai',
 ])
 
 /** MCP tool names are user-controlled (server config) and may leak filepaths.
@@ -404,9 +395,6 @@ function getPromptCacheBreakProviderRoute(
   activeRouteId: string | null,
   apiProvider: APIProvider,
 ): string {
-  if (apiProvider === 'codex') {
-    return 'codex'
-  }
   if (activeRouteId === 'anthropic' && apiProvider !== 'firstParty') {
     return apiProvider
   }
@@ -420,47 +408,16 @@ function getPromptCacheBreakProviderRoute(
 }
 
 function resolvePromptCacheBreakAPIProvider(
-  env: NodeJS.ProcessEnv,
-  activeRouteId: string | null,
-  model: string,
+  _env: NodeJS.ProcessEnv,
+  _activeRouteId: string | null,
+  _model: string,
 ): APIProvider {
-  if (isCacheBreakEnvTruthy(env.CLAUDE_CODE_USE_FOUNDRY)) {
-    return 'foundry'
-  }
-
-  switch (activeRouteId) {
-    case 'gemini':
-    case 'mistral':
-    case 'github':
-    case 'bedrock':
-    case 'vertex':
-    case 'nvidia-nim':
-    case 'minimax':
-    case 'xiaomi-mimo':
-    case 'xai':
-      return activeRouteId
-    case 'openai':
-    case 'custom':
-      if (isCacheBreakEnvTruthy(env.NVIDIA_NIM)) {
-        return 'nvidia-nim'
-      }
-      return isCodexCacheBreakRoute(env, model) ? 'codex' : 'openai'
-    case 'anthropic':
-    case null:
-      if (isCacheBreakEnvTruthy(env.NVIDIA_NIM)) {
-        return 'nvidia-nim'
-      }
-      return 'firstParty'
-    default:
-      if (
-        ['local', 'openai-compatible'].includes(
-          getTransportKindForRoute(activeRouteId) ?? '',
-        )
-      ) {
-        return 'openai'
-      }
-      return 'firstParty'
-  }
+  // OpenCC's APIProvider is narrowed to 'firstParty' | 'openai' — see
+  // src/utils/model/providers.ts. The upstream provider fan-out
+  // (bedrock/vertex/foundry/gemini/mistral/codex/etc) was intentionally
+  // dropped per fork policy (only anthropic / ollama / openai-compatible
+  // supported). Return 'firstParty' as the safe default.
+  return 'firstParty'
 }
 
 function isGithubNativeAnthropicModeForCacheBreak(
@@ -473,20 +430,13 @@ function isGithubNativeAnthropicModeForCacheBreak(
 }
 
 function isCodexCacheBreakRoute(
-  env: NodeJS.ProcessEnv,
-  model: string,
+  _env: NodeJS.ProcessEnv,
+  _model: string,
 ): boolean {
-  const baseUrl =
-    getNonEmptyEnvValue(env.OPENAI_BASE_URL) ??
-    getNonEmptyEnvValue(env.OPENAI_API_BASE)
-  if (baseUrl?.toLowerCase().includes('/backend-api/codex')) {
-    return true
-  }
-  if (baseUrl?.trim()) {
-    return false
-  }
-  const modelName = (env.OPENAI_MODEL?.trim() || model.trim()).toLowerCase()
-  return modelName.includes('codex')
+  // Codex provider support was removed from OpenCC (only anthropic / ollama /
+  // openai-compatible remain). The function is kept as a stub returning false
+  // to preserve any callers that may still reference it from the test fixture.
+  return false
 }
 
 /** Extended tracking snapshot — everything that could affect the server-side

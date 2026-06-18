@@ -49,7 +49,7 @@ function assistantWithToolUse(id: string): Message {
         input: { file_path: '/tmp/example.txt' },
       },
     ],
-  })
+  }) as Message
 }
 
 function userWithToolResult(id: string): Message {
@@ -61,18 +61,19 @@ function userWithToolResult(id: string): Message {
         content: 'file contents',
       },
     ],
-  })
+  }) as Message
 }
 
-function isPairableMessage(
-  message: Message,
-): message is UserMessage | AssistantMessage {
+function isPairableMessage(message: Message): boolean {
+  // Local Message type requires uuid/timestamp, but AssistantMessage/UserMessage
+  // lack them, so a proper type predicate won't narrow. Use a boolean predicate
+  // and cast at the call site.
   return message.type === 'user' || message.type === 'assistant'
 }
 
 function capturedConversationBeforeRecapPrompt(): (UserMessage | AssistantMessage)[] {
   // The last captured message is the recap prompt added by generateAwaySummary.
-  return capturedMessages!.slice(0, -1).filter(isPairableMessage)
+  return capturedMessages!.slice(0, -1).filter(isPairableMessage) as (UserMessage | AssistantMessage)[]
 }
 
 beforeEach(() => {
@@ -88,7 +89,7 @@ test('generateAwaySummary does not start its recent projection with an orphan to
   ]
 
   for (let i = 0; i < RECENT_WINDOW_FOR_TEST - 1; i++) {
-    messages.push(createUserMessage({ content: `recent turn ${i}` }))
+    messages.push(createUserMessage({ content: `recent turn ${i}` }) as Message)
   }
 
   const summary = await generateAwaySummary(
@@ -112,18 +113,18 @@ test('generateAwaySummary drops an orphaned tool_result instead of expanding bey
 
   // Push the matching tool_use beyond the allowed expansion budget.
   for (let i = 0; i < RECENT_WINDOW_FOR_TEST + 5; i++) {
-    messages.push(createUserMessage({ content: `older filler ${i}` }))
+    messages.push(createUserMessage({ content: `older filler ${i}` }) as Message)
   }
   messages.push(userWithToolResult(toolUseId))
   for (let i = 0; i < RECENT_WINDOW_FOR_TEST - 1; i++) {
-    messages.push(createUserMessage({ content: `recent turn ${i}` }))
+    messages.push(createUserMessage({ content: `recent turn ${i}` }) as Message)
   }
 
   await generateAwaySummary(messages, new AbortController().signal)
 
   expect(capturedMessages).not.toBeNull()
   expect(capturedMessages?.[0]?.type).toBe('user')
-  expect(capturedMessages?.[0]?.message.content).toBe('recent turn 0')
+  expect(capturedMessages?.[0]?.message?.content).toBe('recent turn 0')
 
   expect(
     validateToolResultPairing(capturedConversationBeforeRecapPrompt()).valid,

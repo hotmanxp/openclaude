@@ -121,7 +121,7 @@ function assistantToolUseMessage(toolUseId: string): Message {
     } as never,
     uuid: randomUUID(),
     timestamp: new Date().toISOString(),
-  }
+  } as unknown as Message
 }
 
 function toolResultMessage(toolUseId: string): Message {
@@ -144,7 +144,7 @@ function toolResultMessage(toolUseId: string): Message {
 
 function hasToolResultBlock(message: Message): boolean {
   const content =
-    message.type === 'user' ? message.message.content : undefined
+    message.type === 'user' ? message.message?.content : undefined
   return (
     Array.isArray(content) &&
     content.some(block => block.type === 'tool_result')

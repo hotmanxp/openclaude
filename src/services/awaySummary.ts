@@ -37,7 +37,6 @@ export async function generateAwaySummary(
 
   try {
     const memory = await getSessionMemoryContent()
-    // @ts-ignore - UserMessage is assignable to Message
     const requestedStart = Math.max(0, messages.length - RECENT_MESSAGE_WINDOW)
     const recentRange = selectToolPairSafeMessageRange(
       messages,
@@ -52,11 +51,9 @@ export async function generateAwaySummary(
       },
     )
     const recent = [...recentRange.messages]
-    // @ts-ignore - UserMessage is assignable to Message
-    recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }))
+    recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }) as Message)
     const response = await queryModelWithoutStreaming({
-      // @ts-ignore - Message type mismatch
-      messages: recent,
+      messages: recent as Message[],
       systemPrompt: asSystemPrompt([]),
       thinkingConfig: { type: 'disabled' },
       tools: [],
@@ -76,13 +73,11 @@ export async function generateAwaySummary(
 
     if (response.isApiErrorMessage) {
       logForDebugging(
-        // @ts-ignore - AssistantMessage type mismatch
-        `[awaySummary] API error: ${getAssistantMessageText(response)}`,
+        `[awaySummary] API error: ${getAssistantMessageText(response as unknown as Message)}`,
       )
       return null
     }
-    // @ts-ignore - AssistantMessage type mismatch
-    return getAssistantMessageText(response)
+    return getAssistantMessageText(response as unknown as Message)
   } catch (err) {
     if (err instanceof APIUserAbortError || signal.aborted) {
       return null

@@ -249,14 +249,12 @@ export function resolveCacheProvider(
   provider: APIProvider,
   hints?: { githubNativeAnthropic?: boolean; openAiBaseUrl?: string },
 ): CacheAwareProvider {
-  if (provider === 'github') {
-    return hints?.githubNativeAnthropic ? 'copilot-claude' : 'copilot'
-  }
-  if (provider === 'firstParty' || provider === 'bedrock' || provider === 'vertex' || provider === 'foundry') {
+  // OpenCC's APIProvider is narrowed to 'firstParty' | 'openai'. The
+  // github/bedrock/vertex/foundry/gemini/codex branches were removed per
+  // fork policy (only anthropic / ollama / openai-compatible supported).
+  if (provider === 'firstParty') {
     return 'anthropic'
   }
-  if (provider === 'gemini') return 'gemini'
-  if (provider === 'codex') return 'codex'
   if (provider === 'openai') {
     const url = hints?.openAiBaseUrl ?? ''
     // Self-hosted / private-network endpoint — detect first so a vLLM
