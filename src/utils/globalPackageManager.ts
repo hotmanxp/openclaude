@@ -22,7 +22,7 @@ const FALLBACK_PRIORITY: GlobalPackageManager[] = ['npm', 'bun', 'pnpm', 'yarn']
 
 /**
  * Build the argv (after the binary name) to globally install `spec`
- * (e.g. "@gitlawb/openclaude@latest") with the given package manager.
+ * (e.g. "@hotmanxp/opencc@latest") with the given package manager.
  */
 export function getGlobalInstallArgs(
   pm: GlobalPackageManager,
@@ -149,7 +149,7 @@ async function resolveRealPath(target: string): Promise<string> {
 }
 
 /**
- * Detect which package manager owns the currently running OpenClaude install.
+ * Detect which package manager owns the currently running OpenCC install.
  *
  * Strategy:
  *  1. Resolve the real path of the running binary (following the bin symlink

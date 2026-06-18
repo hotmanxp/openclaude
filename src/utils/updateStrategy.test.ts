@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { DiagnosticInfo, InstallationType } from './doctorDiagnostic.js'
 import type { PackageManager } from './nativeInstaller/packageManagers.js'
-import type { LegacyAPIProvider } from './model/providers.js'
+import type { APIProvider } from './model/providers.js'
 import {
   isThirdPartyBuildBlockedFor,
   planUpdate,
@@ -11,15 +11,10 @@ import {
 
 describe('isThirdPartyBuildBlockedFor', () => {
   const UPSTREAM = '@anthropic-ai/claude-code'
-  const OPENCLAUDE = '@gitlawb/openclaude'
+  const OPENCC = '@hotmanxp/opencc'
 
   test('blocks a third-party provider running the upstream build', () => {
-    for (const provider of [
-      'bedrock',
-      'vertex',
-      'openai',
-      'gemini',
-    ] as LegacyAPIProvider[]) {
+    for (const provider of ['openai'] as APIProvider[]) {
       expect(isThirdPartyBuildBlockedFor(provider, UPSTREAM)).toBe(true)
     }
   })
@@ -28,9 +23,9 @@ describe('isThirdPartyBuildBlockedFor', () => {
     expect(isThirdPartyBuildBlockedFor('firstParty', UPSTREAM)).toBe(false)
   })
 
-  test('allows a custom-PACKAGE_URL build (OpenClaude) on any provider', () => {
-    expect(isThirdPartyBuildBlockedFor('bedrock', OPENCLAUDE)).toBe(false)
-    expect(isThirdPartyBuildBlockedFor('firstParty', OPENCLAUDE)).toBe(false)
+  test('allows a custom-PACKAGE_URL build (OpenCC) on any provider', () => {
+    expect(isThirdPartyBuildBlockedFor('openai', OPENCC)).toBe(false)
+    expect(isThirdPartyBuildBlockedFor('firstParty', OPENCC)).toBe(false)
   })
 })
 
