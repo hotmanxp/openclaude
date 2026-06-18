@@ -5,6 +5,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { getAllLspServers } from './config.js'
+import { recordLSPDiagnosticFileActivity } from './LSPDiagnosticRegistry.js'
 import {
   createLSPServerInstance,
   type LSPServerInstance,
@@ -273,7 +274,9 @@ export function createLSPServerManager(): LSPServerManager {
     const server = await ensureServerStarted(filePath)
     if (!server) return
 
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const resolvedFilePath = path.resolve(filePath)
+    const fileUri = pathToFileURL(resolvedFilePath).href
+    recordLSPDiagnosticFileActivity(resolvedFilePath)
 
     // Skip if already opened on this server
     if (openedFiles.get(fileUri) === server.name) {
@@ -317,13 +320,16 @@ export function createLSPServerManager(): LSPServerManager {
       return openFile(filePath, content)
     }
 
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const resolvedFilePath = path.resolve(filePath)
+    const fileUri = pathToFileURL(resolvedFilePath).href
 
     // If file hasn't been opened on this server yet, open it first
     // LSP servers require didOpen before didChange
     if (openedFiles.get(fileUri) !== server.name) {
       return openFile(filePath, content)
     }
+
+    recordLSPDiagnosticFileActivity(resolvedFilePath)
 
     try {
       await server.sendNotification('textDocument/didChange', {
@@ -352,10 +358,13 @@ export function createLSPServerManager(): LSPServerManager {
     const server = getServerForFile(filePath)
     if (!server || server.state !== 'running') return
 
+    const resolvedFilePath = path.resolve(filePath)
+    recordLSPDiagnosticFileActivity(resolvedFilePath)
+
     try {
       await server.sendNotification('textDocument/didSave', {
         textDocument: {
-          uri: pathToFileURL(path.resolve(filePath)).href,
+          uri: pathToFileURL(resolvedFilePath).href,
         },
       })
       logForDebugging(`LSP: Sent didSave for ${filePath}`)
