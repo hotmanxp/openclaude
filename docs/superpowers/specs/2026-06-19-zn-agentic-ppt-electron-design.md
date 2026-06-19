@@ -232,7 +232,7 @@ app.setPath('userData', DATA_ROOT)
 | `project:list` | `void` | `ProjectMeta[]` |
 | `project:get` | `{ id }` | `ProjectDetail` |
 | `project:create` | `{ topic }` | `ProjectMeta` |
-| `project:update` | `{ id, patch }` | `ProjectMeta` |
+| `project:update` | `{ id, patch: Partial<Pick<ProjectMeta, 'title' \| 'topic' \| 'outline'>> }` | `ProjectMeta` |
 | `project:delete` | `{ id }` | `void` |
 | `project:duplicate` | `{ id }` | `ProjectMeta` |
 | `project:rename` | `{ id, title }` | `void` |
@@ -252,7 +252,7 @@ interface BridgeApi {
     list(): Promise<ProjectMeta[]>
     get(id: string): Promise<ProjectDetail>
     create(topic: string): Promise<ProjectMeta>
-    update(id: string, patch: ...): Promise<ProjectMeta>
+    update(id: string, patch: Partial<Pick<ProjectMeta, 'title' | 'topic' | 'outline'>>): Promise<ProjectMeta>
     delete(id: string): Promise<void>
     duplicate(id: string): Promise<ProjectMeta>
     rename(id: string, title: string): Promise<void>
