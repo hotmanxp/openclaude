@@ -19,11 +19,23 @@ import {
   type RouteDescriptor,
 } from './routeMetadata.js'
 
+function getBaseModelApiName(value: string | undefined): string | null {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const queryIndex = trimmed.indexOf('?')
+  const baseModel =
+    queryIndex === -1 ? trimmed : trimmed.slice(0, queryIndex).trim()
+  return baseModel || null
+}
+
 function normalizeModelApiName(
   value: string | undefined,
 ): string | null {
-  const trimmed = value?.trim().toLowerCase()
-  return trimmed ? trimmed : null
+  const baseModel = getBaseModelApiName(value)
+  return baseModel ? baseModel.toLowerCase() : null
 }
 
 function matchesCatalogEntryModel(
@@ -262,7 +274,7 @@ function findModelDescriptorForApiName(
   routeId: string | null,
   modelApiName: string | undefined,
 ) {
-  const trimmedModel = modelApiName?.trim()
+  const trimmedModel = getBaseModelApiName(modelApiName)
   if (!trimmedModel) {
     return null
   }
@@ -344,16 +356,17 @@ export function resolveModelRuntimeLimits(options: {
   const routeId = resolveActiveRouteIdFromEnv(runtimeEnv, {
     activeProfileProvider: options.activeProfileProvider,
   })
-  const catalogEntry = findCatalogEntryForApiName(routeId, options.model)
+  const modelApiName = getBaseModelApiName(options.model) ?? options.model
+  const catalogEntry = findCatalogEntryForApiName(routeId, modelApiName)
   const modelDescriptor =
     getModelDescriptorForCatalogEntry(catalogEntry) ??
-    findModelDescriptorForApiName(routeId, options.model)
+    findModelDescriptorForApiName(routeId, modelApiName)
   const externalContextWindow = getOpenAIContextWindowMatches(
-    options.model,
+    modelApiName,
     runtimeEnv,
   )
   const externalMaxOutputTokens = getOpenAIMaxOutputTokenMatches(
-    options.model,
+    modelApiName,
     runtimeEnv,
   )
 
