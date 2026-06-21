@@ -57,96 +57,85 @@ export function workflowFileToCommand(
     progressMessage: `running workflow ${name}`,
     contentLength: 0,
     async getPromptForCommand(args: string) {
-      const argList = args.trim() ? args.trim().split(/\s+/) : []
-      const argListJson = JSON.stringify(argList)
-      // Load the script + extract its args shape. The LLM has
-      // repeatedly failed the "guess the shape" task when given
-      // the source inline (it sees the source, understands `args.X`,
-      // but then calls Workflow with `args: undefined` or with the
-      // raw argList). Pre-extracting the shape and presenting it as
-      // a structured bullet list at the TOP of the prompt is the
-      // "scaffolding" that forces the LLM to build the right object.
-      let scriptSection: string
-      let argsShapeLines: string
+      // Load the script ONCE — both the source section and the
+      // args.X extraction need it. Caching avoids two disk reads
+      // per slash invocation. Note: the outer `source` parameter
+      // (the WorkflowSource enum, 'user' | 'project') is shadowed
+      // here — we use `scriptSource` for the file contents to
+      // avoid a name collision.
+      let scriptSource: string | null = null
       let scriptLoadError: string | null = null
       try {
-        const source = await readFile(filePath, 'utf-8')
-        if (source.length > INLINE_SCRIPT_BYTE_LIMIT) {
-          scriptSection =
-            `Workflow source at \`${filePath}\` is ${source.length} bytes ` +
-            `(limit: ${INLINE_SCRIPT_BYTE_LIMIT}). Use the Read tool to load it, ` +
-            `then re-extract the args shape from \`args.X\` accesses.\n\n`
-          argsShapeLines =
-            `  - (script too large to pre-extract; Read the file to learn the shape)\n`
-        } else {
-          const accesses = extractArgsAccesses(source)
-          argsShapeLines =
-            accesses.length === 0
-              ? `  - the script reads \`args\` as a single value (pass the user's input directly)\n`
-              : accesses
-                  .map(
-                    a =>
-                      `  - args.${a}  (REQUIRED — the script reads \`args.${a}\` off the args object)\n`,
-                  )
-                  .join('')
-          scriptSection =
-            `===== WORKFLOW SOURCE (${filePath}, read-only context) =====\n` +
-            `${source}\n` +
-            `===== END WORKFLOW SOURCE =====\n\n`
-        }
+        scriptSource = await readFile(filePath, 'utf-8')
       } catch (e) {
         scriptLoadError = e instanceof Error ? e.message : String(e)
-        scriptSection =
-          `Could not read workflow source at \`${filePath}\`: ${scriptLoadError}. ` +
-          `Use the Read tool to load it, then re-extract the args shape from \`args.X\` accesses.\n\n`
-        argsShapeLines = `  - (could not read the file; use the Read tool to learn the shape)\n`
       }
+      const isOversize = scriptSource !== null && scriptSource.length > INLINE_SCRIPT_BYTE_LIMIT
+      const requiredKeys = scriptSource && !isOversize
+        ? extractArgsAccesses(scriptSource).filter(k => k !== 'args')
+        : []
 
-      // The prompt is structured top-down: (1) what the script
-      // requires, (2) the user's raw input, (3) the full source for
-      // reference, (4) an explicit "do NOT do this" anti-pattern
-      // section that calls out the failure mode we keep hitting
-      // (LLM passing `args: ${argListJson}` verbatim).
+      // The user's typed input as a single string (the full slash
+      // command args, not just the first word). The LLM can split
+      // further if the script needs multiple fields, but a single
+      // string is the safest default — paths don't have spaces and
+      // question-style args rarely need tokenization.
+      const userInputString = args.trim()
+
+      // Build a literal JSON template the LLM can copy verbatim. If
+      // the script reads `args.projectDir` and the user typed
+      // `/Users/ethan/code/x`, the template is
+      // `{ "projectDir": "/Users/ethan/code/x" }`. For multi-key
+      // scripts, all keys share the user input (LLM can override).
+      // For scripts that read `args` as a whole (no args.X), the
+      // template is the raw user input string.
+      const argsTemplate = requiredKeys.length === 0
+        ? JSON.stringify(userInputString)
+        : (() => {
+            const obj: Record<string, string> = {}
+            for (const k of requiredKeys) {
+              obj[k] = userInputString
+            }
+            return JSON.stringify(obj, null, 2)
+          })()
+
+      // The prompt is structured top-down: (1) the EXACT tool call
+      // the LLM should make (pre-filled template), (2) the script
+      // source for reference. The pre-filled tool call is the
+      // load-bearing piece — see the comment block above the
+      // `requiredKeys` extraction.
+      const scriptSection = isOversize
+        ? `Workflow source at \`${filePath}\` is ${scriptSource!.length} bytes ` +
+          `(limit: ${INLINE_SCRIPT_BYTE_LIMIT}). Use the Read tool to load it, ` +
+          `then re-extract the args shape from \`args.X\` accesses.\n\n`
+        : scriptSource !== null
+          ? `===== WORKFLOW SOURCE (${filePath}, read-only context) =====\n` +
+            `${scriptSource}\n` +
+            `===== END WORKFLOW SOURCE =====\n\n`
+          : `Could not read workflow source at \`${filePath}\`: ${scriptLoadError}. ` +
+            `Use the Read tool to load it, then re-extract the args shape from \`args.X\` accesses.\n\n`
+
       return [
         {
           type: 'text',
           text:
-            `WORKFLOW: /${name} (${source}-scoped, lives at \`${filePath}\`)\n\n` +
-            `STEP 1 — The script's REQUIRED args shape (pre-extracted):\n` +
-            argsShapeLines +
-            `\n` +
-            `STEP 2 — User typed: /${name} ${args.trim()}\n` +
-            `Raw tokenized args: ${argListJson}\n\n` +
-            `STEP 3 — You MUST call WorkflowTool with args as an OBJECT whose keys ` +
-            `match the REQUIRED shape from STEP 1. The args object is passed ` +
-            `verbatim to the script's \`args\` global, then the script reads ` +
-            `\`args.X\`. A wrong shape silently breaks the script.\n\n` +
-            `Examples (mapping user input → args object):\n` +
-            `  - script needs \`args.projectDir\` + user typed \`/abs/path\` ` +
-            `→ args: { projectDir: "/abs/path" }\n` +
-            `  - script needs \`args.projectDir\` + user typed \`~/code/x\` ` +
-            `→ args: { projectDir: "/Users/<user>/code/x" }  (resolve ~)\n` +
-            `  - script needs \`args.question\` + user typed "what is X" ` +
-            `→ args: { question: "what is X" }\n` +
-            `  - script needs \`args\` as a whole + user typed "anything" ` +
-            `→ args: "anything"\n\n` +
-            `STEP 4 — Call the WorkflowTool:\n` +
+            `User invoked: /${name} ${args.trim()}\n` +
+            `Workflow script: \`${filePath}\` (${source}-scoped)\n\n` +
+            `CALL WorkflowTool with EXACTLY this — copy the args object verbatim:\n\n` +
             `  workflowName: "${name}"\n` +
-            `  args: <OBJECT with all REQUIRED keys from STEP 1 populated>\n` +
+            `  args: ${argsTemplate}\n` +
             `  description: <one-line summary of the user's intent>\n\n` +
-            `=== CRITICAL: ANTI-PATTERNS ===\n` +
-            `The tool's general description mentions \`args: ["a.ts", "b.ts"]\` as ` +
-            `an example — that pattern is for a DIFFERENT kind of workflow (one ` +
-            `that reads \`args[0]\`/\`args[1]\`, not \`args.X\`). For THIS workflow, ` +
-            `the array form is WRONG. Do NOT do any of:\n` +
-            `  ✗ args: ${argListJson}  ← array, script's args.X returns undefined\n` +
-            `  ✗ args: undefined  ← script falls back to defaults silently\n` +
-            `  ✗ args: "some string"  ← string, args.X still undefined\n` +
-            `  ✓ args: { <REQUIRED keys from STEP 1 populated from STEP 2> }\n` +
+            (requiredKeys.length > 0
+              ? `The args object is pre-built from the script's required shape ` +
+                `(\`args.${requiredKeys.join('`, `args.')}\`) + the user's typed input. ` +
+                `Edit \`description\` if you want, but DO NOT change \`args\` (the script will ` +
+                `read undefined keys and fall back to defaults).\n`
+              : `The script reads \`args\` as a whole. Pass the user's input string ` +
+                `verbatim as the args value.\n`) +
             (scriptLoadError
               ? `\nNOTE: Could not pre-load the script source (${scriptLoadError}). ` +
-                `Use the Read tool on \`${filePath}\` to load it before ` +
-                `inferring the args shape.\n`
+                `The args template above is a best-guess — verify against ` +
+                `the script before calling.\n`
               : '') +
             `\nFor reference, the full script source:\n\n` +
             scriptSection,
