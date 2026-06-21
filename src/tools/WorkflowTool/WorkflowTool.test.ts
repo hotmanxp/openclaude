@@ -46,6 +46,74 @@ describe('WorkflowTool', () => {
     expect(schema).toBeDefined()
   })
 
+  // Port of upstream claude-code 2.1.185 WorkflowTool inputSchema
+  // (binary extract at .agent_working_dir/claude-raw/2.1.185/all-strings.txt:490384):
+  //   args: E.unknown().optional()
+  // Upstream accepts any JSON-serializable value as `args` because the
+  // script's `args` global is passed verbatim. The prior OpenCC union
+  // (`z.string() | z.array(z.string()) | z.record(z.string(), z.unknown())`)
+  // rejected legitimate values — null, booleans, numbers, array-of-objects,
+  // and nested structures — forcing the LLM to JSON-encode/decode through
+  // a side-channel file. The new schema must accept ALL of these AND the
+  // prior types for backward compat.
+  //
+  // Cast the loose `unknown` schema to the runtime Zod v4 shape so we can
+  // call .parse() with concrete inputs. The Tool interface declares the
+  // schema as a generic Record; the actual exported value is a Zod
+  // ZodObject.
+  test('args schema accepts every JSON-serializable value (port of upstream 2.1.185 z.unknown())', () => {
+    const schema = tool.inputSchema as {
+      parse: (input: unknown) => unknown
+    }
+    const base = { workflowName: 'deep-research' }
+    const cases: ReadonlyArray<{ name: string; args: unknown }> = [
+      { name: 'string', args: 'hello' },
+      { name: 'string array (prior union)', args: ['a.ts', 'b.ts'] },
+      { name: 'object (prior union)', args: { foo: 'bar' } },
+      // New types accepted by z.unknown() that the prior union rejected:
+      { name: 'null', args: null },
+      { name: 'boolean true', args: true },
+      { name: 'boolean false', args: false },
+      { name: 'integer', args: 42 },
+      { name: 'zero', args: 0 },
+      { name: 'float', args: 3.14 },
+      { name: 'array of numbers', args: [1, 2, 3] },
+      { name: 'array of objects', args: [{ path: 'a.ts' }, { path: 'b.ts' }] },
+      { name: 'nested object', args: { outer: { inner: { deep: true } } } },
+      { name: 'mixed structure', args: { items: [1, 'two', { three: null }] } },
+    ]
+    for (const { name, args } of cases) {
+      // The ZodObject will coerce the parsed shape to typed fields. The
+      // `args` field is z.unknown() so any value flows through unchanged.
+      const result = schema.parse({ ...base, args })
+      expect((result as { args: unknown }).args).toEqual(args)
+      // Sanity: confirm the test actually exercised the type (so a
+      // silently-eaten `.optional()` regression would be caught).
+      expect(name).toBeTruthy()
+    }
+
+    // Backward compat: omitting args entirely must still parse cleanly
+    // (the .optional() modifier is preserved).
+    const noArgs = schema.parse({ workflowName: 'deep-research' })
+    expect((noArgs as { args?: unknown }).args).toBeUndefined()
+  })
+
+  // Regression: the schema must STILL reject non-string workflowName
+  // and missing inputs (the upstream refines are preserved).
+  test('args schema still rejects invalid input shapes', () => {
+    const schema = tool.inputSchema as {
+      parse: (input: unknown) => unknown
+    }
+    // Missing all of workflowName/scriptPath/resumeFromRunId → refine fires.
+    expect(() => schema.parse({ args: 'x' })).toThrow()
+    // workflowName must be a string.
+    expect(() => schema.parse({ workflowName: 42, args: 'x' })).toThrow()
+    // scriptPath and workflowName are mutually exclusive.
+    expect(() =>
+      schema.parse({ workflowName: 'x', scriptPath: '/tmp/x.js', args: 'y' }),
+    ).toThrow()
+  })
+
   // Regression: every Tool interface method that the runtime actually
   // calls must be a function on the WorkflowTool plain object. The
   // `as unknown as Tool` cast at WorkflowTool.ts silences type errors

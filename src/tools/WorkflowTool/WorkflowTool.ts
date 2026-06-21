@@ -37,10 +37,25 @@ export const workflowInputSchema = z
       .describe(
         'Path to a workflow script file written earlier via Write/Edit. Mutually exclusive with workflowName.',
       ),
+    // Port of upstream claude-code 2.1.185 WorkflowTool schema (binary
+    // extract at .agent_working_dir/claude-raw/2.1.185/all-strings.txt:490384
+    // — `args: E.unknown().optional().describe("Optional input value ...")`).
+    // Replaces the older OpenCC union that restricted args to
+    // string | string[] | Record<string, unknown> — that union rejected
+    // legitimate values like null, booleans, numbers, array-of-objects,
+    // and deeply-nested structures. Upstream accepts any JSON-serializable
+    // value because the script's `args` global is passed verbatim, and the
+    // script's downstream `args.filter` / `args.map` calls would crash on
+    // a type the schema wrongly narrowed.
     args: z
-      .union([z.string(), z.array(z.string()), z.record(z.string(), z.unknown())])
+      .unknown()
       .optional()
-      .describe('Arguments to pass to the workflow'),
+      .describe(
+        'Optional input value exposed to the script as the global `args`, verbatim. ' +
+        'Pass arrays/objects as actual JSON values, NOT as a JSON-encoded string — ' +
+        'a stringified list breaks `args.filter`/`args.map` in the script. ' +
+        'Use for parameterized named workflows (e.g. a research question).',
+      ),
     description: z
       .string()
       .optional()
