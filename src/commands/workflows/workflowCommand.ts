@@ -58,17 +58,24 @@ export function workflowFileToCommand(
             `fields: workflowName, scriptPath, args, description, resumeFromRunId. ` +
             `For this slash invocation, set ONLY these 3:\n\n` +
             `  - workflowName: "${name}"\n` +
-            `  - args: { <key-from-step-1>: <value> }\n` +
+            `  - args: <NATIVE OBJECT, not a string>\n` +
             `  - description: <one-line summary of what the user wants>\n\n` +
             `Leave scriptPath and resumeFromRunId UNSET — they're for OTHER ` +
             `invocation modes (ad-hoc script files, resuming prior runs).\n\n` +
-            `Example call (for a script reading \`args.projectDir\`):\n` +
-            `  workflowName: "${name}"\n` +
-            `  args: { "projectDir": "<absolute path to the project>" }\n` +
-            `  description: "<one-line>"\n\n` +
-            `The args value must be a NATIVE OBJECT (not a JSON-stringified string). ` +
-            `The script reads \`args.X\` directly — passing \`args: "{...}"\` as a ` +
-            `string will silently break the script.`,
+            `The full tool call should look like this (an example for a script ` +
+            `reading \`args.projectDir\` when the user typed "/Users/x/code/y"):\n\n` +
+            `  WorkflowTool({\n` +
+            `    workflowName: "${name}",\n` +
+            `    args: { projectDir: "/Users/x/code/y" },\n` +
+            `    description: "Inspect /Users/x/code/y and return its project type and version"\n` +
+            `  })\n\n` +
+            `CRITICAL — \`args\` is a NATIVE OBJECT inside the tool call, not a ` +
+            `JSON-stringified string. The LLM has been observed in TUI tests ` +
+            `passing \`args: "{\\"projectDir\\":\\"\\\"}"\` (a string containing ` +
+            `JSON) instead of \`args: { projectDir: "..." }\` (an object). ` +
+            `The script reads \`args.X\` directly — when \`args\` is a string, ` +
+            `\`args.projectDir\` is undefined and the script silently falls ` +
+            `back to defaults.`,
         },
       ]
     },

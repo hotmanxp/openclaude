@@ -101,16 +101,19 @@ describe('workflowFileToCommand', () => {
     // The LLM is told which 3 to set + to leave the other 2 unset.
     expect(text).toMatch(/set ONLY these 3/)
     expect(text).toMatch(/Leave scriptPath and resumeFromRunId UNSET/)
-    // A concrete example call shape is provided (generic path placeholder,
-    // not anchored to the user's actual input — the LLM should derive
-    // the real value from the script + invocation).
-    expect(text).toContain('"projectDir": "<absolute path to the project>"')
-    // The LLM is warned about the JSON-stringified-string trap.
+    // A concrete example call shape is provided as a WorkflowTool({...})
+    // syntax block — real-looking object literal, not angle-bracket
+    // placeholders. Angle brackets confused the LLM into passing them
+    // as literal values (TUI test 2026-06-21: LLM called with
+    // `args: "[\"对~/code/hermes-agent\"]"` — JSON-stringified array).
+    expect(text).toContain('args: { projectDir: "/Users/x/code/y" }')
+    // The CRITICAL block warns about the JSON-stringified-string trap.
+    expect(text).toMatch(/CRITICAL/)
     expect(text).toMatch(/NATIVE OBJECT/)
+    expect(text).toMatch(/JSON-stringified string/)
     // No server-side normalization.
     expect(text).not.toContain('Normalized path:')
-    // No pre-fill of the actual user's args (the example uses a generic path).
-    // The user's literal input is NOT substituted into the example.
+    // No pre-fill of the actual user's args.
     expect(text).not.toContain('"projectDir": "对~/code/hermes-agent"')
   })
 
