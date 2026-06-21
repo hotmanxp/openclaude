@@ -61,63 +61,50 @@ describe('workflowFileToCommand', () => {
     expect(cmd.type).toBe('prompt')
   })
 
-  // Minimal-prompt approach (per user feedback 2026-06-21): no
-  // server-side normalization, no pre-fill template. Just hand
-  // the LLM the raw user input, the script path, and an
-  // instruction to read the script and figure out the args.
-  // Pre-processing made the prompt brittle — when the user's
-  // input wasn't a path, or the script read a non-`projectDir`
-  // key, the pre-fill pointed the LLM at the wrong shape.
-  test('getPromptForCommand is minimal: raw user input + script path + read instruction', async () => {
+  // Upstream-style (commit that mirrors upstream 2.1.185's
+  // createWorkflowCommand pattern). The prompt is short:
+  //   1. "Run the X workflow."
+  //   2. Script path + scope
+  //   3. "The user typed: <raw input>"
+  //   4. "Invoke: Workflow({workflowName, args, description})"
+  // The LLM has the full WorkflowTool schema (via tool definition)
+  // to figure out the right shape for args. No server-side
+  // normalization, no pre-fill, no anti-patterns.
+  test('mirrors upstream 2.1.185 pattern: minimal, raw user input, JS call shape', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'detect-project-version.js')
     writeFileSync(
       scriptPath,
-      'export const meta = { name: "x" }\nconst p = args.projectDir\nreturn p',
+      'export const meta = { name: "x" }\nreturn "ok"',
     )
 
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
-    // Test with the exact form the user has been using:
-    // Chinese 对 prefix + unexpanded ~ + trailing natural-language
-    // filler. None of this is normalized — the LLM sees the raw
-    // input and decides what to do.
+    // Test with the exact form the user has been using: Chinese 对
+    // prefix + unexpanded ~ + free-form path. The prompt must pass
+    // it through UNCHANGED — the LLM does the semantic mapping.
     const text = await getPromptText(
       cmd,
       '对~/code/hermes-agent',
     )
 
-    // Raw user input is preserved (NOT normalized).
-    expect(text).toContain('User invoked: /detect-project-version 对~/code/hermes-agent')
-    // Script path is surfaced so the LLM can Read it.
+    // Upstream-style header.
+    expect(text).toContain('Run the "detect-project-version" workflow.')
+    // Script path is surfaced.
     expect(text).toContain(scriptPath)
-    // Read tool instructed.
-    expect(text).toMatch(/Read the script/)
-    // The prompt guides the LLM on how to call WorkflowTool.
-    expect(text).toMatch(/STEP 1/)
-    expect(text).toMatch(/STEP 2/)
+    // User input is preserved VERBATIM (no normalization, no
+    // connector stripping, no ~ expansion).
+    expect(text).toContain('The user typed: `对~/code/hermes-agent`')
+    // JS call shape at the bottom — the LLM should pattern-match
+    // on this and produce a similar call (with the right args
+    // shape for the actual tool schema).
+    expect(text).toContain('Invoke: Workflow(')
     expect(text).toContain('workflowName: "detect-project-version"')
-    // The 5 fields are listed (so LLM knows the full schema).
-    expect(text).toContain('workflowName, scriptPath, args, description, resumeFromRunId')
-    // The LLM is told which 3 to set + to leave the other 2 unset.
-    expect(text).toMatch(/set ONLY these 3/)
-    expect(text).toMatch(/Leave scriptPath and resumeFromRunId UNSET/)
-    // A concrete example call shape is provided as a WorkflowTool({...})
-    // syntax block — real-looking object literal, not angle-bracket
-    // placeholders. Angle brackets confused the LLM into passing them
-    // as literal values (TUI test 2026-06-21: LLM called with
-    // `args: "[\"对~/code/hermes-agent\"]"` — JSON-stringified array).
-    expect(text).toContain('args: { projectDir: "/Users/x/code/y" }')
-    // The CRITICAL block warns about the JSON-stringified-string trap.
-    expect(text).toMatch(/CRITICAL/)
-    expect(text).toMatch(/NATIVE OBJECT/)
-    expect(text).toMatch(/JSON-stringified string/)
-    // No server-side normalization.
-    expect(text).not.toContain('Normalized path:')
-    // No pre-fill of the actual user's args.
-    expect(text).not.toContain('"projectDir": "对~/code/hermes-agent"')
+    expect(text).toContain('args: "对~/code/hermes-agent"')
+    // description is a placeholder for the LLM to fill.
+    expect(text).toContain('description:')
   })
 
-  test('handles empty args', async () => {
+  test('handles empty args (no trailing user input)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-empty-'))
     const scriptPath = join(dir, 'demo.js')
     writeFileSync(
@@ -128,8 +115,10 @@ describe('workflowFileToCommand', () => {
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     const text = await getPromptText(cmd, '')
 
-    expect(text).toContain('User invoked: /demo')
-    expect(text).toContain(scriptPath)
-    expect(text).toMatch(/Read the script/)
+    // No-args case: the args field is dropped from the JS call
+    // shape (LLM should just not include args in its call).
+    expect(text).toContain("The user typed: (no args)")
+    expect(text).toMatch(/Invoke: Workflow\(\{ workflowName: "demo", description:/)
+    expect(text).not.toContain('args:')
   })
 })

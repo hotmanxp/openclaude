@@ -5,25 +5,39 @@ export type WorkflowSource = 'project' | 'user'
 
 /**
  * Convert a workflow .js file path into a Command object so workflows show
- * up as `/<name>` slash commands. When invoked, the prompt instructs the
- * LLM to call the WorkflowTool with the workflow's name and args, which
- * triggers the workflow's `run()` function.
+ * up as `/<name>` slash commands.
  *
- * Per user feedback 2026-06-21:
- * - Do NOT pre-process the user input server-side (don't strip `对`/`to`,
- *   don't expand `~`, don't pre-fill a JSON template). The LLM is the
- *   right place to interpret the user's input.
- * - DO show the LLM how to call WorkflowTool — the input shape, the
- *   field names, an example. Earlier "minimal" prompts omitted this
- *   guidance and the LLM was calling with wrong shapes (`args: []`,
- *   JSON-stringified strings, etc.) because it didn't have a clear
- *   reference for the tool's input contract.
+ * Per user feedback 2026-06-21 (after 7 failed prompt iterations that
+ * tried to be clever: pre-fill templates, anti-patterns, normalize
+ * connectors, expand `~`, generic examples, JSON-stringified-string
+ * warnings, minimal-prompt delegation to LLM, schema-aligned fields):
+ * the upstream 2.1.185 `createWorkflowCommand` pattern is the right
+ * model. The user said "看看 claude 是如何处理的" — look at how
+ * upstream handles this.
  *
- * So the prompt does TWO things:
- *   1. Surface the user input + script path (raw, no interpretation)
- *   2. Show the WorkflowTool input schema with an example shape — the
- *      LLM fills in the values from STEP 1 + the script's `args.X`
- *      accesses.
+ * Upstream's pattern (extracted from binary at
+ * .agent_working_dir/claude-raw/2.1.185/all-strings.txt:494933):
+ *
+ *   r = t.trim()           // raw user input after /<name>
+ *   o = Le(e.name)         // workflow name (JSON-stringified)
+ *   s = r ? `{ name: ${o}, args: ${Le(r)} }` : `{ name: ${o} }`
+ *   prompt = `Run the "${e.name}" workflow.
+ *             ${description}${whenToUse}${phases}
+ *
+ *             Invoke: Workflow(${s})`
+ *
+ * In other words: upstream passes the raw user input as the args
+ * value (JSON-stringified), wraps it in a JS object literal, and
+ * tells the LLM to "Invoke: Workflow({...})". The LLM is expected
+ * to interpret the raw input and figure out the right shape. If
+ * the LLM can't, that's the LLM's problem — upstream doesn't try
+ * to pre-fill or pre-process.
+ *
+ * This OpenCC version mirrors that pattern. We render the phases
+ * (from the script's `meta.phases`) as a bulleted list so the
+ * LLM can see the workflow's structure. We do NOT add ANY of the
+ * pre-filling / anti-pattern / schema-alignment language that the
+ * 7 prior commits added — none of it helped.
  */
 export function workflowFileToCommand(
   filePath: string,
@@ -39,43 +53,31 @@ export function workflowFileToCommand(
     progressMessage: `running workflow ${name}`,
     contentLength: 0,
     async getPromptForCommand(args: string) {
+      // Mirror upstream 2.1.185 verbatim. r is the raw user input
+      // (the string after the `/<name> ` in the slash command).
+      // We do NOT strip natural-language prefixes, expand `~`,
+      // or pre-construct the args object. The LLM does that.
+      const r = args.trim()
+      const nameJson = JSON.stringify(name)
+      const argsJson = r ? JSON.stringify(r) : null
+      // The JS object literal the LLM should pass to Workflow().
+      // Note: upstream uses `name` here, but OpenCC's WorkflowTool
+      // schema uses `workflowName` (port divergence — OpenCC added
+      // `workflowName` to make the field name explicit). The LLM
+      // should use the actual schema field name, not the literal
+      // `name` from upstream.
+      const callShape = argsJson !== null
+        ? `{ workflowName: ${nameJson}, args: ${argsJson}, description: "<one-line summary of the user's intent>" }`
+        : `{ workflowName: ${nameJson}, description: "<one-line summary of the user's intent>" }`
+
       return [
         {
           type: 'text',
           text:
-            `User invoked: /${name} ${args.trim()}\n\n` +
+            `Run the "${name}" workflow.\n\n` +
             `Workflow script: \`${filePath}\` (${source}-scoped)\n\n` +
-            `STEP 1 — Read the script to learn what arguments it expects. ` +
-            `Look for \`args.X\` property accesses (e.g. \`args.projectDir\`, ` +
-            `\`args.question\`). These tell you the keys your args object ` +
-            `must contain. The value of each key can come from anywhere ` +
-            `you have context for — the user's invocation above, the ` +
-            `script's own logic, prior conversation, or sensible defaults. ` +
-            `If the user's text contains a natural-language prefix (对 / to / ` +
-            `for / about) or an unexpanded \`~\`, resolve it yourself before ` +
-            `passing — the script gets the raw value you pass.\n\n` +
-            `STEP 2 — Call the WorkflowTool. The tool's input has 5 optional ` +
-            `fields: workflowName, scriptPath, args, description, resumeFromRunId. ` +
-            `For this slash invocation, set ONLY these 3:\n\n` +
-            `  - workflowName: "${name}"\n` +
-            `  - args: <NATIVE OBJECT, not a string>\n` +
-            `  - description: <one-line summary of what the user wants>\n\n` +
-            `Leave scriptPath and resumeFromRunId UNSET — they're for OTHER ` +
-            `invocation modes (ad-hoc script files, resuming prior runs).\n\n` +
-            `The full tool call should look like this (an example for a script ` +
-            `reading \`args.projectDir\` when the user typed "/Users/x/code/y"):\n\n` +
-            `  WorkflowTool({\n` +
-            `    workflowName: "${name}",\n` +
-            `    args: { projectDir: "/Users/x/code/y" },\n` +
-            `    description: "Inspect /Users/x/code/y and return its project type and version"\n` +
-            `  })\n\n` +
-            `CRITICAL — \`args\` is a NATIVE OBJECT inside the tool call, not a ` +
-            `JSON-stringified string. The LLM has been observed in TUI tests ` +
-            `passing \`args: "{\\"projectDir\\":\\"\\\"}"\` (a string containing ` +
-            `JSON) instead of \`args: { projectDir: "..." }\` (an object). ` +
-            `The script reads \`args.X\` directly — when \`args\` is a string, ` +
-            `\`args.projectDir\` is undefined and the script silently falls ` +
-            `back to defaults.`,
+            `The user typed: ${r ? `\`${r}\`` : '(no args)'}\n\n` +
+            `Invoke: Workflow(${callShape})`,
         },
       ]
     },
