@@ -117,10 +117,11 @@ export function workflowFileToCommand(
             `\n` +
             `STEP 2 — User typed: /${name} ${args.trim()}\n` +
             `Raw tokenized args: ${argListJson}\n\n` +
-            `STEP 3 — You MUST call the WorkflowTool with all REQUIRED ` +
-            `args.<property> keys populated from the user's input. For ` +
-            `a path-like user input, resolve any \`~\` to $HOME before ` +
-            `passing. Examples:\n` +
+            `STEP 3 — You MUST call WorkflowTool with args as an OBJECT whose keys ` +
+            `match the REQUIRED shape from STEP 1. The args object is passed ` +
+            `verbatim to the script's \`args\` global, then the script reads ` +
+            `\`args.X\`. A wrong shape silently breaks the script.\n\n` +
+            `Examples (mapping user input → args object):\n` +
             `  - script needs \`args.projectDir\` + user typed \`/abs/path\` ` +
             `→ args: { projectDir: "/abs/path" }\n` +
             `  - script needs \`args.projectDir\` + user typed \`~/code/x\` ` +
@@ -131,11 +132,17 @@ export function workflowFileToCommand(
             `→ args: "anything"\n\n` +
             `STEP 4 — Call the WorkflowTool:\n` +
             `  workflowName: "${name}"\n` +
-            `  args: <object with all REQUIRED keys from STEP 1 populated>\n` +
+            `  args: <OBJECT with all REQUIRED keys from STEP 1 populated>\n` +
             `  description: <one-line summary of the user's intent>\n\n` +
-            `DO NOT pass the raw argList ${argListJson} as args — that ` +
-            `produces an array when the script needs an object, and the ` +
-            `script's \`args.X\` accesses return undefined.\n` +
+            `=== CRITICAL: ANTI-PATTERNS ===\n` +
+            `The tool's general description mentions \`args: ["a.ts", "b.ts"]\` as ` +
+            `an example — that pattern is for a DIFFERENT kind of workflow (one ` +
+            `that reads \`args[0]\`/\`args[1]\`, not \`args.X\`). For THIS workflow, ` +
+            `the array form is WRONG. Do NOT do any of:\n` +
+            `  ✗ args: ${argListJson}  ← array, script's args.X returns undefined\n` +
+            `  ✗ args: undefined  ← script falls back to defaults silently\n` +
+            `  ✗ args: "some string"  ← string, args.X still undefined\n` +
+            `  ✓ args: { <REQUIRED keys from STEP 1 populated from STEP 2> }\n` +
             (scriptLoadError
               ? `\nNOTE: Could not pre-load the script source (${scriptLoadError}). ` +
                 `Use the Read tool on \`${filePath}\` to load it before ` +

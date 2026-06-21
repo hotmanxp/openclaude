@@ -111,9 +111,12 @@ describe('workflowFileToCommand', () => {
     // The user's raw args must appear.
     expect(text).toContain('/Users/ethan/code/hermes-agent')
     // The ~-resolution example must be present (common case).
-    expect(text).toMatch(/resolve any `~`/)
-    // Explicit anti-pattern callout.
-    expect(text).toMatch(/DO NOT pass the raw argList/)
+    expect(text).toMatch(/resolve ~/)
+    // The CRITICAL anti-pattern section must be present.
+    expect(text).toMatch(/CRITICAL: ANTI-PATTERNS/)
+    expect(text).toMatch(/array form is WRONG/)
+    // The user's raw argList must appear as a ✗ anti-pattern.
+    expect(text).toMatch(/✗ args:/)
     // The WorkflowTool call site must be explicit.
     expect(text).toContain('workflowName: "detect-project-version"')
     // Source scope surfaced.
