@@ -90,9 +90,13 @@ describe('workflowFileToCommand', () => {
     // The IMPORTANT block emphasizes args shape.
     expect(text).toMatch(/IMPORTANT/)
     expect(text).toMatch(/args\.X/)
-    // The strong warning about wrong shapes.
+    // The strong warning about wrong shapes (new wording).
     expect(text).toMatch(/silently fall back to defaults/)
-    expect(text).toMatch(/Empty \/ array \/ string/)
+    expect(text).toMatch(/array, string, undefined/)
+    // The tool's full schema is acknowledged (5 fields).
+    expect(text).toContain('workflowName, scriptPath, args, description, resumeFromRunId')
+    // A concrete JSON example helps the LLM see the shape.
+    expect(text).toContain('"projectDir": "/Users/x/code/y"')
     // The workflowName is mentioned for the tool call.
     expect(text).toContain('workflowName: "detect-project-version"')
   })

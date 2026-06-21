@@ -44,14 +44,20 @@ export function workflowFileToCommand(
             `Workflow script lives at: \`${filePath}\`\n\n` +
             `STEP 1 — Read the script with the Read tool to learn what arguments it expects. ` +
             `Inspect for \`args.X\` property accesses (e.g. \`args.projectDir\`, \`args.question\`) — ` +
-            `these tell you the SHAPE of the args object the script needs.\n\n` +
-            `STEP 2 — Call the WorkflowTool with:\n` +
+            `these are the keys your args object must contain.\n\n` +
+            `STEP 2 — Call the WorkflowTool. The tool's input schema has 5 fields ` +
+            `(workflowName, scriptPath, args, description, resumeFromRunId) — all optional. ` +
+            `For this slash invocation, set ONLY these 3:\n` +
             `  - workflowName: "${name}"\n` +
-            `  - args: <object whose keys match the script's \`args.X\` accesses, populated from the user's typed input above>\n` +
-            `  - description: <one-line summary of the user's intent>\n\n` +
-            `IMPORTANT — the script reads \`args.X\` and will silently fall back to defaults if any key is missing or \`args\` is the wrong shape ` +
-            `(an array, a string, or undefined). You MUST pass an OBJECT with all required keys populated. ` +
-            `Empty / array / string \`args\` will fail. The args object is the load-bearing piece — get it right.`,
+            `  - args: { "<key-from-step-1>": "<value-from-user-typed-input>" }\n` +
+            `    Example for a script reading \`args.projectDir\` + user typed \`/Users/x/code/y\`:\n` +
+            `      args: { "projectDir": "/Users/x/code/y" }\n` +
+            `  - description: <one-line summary of the user's intent>\n` +
+            `Leave scriptPath and resumeFromRunId UNSET (they're for the OTHER invocation modes).\n\n` +
+            `IMPORTANT — the args object is the load-bearing piece. The script reads \`args.X\` ` +
+            `directly and will silently fall back to defaults (e.g. '.') if any key is missing ` +
+            `or if \`args\` is the wrong shape (array, string, undefined). You MUST pass an OBJECT ` +
+            `with all required keys populated from the user's typed input.`,
         },
       ]
     },
