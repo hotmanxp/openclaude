@@ -101,8 +101,10 @@ describe('workflowFileToCommand', () => {
     // The LLM is told which 3 to set + to leave the other 2 unset.
     expect(text).toMatch(/set ONLY these 3/)
     expect(text).toMatch(/Leave scriptPath and resumeFromRunId UNSET/)
-    // A concrete example call shape is provided.
-    expect(text).toContain('"projectDir": "/Users/x/code/y"')
+    // A concrete example call shape is provided (generic path placeholder,
+    // not anchored to the user's actual input — the LLM should derive
+    // the real value from the script + invocation).
+    expect(text).toContain('"projectDir": "<absolute path to the project>"')
     // The LLM is warned about the JSON-stringified-string trap.
     expect(text).toMatch(/NATIVE OBJECT/)
     // No server-side normalization.

@@ -48,22 +48,24 @@ export function workflowFileToCommand(
             `STEP 1 — Read the script to learn what arguments it expects. ` +
             `Look for \`args.X\` property accesses (e.g. \`args.projectDir\`, ` +
             `\`args.question\`). These tell you the keys your args object ` +
-            `must contain and the shape of their values. Resolve any ` +
-            `natural-language prefixes (对 / to / for / about) and unexpanded ` +
-            `\`~\` yourself — the script gets the raw value you pass.\n\n` +
+            `must contain. The value of each key can come from anywhere ` +
+            `you have context for — the user's invocation above, the ` +
+            `script's own logic, prior conversation, or sensible defaults. ` +
+            `If the user's text contains a natural-language prefix (对 / to / ` +
+            `for / about) or an unexpanded \`~\`, resolve it yourself before ` +
+            `passing — the script gets the raw value you pass.\n\n` +
             `STEP 2 — Call the WorkflowTool. The tool's input has 5 optional ` +
             `fields: workflowName, scriptPath, args, description, resumeFromRunId. ` +
             `For this slash invocation, set ONLY these 3:\n\n` +
             `  - workflowName: "${name}"\n` +
-            `  - args: { <key-from-step-1>: <value-resolved-from-user-input> }\n` +
+            `  - args: { <key-from-step-1>: <value> }\n` +
             `  - description: <one-line summary of what the user wants>\n\n` +
             `Leave scriptPath and resumeFromRunId UNSET — they're for OTHER ` +
             `invocation modes (ad-hoc script files, resuming prior runs).\n\n` +
-            `Example call (for a script reading \`args.projectDir\` when the user ` +
-            `typed "/Users/x/code/y"):\n` +
+            `Example call (for a script reading \`args.projectDir\`):\n` +
             `  workflowName: "${name}"\n` +
-            `  args: { "projectDir": "/Users/x/code/y" }\n` +
-            `  description: "Inspect /Users/x/code/y and return its project type and version"\n\n` +
+            `  args: { "projectDir": "<absolute path to the project>" }\n` +
+            `  description: "<one-line>"\n\n` +
             `The args value must be a NATIVE OBJECT (not a JSON-stringified string). ` +
             `The script reads \`args.X\` directly — passing \`args: "{...}"\` as a ` +
             `string will silently break the script.`,
