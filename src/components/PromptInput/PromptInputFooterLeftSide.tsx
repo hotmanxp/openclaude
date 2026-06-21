@@ -389,6 +389,12 @@ function ModeIndicator({
 
   // Build parts array - exclude BackgroundTaskStatus when we have teammate pills
   // (teammate pills get their own row)
+  // WorkflowStatusPill is only included when a workflow is actually running —
+  // it returns null otherwise, but `parts.length > 0` below would still see
+  // the element and emit a leading " · " separator next to the branch,
+  // producing a lonely empty middot (空白点) in the rendered footer.
+  const workflows = useAppState(s_5 => s_5.workflows);
+  const hasRunningWorkflow = workflows !== undefined && Object.values(workflows).some(w => w.status === 'running');
   const parts = [
   // Remote session indicator
   ...(remoteSessionUrl ? [<Link url={remoteSessionUrl} key="remote">
@@ -398,7 +404,7 @@ function ModeIndicator({
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).
   // Tmux pill (internal-only) — appears right after tasks in nav order
-  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), <WorkflowStatusPill key="workflows" selected={false} showHint={false} />, ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
+  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(hasRunningWorkflow ? [<WorkflowStatusPill key="workflows" selected={false} showHint={false} />] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
 
   // Check if any in-process teammates exist (for hint text cycling)
   const hasAnyInProcessTeammates = Object.values(tasks).some(t_2 => t_2.type === 'in_process_teammate' && t_2.status === 'running');
@@ -504,13 +510,13 @@ function ModeIndicator({
   return <Box height={1} overflow="hidden">
       {modePart && <Box flexShrink={0}>
           {modePart}
-          {(tasksPart || parts.length > 0) && <Text dimColor> · </Text>}
+          {(tasksPart || parts.some(Boolean)) && <Text dimColor> · </Text>}
         </Box>}
       {tasksPart && <Box flexShrink={0}>
           {tasksPart}
-          {(parts.length > 0 || branch) && <Text dimColor> · </Text>}
+          {(parts.some(Boolean) || branch) && <Text dimColor> · </Text>}
         </Box>}
-      {parts.length > 0 && <Text wrap="truncate">
+      {parts.some(Boolean) && <Text wrap="truncate">
           <Byline>{parts}</Byline>
         </Text>}
       {branch && <><Text dimColor> · </Text><Text color="success">{branch}</Text></>}
