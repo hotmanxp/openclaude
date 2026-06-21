@@ -68,12 +68,11 @@ describe('workflowFileToCommand', () => {
   // The pre-fill approach (commit-stage fix): the LLM repeatedly
   // failed to construct the right args object despite being told the
   // shape. The new approach gives the LLM a literal JSON template
-  // to copy — no interpretation step. The prompt structure is:
-  //   1. "CALL WorkflowTool with EXACTLY this"
-  //   2. pre-built args JSON
-  //   3. explanation
-  //   4. full script source for reference
-  test('getPromptForCommand pre-fills the args template from script shape + user input', async () => {
+  // inside a ```json code block — no interpretation step. The
+  // markdown code block makes the template visually distinct from
+  // surrounding prose so the LLM is more likely to copy it
+  // verbatim.
+  test('getPromptForCommand pre-fills the args template in a JSON code block', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'detect-project-version.js')
     const scriptSource = [
@@ -91,14 +90,14 @@ describe('workflowFileToCommand', () => {
       '/Users/ethan/code/hermes-agent',
     )
 
+    // JSON code block with the pre-filled args.
+    expect(text).toMatch(/```json/)
+    expect(text).toContain('"workflowName": "detect-project-version"')
     // The pre-filled args template must be a literal JSON object
     // with the user's input string mapped into the REQUIRED key.
     expect(text).toContain('"projectDir": "/Users/ethan/code/hermes-agent"')
-    // The "CALL with EXACTLY this" header must be present so the
-    // LLM knows to copy verbatim.
-    expect(text).toMatch(/CALL WorkflowTool with EXACTLY this/)
-    // The workflowName is filled in.
-    expect(text).toContain('workflowName: "detect-project-version"')
+    // The "EXACTLY" header must be present.
+    expect(text).toMatch(/EXACTLY/)
     // The full script source is also inlined for reference.
     expect(text).toContain('===== WORKFLOW SOURCE')
     expect(text).toContain(scriptSource)
@@ -183,7 +182,7 @@ describe('workflowFileToCommand', () => {
     const text = await getPromptText(cmd, 'some input')
 
     // No `args.X` accesses — the args template is the raw string.
-    expect(text).toMatch(/args: "some input"/)
+    expect(text).toContain('"args": "some input"')
     // The "args as a whole" guidance is shown.
     expect(text).toMatch(/script reads `args` as a whole/i)
   })
