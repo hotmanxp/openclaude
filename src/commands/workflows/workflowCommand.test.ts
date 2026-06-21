@@ -70,15 +70,19 @@ describe('workflowFileToCommand', () => {
   // The user-typed /<name> <args> slash command used to tell the LLM
   // to pass `args: ${argListJson}` verbatim, which produced the bug
   // "LLM passes args: ['/path/to/proj'] but the script wants
-  // args: { projectDir: '/path/to/proj' }". The fix inlines the
-  // script source into the prompt so the LLM has source-of-truth
-  // context (the `args.X` accesses, the `meta.description`, the
-  // `agent()` prompts) without an extra Read tool roundtrip — and
-  // tells the LLM to MAP the raw args into the script's shape.
-  test('getPromptForCommand inlines the script source and instructs mapping', async () => {
-    // Create a real temp .js file so the helper's readFile succeeds.
+  // args: { projectDir: '/path/to/proj' }". The fix:
+  //   1. Pre-extract `args.X` accesses from the script and surface
+  //      them as a structured "REQUIRED args shape" bullet list at
+  //      the TOP of the prompt (LLMs glaze over inline 3 KB source).
+  //   2. Show the full source below the shape for reference.
+  //   3. Explicit anti-pattern callout: "DO NOT pass the raw argList".
+  test('getPromptForCommand pre-extracts args.X and instructs mapping', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'detect-project-version.js')
+    // The script reads `args.projectDir` (and `args &&` — the
+    // `args` token is matched as a property name in our regex; we
+    // filter to non-reserved JS identifiers so `args` itself is
+    // captured; that's fine — the prompt's examples cover it).
     const scriptSource = [
       "export const meta = { name: 'detect-project-version', description: 'two-phase' }",
       'const projectDir = (args && args.projectDir) || "."',
@@ -95,30 +99,24 @@ describe('workflowFileToCommand', () => {
       '/Users/ethan/code/hermes-agent',
     )
 
-    // The full script source must be inlined (not just a path).
+    // STEP 1 — pre-extracted args shape must appear at the top.
+    expect(text).toMatch(/STEP 1\b.*REQUIRED args shape/s)
+    expect(text).toContain('args.projectDir  (REQUIRED')
+    // The full script source must be inlined as reference.
     expect(text).toContain('===== WORKFLOW SOURCE')
     expect(text).toContain(scriptSource)
     expect(text).toContain('===== END WORKFLOW SOURCE')
-
-    // The script's file path is still surfaced so the LLM can refer
-    // to it when explaining what it read.
+    // Script path is still surfaced.
     expect(text).toContain(scriptPath)
-
-    // The user's raw args must appear (source-of-truth intent).
+    // The user's raw args must appear.
     expect(text).toContain('/Users/ethan/code/hermes-agent')
-
-    // The LLM must be told to MAP, not pass through.
-    expect(text).toMatch(/Map the user'?s raw args/i)
-
-    // Mapping examples must include the most common case so the LLM
-    // can pattern-match without re-reading the script.
-    expect(text).toContain('args.projectDir')
-
+    // The ~-resolution example must be present (common case).
+    expect(text).toMatch(/resolve any `~`/)
+    // Explicit anti-pattern callout.
+    expect(text).toMatch(/DO NOT pass the raw argList/)
     // The WorkflowTool call site must be explicit.
     expect(text).toContain('workflowName: "detect-project-version"')
-
-    // Source scope surfaced (helps the LLM reason about which
-    // registry this came from).
+    // Source scope surfaced.
     expect(text).toContain('user-scoped')
   })
 
@@ -133,11 +131,11 @@ describe('workflowFileToCommand', () => {
     )
 
     // In the missing-file case we still want the LLM to recover —
-    // instruct it to Read the file directly.
+    // instruct it to Read the file directly. The "shape" bullet
+    // should also indicate that the file wasn't readable.
     expect(text).toMatch(/Use the Read tool/i)
-    // The user's raw args still appear (whitespace-split into a
-    // string array — each token is preserved so the LLM can still
-    // see the intent).
+    expect(text).toMatch(/could not read the file; use the Read tool to learn the shape/i)
+    // The user's raw args still appear.
     expect(text).toContain('whatever')
     expect(text).toContain('user')
     expect(text).toContain('typed')
@@ -155,6 +153,7 @@ describe('workflowFileToCommand', () => {
     const text = await getPromptText(cmd, '')
 
     expect(text).toMatch(/Use the Read tool/i)
+    expect(text).toMatch(/script too large to pre-extract/i)
     // The path is still surfaced for the Read.
     expect(text).toContain(scriptPath)
   })
@@ -164,15 +163,51 @@ describe('workflowFileToCommand', () => {
     const scriptPath = join(dir, 'demo.js')
     writeFileSync(
       scriptPath,
-      'export const meta = { name: "demo" }\nreturn "ok"',
+      'export const meta = { name: "demo" }\nconst x = args?.foo\nreturn "ok"',
     )
 
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     const text = await getPromptText(cmd, '')
 
     // The prompt should still be valid — script inlined, mapping
-    // instruction present, no crash on empty args.
+    // instruction present, no crash on empty args. The args shape
+    // pre-extract should still surface `foo` (from `args?.foo`).
     expect(text).toContain('===== WORKFLOW SOURCE')
-    expect(text).toMatch(/Map the user'?s raw args/i)
+    expect(text).toContain('args.foo  (REQUIRED')
+  })
+
+  test('pre-extracts multiple args.X properties (projectDir + question)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-multi-'))
+    const scriptPath = join(dir, 'multi.js')
+    const scriptSource = [
+      'export const meta = { name: "multi" }',
+      'const p = args.projectDir',
+      'const q = args.question',
+      'return { p, q }',
+    ].join('\n')
+    writeFileSync(scriptPath, scriptSource)
+
+    const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
+    const text = await getPromptText(cmd, '')
+
+    // Both args.X must be pre-extracted as REQUIRED.
+    expect(text).toContain('args.projectDir  (REQUIRED')
+    expect(text).toContain('args.question  (REQUIRED')
+  })
+
+  test('falls back to "args as a single value" when no args.X accesses found', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-whole-'))
+    const scriptPath = join(dir, 'whole.js')
+    writeFileSync(
+      scriptPath,
+      'export const meta = { name: "whole" }\nreturn JSON.stringify(args)',
+    )
+
+    const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
+    const text = await getPromptText(cmd, 'some input')
+
+    // No `args.X` accesses — prompt should say "the script reads
+    // `args` as a single value".
+    expect(text).toMatch(/script reads `args` as a single value/i)
   })
 })
