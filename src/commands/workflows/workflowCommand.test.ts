@@ -92,14 +92,24 @@ describe('workflowFileToCommand', () => {
     expect(text).toContain(scriptPath)
     // Read tool instructed.
     expect(text).toMatch(/Read the script/)
-    // The prompt explicitly tells the LLM to decide the shape.
-    expect(text).toMatch(/args\.X/)
-    expect(text).toMatch(/appropriate args object/)
-    // No pre-fill template (the LLM does the construction).
-    expect(text).not.toContain('```json')
-    expect(text).not.toContain('"projectDir":')
+    // The prompt guides the LLM on how to call WorkflowTool.
+    expect(text).toMatch(/STEP 1/)
+    expect(text).toMatch(/STEP 2/)
+    expect(text).toContain('workflowName: "detect-project-version"')
+    // The 5 fields are listed (so LLM knows the full schema).
+    expect(text).toContain('workflowName, scriptPath, args, description, resumeFromRunId')
+    // The LLM is told which 3 to set + to leave the other 2 unset.
+    expect(text).toMatch(/set ONLY these 3/)
+    expect(text).toMatch(/Leave scriptPath and resumeFromRunId UNSET/)
+    // A concrete example call shape is provided.
+    expect(text).toContain('"projectDir": "/Users/x/code/y"')
+    // The LLM is warned about the JSON-stringified-string trap.
+    expect(text).toMatch(/NATIVE OBJECT/)
     // No server-side normalization.
     expect(text).not.toContain('Normalized path:')
+    // No pre-fill of the actual user's args (the example uses a generic path).
+    // The user's literal input is NOT substituted into the example.
+    expect(text).not.toContain('"projectDir": "对~/code/hermes-agent"')
   })
 
   test('handles empty args', async () => {

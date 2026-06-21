@@ -9,16 +9,21 @@ export type WorkflowSource = 'project' | 'user'
  * LLM to call the WorkflowTool with the workflow's name and args, which
  * triggers the workflow's `run()` function.
  *
- * The prompt is intentionally minimal: hand the LLM the raw user input,
- * the script's file path, and a clear instruction. Do NOT pre-process the
- * user input server-side (don't strip connectors, don't expand `~`, don't
- * pre-fill a JSON template) — the LLM is the right place to do that
- * semantic mapping. Pre-processing made the prompt brittle: when the
- * server-side guess was wrong (e.g. user typed a non-path argument, or
- * the script reads a key other than `args.projectDir`), the pre-fill
- * template pointed the LLM at the wrong shape and the workflow silently
- * failed. Letting the LLM do the interpretation gives it the full
- * context to choose the right shape.
+ * Per user feedback 2026-06-21:
+ * - Do NOT pre-process the user input server-side (don't strip `对`/`to`,
+ *   don't expand `~`, don't pre-fill a JSON template). The LLM is the
+ *   right place to interpret the user's input.
+ * - DO show the LLM how to call WorkflowTool — the input shape, the
+ *   field names, an example. Earlier "minimal" prompts omitted this
+ *   guidance and the LLM was calling with wrong shapes (`args: []`,
+ *   JSON-stringified strings, etc.) because it didn't have a clear
+ *   reference for the tool's input contract.
+ *
+ * So the prompt does TWO things:
+ *   1. Surface the user input + script path (raw, no interpretation)
+ *   2. Show the WorkflowTool input schema with an example shape — the
+ *      LLM fills in the values from STEP 1 + the script's `args.X`
+ *      accesses.
  */
 export function workflowFileToCommand(
   filePath: string,
@@ -40,9 +45,28 @@ export function workflowFileToCommand(
           text:
             `User invoked: /${name} ${args.trim()}\n\n` +
             `Workflow script: \`${filePath}\` (${source}-scoped)\n\n` +
-            `Read the script to learn what arguments it expects (look for ` +
-            `\`args.X\` property accesses), then call the WorkflowTool with ` +
-            `workflowName: "${name}" and an appropriate args object.`,
+            `STEP 1 — Read the script to learn what arguments it expects. ` +
+            `Look for \`args.X\` property accesses (e.g. \`args.projectDir\`, ` +
+            `\`args.question\`). These tell you the keys your args object ` +
+            `must contain and the shape of their values. Resolve any ` +
+            `natural-language prefixes (对 / to / for / about) and unexpanded ` +
+            `\`~\` yourself — the script gets the raw value you pass.\n\n` +
+            `STEP 2 — Call the WorkflowTool. The tool's input has 5 optional ` +
+            `fields: workflowName, scriptPath, args, description, resumeFromRunId. ` +
+            `For this slash invocation, set ONLY these 3:\n\n` +
+            `  - workflowName: "${name}"\n` +
+            `  - args: { <key-from-step-1>: <value-resolved-from-user-input> }\n` +
+            `  - description: <one-line summary of what the user wants>\n\n` +
+            `Leave scriptPath and resumeFromRunId UNSET — they're for OTHER ` +
+            `invocation modes (ad-hoc script files, resuming prior runs).\n\n` +
+            `Example call (for a script reading \`args.projectDir\` when the user ` +
+            `typed "/Users/x/code/y"):\n` +
+            `  workflowName: "${name}"\n` +
+            `  args: { "projectDir": "/Users/x/code/y" }\n` +
+            `  description: "Inspect /Users/x/code/y and return its project type and version"\n\n` +
+            `The args value must be a NATIVE OBJECT (not a JSON-stringified string). ` +
+            `The script reads \`args.X\` directly — passing \`args: "{...}"\` as a ` +
+            `string will silently break the script.`,
         },
       ]
     },
