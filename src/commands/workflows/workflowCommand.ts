@@ -121,27 +121,21 @@ export function workflowFileToCommand(
           text:
             `User invoked: /${name} ${args.trim()}\n` +
             `Workflow script: \`${filePath}\` (${source}-scoped)\n\n` +
-            `You MUST call the WorkflowTool with EXACTLY the input shown below. ` +
-            `Copy the JSON inside the code block VERBATIM into the tool call's ` +
-            `input field. Do NOT change \`args\` — the script will read undefined ` +
-            `keys and silently fall back to defaults. The user path comes from the ` +
-            `slash command args; do not re-derive or re-interpret it.\n\n` +
-            `\`\`\`json\n` +
-            `{\n` +
-            `  "workflowName": "${name}",\n` +
-            `  "args": ${argsTemplate},\n` +
-            `  "description": "<one-line summary of the user's intent>"\n` +
-            `}\n` +
-            `\`\`\`\n\n` +
+            `CALL WorkflowTool with EXACTLY this — copy the args object verbatim:\n\n` +
+            `  workflowName: "${name}"\n` +
+            `  args: ${argsTemplate}\n` +
+            `  description: <one-line summary of the user's intent>\n\n` +
             (requiredKeys.length > 0
-              ? `Why this shape: the script reads \`args.${requiredKeys.join('`, `args.')}\` ` +
-                `— the args object above is pre-built from that requirement + the user's ` +
-                `typed input.\n`
-              : `Why this shape: the script reads \`args\` as a whole — pass the user's ` +
-                `input string verbatim.\n`) +
+              ? `The args object is pre-built from the script's required shape ` +
+                `(\`args.${requiredKeys.join('`, `args.')}\`) + the user's typed input. ` +
+                `Edit \`description\` if you want, but DO NOT change \`args\` (the script will ` +
+                `read undefined keys and fall back to defaults).\n`
+              : `The script reads \`args\` as a whole. Pass the user's input string ` +
+                `verbatim as the args value.\n`) +
             (scriptLoadError
               ? `\nNOTE: Could not pre-load the script source (${scriptLoadError}). ` +
-                `Verify the args shape against the script before calling.\n`
+                `The args template above is a best-guess — verify against ` +
+                `the script before calling.\n`
               : '') +
             `\nFor reference, the full script source:\n\n` +
             scriptSection,
