@@ -1,5 +1,6 @@
 import { mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
+import { homedir } from 'os'
 import { join } from 'path'
 import { describe, expect, test } from 'bun:test'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages'
@@ -61,13 +62,17 @@ describe('workflowFileToCommand', () => {
     expect(cmd.type).toBe('prompt')
   })
 
-  // Minimal-prompt approach: tell the LLM the user invoked the
-  // slash command, point at the script file, and instruct it to
-  // Read the script + call WorkflowTool. Strong "args is the
-  // load-bearing piece" emphasis in the IMPORTANT block. No
-  // pre-fill template — earlier attempts failed because the LLM
-  // wouldn't follow them.
-  test('getPromptForCommand is minimal but emphasizes args shape', async () => {
+  // Normalize the user input server-side, then pre-fill a literal
+  // JSON template for the LLM to copy. This is the approach that
+  // addresses both failure modes observed in the user's TUI:
+  //  (1) the LLM passed `args: ["对~/code/hermes-agent"]` with
+  //      the Chinese 对 prefix and unexpanded ~ (memory entry
+  //      `opencc-workflow-slash-args-normalize-...`)
+  //  (2) earlier pre-fill attempts with no normalization were
+  //      followed by the LLM in a few cases, but the LLM was
+  //      prone to passing the raw argList (the user's input
+  //      string verbatim) instead of the pre-filled object.
+  test('normalizes Chinese 对 prefix and ~ expansion in user input', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'detect-project-version.js')
     writeFileSync(
@@ -78,42 +83,64 @@ describe('workflowFileToCommand', () => {
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     const text = await getPromptText(
       cmd,
-      '/Users/ethan/code/hermes-agent',
+      '对~/code/hermes-agent',
     )
 
-    // User invocation context surfaced.
-    expect(text).toContain('User invoked: /detect-project-version /Users/ethan/code/hermes-agent')
-    // Script path so the LLM can Read it.
-    expect(text).toContain(scriptPath)
-    // Read tool instructed.
-    expect(text).toMatch(/Read the script with the Read tool/)
-    // The IMPORTANT block emphasizes args shape.
-    expect(text).toMatch(/IMPORTANT/)
-    expect(text).toMatch(/args\.X/)
-    // The strong warning about wrong shapes (new wording).
-    expect(text).toMatch(/silently fall back to defaults/)
-    expect(text).toMatch(/array, string, undefined/)
-    // The tool's full schema is acknowledged (5 fields).
-    expect(text).toContain('workflowName, scriptPath, args, description, resumeFromRunId')
-    // A concrete JSON example helps the LLM see the shape.
-    expect(text).toContain('"projectDir": "/Users/x/code/y"')
-    // The workflowName is mentioned for the tool call.
-    expect(text).toContain('workflowName: "detect-project-version"')
+    // The pre-filled template uses the normalized path, not the
+    // raw slash-args string.
+    const expectedPath = `${homedir()}/code/hermes-agent`
+    expect(text).toContain(`"projectDir": "${expectedPath}"`)
+    // The normalized line is surfaced so the LLM can verify.
+    expect(text).toContain(`Normalized path: ${expectedPath}`)
+    // The JSON code block carries the template.
+    expect(text).toMatch(/```json/)
   })
 
-  test('handles empty args', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-empty-'))
+  test('normalizes English "to" connector and absolute path', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
+    const scriptPath = join(dir, 'detect-project-version.js')
+    writeFileSync(scriptPath, 'export const meta = { name: "x" }')
+
+    const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
+    const text = await getPromptText(cmd, 'to /Users/ethan/code/hermes-agent')
+
+    expect(text).toContain('"projectDir": "/Users/ethan/code/hermes-agent"')
+    expect(text).toContain('Normalized path: /Users/ethan/code/hermes-agent')
+  })
+
+  test('handles absolute path without connector', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'demo.js')
-    writeFileSync(
-      scriptPath,
-      'export const meta = { name: "demo" }\nreturn "ok"',
-    )
+    writeFileSync(scriptPath, 'export const meta = { name: "demo" }')
+
+    const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
+    const text = await getPromptText(cmd, '/Users/ethan/code/x')
+
+    expect(text).toContain('"projectDir": "/Users/ethan/code/x"')
+  })
+
+  test('handles empty args (no path detected)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
+    const scriptPath = join(dir, 'demo.js')
+    writeFileSync(scriptPath, 'export const meta = { name: "demo" }')
 
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     const text = await getPromptText(cmd, '')
 
-    expect(text).toContain('User invoked: /demo')
-    expect(text).toContain(scriptPath)
-    expect(text).toMatch(/Read the script with the Read tool/)
+    expect(text).toContain('No path detected in user input.')
+    // args template is null (script reads args.projectDir as undefined → fallback)
+    expect(text).toContain('"args": null')
+  })
+
+  test('handles free-form args (no path)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
+    const scriptPath = join(dir, 'demo.js')
+    writeFileSync(scriptPath, 'export const meta = { name: "demo" }')
+
+    const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
+    const text = await getPromptText(cmd, 'what is the meaning of life')
+
+    expect(text).toContain('No path detected in user input.')
+    expect(text).toContain('"args": "what is the meaning of life"')
   })
 })
