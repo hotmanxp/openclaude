@@ -61,6 +61,14 @@ const typeResult = await agent(
     `Gemfile (Ruby). Return the type as a single lowercase word (e.g. "node", "python", ` +
     `"rust", "go", "java", "csharp", "ruby", "unknown").`,
   {
+    // Opt-in to the current phase so the /workflows panel renders
+    // this agent under the "Identify type" phase (otherwise it shows
+    // up as orphaned and the phase reads "(no agents in this phase
+    // yet)"). `phase()` before agent() is NOT enough — agents must
+    // be tagged explicitly via opts.phase per the WorkflowTool
+    // script-syntax docs (src/tools/WorkflowTool/WorkflowTool.ts:152).
+    phase: 'Identify type',
+    label: 'detect-type',
     schema: {
       type: 'object',
       properties: { type: { type: 'string' } },
@@ -79,6 +87,9 @@ const versionResult = await agent(
     `go.mod module line for Go) and return the version string. If no version is found, ` +
     `return "unknown".`,
   {
+    // Same opts.phase pattern as the type-detection agent above.
+    phase: 'Find version',
+    label: 'read-version',
     schema: {
       type: 'object',
       properties: { version: { type: 'string' } },
