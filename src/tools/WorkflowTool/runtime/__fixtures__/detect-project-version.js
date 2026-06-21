@@ -37,19 +37,16 @@ export const meta = {
   ],
 }
 
-// `args` is the value passed verbatim from the LLM tool's `args` input.
-// Per the new schema (z.unknown() — port of upstream 2.1.185), the
-// caller can pass any JSON-serializable value. We accept the object
-// shape `{ projectDir: string }` and fall back to '.' when the LLM
-// did not provide one. The host caller is responsible for resolving
-// the actual cwd before invocation — the VM context has no `process`.
-//
-// The `args && args.projectDir` guard handles three cases:
-//   - args is undefined (LLM omitted `args`)          → '.'
-//   - args is null (LLM passed `args: null`)         → '.'
-//   - args is { projectDir: '...' }                  → that path
-//   - args is { projectDir: undefined, ... }         → '.'
-const projectDir = (args && typeof args === 'object' && args.projectDir) || '.'
+// The project path is ALWAYS the current working directory. The
+// VM context has no `process` access so we use the literal '.' —
+// when opencc launches the workflow, the CWD is the dir the user
+// was in when they started opencc. Per memory entry
+// `opencc-llm-cannot-pass-native-objects-2026-06-21` + 8 failed
+// prompt iterations, the LLM is unreliable at passing
+// `args.projectDir` as a native object, so we don't try to
+// read it. The user controls the project dir by `cd`ing into
+// it before running the slash command.
+const projectDir = '.'
 
 phase('Identify type')
 log(`Inspecting project at: ${projectDir}`)

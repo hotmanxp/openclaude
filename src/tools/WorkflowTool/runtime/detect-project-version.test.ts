@@ -107,18 +107,21 @@ describe('detect-project-version workflow (args feature end-to-end)', () => {
       projectType: string
       version: string
     }
-    expect(parsed.projectDir).toBe(projectDir)
+    // projectDir is always '.' now (the VM literal for CWD) — the
+    // script ignores the args.projectDir that callers pass, per the
+    // 2026-06-21 redesign where the user controls the project dir
+    // by `cd`ing into it before running the slash command.
+    expect(parsed.projectDir).toBe('.')
     expect(parsed.projectType).toBe('node')
     expect(parsed.version).toBe('9.9.9')
 
     // 2. agent() was called exactly twice (phase 1 + phase 2).
     expect(agentCalls.length).toBe(2)
 
-    // 3. BOTH prompts carried the resolved projectDir (this is the
-    // load-bearing assertion — the LLM needs the path in BOTH
-    // phases, not just the first one).
+    // 3. BOTH prompts carried the CWD literal '.' (the script
+    // ignores args.projectDir now — it always uses the VM's CWD).
     for (const prompt of agentCalls) {
-      expect(prompt).toContain(projectDir)
+      expect(prompt).toContain('"."')
     }
 
     // 4. phase() events were emitted in the declared order.
