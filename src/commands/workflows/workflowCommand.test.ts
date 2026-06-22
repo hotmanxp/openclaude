@@ -117,10 +117,18 @@ describe('workflowFileToCommand', () => {
     // The prompt explicitly explains the CLI-format contract
     // without leaking OpenCC internal file paths (the contract is
     // already in the WorkflowTool tool schema description).
-    expect(text).toContain('CLI-format string')
+    expect(text).toContain('CLI format')
     expect(text).not.toContain('cliArgs.ts')
-    // And tells the LLM to read the script.
-    expect(text).toContain('Read the workflow script')
+    // STEP 1 (REQUIRED — DO THIS FIRST) forces the LLM to read the
+    // script before constructing args. Without reading the script
+    // the LLM cannot know which `--key` flags the workflow accepts.
+    expect(text).toContain('STEP 1 (REQUIRED')
+    expect(text).toContain('DO THIS FIRST')
+    expect(text).toContain('Read the workflow script at')
+    expect(text).toContain('BEFORE constructing')
+    // STEP 2 then guides CLI-format construction.
+    expect(text).toContain('STEP 2:')
+    expect(text).toContain('--key=value')
   })
 
   test('callShape is identical whether user provided a description or not (script decides args need)', async () => {

@@ -94,13 +94,16 @@ export function workflowFileToCommand(
             `Run the "${name}" workflow.\n\n` +
             `Workflow script: \`${filePath}\` (${source}-scoped)\n\n` +
             descriptionSection +
-            `The \`args\` field MUST be a CLI-format string (e.g. \`--key=value --flag\`). ` +
-            `The workflow script receives it via the \`args\` global; the runtime parser ` +
-            `extracts only \`--key=value\` tokens and boolean flags — any positional/non-flag ` +
-            `text is silently dropped.\n\n` +
-            `Read the workflow script to determine which \`--key\` flags it accepts ` +
-            `(the script's \`meta\` and top-level code are the source of truth), ` +
-            `then construct the CLI args string from the user's description above.\n\n` +
+            `STEP 1 (REQUIRED — DO THIS FIRST): Read the workflow script at \`${filePath}\` ` +
+            `BEFORE constructing \`args\`. The script's \`meta\` and top-level code define ` +
+            `which \`--key\` flags it accepts — without reading it you are guessing, ` +
+            `and the runtime parser will silently drop any non-\`--key=value\` text, ` +
+            `so the script will receive \`args = {}\` and silently fail.\n\n` +
+            `STEP 2: Construct \`args\` from the user's description above using CLI format ` +
+            `(\`--key=value\` for string values, bare \`--flag\` for booleans). The runtime ` +
+            `parser extracts only \`--key=value\` tokens and boolean flags; positional or ` +
+            `non-flag text is silently dropped.\n\n` +
+            `STEP 3: Invoke the workflow with the constructed args.\n\n` +
             `Invoke: Workflow(${callShape})`,
         },
       ]
