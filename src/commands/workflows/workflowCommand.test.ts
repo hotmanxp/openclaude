@@ -61,16 +61,19 @@ describe('workflowFileToCommand', () => {
     expect(cmd.type).toBe('prompt')
   })
 
-  // Upstream-style (commit that mirrors upstream 2.1.185's
-  // createWorkflowCommand pattern). The prompt is short:
-  //   1. "Run the X workflow."
-  //   2. Script path + scope
-  //   3. "The user typed: <raw input>"
-  //   4. "Invoke: Workflow({workflowName, args, description})"
-  // The LLM has the full WorkflowTool schema (via tool definition)
-  // to figure out the right shape for args. No server-side
-  // normalization, no pre-fill, no anti-patterns.
-  test('mirrors upstream 2.1.185 pattern: minimal, raw user input, JS call shape', async () => {
+  // The prompt's job:
+  //   1. Show the user's natural-language description separately
+  //      (informational — NOT the args).
+  //   2. Tell the LLM that `args` MUST be a CLI-format string
+  //      (`--key=value --flag`), and the runtime parser drops
+  //      positional/non-flag text.
+  //   3. Tell the LLM to read the workflow script to figure out
+  //      which `--key` flags it accepts.
+  //   4. Render the callShape with a CLI-format FORMAT example,
+  //      not the raw user input — so the LLM pattern-matches on
+  //      the right shape instead of copy-pasting raw prose
+  //      (which the parser would silently drop → args = {}).
+  test('separates user description from CLI args, shows CLI-format example in callShape', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-'))
     const scriptPath = join(dir, 'detect-project-version.js')
     writeFileSync(
@@ -80,31 +83,51 @@ describe('workflowFileToCommand', () => {
 
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     // Test with the exact form the user has been using: Chinese 对
-    // prefix + unexpanded ~ + free-form path. The prompt must pass
-    // it through UNCHANGED — the LLM does the semantic mapping.
+    // prefix + unexpanded ~ + free-form path. The prompt must show
+    // it as the user's description (not silently normalize/expand).
     const text = await getPromptText(
       cmd,
       '对~/code/hermes-agent',
     )
 
-    // Upstream-style header.
+    // Header.
     expect(text).toContain('Run the "detect-project-version" workflow.')
-    // Script path is surfaced.
+    // Script path is surfaced (so LLM can Read it).
     expect(text).toContain(scriptPath)
-    // User input is preserved VERBATIM (no normalization, no
-    // connector stripping, no ~ expansion).
-    expect(text).toContain('The user typed: `对~/code/hermes-agent`')
-    // JS call shape at the bottom — the LLM should pattern-match
-    // on this and produce a similar call (with the right args
-    // shape for the actual tool schema).
+
+    // User description is shown VERBATIM as informational — NOT
+    // pre-processed, NOT stripped, NOT expanded.
+    expect(text).toContain("User's description (natural language")
+    expect(text).toContain('对~/code/hermes-agent')
+    // It is clearly NOT the args.
+    expect(text).toContain('NOT the args')
+
+    // The callShape uses a CLI-format FORMAT example, NOT the
+    // raw user input. This is the bug-fix assertion: previously
+    // the callShape put `args: "对~/code/hermes-agent"` which
+    // would cause the LLM to copy-paste raw prose, and the
+    // runtime parser would drop it.
     expect(text).toContain('Invoke: Workflow(')
     expect(text).toContain('workflowName: "detect-project-version"')
-    expect(text).toContain('args: "对~/code/hermes-agent"')
+    expect(text).not.toContain('args: "对~/code/hermes-agent"')
+    expect(text).toContain('--key=value')
     // description is a placeholder for the LLM to fill.
     expect(text).toContain('description:')
+
+    // The prompt explicitly explains the CLI-format contract
+    // without leaking OpenCC internal file paths (the contract is
+    // already in the WorkflowTool tool schema description).
+    expect(text).toContain('CLI-format string')
+    expect(text).not.toContain('cliArgs.ts')
+    // And tells the LLM to read the script.
+    expect(text).toContain('Read the workflow script')
   })
 
-  test('handles empty args (no trailing user input)', async () => {
+  test('callShape is identical whether user provided a description or not (script decides args need)', async () => {
+    // Whether the workflow script needs args depends on the SCRIPT,
+    // not on whether the user typed something after `/<name> `.
+    // The prompt must show the same callShape in both cases so the
+    // LLM learns to decide args from the script, not from `r`.
     const dir = mkdtempSync(join(tmpdir(), 'wf-cmd-empty-'))
     const scriptPath = join(dir, 'demo.js')
     writeFileSync(
@@ -115,10 +138,13 @@ describe('workflowFileToCommand', () => {
     const cmd = workflowFileToCommand(scriptPath, 'user') as PromptCommand
     const text = await getPromptText(cmd, '')
 
-    // No-args case: the args field is dropped from the JS call
-    // shape (LLM should just not include args in its call).
-    expect(text).toContain("The user typed: (no args)")
-    expect(text).toMatch(/Invoke: Workflow\(\{ workflowName: "demo", description:/)
-    expect(text).not.toContain('args:')
+    // The "no description" hint is informational — it tells the LLM
+    // the user gave no explicit intent. But the callShape must NOT
+    // change to `args: ""` just because the user was silent: the
+    // LLM still has to look at the script to decide.
+    expect(text).toContain('(no description provided')
+    expect(text).toContain('--<key>=<value>')
+    // callShape stays the same — no `args: ""` shortcut.
+    expect(text).not.toContain('args: ""')
   })
 })
