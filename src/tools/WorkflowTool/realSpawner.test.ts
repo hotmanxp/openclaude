@@ -740,6 +740,259 @@ describe('schema handling', () => {
     })
   })
 
+  // I2: regression tests for the runtime JSON text fallback (added 2026-06-22
+  // to support non-firstParty models per opencc-minimax-jsonschema-not-enforced).
+  // Each test pins one of the 3 accepted shapes + the C1 prose-with-JSON guard
+  // + the "tool call wins over text" regression.
+  describe('JSON text fallback (non-firstParty model support)', () => {
+    function makeTextOnlySpawner(reportText: string) {
+      const fakeRunAgent: RunAgentFn = async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: reportText }], model: 'm' },
+        }
+      }
+      const toolUseCtx = {
+        options: {
+          tools: [],
+          agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+        },
+      }
+      return buildRealSpawner(toolUseCtx as never, {}, 'task-1', {
+        runAgent: fakeRunAgent,
+        createUserMessage: (a: { content: string }) => ({
+          type: 'user',
+          content: a.content,
+        }),
+      })
+    }
+
+    test('{"data": {...}} shape (StructuredOutput mimicry) → unwrap and validate', async () => {
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner('{"data":{"type":"node"}}')
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'node' })
+    })
+
+    test('flat {field: value} shape → validate as-is', async () => {
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner('{"type":"node"}')
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'node' })
+    })
+
+    test('bare scalar "node" + single-field schema → wrap and validate', async () => {
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner('"node"')
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'node' })
+    })
+
+    test('valid JSON but schema-invalid ({"type": 42}) → still failure envelope', async () => {
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner('{"type": 42}')
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toMatchObject({ ok: false })
+      expect((result.structuredOutput as { error: string }).error).toMatch(
+        /without calling StructuredOutput/i,
+      )
+    })
+
+    test('extracts JSON from prose-with-JSON-prefix ("The answer is {...}")', async () => {
+      // LLMs commonly wrap their JSON answer in a sentence ("The answer is
+      // {\"type\":\"node\"} because..."). The active extractor finds the
+      // first balanced JSON value and parses it, instead of rejecting the
+      // whole text. This is the most common LLM behavior in practice.
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner(
+        'The answer is {"type":"node"} because I read package.json',
+      )
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'node' })
+    })
+
+    test('extracts JSON followed by trailing prose ("{...} and some notes")', async () => {
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner(
+        '{"type":"node"} and some trailing notes',
+      )
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'node' })
+    })
+
+    test('plain non-JSON prose still falls to failure envelope', async () => {
+      // Active extraction does NOT rescue genuinely non-JSON text. If the
+      // LLM emits just prose with no JSON value, the runtime falls through
+      // to the failure envelope — caller distinguishes "forgot" from
+      // "bad data".
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const spawner = await makeTextOnlySpawner(
+        "I looked but couldn't find any manifest file",
+      )
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toMatchObject({ ok: false })
+    })
+
+    test('regression: StructuredOutput tool call wins over text fallback', async () => {
+      // When the LLM calls StructuredOutput AND also emits prose, the
+      // tool call must be the source of truth — text fallback must NOT
+      // override the captured tool_use value.
+      const schema = {
+        type: 'object',
+        properties: { type: { type: 'string' } },
+        required: ['type'],
+      }
+      const fakeRunAgent: RunAgentFn = async function* (opts) {
+        // Emit prose FIRST, then the StructuredOutput tool_use with a
+        // different (correct) value.
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'text', text: 'I think it might be python or something' },
+            ],
+            model: 'm',
+          },
+        }
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                name: (opts.availableTools as Array<{ name: string }>)
+                  .map(t => t.name)
+                  .find(n => n.startsWith('StructuredOutput_'))!,
+                input: { data: { type: 'rust' } },
+              },
+            ],
+            model: 'm',
+          },
+        }
+      }
+      const toolUseCtx = {
+        options: {
+          tools: [],
+          agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+        },
+      }
+      const spawner = await buildRealSpawner(toolUseCtx as never, {}, 'task-1', {
+        runAgent: fakeRunAgent,
+        createUserMessage: (a: { content: string }) => ({
+          type: 'user',
+          content: a.content,
+        }),
+      })
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ type: 'rust' })
+    })
+
+    test('captured StructuredOutput invalid (LLM called with wrong shape) + valid text → text wins', async () => {
+      // Real-world pattern (observed in wf_818582ef transcript): LLM
+      // calls StructuredOutput multiple times with `{"data": ""}` (empty
+      // string, not the expected object), then gives up and writes the
+      // real answer as prose: "The version from package.json is 0.18.0".
+      // The runtime must recover via text fallback instead of surfacing
+      // the captured-but-invalid envelope.
+      const schema = {
+        type: 'object',
+        properties: { version: { type: 'string' } },
+        required: ['version'],
+      }
+      const fakeRunAgent: RunAgentFn = async function* (opts) {
+        // 1. LLM calls StructuredOutput with wrong shape (empty string).
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                name: (opts.availableTools as Array<{ name: string }>)
+                  .map(t => t.name)
+                  .find(n => n.startsWith('StructuredOutput_'))!,
+                input: { data: '' },
+              },
+            ],
+            model: 'm',
+          },
+        }
+        // 2. LLM gives up on the tool and writes the answer in prose.
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'text',
+                text: 'The tool keeps rejecting. The version from package.json is "0.18.0".',
+              },
+            ],
+            model: 'm',
+          },
+        }
+      }
+      const toolUseCtx = {
+        options: {
+          tools: [],
+          agentDefinitions: { allAgents: [{ agentType: 'general-purpose' }] },
+        },
+      }
+      const spawner = await buildRealSpawner(toolUseCtx as never, {}, 'task-1', {
+        runAgent: fakeRunAgent,
+        createUserMessage: (a: { content: string }) => ({
+          type: 'user',
+          content: a.content,
+        }),
+      })
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toEqual({ version: '0.18.0' })
+    })
+
+    test('I1: scalar text + multi-field schema → skip scalar branch, failure envelope', async () => {
+      // Scalar wrapping could match the WRONG property in a multi-field
+      // schema. The runtime must skip the scalar branch and fall through
+      // to the failure envelope instead of guessing the field.
+      const schema = {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          type: { type: 'string' },
+        },
+        required: ['reason', 'type'],
+      }
+      const spawner = await makeTextOnlySpawner('"node"')
+      const result = await spawner('test', { schema } as never)
+      expect(result.structuredOutput).toMatchObject({ ok: false })
+    })
+  })
+
   test('returns ok:false envelope when subagent calls StructuredOutput with data violating schema', async () => {
     const schema = {
       type: 'object',

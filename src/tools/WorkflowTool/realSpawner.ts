@@ -41,6 +41,13 @@ export type RealSpawnerDeps = {
   createUserMessage: CreateUserMessageFn | null
 }
 
+import { findFirstBalancedJsonValue } from '../StructuredOutputTool/textJsonExtractor.js'
+
+// Re-export so existing callers of
+// `import { findFirstBalancedJsonValue } from './realSpawner.js'` keep
+// working without a second import path.
+export { findFirstBalancedJsonValue }
+
 /**
  * Build a real LLM-backed LocalSpawner.
  *
@@ -386,29 +393,108 @@ export async function buildRealSpawner(
     // payload the subagent emitted) so the caller can use it
     // directly without unwrapping a `{ok,value}` envelope.
     if (opts && typeof opts === 'object' && 'schema' in opts && opts.schema) {
-      if (structuredOutput === undefined) {
-        structuredOutput = {
-          ok: false,
-          error:
-            'subagent completed without calling StructuredOutput ' +
-            `(expected a tool_use to "${structuredOutputToolName}")`,
+      const schema = opts.schema as Record<string, unknown>
+      // I4: hoist the validator import — single callsite, cached by Bun.
+      // If the import fails, use a stub that always returns the error
+      // envelope so the schema branch below can call validate(...) safely.
+      type ValidateFn = (
+        schema: Record<string, unknown>,
+        input: unknown,
+      ) => { ok: true; value: Record<string, unknown> } | { ok: false; error: string }
+      let validateUnavailable: string | undefined
+      let validate: ValidateFn = () => ({
+        ok: false,
+        error: 'structuredOutput validator unavailable',
+      })
+      try {
+        const m = await import('../StructuredOutputTool/schemaValidator.js')
+        validate = m.validateStructuredOutput
+      } catch (e) {
+        validateUnavailable =
+          'structuredOutput validator unavailable: ' +
+          (e instanceof Error ? e.message : String(e))
+        validate = () => ({ ok: false, error: validateUnavailable! })
+      }
+      const finalFailureEnvelope = validateUnavailable
+        ? { ok: false as const, error: validateUnavailable }
+        : {
+            ok: false as const,
+            error:
+              'subagent completed without calling StructuredOutput ' +
+              `(expected a tool_use to "${structuredOutputToolName}")`,
+          }
+      // Extract a JSON value from the prose report (or undefined if none).
+      // Returns the schema-validated value on success, or undefined on
+      // no match / invalid shape. The caller decides what to do when
+      // both this and the captured structuredOutput are available.
+      const tryTextFallback = (): unknown => {
+        if (typeof finalReport !== 'string') return undefined
+        const extracted = findFirstBalancedJsonValue(finalReport)
+        if (extracted === undefined) return undefined
+        let textParsed: unknown
+        try {
+          textParsed = JSON.parse(extracted)
+        } catch {
+          return undefined
         }
+        if (textParsed && typeof textParsed === 'object') {
+          // LLM may wrap as {data: {...}} (StructuredOutput mimicry).
+          const candidate =
+            'data' in (textParsed as Record<string, unknown>) &&
+            (textParsed as { data?: unknown }).data !== null &&
+            typeof (textParsed as { data?: unknown }).data === 'object'
+              ? (textParsed as { data: unknown }).data
+              : textParsed
+          const v = validate(schema, candidate)
+          return v.ok ? candidate : undefined
+        }
+        if (typeof textParsed === 'string') {
+          // I1 fix: scalar branch is single-field-schema-only.
+          const schemaProperties =
+            schema.properties && typeof schema.properties === 'object'
+              ? (schema.properties as Record<string, unknown>)
+              : null
+          const schemaKeys = schemaProperties ? Object.keys(schemaProperties) : []
+          if (schemaKeys.length === 1) {
+            const candidate = { [schemaKeys[0]!]: textParsed }
+            const v = validate(schema, candidate)
+            return v.ok ? candidate : undefined
+          }
+        }
+        return undefined
+      }
+
+      // Orchestration: prefer the captured StructuredOutput call when it
+      // validates; if it fails (or wasn't captured), try the text fallback;
+      // if both fail, surface the more informative error envelope
+      // (captured when available, else the generic final-failure envelope).
+      if (validateUnavailable) {
+        structuredOutput = finalFailureEnvelope
+      } else if (structuredOutput === undefined) {
+        const fromText = tryTextFallback()
+        structuredOutput = fromText !== undefined ? fromText : finalFailureEnvelope
       } else {
-        const { validateStructuredOutput } = await import(
-          '../StructuredOutputTool/schemaValidator.js'
-        )
-        const v = validateStructuredOutput(
-          opts.schema as Record<string, unknown>,
-          structuredOutput,
-        )
-        if (!v.ok) {
-          // Schema mismatch: surface as {ok:false, error} envelope
-          // so the caller can distinguish "the data is bad" from
-          // "the subagent forgot to call the tool".
-          structuredOutput = v
+        const v = validate(schema, structuredOutput)
+        if (v.ok) {
+          // Captured StructuredOutput validated — trust it.
+          // (Keeps the regression test "StructuredOutput tool call wins
+          // over text fallback" green.)
+        } else {
+          // Captured StructuredOutput is invalid (e.g. LLM called the
+          // tool with the wrong shape, like `{"data": ""}`). Fall back
+          // to text — the LLM often writes the answer in prose AFTER
+          // giving up on the tool, and the answer is what the caller
+          // wants.
+          const fromText = tryTextFallback()
+          if (fromText !== undefined) {
+            structuredOutput = fromText
+          } else {
+            // Both failed — surface the captured error envelope (more
+            // informative: it includes the actual data shape mismatch
+            // from the LLM's attempt).
+            structuredOutput = v
+          }
         }
-        // On success, keep `structuredOutput` as the raw value the
-        // subagent emitted (already validated).
       }
     }
     // Plan12 Task 3: best-effort cache write. When the caller set
