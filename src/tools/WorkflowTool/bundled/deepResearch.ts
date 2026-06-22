@@ -66,7 +66,17 @@ __setMeta({
 
 async function userScript(args) {
   'use strict';
-  const question = Array.isArray(args) ? args.join(' ') : String(args ?? '').trim();
+  // OpenCC fork (2026-06-22): the runtime now passes args as the parsed
+  // object (CLI-style strings -> keys), so args.question is the new
+  // happy path for '/deep-research --question="What is X?"'. We still
+  // accept the legacy positional shape (array of strings or a bare
+  // quoted question string like '/deep-research "What is X?"') for
+  // backward compat — the parser ignores strings with no '--' flags
+  // and passes them through, so we map non-objects back to a string.
+  const raw = args && typeof args === 'object' && !Array.isArray(args)
+    ? (args.question ?? args._ ?? args.q ?? '')
+    : (Array.isArray(args) ? args.join(' ') : String(args ?? ''));
+  const question = String(raw).trim();
   if (!question) {
     return 'Usage: /deep-research <question>';
   }

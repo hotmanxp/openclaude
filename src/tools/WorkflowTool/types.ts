@@ -257,7 +257,13 @@ export type WorkflowRun = {
   workflowName: string
   source: 'project' | 'user' | 'bundled'
   workflowPath: string
-  args: string[]
+  // OpenCC fork (2026-06-22): widened from `string[]` to `unknown`.
+  // Workflows now accept the full args space the schema allows (raw CLI
+  // string → parsed object, pre-parsed object, or array of positional
+  // strings for scripts that read `args[0]`/`args[1]`). The script's
+  // `args` global is already `unknown` at the VM boundary; state-side
+  // alignment keeps the type system honest end-to-end.
+  args: unknown
   status: WorkflowRunStatus
   startedAt: number
   finishedAt?: number
@@ -340,14 +346,7 @@ export const SpawnOptsSchema = z.object({
   isolation: z.string().optional(),
 })
 
-/** Zod schema for the Workflow tool's input. */
-export const WorkflowToolInputSchema = z.object({
-  name: z.string().min(1).describe('Workflow name (e.g., "deep-research") or "auto" for ad-hoc'),
-  args: z.array(z.string()).default([]).describe('Positional args from /<name> invocation'),
-  description: z.string().min(1).describe('Task description Claude will turn into a JS script'),
-})
 
-export type WorkflowToolInput = z.infer<typeof WorkflowToolInputSchema>
 
 /** State of a single spawned subagent within a workflow run (UI-friendly). */
 export type WorkflowAgentState = {

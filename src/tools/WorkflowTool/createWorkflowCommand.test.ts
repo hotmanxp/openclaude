@@ -138,3 +138,67 @@ describe('workflowToCommand (Plan14 upstream parity)', () => {
     expect((cmd as any).whenToUse).toBeUndefined()
   })
 })
+
+describe('workflowToCommand getPromptForCommand (CLI args string + raw pass-through)', () => {
+  function makeWorkflow(overrides: Partial<Parameters<typeof workflowToCommand>[0]> = {}) {
+    return workflowToCommand({
+      name: 'echo',
+      description: 'echoes the args object',
+      source: 'project',
+      path: '/tmp/.claude/workflows/echo.js',
+      run: async () => '',
+      ...overrides,
+    })
+  }
+
+  async function renderPrompt(args: string): Promise<string> {
+    const cmd = makeWorkflow()
+    const blocks = await (cmd as any).getPromptForCommand(args)
+    return blocks[0].text as string
+  }
+
+  test('preserves raw CLI string (no splitting into array)', async () => {
+    const prompt = await renderPrompt('--name=ethan --word=hello')
+    // The args field in the Invoke payload is a string, not an array
+    expect(prompt).toContain('args: "--name=ethan --word=hello"')
+    expect(prompt).not.toContain('args: ["--name=ethan"')
+    expect(prompt).not.toContain('args: [\"--name=ethan\"')
+  })
+
+  test('mentions the workflow script path so the LLM can read it', async () => {
+    const prompt = await renderPrompt('--x=y')
+    expect(prompt).toContain('Workflow script: `/tmp/.claude/workflows/echo.js`')
+    expect(prompt).toContain('(project-scoped)')
+  })
+
+  test('tells the LLM to read the script first', async () => {
+    const prompt = await renderPrompt('--x=y')
+    expect(prompt).toMatch(/Read the workflow script first/i)
+    expect(prompt).toMatch(/parses it at runtime into an object/i)
+  })
+
+  test('renders (no args) when input is empty', async () => {
+    const prompt = await renderPrompt('')
+    expect(prompt).toContain('(no args)')
+    // callShape omits args when empty
+    expect(prompt).toMatch(/Invoke: Workflow\(\{ workflowName: "echo", description:/)
+    expect(prompt).not.toMatch(/args:/)
+  })
+
+  test('renders (no args) when input is whitespace only', async () => {
+    const prompt = await renderPrompt('   ')
+    expect(prompt).toContain('(no args)')
+  })
+
+  test('uses Invoke: Workflow({...}) shape (matches upstream 2.1.185)', async () => {
+    const prompt = await renderPrompt('--name=ethan')
+    expect(prompt).toMatch(/Invoke: Workflow\(\{ workflowName: "echo", args: "--name=ethan"/)
+  })
+
+  test('still surfaces the Run ID instruction (verbatim paste)', async () => {
+    const prompt = await renderPrompt('--x=y')
+    expect(prompt).toContain('Run ID')
+    expect(prompt).toContain('paste the Run ID')
+    expect(prompt).toContain('verbatim')
+  })
+})

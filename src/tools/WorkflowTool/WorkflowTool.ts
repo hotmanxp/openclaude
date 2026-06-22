@@ -6,6 +6,7 @@ import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
 import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { parseCliArgs } from './cliArgs.js'
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
 import { buildRealSpawner } from './realSpawner.js'
@@ -47,16 +48,30 @@ export const workflowInputSchema = z
     // value because the script's `args` global is passed verbatim, and the
     // script's downstream `args.filter` / `args.map` calls would crash on
     // a type the schema wrongly narrowed.
+    //
+    // OpenCC fork addendum (2026-06-22): when the LLM passes a raw CLI
+    // string (e.g. `args: "--name=ethan --word=hello --verbose"`),
+    // the runtime parses it into an object {name: 'ethan', word: 'hello',
+    // verbose: true} before injecting into the script's `args` global
+    // (see WorkflowTool.call() below). Scripts therefore read
+    // `args.name` / `args.word` directly — no manual `args[0].split('=')`
+    // boilerplate. Objects and arrays pass through unchanged so legacy
+    // callers keep working.
     args: z
       .unknown()
       .optional()
       .describe(
-        'Optional input value exposed to the script as the global `args`, verbatim. ' +
-        'For named workflows that read `args.X` properties (the common case), pass an OBJECT ' +
-        'matching those properties — e.g. `args: { projectDir: "/path", question: "..." }`. ' +
-        'Pass an array only when the script expects a list of values (e.g. file paths to process). ' +
-        'NEVER pass a JSON-stringified value — a stringified list breaks `args.filter`/`args.map` ' +
-        'in the script. Use this to parameterize named workflows.',
+        'Input value exposed to the script as the global `args`. ' +
+        'For named workflows, prefer a raw CLI string — e.g. ' +
+        '`args: "--name=ethan --word=hello --verbose"`. The runtime ' +
+        'parses CLI-style strings into an object {name: "ethan", ' +
+        'word: "hello", verbose: true} before injecting into the ' +
+        'script. Use `--key=value` for string params and bare `--flag` ' +
+        'for booleans. Pass an OBJECT directly only when the script ' +
+        'needs a shape that CLI parsing cannot express (e.g. nested ' +
+        'arrays). NEVER pass a JSON-stringified value — a stringified ' +
+        'list breaks `args.filter`/`args.map` in the script. Use this ' +
+        'to parameterize named workflows.',
       ),
     description: z
       .string()
@@ -171,7 +186,7 @@ const WORKFLOW_DESCRIPTION =
   '- parallel(thunks: Array<() => Promise<any>>): Promise<any[]> \u2014 run tasks concurrently. This is a BARRIER: awaits all thunks before returning. A thunk that throws (or whose agent errors) resolves to `null` in the result array \u2014 the call itself never rejects, so `.filter(Boolean)` before using the results. Use ONLY when you genuinely need all results together.\n' +
   '- log(message: string): void \u2014 emit a progress message to the user (shown as a narrator line above the progress tree)\n' +
   '- phase(title: string): void \u2014 start a new phase; subsequent agent() calls are grouped under this title in the progress display\n' +
-  '- args: any \u2014 the value passed as Workflow\'s `args` input, verbatim. For named workflows (the common case), pass an OBJECT whose keys match the script\'s `args.X` accesses: `args: { projectDir: "/path/to/proj", question: "..." }`. Pass an array of strings only when the script expects a list (e.g. `args: ["a.ts", "b.ts"]` for a script reading `args[0]`/`args[1]`). NEVER pass a JSON-stringified value (`args: "[\\"a.ts\\", ...]"`) — a stringified list reaches the script as one string, so `args.filter`/`args.map` throw. Use this to parameterize named workflows \u2014 e.g. pass a research question, target path, or config object directly instead of via a side-channel file.\n' +
+  '- args: any — the value passed as Workflow\'s `args` input. For named workflows, prefer a raw CLI string — e.g. `args: "--name=ethan --word=hello --verbose"`. The runtime parses CLI-style strings into an object {name: "ethan", word: "hello", verbose: true} before injecting into the script (so the script reads `args.name` / `args.word` directly). Pass an object directly only when the script needs a shape that CLI parsing cannot express (e.g. nested arrays). Bare positional strings (e.g. `/deep-research "What is X?"`) are passed through as-is — the script handles them with `Array.isArray`/string checks. NEVER pass a JSON-stringified value — a stringified list breaks `args.filter`/`args.map` in the script. Use this to parameterize named workflows.\n' +
   '- budget: {total: number|null, spent(): number, remaining(): number} \u2014 the turn\'s token target from the user\'s "+500k"-style directive. `budget.total` is null if no target was set. `budget.spent()` returns output tokens spent this turn across the main loop and all workflows \u2014 the pool is shared, not per-workflow. `budget.remaining()` returns `max(0, total - spent())`, or `Infinity` if no target. The target is a HARD ceiling, not advisory: once `spent()` reaches `total`, further `agent()` calls throw. Use for dynamic loops: `while (budget.total && budget.remaining() > 50_000) { ... }`, or static scaling: `const FLEET = budget.total ? Math.floor(budget.total / 100_000) : 5`.\n' +
   '- workflow(nameOrRef: string | {scriptPath: string}, args?: any): Promise<any> \u2014 run another workflow inline as a sub-step and return whatever it returns. Pass a name to invoke a saved workflow (same registry as {name: "..."}), or {scriptPath} to run a script file you Wrote earlier. The child shares this run\'s concurrency cap, agent counter, abort signal, and token budget \u2014 its agents appear under a "subagent name" group in /workflows and its tokens count toward budget.spent(). The args param becomes the child\'s `args` global. Nesting is one level only: workflow() inside a child throws. Throws on unknown name / unreadable scriptPath / child syntax error; catch to handle gracefully.\n\n' +
   'Subagents are told their final text IS the return value (not a human-facing message), so they return raw data. For structured output, use the schema option \u2014 validation happens at the tool-call layer so the model retries on mismatch.\n\n' +
@@ -424,8 +439,12 @@ export const WorkflowTool = {
           scriptPath = prior.workflowPath
         }
         // If a prior run was found, also carry forward its args when
-        // the caller didn't supply fresh ones.
-        if (prior && prior.args && prior.args.length > 0 && args === undefined) {
+        // the caller didn't supply fresh ones. `args` is `unknown` on
+        // both sides after the 2026-06-22 widening (CLI string /
+        // parsed object / legacy string[]), so a truthy check covers
+        // all three shapes — previously this gated on
+        // `prior.args.length > 0` which assumed the legacy string[].
+        if (prior && prior.args != null && args === undefined) {
           args = prior.args
         }
       }
@@ -638,9 +657,30 @@ export const WorkflowTool = {
 
       // Create background task without parentContext — we inject it
       // below after we've built the spawner (which needs task.id).
+      //
+      // If the LLM passed `args` as a raw CLI string, parse it into an
+            // object here so the worker script's `args` global is a plain
+            // object the script can read as `args.name`, `args.word`, etc.
+            // Object/array inputs pass through unchanged (legacy callers
+            // and ad-hoc scripts that read `args[0]`/`args[1]` keep working).
+            // Primitives (number, boolean, null) also pass through unchanged.
+            //
+            // IMPORTANT — only parse strings that actually look like CLI
+            // input (contain a `--` flag). A bare positional string like
+            // `"What is X?"` (e.g. `/deep-research What is X?` legacy
+            // path) MUST pass through verbatim — parseCliArgs would return
+            // `{}` and silently destroy the original question. The real
+            // TUI verification (2026-06-22) caught this regression before
+            // merge; without the lookahead below, scripts like
+            // bundled/deepResearch.ts that expect a raw positional string
+            // would receive `args = {}` instead of `args = "What is X?"`.
+            const parsedArgs =
+              typeof args === 'string' && /(?:^|\s)--\w/.test(args)
+                ? parseCliArgs(args)
+                : args
       const task = new LocalWorkflowTask({
         workflow,
-        argsJson: args,
+        argsJson: parsedArgs,
       })
 
       const realSpawner: LocalSpawner = overrideSpawner

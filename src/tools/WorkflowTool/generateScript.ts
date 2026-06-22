@@ -1,3 +1,5 @@
+import { parseCliArgs } from './cliArgs.js'
+
 export type PromptArgs = {
   task: string
   workflowName: string
@@ -7,10 +9,20 @@ export type PromptArgs = {
 /**
  * Build the system prompt that asks Claude to write a workflow script.
  * The generated script is a JS async function that receives `args` (the
- * user's invocation args) and a set of helper globals for dispatching
- * sub-tasks. Returns the final report string.
+ * user's invocation args, pre-parsed to an object) and a set of helper
+ * globals for dispatching sub-tasks. Returns the final report string.
  */
 export function buildScriptGenerationPrompt(p: PromptArgs): string {
+  const argsDisplay =
+    typeof p.args === 'string'
+      ? p.args
+        ? `\`${p.args}\``
+        : '(none)'
+      : JSON.stringify(p.args ?? null)
+  const parsedDisplay =
+    typeof p.args === 'string'
+      ? JSON.stringify(parseCliArgs(p.args))
+      : JSON.stringify(p.args ?? {})
   return `You are writing a JavaScript workflow script for OpenCC dynamic workflows.
 
 # Task
@@ -20,11 +32,12 @@ ${p.task}
 ${p.workflowName}
 
 # Args
-The user passed: ${JSON.stringify(p.args ?? null)}
+The user passed CLI args: ${argsDisplay}
+Parsed to object (what the script's \`args\` global will be): ${parsedDisplay}
 
 # API
 Your script receives:
-- \`args\`: whatever the user passed to /${p.workflowName} (string, array, or object)
+- \`args\`: a parsed object (CLI-style strings like "--name=ethan --word=hello" are converted to {name: 'ethan', word: 'hello'} at runtime). Read keys directly: \`args.name\`, \`args.word\`, etc.
 
 Globals you can call:
 

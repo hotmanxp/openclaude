@@ -63,19 +63,34 @@ export function workflowToCommand(workflow: Workflow): Command {
     kind: 'workflow',
     isHidden: false,
     async getPromptForCommand(args: string) {
-      const argList = args.trim() ? args.trim().split(/\s+/) : []
-      const argListJson = JSON.stringify(argList)
+      // Mirror the upstream 2.1.185 pattern in
+      // src/commands/workflows/workflowCommand.ts workflowFileToCommand:
+      // keep the raw CLI string instead of splitting into an array, so
+      // the LLM reads the workflow script to learn the expected arg
+      // shape, then forwards the raw string to the WorkflowTool. The
+      // runtime parses CLI-style strings ("--name=ethan --word=hello
+      // --verbose") into an object {name: 'ethan', word: 'hello',
+      // verbose: true} before injecting into the script as the
+      // `args` global.
+      const r = args.trim()
+      const nameJson = JSON.stringify(name)
+      const argsJson = r ? JSON.stringify(r) : null
+      const callShape = argsJson !== null
+        ? `{ workflowName: ${nameJson}, args: ${argsJson}, description: "<one-line summary of the user's intent>" }`
+        : `{ workflowName: ${nameJson}, description: "<one-line summary of the user's intent>" }`
       return [
         {
           type: 'text',
           text:
-            `The user typed /${name}. Run the workflow named "${name}" ` +
-            `(from ${source}) with args ${argListJson}. ` +
-            `Use the WorkflowTool with input: ` +
-            `workflowName: "${name}", args: ${argListJson}. ` +
-            `Pass any descriptive summary of the user's intent as the ` +
-            `description field. ` +
-            `\n\n` +
+            `Run the "${name}" workflow.\n\n` +
+            `Workflow script: \`${workflow.path}\` (${source}-scoped)\n\n` +
+            `The user typed: ${r ? `\`${r}\`` : '(no args)'}\n\n` +
+            `Read the workflow script first to learn what shape of ` +
+            `\`args\` object the script expects (the keys it reads — ` +
+            `you cannot know them without reading the source). The ` +
+            `WorkflowTool accepts the raw CLI string and parses it at ` +
+            `runtime into an object before injecting into the script.\n\n` +
+            `Invoke: Workflow(${callShape})\n\n` +
             `The WorkflowTool result message includes the Run ID in ` +
             `the form \`(Run ID: wf_xxx)\`. The user's mental model ` +
             `depends on this — they correlate later results to the ` +

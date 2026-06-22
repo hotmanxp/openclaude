@@ -20,7 +20,14 @@ import type {
 export type LocalWorkflowTaskState = TaskStateBase & {
   type: 'local_workflow'
   name: string
-  args: string[]
+  // OpenCC fork (2026-06-22): widened from `string[]` to `unknown`. The
+  // LLM may now pass (a) a raw CLI string (parsed to object at
+  // WorkflowTool.call() entry), (b) a pre-parsed object, or (c) a
+  // string[] of positional args (legacy shape). The script's `args`
+  // global is `unknown` at the VM boundary; state-side alignment keeps
+  // the type honest so workflowRunStore / WorkflowDetailDialog don't
+  // narrow it back to string[].
+  args: unknown
   script: string
   startedAt: number
   completedAt?: number
@@ -80,7 +87,14 @@ export function createInitialState(args: {
     name: args.workflowName,
     description: args.description,
     status: 'pending',
-    args: Array.isArray(args.argsJson) ? (args.argsJson as string[]) : [],
+    // OpenCC fork (2026-06-22): preserve whatever shape the caller passed
+    // (string, object, array). The pre-existing `Array.isArray(...) ? ... : []`
+    // silently coerced object inputs to `[]`, which broke the new
+    // parseCliArgs → object pipeline (the parsed object was lost before
+    // reaching the script's `args` global). Keep `[]` as the empty-input
+    // default so workflows that read `args.map`/`args.filter` still work
+    // when no args were passed.
+    args: args.argsJson ?? [],
     script: '',
     startedAt: now,
     startTime: now,

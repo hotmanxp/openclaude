@@ -37,6 +37,28 @@ describe('buildScriptGenerationPrompt', () => {
     expect(p).toContain('"b"')
   })
 
+  test('parses CLI args string and shows parsed object', () => {
+    const p = buildScriptGenerationPrompt({
+      task: 't',
+      workflowName: 'w',
+      args: '--name=ethan --word=hello --verbose',
+    })
+    expect(p).toContain('The user passed CLI args: `--name=ethan --word=hello --verbose`')
+    expect(p).toContain('"name":"ethan"')
+    expect(p).toContain('"word":"hello"')
+    expect(p).toContain('"verbose":true')
+  })
+
+  test('CLI args empty string shows (none)', () => {
+    const p = buildScriptGenerationPrompt({
+      task: 't',
+      workflowName: 'w',
+      args: '',
+    })
+    expect(p).toContain('The user passed CLI args: (none)')
+    expect(p).toContain('Parsed to object')
+  })
+
   test('mentions __setMeta', () => {
     const p = buildScriptGenerationPrompt({ task: 't', workflowName: 'w', args: undefined })
     expect(p).toContain('__setMeta')
