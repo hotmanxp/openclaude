@@ -60,4 +60,65 @@ describe('StructuredOutputTool', () => {
       value: { name: 'Ada' },
     })
   })
+
+  it('parses JSON string when LLM emits data as JSON', async () => {
+    const toolWithSchema = StructuredOutputTool.withSchema({
+      type: 'object',
+      properties: { type: { type: 'string' } },
+      required: ['type'],
+    })
+    const result = await toolWithSchema.call(
+      { data: '{"type":"python"}' },
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    expect(result.data).toEqual({
+      ok: true,
+      value: { type: 'python' },
+    })
+  })
+
+  it('wraps bare string into single-required-string-property schema', async () => {
+    // Mirrors the MiniMax-M3 detect-type workflow: LLM emits
+    // { data: "python" } (or sometimes ""), schema is
+    // { type: { type: 'string' }, required: ['type'] }.
+    const toolWithSchema = StructuredOutputTool.withSchema({
+      type: 'object',
+      properties: { type: { type: 'string' } },
+      required: ['type'],
+    })
+    const result = await toolWithSchema.call(
+      { data: 'python' },
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    expect(result.data).toEqual({
+      ok: true,
+      value: { type: 'python' },
+    })
+  })
+
+  it('does not wrap when schema has multiple required string properties', async () => {
+    // Ambiguous — refuse to guess which property the string belongs to.
+    const toolWithSchema = StructuredOutputTool.withSchema({
+      type: 'object',
+      properties: {
+        type: { type: 'string' },
+        name: { type: 'string' },
+      },
+      required: ['type', 'name'],
+    })
+    const result = await toolWithSchema.call(
+      { data: 'python' },
+      {} as never,
+      {} as never,
+      {} as never,
+    )
+    expect(result.data).toEqual({
+      ok: false,
+      error: expect.any(String),
+    })
+  })
 })

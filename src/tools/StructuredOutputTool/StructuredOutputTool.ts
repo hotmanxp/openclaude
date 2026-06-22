@@ -95,6 +95,59 @@ const baseTool = {
  * a unique tool name (e.g. "StructuredOutput_<agentId>") so the
  * subagent LLM is told "call this specific tool with this schema".
  */
+/**
+ * Coerce an LLM-emitted `data` field into the shape the schema expects.
+ *
+ * Some LLM providers (notably MiniMax-M3 in observed workflows) emit
+ * `data` as a string — either a JSON string like `'{"type":"python"}'`
+ * or a bare value like `'python'`. The base tool's input is
+ * `data: z.unknown()`, so the string reaches us verbatim and zod's
+ * object-shape validation rejects it before any field-level check
+ * runs.
+ *
+ * Coercion order:
+ *   1. Non-string → return as-is.
+ *   2. JSON-parseable string → return the parsed value.
+ *   3. Plain string + schema is `{type:'object'}` with exactly one
+ *      required string property → wrap as `{<prop>: data}`. This is
+ *      the common "single-discriminator" shape used by detect-type /
+ *      read-version prompts.
+ *   4. Otherwise → return the original string; the downstream
+ *      validator will produce a precise error rather than silently
+ *      accepting malformed input.
+ */
+function coerceStringInput(
+  data: unknown,
+  schema: Record<string, unknown>,
+): unknown {
+  if (typeof data !== 'string') return data
+  const trimmed = data.trim()
+  if (trimmed !== '') {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      // Not JSON — fall through to schema-based coercion
+    }
+  }
+  const props = (schema as { properties?: Record<string, unknown> }).properties
+  const required = (schema as { required?: unknown }).required
+  if (
+    (schema as { type?: string }).type === 'object' &&
+    props &&
+    Array.isArray(required)
+  ) {
+    const stringReqs = required.filter((prop): prop is string => {
+      if (typeof prop !== 'string') return false
+      const propSchema = props[prop] as { type?: string } | undefined
+      return propSchema?.type === 'string'
+    })
+    if (stringReqs.length === 1) {
+      return { [stringReqs[0]]: data }
+    }
+  }
+  return data
+}
+
 export const StructuredOutputTool = {
   ...baseTool,
 
@@ -106,7 +159,8 @@ export const StructuredOutputTool = {
       async call(
         input: StructuredOutputInput,
       ): Promise<ToolResult<unknown>> {
-        const result = validateStructuredOutput(schema, input.data)
+        const coerced = coerceStringInput(input.data, schema)
+        const result = validateStructuredOutput(schema, coerced)
         return { data: result }
       },
     }
