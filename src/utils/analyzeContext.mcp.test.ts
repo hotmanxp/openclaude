@@ -1,9 +1,36 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { Tool } from '../Tool.js'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../test/sharedMutationLock.js'
 import { TOOL_SEARCH_TOOL_NAME } from '../tools/ToolSearchTool/constants.js'
 import { countMcpToolTokens } from './analyzeContext.js'
 import { createRequestSizeReport } from './requestSizeBreakdown.js'
 import type { ContextData } from './analyzeContext.js'
+
+const originalEnv = {
+  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS:
+    process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS,
+  ENABLE_TOOL_SEARCH: process.env.ENABLE_TOOL_SEARCH,
+}
+
+beforeEach(async () => {
+  await acquireSharedMutationLock('utils/analyzeContext.mcp.test.ts')
+  delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+  delete process.env.ENABLE_TOOL_SEARCH
+})
+
+afterEach(() => {
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
+  releaseSharedMutationLock()
+})
 
 function makeMcpTool(name: string): Tool {
   return {
@@ -25,6 +52,12 @@ function makeToolSearchTool(): Tool {
 
 const emptyPermissionContext = async () => ({ mode: 'default' }) as never
 const countToolDefinitions = async () => 1_500
+const savedToolSearchEnv = {
+  ENABLE_TOOL_SEARCH: process.env.ENABLE_TOOL_SEARCH,
+  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS:
+    process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS,
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+}
 
 function makeContextData(overrides: Partial<ContextData> = {}): ContextData {
   return {
@@ -45,15 +78,20 @@ function makeContextData(overrides: Partial<ContextData> = {}): ContextData {
 }
 
 describe('countMcpToolTokens', () => {
-  // Pre-existing env-var sensitivity: this test path expects Tool
-  // Search deferral to be ENABLED (the default), but the host shell
-  // may have CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=true set (e.g.
-  // on CI or local devs who flip the kill switch). Unset it for the
-  // duration of these tests so the assertions don't depend on host
-  // config. (See opencc-analyzecontext-mcp-test-envvar-sensitivity
-  // in team memory.)
   beforeEach(() => {
+    process.env.ENABLE_TOOL_SEARCH = 'true'
     delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+    delete process.env.ANTHROPIC_BASE_URL
+  })
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedToolSearchEnv)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
   })
 
   test('marks MCP tools loaded and request-size groups them by server when Tool Search is not deferred', async () => {
