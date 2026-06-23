@@ -109,10 +109,10 @@ afterEach(() => {
 function userMessage(content: string): Message {
   return {
     type: 'user',
-    message: { role: 'user', content },
-    uuid: `test-${Math.random()}` as Message['uuid'],
+    content,
+    uuid: `test-${Math.random()}`,
     timestamp: new Date().toISOString(),
-  }
+  } as Message
 }
 
 function overThresholdMessages(): Message[] {

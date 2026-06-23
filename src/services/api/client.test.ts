@@ -250,7 +250,6 @@ test('first-party Anthropic requests execute the configured fetch wrapper withou
   const client = await getAnthropicClient({
     apiKey: 'anthropic-test-key',
     maxRetries: 0,
-    model: 'claude-sonnet-4-6',
     fetchOverride,
   })
 
@@ -263,7 +262,6 @@ test('first-party Anthropic requests execute the configured fetch wrapper withou
   expect(response).toMatchObject({
     id: 'msg_first_party_fetch',
     role: 'assistant',
-    model: 'claude-sonnet-4-6',
   })
   expect(capturedHeaders).toBeDefined()
 })
@@ -312,11 +310,9 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gemini-2.0-flash',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
-    model: 'gemini-2.0-flash',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -328,7 +324,6 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
   expect(capturedBody?.model).toBe('gemini-2.0-flash')
   expect(response).toMatchObject({
     role: 'assistant',
-    model: 'gemini-2.0-flash',
   })
 })
 
@@ -378,11 +373,9 @@ test('routes env-only MiniMax requests through the Anthropic-compatible API', as
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'MiniMax-M2.5',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
-    model: 'MiniMax-M2.5',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -397,7 +390,6 @@ test('routes env-only MiniMax requests through the Anthropic-compatible API', as
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
   expect(response).toMatchObject({
     role: 'assistant',
-    model: 'MiniMax-M2.5',
   })
 })
 
@@ -434,11 +426,9 @@ test('env-only MiniMax fallback preserves legacy OPENAI_MODEL as Anthropic model
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'MiniMax-M2.7-highspeed',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'MiniMax-M2.7-highspeed',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -486,11 +476,9 @@ test('env-only MiniMax fallback drops stale OpenAI shim options', async () => {
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'MiniMax-M2.7',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'MiniMax-M2.7',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -518,7 +506,6 @@ test('env-only MiniMax fallback replaces stale non-MiniMax model env', async () 
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'MiniMax-M2.7',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -538,7 +525,6 @@ test('env-only MiniMax fallback does not override explicit OpenAI credentials', 
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'gpt-4o',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -560,7 +546,6 @@ test('env-only MiniMax fallback ignores non-MiniMax base overrides', async () =>
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'MiniMax-M2.7',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -620,11 +605,9 @@ test('routes env-only xAI requests through the OpenAI-compatible shim', async ()
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
-    model: 'grok-4',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -640,7 +623,6 @@ test('routes env-only xAI requests through the OpenAI-compatible shim', async ()
   expect(capturedBody?.model).toBe('grok-4')
   expect(response).toMatchObject({
     role: 'assistant',
-    model: 'grok-4',
   })
 })
 
@@ -656,7 +638,6 @@ test('env-only xAI fallback replaces stale OpenAI credentials and model env', as
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBe('1')
@@ -701,11 +682,9 @@ test('env-only xAI fallback preserves xAI OPENAI_API_BASE host overrides', async
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'grok-4',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -758,11 +737,9 @@ test('env-only xAI fallback drops unsupported OpenAI shim options', async () => 
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'grok-4',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -791,7 +768,6 @@ test('env-only xAI fallback ignores non-xAI base overrides', async () => {
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -839,11 +815,9 @@ test('env-only xAI wins when MiniMax key is also present', async () => {
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'grok-4',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'grok-4',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -871,7 +845,6 @@ test('env-only MiniMax fallback yields to explicit Bedrock selection', async () 
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'claude-sonnet-4-6',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -896,7 +869,6 @@ test('env-only xAI fallback yields to explicit Bedrock selection', async () => {
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'claude-sonnet-4-6',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -949,7 +921,6 @@ test('routes env-only Fireworks AI requests through the OpenAI-compatible shim',
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'accounts/fireworks/models/deepseek-v3',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
@@ -984,7 +955,7 @@ test('env-only Fireworks fallback replaces stale OpenAI model env', async () => 
   process.env.FIREWORKS_API_KEY = 'fireworks-test-key'
   process.env.OPENAI_MODEL = 'gpt-4o'
 
-  await getAnthropicClient({ maxRetries: 0, model: 'accounts/fireworks/models/deepseek-v3' })
+  await getAnthropicClient({ maxRetries: 0 })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBe('1')
   expect(process.env.OPENAI_MODEL).toBe(
@@ -1041,7 +1012,6 @@ test('env-only Fireworks fallback preserves Fireworks OPENAI_API_BASE host overr
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'accounts/fireworks/models/deepseek-v3',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
@@ -1100,7 +1070,6 @@ test('env-only Fireworks fallback drops unsupported OpenAI shim options', async 
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'accounts/fireworks/models/deepseek-v3',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
@@ -1132,7 +1101,7 @@ test('env-only Fireworks fallback ignores non-Fireworks base overrides', async (
   process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
   process.env.OPENAI_MODEL = 'accounts/fireworks/models/deepseek-v3'
 
-  await getAnthropicClient({ maxRetries: 0, model: 'accounts/fireworks/models/deepseek-v3' })
+  await getAnthropicClient({ maxRetries: 0 })
 
   // ANTHROPIC_API_KEY takes precedence — Fireworks env-only provider does not activate
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -1160,7 +1129,6 @@ test('env-only Fireworks does not activate when MiniMax key is present', async (
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'claude-sonnet-4-6',
   })
 
   // MiniMax takes priority over Fireworks
@@ -1186,7 +1154,6 @@ test('env-only Fireworks fallback yields to explicit Bedrock selection', async (
 
   await getAnthropicClient({
     maxRetries: 0,
-    model: 'claude-sonnet-4-6',
   })
 
   expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
@@ -1245,11 +1212,9 @@ test('strips Anthropic-specific custom headers before sending OpenAI-compatible 
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gpt-4o',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'gpt-4o',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -1317,7 +1282,6 @@ test('strips Anthropic-specific custom headers on providerOverride shim requests
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'unused',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -1375,11 +1339,9 @@ test('rejects CRLF-injected custom headers before sending OpenAI-compatible shim
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gpt-4o',
   })) as unknown as ShimClient
 
   await client.beta.messages.create({
-    model: 'gpt-4o',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
