@@ -22,7 +22,7 @@ type Props = {
   defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates' | 'Stats';
 };
 export function Settings(t0) {
-  const $ = _c(25);
+  const $ = _c(27);
   const {
     onClose,
     context,
