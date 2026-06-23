@@ -21,6 +21,11 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true })
+  if (originalEnv.OPENCC_CONFIG_DIR === undefined) {
+    delete process.env.OPENCC_CONFIG_DIR
+  } else {
+    process.env.OPENCC_CONFIG_DIR = originalEnv.OPENCC_CONFIG_DIR
+  }
   if (originalEnv.CLAUDE_CONFIG_DIR === undefined) {
     delete process.env.CLAUDE_CONFIG_DIR
   } else {
@@ -60,4 +65,34 @@ test('getGlobalClaudeFile: migrated user uses .claude.json when both files exist
   writeFileSync(join(tempDir, '.claude.json'), '{}')
   const { getGlobalClaudeFile } = await importFreshEnvModule()
   expect(getGlobalClaudeFile()).toBe(join(tempDir, '.claude.json'))
+})
+
+test('getGlobalClaudeFile: OPENCC_CONFIG_DIR uses preferred config dir', async () => {
+  const preferredDir = mkdtempSync(join(tmpdir(), 'opencc-preferred-env-test-'))
+  try {
+    process.env.OPENCC_CONFIG_DIR = preferredDir
+    process.env.CLAUDE_CONFIG_DIR = tempDir
+
+    const { getGlobalClaudeFile } = await importFreshEnvModule()
+
+    expect(getGlobalClaudeFile()).toBe(join(preferredDir, '.claude.json'))
+  } finally {
+    rmSync(preferredDir, { recursive: true, force: true })
+  }
+})
+
+test('getGlobalClaudeFile: OPENCC_CONFIG_DIR wins over CLAUDE_CONFIG_DIR', async () => {
+  const preferredDir = mkdtempSync(join(tmpdir(), 'opencc-preferred-env-test-'))
+  const legacyDir = mkdtempSync(join(tmpdir(), 'opencc-legacy-env-test-'))
+  try {
+    process.env.OPENCC_CONFIG_DIR = preferredDir
+    process.env.CLAUDE_CONFIG_DIR = legacyDir
+
+    const { getGlobalClaudeFile } = await importFreshEnvModule()
+
+    expect(getGlobalClaudeFile()).toBe(join(preferredDir, '.claude.json'))
+  } finally {
+    rmSync(preferredDir, { recursive: true, force: true })
+    rmSync(legacyDir, { recursive: true, force: true })
+  }
 })

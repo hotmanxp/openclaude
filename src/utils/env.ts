@@ -5,7 +5,7 @@ import { join } from 'path'
 import { fileSuffixForOauthConfig } from '../constants/oauth.js'
 import { isRunningWithBun } from './bundledMode.js'
 import { createCombinedAbortSignal } from './combinedAbortSignal.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy, resolveConfigDirEnv } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
 import { getFsImplementation } from './fsOperations.js'
 import { which } from './which.js'
@@ -24,7 +24,11 @@ export const getGlobalClaudeFile = memoize((): string => {
   }
 
   const oauthSuffix = fileSuffixForOauthConfig()
-  const configDir = process.env.CLAUDE_CONFIG_DIR || homedir()
+  const configDirEnv = resolveConfigDirEnv({
+    openccConfigDir: process.env.OPENCC_CONFIG_DIR,
+    legacyConfigDir: process.env.CLAUDE_CONFIG_DIR,
+  })
+  const configDir = configDirEnv || homedir()
 
   // Default to .claude.json. Fall back to .claude.json only if the new
   // file doesn't exist yet and the legacy one does (same migration pattern

@@ -102,6 +102,91 @@ describe('OpenCC paths', () => {
     ).toBe('/tmp/custom-opencc')
   })
 
+  test('OPENCC_CONFIG_DIR overrides the default', async () => {
+    delete process.env.CLAUDE_CONFIG_DIR
+    process.env.OPENCC_CONFIG_DIR = '/tmp/oc-config-only'
+    const { getClaudeConfigHomeDir } = await importFreshEnvUtils()
+
+    expect(getClaudeConfigHomeDir()).toBe('/tmp/oc-config-only')
+  })
+
+  test('OPENCC_CONFIG_DIR wins when both env vars are set with different values', async () => {
+    process.env.OPENCC_CONFIG_DIR = '/tmp/oc-wins'
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/legacy-loses'
+    const { getClaudeConfigHomeDir } = await importFreshEnvUtils()
+
+    expect(getClaudeConfigHomeDir()).toBe('/tmp/oc-wins')
+  })
+
+  test('CLAUDE_CONFIG_DIR is still honored when OPENCC_CONFIG_DIR is unset', async () => {
+    delete process.env.OPENCC_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/legacy-only'
+    const { getClaudeConfigHomeDir } = await importFreshEnvUtils()
+
+    expect(getClaudeConfigHomeDir()).toBe('/tmp/legacy-only')
+  })
+
+  test('empty OPENCC_CONFIG_DIR falls through to CLAUDE_CONFIG_DIR', async () => {
+    process.env.OPENCC_CONFIG_DIR = ''
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/legacy-fallback'
+    const { getClaudeConfigHomeDir } = await importFreshEnvUtils()
+
+    expect(getClaudeConfigHomeDir()).toBe('/tmp/legacy-fallback')
+  })
+
+  test('resolveConfigDirEnv prefers OPENCC over CLAUDE and warns on conflict', async () => {
+    const { resolveConfigDirEnv, __resetConfigDirEnvWarningForTesting } =
+      await importFreshEnvUtils()
+    __resetConfigDirEnvWarningForTesting()
+
+    const warnings: string[] = []
+    const result = resolveConfigDirEnv({
+      openccConfigDir: '/a',
+      legacyConfigDir: '/b',
+      warn: m => warnings.push(m),
+    })
+
+    expect(result).toBe('/a')
+    expect(warnings.length).toBe(1)
+    expect(warnings[0]).toContain('OPENCC_CONFIG_DIR=/a')
+    expect(warnings[0]).toContain('CLAUDE_CONFIG_DIR=/b')
+
+    // Second conflict call should NOT warn again (warn-once semantics)
+    resolveConfigDirEnv({
+      openccConfigDir: '/x',
+      legacyConfigDir: '/y',
+      warn: m => warnings.push(m),
+    })
+    expect(warnings.length).toBe(1)
+  })
+
+  test('resolveConfigDirEnv does not warn when both env vars agree', async () => {
+    const { resolveConfigDirEnv, __resetConfigDirEnvWarningForTesting } =
+      await importFreshEnvUtils()
+    __resetConfigDirEnvWarningForTesting()
+
+    const warnings: string[] = []
+    const result = resolveConfigDirEnv({
+      openccConfigDir: '/same',
+      legacyConfigDir: '/same',
+      warn: m => warnings.push(m),
+    })
+
+    expect(result).toBe('/same')
+    expect(warnings).toEqual([])
+  })
+
+  test('resolveConfigDirEnv returns undefined when neither env var is set', async () => {
+    const { resolveConfigDirEnv } = await importFreshEnvUtils()
+
+    expect(
+      resolveConfigDirEnv({
+        openccConfigDir: undefined,
+        legacyConfigDir: undefined,
+      }),
+    ).toBeUndefined()
+  })
+
   test('project and local settings paths use .claude', async () => {
     const { getRelativeSettingsFilePathForSource } = await importFreshSettings()
 
