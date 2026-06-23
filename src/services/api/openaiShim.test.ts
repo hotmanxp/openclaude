@@ -2350,6 +2350,63 @@ test.skip('non-streaming: strips leaked reasoning preamble from assistant conten
   ])
 })
 
+test('non-streaming: preserves response body when usage parsing fails', async () => {
+  const json = JSON as unknown as { parse: typeof JSON.parse }
+  const originalJSONParse = json.parse
+  const responseBody = JSON.stringify({
+    id: 'chatcmpl-1',
+    model: 'glm-5',
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: 'ok',
+        },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: {
+      prompt_tokens: 10,
+      completion_tokens: 20,
+      total_tokens: 30,
+    },
+  })
+  let usageParseFailed = false
+
+  json.parse = ((text: string, reviver?: Parameters<typeof JSON.parse>[1]) => {
+    if (!usageParseFailed && text === responseBody) {
+      usageParseFailed = true
+      throw new Error('simulated usage parse failure')
+    }
+    return originalJSONParse(text, reviver)
+  }) as typeof JSON.parse
+
+  try {
+    globalThis.fetch = (async () => {
+      return new Response(responseBody, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    }) as unknown as FetchType
+
+    const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+    const result = (await client.beta.messages.create({
+      model: 'glm-5',
+      system: 'test system',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    })) as { content: Array<Record<string, unknown>> }
+
+    expect(usageParseFailed).toBe(true)
+    expect(result.content).toEqual([{ type: 'text', text: 'ok' }])
+  } finally {
+    json.parse = originalJSONParse
+  }
+})
+
 test('streaming: thinking block closed before tool call', async () => {
   globalThis.fetch = (async (_input: RequestInfo, _init: RequestInit | undefined) => {
     const chunks = makeStreamChunks([
