@@ -20,7 +20,6 @@ import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
 import { aggregateClaudeCodeStatsForRange, type ClaudeCodeStats, type DailyModelTokens, type StatsDateRange } from '../utils/stats.js';
 import { resolveThemeSetting } from '../utils/systemTheme.js';
 import { getTheme, themeColorToAnsi } from '../utils/theme.js';
-import { Pane } from './design-system/Pane.js';
 import { Tab, Tabs, useTabHeaderFocus } from './design-system/Tabs.js';
 import { Spinner } from './Spinner.js';
 import { isAntEmployee } from '../utils/buildConfig.js';
@@ -304,7 +303,7 @@ function StatsContent(t0: StatsContentProps): React.ReactNode {
   }
   let t12;
   if ($[31] !== t11 || $[32] !== t9) {
-    t12 = <Pane color="claude">{t9}{t11}</Pane>;
+    t12 = <Box flexDirection="column">{t9}{t11}</Box>;
     $[31] = t11;
     $[32] = t9;
     $[33] = t12;

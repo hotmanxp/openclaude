@@ -3,10 +3,10 @@ import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { extraUsage as extraUsageCommand } from 'src/commands/extra-usage/index.js';
-import { formatCost } from 'src/cost-tracker.js';
+import { formatCost, formatTotalCost } from 'src/cost-tracker.js';
 import { getSubscriptionType } from 'src/utils/auth.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import { Box, Text } from '../../ink.js';
+import { Ansi, Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { type ExtraUsage, fetchUtilization, type RateLimit, type Utilization } from '../../services/api/usage.js';
 import { formatResetText } from '../../utils/format.js';
@@ -176,92 +176,8 @@ function LimitBar(t0) {
   }
 }
 function AnthropicUsage(): React.ReactNode {
-  const [utilization, setUtilization] = useState<Utilization | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const {
-    columns
-  } = useTerminalSize();
-  const availableWidth = columns - 2; // 2 for screen padding
-  const maxWidth = Math.min(availableWidth, 80);
-  const loadUtilization = React.useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await fetchUtilization();
-      setUtilization(data);
-    } catch (err) {
-      logError(err as Error);
-      const axiosError = err as {
-        response?: {
-          data?: unknown;
-        };
-      };
-      const responseBody = axiosError.response?.data ? jsonStringify(axiosError.response.data) : undefined;
-      setError(responseBody ? `Failed to load usage data: ${responseBody}` : 'Failed to load usage data');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    void loadUtilization();
-  }, [loadUtilization]);
-  useKeybinding('settings:retry', () => {
-    void loadUtilization();
-  }, {
-    context: 'Settings',
-    isActive: !!error && !isLoading
-  });
-  if (error) {
-    return <Box flexDirection="column" gap={1}>
-        <Text color="error">Error: {error}</Text>
-        <Text dimColor>
-          <Byline>
-            <ConfigurableShortcutHint action="settings:retry" context="Settings" fallback="r" description="retry" />
-            <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
-          </Byline>
-        </Text>
-      </Box>;
-  }
-  if (!utilization) {
-    return <Box flexDirection="column" gap={1}>
-        <Text dimColor>Loading usage data…</Text>
-        <Text dimColor>
-          <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
-        </Text>
-      </Box>;
-  }
-
-  // Only Max and Team plans have a Sonnet limit that differs from the weekly
-  // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
-  // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts,
-  // which labels it "Sonnet limit" in that case.
-  const subscriptionType = getSubscriptionType();
-  const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
-  const limits = [{
-    title: 'Current session',
-    limit: utilization.five_hour
-  }, {
-    title: 'Current week (all models)',
-    limit: utilization.seven_day
-  }, ...(showSonnetBar ? [{
-    title: 'Current week (Sonnet only)',
-    limit: utilization.seven_day_sonnet
-  }] : [])];
   return <Box flexDirection="column" gap={1} width="100%">
-      {limits.some(({
-      limit
-    }) => limit) || <Text dimColor>/usage is only available for subscription plans.</Text>}
-
-      {limits.map(({
-      title,
-      limit: limit_0
-    }) => limit_0 && <LimitBar key={title} title={title} limit={limit_0} maxWidth={maxWidth} />)}
-
-      {utilization.extra_usage && <ExtraUsageSection extraUsage={utilization.extra_usage} maxWidth={maxWidth} />}
-
-      {isEligibleForOverageCreditGrant() && <OverageCreditUpsell maxWidth={maxWidth} />}
-
+      <Ansi>{formatTotalCost()}</Ansi>
       <Text dimColor>
         <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
       </Text>
