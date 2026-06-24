@@ -486,7 +486,7 @@ export async function initEnvLessBridgeCore(
     flushGate.start()
     try {
       const seq = transport.getLastSequenceNum()
-      transport.close()
+      await transport.close()
       transport = await createV2ReplTransport({
         sessionUrl: buildCCRv2SdkUrl(fresh.api_base_url, sessionId),
         ingressToken: fresh.worker_jwt,
@@ -502,7 +502,7 @@ export async function initEnvLessBridgeCore(
         // Teardown fired during the async createV2ReplTransport window.
         // Don't wire/connect/schedule — we'd re-arm timers after cancelAll()
         // and fire onInboundMessage into a torn-down bridge.
-        transport.close()
+        await transport.close()
         return
       }
       wireTransportCallbacks()
@@ -713,7 +713,14 @@ export async function initEnvLessBridgeCore(
       }
     }
 
-    transport.close()
+    try {
+      await transport.close()
+    } catch (err) {
+      logForDebugging(
+        `[remote-bridge] Transport close threw during teardown: ${errorMessage(err)}`,
+        { level: 'error' },
+      )
+    }
 
     const archiveStatus: ArchiveTelemetryStatus =
       status === 'no_token'

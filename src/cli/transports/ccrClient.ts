@@ -95,6 +95,17 @@ type CoalescedStreamEvent = {
   }
 }
 
+type MessageStartEventPayload = EventPayload & {
+  type: 'message_start'
+  message: { id: string }
+}
+
+type TextDeltaEventPayload = EventPayload & {
+  type: 'content_block_delta'
+  index: number
+  delta: { type: 'text_delta'; text: string }
+}
+
 /**
  * Discriminated union of stream event types.
  * SDKPartialAssistantMessage.event is typed as unknown, so we need this for type narrowing.
@@ -150,6 +161,36 @@ function scopeKey(m: {
   return `${m.session_id}:${m.parent_tool_use_id ?? ''}`
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function toEventPayload(event: Record<string, unknown>): EventPayload | null {
+  return typeof event.type === 'string' ? (event as EventPayload) : null
+}
+
+function isMessageStartEventPayload(
+  event: EventPayload,
+): event is MessageStartEventPayload {
+  return (
+    event.type === 'message_start' &&
+    isRecord(event.message) &&
+    typeof event.message.id === 'string'
+  )
+}
+
+function isTextDeltaEventPayload(
+  event: EventPayload,
+): event is TextDeltaEventPayload {
+  return (
+    event.type === 'content_block_delta' &&
+    typeof event.index === 'number' &&
+    isRecord(event.delta) &&
+    event.delta.type === 'text_delta' &&
+    typeof event.delta.text === 'string'
+  )
+}
+
 /**
  * Accumulate text_delta stream_events into full-so-far snapshots per content
  * block. Each flush emits ONE event per touched block containing the FULL
@@ -174,15 +215,24 @@ export function accumulateStreamEvents(
   // rewrite the same entry instead of emitting one event per delta.
   const touched = new Map<string[], CoalescedStreamEvent>()
   for (const msg of buffer) {
-    // Cast event to StreamEvent since SDKPartialAssistantMessage.event is typed as unknown
-    const event = msg.event as StreamEvent
+    if (!isRecord(msg.event)) {
+      out.push(msg)
+      continue
+    }
+
+    const event = toEventPayload(msg.event)
+    if (!event) {
+      out.push(msg)
+      continue
+    }
+
     switch (event.type) {
       case 'message_start': {
-        if (!event.message) {
+        if (!isMessageStartEventPayload(event)) {
           out.push(msg)
           break
         }
-        const id = event.message.id ?? `synthetic-${Math.random().toString(36).slice(2)}`
+        const id = event.message.id
         const prevId = state.scopeToMessage.get(scopeKey(msg))
         if (prevId) state.byMessage.delete(prevId)
         state.scopeToMessage.set(scopeKey(msg), id)
@@ -191,7 +241,7 @@ export function accumulateStreamEvents(
         break
       }
       case 'content_block_delta': {
-        if (!event.delta || event.delta.type !== 'text_delta' || event.delta.text === undefined) {
+        if (!isTextDeltaEventPayload(event)) {
           out.push(msg)
           break
         }
@@ -1013,7 +1063,7 @@ export class CCRClient {
   }
 
   /** Clean up uploaders and timers. */
-  close(): void {
+  async close(): Promise<void> {
     this.closed = true
     this.stopHeartbeat()
     unregisterSessionActivityCallback()
