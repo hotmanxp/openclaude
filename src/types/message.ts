@@ -531,3 +531,8 @@ export type CollapsedReadSearchGroup = {
     content: string
   }>
 }
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// UP aliases for type consumer compatibility
+export type CompactMetadata = any
+export type SystemFileSnapshotMessage = any
