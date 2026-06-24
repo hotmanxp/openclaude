@@ -4,6 +4,12 @@ import { GroveDialog } from './Grove.js';
 describe('Grove (render smoke)', () => {
   test('exports a callable component', () => {
     expect(GroveDialog).toBeDefined();
-    expect(() => <GroveDialog />).not.toThrow();
+    expect(() => (
+      <GroveDialog
+        showIfAlreadyViewed={false}
+        location="settings"
+        onDone={() => {}}
+      />
+    )).not.toThrow();
   });
 });
