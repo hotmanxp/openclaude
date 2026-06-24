@@ -37,41 +37,12 @@ export * from './sdk/toolTypes.js'
 // ============================================================================
 
 import type {
-<<<<<<< ours
-  SDKMessage,
-  SDKResultMessage,
-  SDKSessionInfo,
-  SDKUserMessage,
-} from './sdk/coreTypes.js'
-// Import types needed for function signatures
-import type {
-=======
->>>>>>> theirs
   ForkSessionOptions,
   ForkSessionResult,
   GetSessionInfoOptions,
   ListSessionsOptions,
-<<<<<<< ours
-  McpSdkServerConfigWithInstance,
-  Options,
-  Query,
-  SDKSession,
-  SDKSessionOptions,
-  SdkMcpToolDefinition,
-  SessionMessage,
   SessionMutationOptions,
 } from './sdk/shared.js'
-=======
-  SessionMutationOptions,
-} from './sdk/shared.js'
-
-import type {
-  SDKMessage,
-  SDKResultMessage,
-  SDKSessionInfo,
-  SDKUserMessage,
-} from './sdk/coreTypes.js'
->>>>>>> theirs
 
 export type {
   ListSessionsOptions,
