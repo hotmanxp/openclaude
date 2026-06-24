@@ -1490,7 +1490,22 @@ function buildPendingClassifierCheck(
   }
 }
 
+/** Maximum number of speculative classifier results to cache. */
+const MAX_SPECULATIVE_CHECKS_SIZE = 1000
 const speculativeChecks = new Map<string, Promise<ClassifierResult>>()
+
+/**
+ * Remove the oldest entries from speculativeChecks until the map is within
+ * the MAX_SPECULATIVE_CHECKS_SIZE cap. Eviction is FIFO based on insertion
+ * order (Map preserves insertion order for keys).
+ */
+function evictSpeculativeChecks(): void {
+  while (speculativeChecks.size > MAX_SPECULATIVE_CHECKS_SIZE) {
+    const oldestKey = speculativeChecks.keys().next().value
+    if (oldestKey === undefined) break
+    speculativeChecks.delete(oldestKey)
+  }
+}
 
 /**
  * Start a speculative bash allow classifier check early, so it runs in
@@ -1533,6 +1548,7 @@ export function startSpeculativeClassifierCheck(
   // The original promise (which may reject) is still stored in the Map for consumers to await.
   promise.catch(() => {})
   speculativeChecks.set(command, promise)
+  evictSpeculativeChecks()
   return true
 }
 
@@ -1552,6 +1568,13 @@ export function consumeSpeculativeClassifierCheck(
 
 export function clearSpeculativeChecks(): void {
   speculativeChecks.clear()
+}
+
+// Test-only surface for speculative cache eviction assertions.
+export const _test = {
+  speculativeChecks,
+  evictSpeculativeChecks,
+  MAX_SPECULATIVE_CHECKS_SIZE,
 }
 
 /**
