@@ -8,12 +8,8 @@ import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import { applyPermissionUpdate, persistPermissionUpdate } from 'src/utils/permissions/PermissionUpdate.js';
 import type { PermissionUpdate, PermissionUpdateDestination } from 'src/utils/permissions/PermissionUpdateSchema.js';
 import type { CommandResultDisplay } from '../../../commands.js';
-<<<<<<< ours
-import { Select } from '../../../components/CustomSelect/select.js';
-=======
 import { Select, type OptionWithDescription } from '../../../components/CustomSelect/select.js';
 import { PRODUCT_DISPLAY_NAME } from '../../../constants/product.js';
->>>>>>> theirs
 import { useExitOnCtrlCDWithKeybindings } from '../../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useSearchInput } from '../../../hooks/useSearchInput.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
@@ -28,11 +24,7 @@ import { jsonStringify } from '../../../utils/slowOperations.js';
 import { Pane } from '../../design-system/Pane.js';
 import { Tab, Tabs, useTabHeaderFocus, useTabsWidth } from '../../design-system/Tabs.js';
 import { SearchBox } from '../../SearchBox.js';
-<<<<<<< ours
-import type { Option } from '../../ui/option.js';
-=======
 import { usePermissionModeChangeRequest } from '../usePermissionModeChangeRequest.js';
->>>>>>> theirs
 import { AddPermissionRules } from './AddPermissionRules.js';
 import { AddWorkspaceDirectory } from './AddWorkspaceDirectory.js';
 import { PermissionRuleDescription } from './PermissionRuleDescription.js';
@@ -40,9 +32,6 @@ import { PermissionRuleInput } from './PermissionRuleInput.js';
 import { RecentDenialsTab } from './RecentDenialsTab.js';
 import { RemoveWorkspaceDirectory } from './RemoveWorkspaceDirectory.js';
 import { WorkspaceTab } from './WorkspaceTab.js';
-<<<<<<< ours
-type TabType = 'recent' | 'allow' | 'ask' | 'deny' | 'workspace';
-=======
 type TabType = 'mode' | 'recent' | 'allow' | 'ask' | 'deny' | 'workspace';
 type RuleTabType = Extract<TabType, 'allow' | 'ask' | 'deny'>;
 type RuleOption = OptionWithDescription<string>;
@@ -59,7 +48,6 @@ type DenialState = {
   retry: Set<number>;
   denials: readonly AutoModeDenial[];
 };
->>>>>>> theirs
 type RuleSourceTextProps = {
   rule: PermissionRule;
 };
@@ -509,13 +497,8 @@ type Props = {
   initialTab?: TabType;
   onRetryDenials?: (commands: string[]) => void;
 };
-<<<<<<< ours
-export function PermissionRuleList(t0) {
-  const $ = _c(113);
-=======
 export function PermissionRuleList(t0: Props): React.ReactNode {
   const $ = _c(140);
->>>>>>> theirs
   const {
     onExit,
     initialTab,
@@ -568,12 +551,8 @@ export function PermissionRuleList(t0: Props): React.ReactNode {
   const [addingRuleToTab, setAddingRuleToTab] = useState<RuleTabType | null>(null);
   const [validatedRule, setValidatedRule] = useState<ValidatedRule | null>(null);
   const [isAddingWorkspaceDirectory, setIsAddingWorkspaceDirectory] = useState(false);
-<<<<<<< ours
-  const [removingDirectory, setRemovingDirectory] = useState(null);
-=======
   const [removingDirectory, setRemovingDirectory] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
->>>>>>> theirs
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [headerFocused, setHeaderFocused] = useState(true);
   let t5;
@@ -640,22 +619,10 @@ export function PermissionRuleList(t0: Props): React.ReactNode {
             {
               return askRulesByKey;
             }
-<<<<<<< ours
-          case "workspace":
-          case "recent":
-            {
-              return new Map();
-            }
-        }
-      })();
-      const options = [];
-      if (tab !== "workspace" && tab !== "recent" && !query) {
-=======
         }
       })();
       const options: RuleOption[] = [];
       if (!query) {
->>>>>>> theirs
         options.push({
           label: `Add a new rule${figures.ellipsis}`,
           value: "add-new-rule"

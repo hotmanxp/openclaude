@@ -2254,7 +2254,54 @@ class OpenAIShimMessages {
       // Read body exactly once here — Response body is a stream that can only
       // be consumed a single time.
       const errorBody = await response.text().catch(() => 'unknown error')
+<<<<<<< ours
       const rateHint = formatRetryAfterHint(response)
+=======
+      const rateHint =
+        isGithub && response.status === 429 ? formatRetryAfterHint(response) : ''
+
+      // If GitHub Copilot returns error about /chat/completions,
+      // try the /responses endpoint (needed for GPT-5+ models)
+      if (isGithub && response.status === 400) {
+        if (errorBody.includes('/chat/completions') || errorBody.includes('not accessible')) {
+          const responsesUrl = `${request.baseUrl}/responses`
+          const responsesBody = buildResponsesBody()
+
+          let responsesResponse!: Response
+          try {
+            responsesResponse = await fetchWithProxyRetry(responsesUrl, {
+              method: 'POST',
+              headers,
+              body: stableStringifyJson(responsesBody),
+              signal: options?.signal,
+            })
+          } catch (error) {
+            throwClassifiedTransportError(error, responsesUrl)
+          }
+
+          if (responsesResponse.ok) {
+            return responsesResponse
+          }
+          const responsesErrorBody = await responsesResponse.text().catch(() => 'unknown error')
+          const responsesFailure = classifyOpenAIHttpFailure({
+            status: responsesResponse.status,
+            body: responsesErrorBody,
+            hasImages: bodyContainsImages(),
+          })
+          let responsesErrorResponse: object | undefined
+          try { responsesErrorResponse = JSON.parse(responsesErrorBody) } catch { /* raw text */ }
+          throwClassifiedHttpError(
+            responsesResponse.status,
+            responsesErrorBody,
+            responsesErrorResponse,
+            responsesResponse.headers,
+            responsesUrl,
+            '',
+            responsesFailure,
+          )
+        }
+      }
+>>>>>>> theirs
 
       const failure = classifyOpenAIHttpFailure({
         status: response.status,
