@@ -106,7 +106,8 @@ function readLegacyPasswordVault(): SecureStorageData | null {
 
   const result = runPowerShell(script)
   const stdout = commandOutputToString(result?.stdout)
-  if (result?.exitCode === 0 && stdout) {    try {
+  if (result?.exitCode === 0 && stdout) {
+    try {
       return jsonParse(stdout)
     } catch {
       return null
@@ -156,7 +157,8 @@ export const windowsCredentialStorage: SecureStorage = {
 
     const result = runPowerShell(script)
     const stdout = commandOutputToString(result?.stdout)
-    if (result?.exitCode === 0 && stdout) {      try {
+    if (result?.exitCode === 0 && stdout) {
+      try {
         return jsonParse(stdout)
       } catch {
         return readLegacyPasswordVault()
