@@ -156,6 +156,7 @@ result = await Bun.build({
       JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
     'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
+    'MACRO.VERSION_CHANGELOG': 'undefined',
   },
   plugins: [
     noTelemetryPlugin,
@@ -533,6 +534,7 @@ sdkResult = await Bun.build({
       JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
     'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
+    'MACRO.VERSION_CHANGELOG': 'undefined',
   },
   // External: everything TUI-related + native modules
   external: SDK_EXTERNALS,
