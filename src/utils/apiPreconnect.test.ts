@@ -35,7 +35,7 @@ describe('preconnectAnthropicApi', () => {
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     mockProviders({ getAPIProvider: () => 'openai' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
-    globalThis.fetch = fetchMock as typeof globalThis.fetch
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
     const { preconnectAnthropicApi } = await importFreshModule()
     preconnectAnthropicApi()
@@ -47,7 +47,7 @@ describe('preconnectAnthropicApi', () => {
     process.env.CLAUDE_CODE_USE_GEMINI = '1'
     mockProviders({ getAPIProvider: () => 'gemini' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
-    globalThis.fetch = fetchMock as typeof globalThis.fetch
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
     const { preconnectAnthropicApi } = await importFreshModule()
     preconnectAnthropicApi()
@@ -59,7 +59,7 @@ describe('preconnectAnthropicApi', () => {
     process.env.CLAUDE_CODE_USE_GITHUB = '1'
     mockProviders({ getAPIProvider: () => 'github' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
-    globalThis.fetch = fetchMock as typeof globalThis.fetch
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
     const { preconnectAnthropicApi } = await importFreshModule()
     preconnectAnthropicApi()
@@ -84,7 +84,7 @@ describe('preconnectAnthropicApi', () => {
 
     mockProviders({ getAPIProvider: () => 'firstParty' })
     const fetchMock = mock(() => Promise.resolve(new Response(null, { status: 200 })))
-    globalThis.fetch = fetchMock as typeof globalThis.fetch
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
     const { preconnectAnthropicApi } = await importFreshModule()
     preconnectAnthropicApi()
