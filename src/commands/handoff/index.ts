@@ -53,17 +53,17 @@ const handoff: Command = {
     context: ToolUseContext,
   ): Promise<ContentBlockParam[]> {
     const cwd = getCwd()
-    // Count real conversation turns only (user asks + assistant replies).
-    // Excludes system / progress / attachment / tool_result / meta messages.
-    const N = (context.messages ?? []).filter(
-      m => m.type === 'user' || m.type === 'assistant',
-    ).length
+    // Count assistant replies. Each assistant message = one complete
+    // conversation round. Tool results, slash command invocations, and
+    // synthetic user messages are user-type and naturally excluded.
+    const N = (context.messages ?? []).filter(m => m.type === 'assistant')
+      .length
     const appState = context.getAppState()
     const root = handoffRoot(cwd)
     const today = new Date().toISOString().slice(0, 10)
     const pickArg = /--pick\s+(\S+)/.exec(args)?.[1]
 
-    if (N <= 6) {
+    if (N <= 4) {
       // ---- PICKUP ----
       const rootExists = !!(await fs.stat(root).catch(() => null))
       const all = rootExists ? await listHandoffs(root) : []
