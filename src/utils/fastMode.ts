@@ -72,6 +72,20 @@ function getDisabledReasonMessage(
   }
 }
 
+// Dedupe repeated `Fast mode unavailable: <reason>` log lines. This function is
+// polled on every render and the unavailable reason is sticky (org-controlled
+// preference, persistent API/network state), so naive logging floods the debug
+// log with 100+ identical entries per session. Only log when the reason
+// actually changes — and reset the tracker when the reason goes back to null.
+let lastLoggedUnavailableReason: string | null = null
+function logUnavailableOnce(reason: string): void {
+  if (reason === lastLoggedUnavailableReason) {
+    return
+  }
+  lastLoggedUnavailableReason = reason
+  logForDebugging(`Fast mode unavailable: ${reason}`)
+}
+
 export function getFastModeUnavailableReason(): string | null {
   if (getAPIProvider() !== 'firstParty') {
     return 'Fast mode is not available on third-party providers'
@@ -87,7 +101,7 @@ export function getFastModeUnavailableReason(): string | null {
   )
   // Statsig reason has priority over other reasons.
   if (statigReason !== null) {
-    logForDebugging(`Fast mode unavailable: ${statigReason}`)
+    logUnavailableOnce(statigReason)
     return statigReason
   }
 
@@ -111,7 +125,7 @@ export function getFastModeUnavailableReason(): string | null {
     const flagFastMode = getSettingsForSource('flagSettings')?.fastMode
     if (!flagFastMode) {
       const reason = 'Fast mode is not available in the Agent SDK'
-      logForDebugging(`Fast mode unavailable: ${reason}`)
+      logUnavailableOnce(reason)
       return reason
     }
   }
@@ -126,16 +140,18 @@ export function getFastModeUnavailableReason(): string | null {
       // bypass this check in the CC binary. This is OK since we have
       // another check in the API to error out when disabled by org.
       if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS)) {
+        lastLoggedUnavailableReason = null
         return null
       }
     }
     const authType: AuthType =
       getClaudeAIOAuthTokens() !== null ? 'oauth' : 'api-key'
     const reason = getDisabledReasonMessage(orgStatus.reason, authType)
-    logForDebugging(`Fast mode unavailable: ${reason}`)
+    logUnavailableOnce(reason)
     return reason
   }
 
+  lastLoggedUnavailableReason = null
   return null
 }
 
