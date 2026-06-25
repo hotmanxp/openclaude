@@ -8,6 +8,7 @@ import { getClaudeConfigHomeDir } from './envUtils.js'
 import { toError, getErrnoCode } from './errors.js'
 import { logError } from './log.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
+import { isEnvTruthy } from './envUtils.js'
 import { gt } from './semver.js'
 
 const MAX_RELEASE_NOTES_SHOWN = 5
@@ -100,6 +101,16 @@ export async function fetchAndStoreChangelog(): Promise<void> {
 
   // Skip network requests if nonessential traffic is disabled
   if (isEssentialTrafficOnly()) {
+    return
+  }
+
+  // Disabled by default. The GitHub changelog fetch is opt-in via
+  // OPENCC_ENABLE_CHANGELOG_FETCH=1. Defaulting off avoids the
+  // raw.githubusercontent.com ETIMEDOUT noise in environments where the host
+  // is unreachable (corporate proxies, offline dev, slow links). The cached
+  // changelog on disk is still used when present — this only suppresses the
+  // network refresh path.
+  if (!isEnvTruthy(process.env.OPENCC_ENABLE_CHANGELOG_FETCH)) {
     return
   }
 
