@@ -380,7 +380,7 @@ function ModeIndicator({
   // doesn't push the mode indicator off-screen.
   const modePart = currentMode && hasActiveMode && !getIsRemoteMode() ? <Text color={getModeColor(currentMode)} key="mode">
         {permissionModeSymbol(currentMode)}{' '}
-        {permissionModeTitle(currentMode).toLowerCase()} on
+        {currentMode === 'bypassPermissions' ? 'bypass' : permissionModeTitle(currentMode).toLowerCase()} on
         {shouldShowModeHint && <Text dimColor>
             {' '}
             <KeyboardShortcutHint shortcut={modeCycleShortcut} action="cycle" parens />
