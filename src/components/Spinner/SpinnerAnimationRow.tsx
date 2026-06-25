@@ -18,11 +18,6 @@ import { useStalledAnimation } from './useStalledAnimation.js';
 import { interpolateColor, toRGBColor } from './utils.js';
 const SEP_WIDTH = stringWidth(' · ');
 const THINKING_BARE_WIDTH = stringWidth('thinking');
-// Show the elapsed-time counter early (reassurance that work is in flight,
-// especially during long tool calls where no tokens stream) but hold the token
-// count back until the turn is clearly long-running. OpenCC fork tunes the
-// token gate tighter (15s vs upstream 30s) per existing local-dev UX.
-const SHOW_TIMER_AFTER_MS = 5_000;
 const SHOW_TOKENS_AFTER_MS = 15_000;
 
 // Thinking shimmer constants. Previously lived in a separate ThinkingShimmerText
@@ -187,8 +182,7 @@ export function SpinnerAnimationRow({
   const sep = SEP_WIDTH;
   const parensWidth = 4;
   const wantsThinking = thinkingStatus !== null;
-  const wantsTimer = verbose || hasRunningTeammates || effectiveElapsedMs > SHOW_TIMER_AFTER_MS;
-  const wantsTokens = verbose || hasRunningTeammates || effectiveElapsedMs > SHOW_TOKENS_AFTER_MS;
+  const wantsTimerAndTokens = verbose || hasRunningTeammates || effectiveElapsedMs > SHOW_TOKENS_AFTER_MS;
   const availableSpace = columns - messageWidth - parensWidth;
   let showThinking = wantsThinking && availableSpace > thinkingWidthValue;
   if (!showThinking && wantsThinking && thinkingStatus === 'thinking' && effortSuffix) {
@@ -199,24 +193,9 @@ export function SpinnerAnimationRow({
     }
   }
   const usedAfterThinking = showThinking ? thinkingWidthValue + sep : 0;
-  const showTimer = wantsTimer && availableSpace > usedAfterThinking + timerWidth;
+  const showTimer = wantsTimerAndTokens && availableSpace > usedAfterThinking + timerWidth;
   const usedAfterTimer = usedAfterThinking + (showTimer ? timerWidth + sep : 0);
-  const showTokens = wantsTokens && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
-  // Second chance for narrow terminals: the gating above reserves space for
-  // the mode glyph + separator, but a would-be thinking-only spin renders
-  // neither the glyph nor the wrapping parens beyond "( )". When nothing
-  // else will show, re-try the thinking gate with that space returned so
-  // "(thinking)" appears instead of nothing.
-  if (!showThinking && wantsThinking && thinkingStatus === 'thinking' && !hasRunningTeammates && !spinnerSuffix && !showTimer && !showTokens) {
-    const bareAvailable = columns - messageWidth - 2;
-    if (bareAvailable > thinkingWidthValue) {
-      showThinking = true;
-    } else if (effortSuffix && bareAvailable > THINKING_BARE_WIDTH) {
-      thinkingText = 'thinking';
-      thinkingWidthValue = THINKING_BARE_WIDTH;
-      showThinking = true;
-    }
-  }
+  const showTokens = wantsTimerAndTokens && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
   const thinkingOnly = showThinking && thinkingStatus === 'thinking' && !spinnerSuffix && !showTimer && !showTokens && true;
 
   // === Thinking shimmer color (formerly ThinkingShimmerText's own timer) ===

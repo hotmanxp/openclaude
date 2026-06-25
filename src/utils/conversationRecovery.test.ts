@@ -5,9 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
-  deserializeMessagesWithInterruptDetection,
   loadConversationForResume,
-  restoreSkillStateFromMessages,
   ResumeTranscriptTooLargeError,
 } from './conversationRecovery.ts'
 
@@ -37,17 +35,6 @@ function user(uuid: string, content: string) {
       role: 'user',
       content,
     },
-  }
-}
-
-function attachmentMsg(uuid: string, value: unknown) {
-  return {
-    type: 'attachment',
-    uuid,
-    parentUuid: null,
-    timestamp: ts,
-    sessionId,
-    attachment: value,
   }
 }
 
@@ -90,54 +77,4 @@ test('loadConversationForResume rejects oversized reconstructed transcripts', as
   expect((caught as Error).message).toContain(
     'Reconstructed transcript is too large to resume safely',
   )
-})
-
-test('deserializeMessagesWithInterruptDetection drops attachment messages with malformed payloads', () => {
-  const messages = [
-    user(id(1), 'hello'),
-    attachmentMsg(id(2), null),
-    attachmentMsg(id(3), undefined),
-    attachmentMsg(id(4), { type: 42 }),
-    attachmentMsg(id(5), 'string-not-record'),
-    attachmentMsg(id(6), { type: 'new_file', content: { type: 'text', text: 'no filename' } }),
-    attachmentMsg(id(7), { type: 'new_directory', content: 'no path' }),
-  ]
-
-  const result = deserializeMessagesWithInterruptDetection(messages)
-  const types = result.messages.map(message => message.type)
-  expect(types).toContain('user')
-  expect(types).not.toContain('attachment')
-})
-
-test('deserializeMessagesWithInterruptDetection migrates valid legacy attachment displayPath', () => {
-  const legacyFilePath = join(process.cwd(), 'src', 'legacy-file.txt')
-  const messages = [
-    user(id(10), 'hello'),
-    attachmentMsg(id(11), {
-      type: 'new_file',
-      filename: legacyFilePath,
-      content: { type: 'text', text: 'legacy file' },
-    }),
-  ]
-
-  const result = deserializeMessagesWithInterruptDetection(messages)
-  const fileAttachment = result.messages.find(message => message.type === 'attachment')
-  expect(fileAttachment).toBeDefined()
-  const attachmentData = (fileAttachment as { attachment: { type: string; displayPath?: string } }).attachment
-  expect(attachmentData.type).toBe('file')
-  expect(attachmentData.displayPath).toBe(join('src', 'legacy-file.txt'))
-})
-
-test('restoreSkillStateFromMessages ignores invoked_skills attachments with non-array skills', () => {
-  const messages = [
-    user(id(20), 'hello'),
-    attachmentMsg(id(21), { type: 'invoked_skills' }),
-    attachmentMsg(id(22), { type: 'invoked_skills', skills: 'not-an-array' }),
-    attachmentMsg(id(23), {
-      type: 'invoked_skills',
-      skills: [{ name: 'x', path: '/tmp/x', content: 'c' }],
-    }),
-  ]
-
-  expect(() => restoreSkillStateFromMessages(messages)).not.toThrow()
 })

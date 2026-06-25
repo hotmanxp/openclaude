@@ -125,7 +125,7 @@ import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js';
 import { SLEEP_TOOL_NAME } from '../tools/SleepTool/prompt.js';
 import { clearSpeculativeChecks } from '../tools/BashTool/bashPermissions.js';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
-import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount, saveGlobalConfigDeferred } from '../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
 import { hasConsoleBillingAccess } from '../utils/billing.js';
 import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/index.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
@@ -202,7 +202,6 @@ const useScheduledTasks = require('../hooks/useScheduledTasks.js').useScheduledT
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
-import { decideStreamingTextUpdate } from './streamingTextPublish.js';
 import type { SandboxAskCallback, NetworkHostPattern } from '../utils/sandbox/sandbox-adapter.js';
 import { type IDEExtensionInstallationStatus, closeOpenDiffs, getConnectedIdeClient, type IdeType } from '../utils/ide.js';
 import { useIDEIntegration } from '../hooks/useIDEIntegration.js';
@@ -1534,37 +1533,15 @@ export function REPL({
     }
   }, []);
 
-  // Streaming text display. streamingTextRef holds the full accumulated text
-  // (eager, per delta); streamingText state is only published when the visible
-  // (newline-truncated) preview actually changes. The Ink root is a LegacyRoot,
-  // so every setState from a stream event commits a synchronous REPL render —
-  // and because the preview hides the in-progress trailing line, deltas between
-  // newlines never change anything on screen. Publishing only on newline (and
-  // on clear) drops those no-op renders entirely under fast streams
-  // (100-300 deltas/sec) while keeping the displayed text byte-identical.
-  // Cleared on message arrival (messages.ts) so displayedMessages switches from
-  // deferredMessages to messages atomically.
+  // Streaming text display: set state directly per delta (Ink's 16ms render
+  // throttle batches rapid updates). Cleared on message arrival (messages.ts)
+  // so displayedMessages switches from deferredMessages to messages atomically.
   const [streamingText, setStreamingText] = useState<string | null>(null);
-  const streamingTextRef = useRef<string | null>(null);
-  const lastFlushedStreamingVisibleRef = useRef<string | null>(null);
   const reducedMotion = useAppState(s => s.settings.prefersReducedMotion) ?? false;
   const showStreamingText = !reducedMotion && !hasCursorUpViewportYankBug();
   const onStreamingText = useCallback((f: (current: string | null) => string | null) => {
-    // decideStreamingTextUpdate keeps the ref current even when the live preview
-    // is disabled (reduced-motion / cursor-up yank bug) — the Esc handler
-    // recovers partial assistant output from it — and publishes to state only
-    // when the newline-truncated visible preview changes.
-    const decision = decideStreamingTextUpdate(
-      streamingTextRef.current,
-      f,
-      showStreamingText,
-      lastFlushedStreamingVisibleRef.current,
-    );
-    streamingTextRef.current = decision.nextText;
-    if (decision.publish) {
-      lastFlushedStreamingVisibleRef.current = decision.nextVisible;
-      setStreamingText(decision.nextText);
-    }
+    if (!showStreamingText) return;
+    setStreamingText(f);
   }, [showStreamingText]);
 
   // Hide the in-progress source line so text streams line-by-line, not
@@ -1682,9 +1659,7 @@ export function REPL({
     // does not leave the progress bar rendered in the idle UI.
     setCompactProgressRatio(null);
     responseLengthRef.current = 0;
-apiMetricsRef.current = [];
-    streamingTextRef.current = null;
-    lastFlushedStreamingVisibleRef.current = null;
+    apiMetricsRef.current = [];
     setStreamingText(null);
     setStreamingToolUses([]);
     setSpinnerMessage(null);
@@ -1724,30 +1699,9 @@ apiMetricsRef.current = [];
   // Only shown 3 times total across sessions.
   const safeYoloMessageShownRef = useRef(false);
   useEffect(() => {
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      if (toolPermissionContext.mode !== 'auto') {
-        safeYoloMessageShownRef.current = false;
-        return;
-      }
-      if (safeYoloMessageShownRef.current) return;
-      const config = getGlobalConfig();
-      const count = config.autoPermissionsNotificationCount ?? 0;
-      if (count >= 3) return;
-      const timer = setTimeout((ref, setMessages) => {
-        ref.current = true;
-        // Loss-tolerant notification counter — coalesce the write so it can't
-        // contend on the config lock with other writers.
-        saveGlobalConfigDeferred(prev => {
-          const prevCount = prev.autoPermissionsNotificationCount ?? 0;
-          if (prevCount >= 3) return prev;
-          return {
-            ...prev,
-            autoPermissionsNotificationCount: prevCount + 1
-          };
-        });
-        setMessages(prev => [...prev, createSystemMessage(AUTO_MODE_DESCRIPTION, 'warning')]);
-      }, 800, safeYoloMessageShownRef, setMessages);
-      return () => clearTimeout(timer);
+    if (toolPermissionContext.mode !== 'auto') {
+      safeYoloMessageShownRef.current = false;
+      return;
     }
     if (safeYoloMessageShownRef.current) return;
     const config = getGlobalConfig();
@@ -1788,19 +1742,6 @@ apiMetricsRef.current = [];
     const inProgressToolUses = lastAssistant.message.content.filter(b => b.type === 'tool_use' && inProgressToolUseIDs.has(b.id));
     return inProgressToolUses.length > 0 && inProgressToolUses.every(b => b.type === 'tool_use' && b.name === SLEEP_TOOL_NAME);
   }, [messages, inProgressToolUseIDs]);
-  // Surface the currently-executing tool in the spinner so long-running tools
-  // (subagents, typecheck, installs) don't look frozen during the elapsed
-  // crunch. Reuses the spinnerSuffix channel; stop-hook progress takes
-  // precedence when both apply (stop hooks run after the turn's tools).
-  const activeToolSpinnerSuffix = useMemo(() => {
-    if (!isLoading || inProgressToolUseIDs.size === 0) return null;
-    const lastAssistant = messages.findLast(m => m.type === 'assistant');
-    if (lastAssistant?.type !== 'assistant') return null;
-    const active = lastAssistant.message.content.filter(b => b.type === 'tool_use' && inProgressToolUseIDs.has(b.id));
-    const first = active[0];
-    if (!first || first.type !== 'tool_use') return null;
-    return active.length > 1 ? `${first.name} +${active.length - 1}` : first.name;
-  }, [messages, inProgressToolUseIDs, isLoading]);
   const {
     onBeforeQuery: mrOnBeforeQuery,
     onTurnComplete: mrOnTurnComplete,
@@ -2295,16 +2236,12 @@ apiMetricsRef.current = [];
     skipIdleCheckRef.current = false;
 
     // Preserve partially-streamed text so the user can read what was
-    // generated before pressing Esc. Read the ref, not streamingText state:
-    // state only holds up to the last published newline, while the ref has the
-    // full text including the in-progress trailing line. Pushed before
-    // resetLoadingState clears streamingText, and before query.ts yields the
-    // async interrupt marker, giving final order
-    // [user, partial-assistant, [Request interrupted by user]].
-    const partialStreamedText = streamingTextRef.current;
-    if (partialStreamedText?.trim()) {
+    // generated before pressing Esc. Pushed before resetLoadingState clears
+    // streamingText, and before query.ts yields the async interrupt marker,
+    // giving final order [user, partial-assistant, [Request interrupted by user]].
+    if (streamingText?.trim()) {
       setMessages(prev => [...prev, createAssistantMessage({
-        content: partialStreamedText
+        content: streamingText
       })]);
     }
     resetLoadingState();
@@ -3110,8 +3047,6 @@ apiMetricsRef.current = [];
       snapshotOutputTokensForTurn(parsedBudget ?? getCurrentTurnTokenBudget());
       apiMetricsRef.current = [];
       setStreamingToolUses([]);
-      streamingTextRef.current = null;
-      lastFlushedStreamingVisibleRef.current = null;
       setStreamingText(null);
 
       // messagesRef is updated synchronously by the setMessages wrapper
@@ -4159,10 +4094,7 @@ apiMetricsRef.current = [];
     }
     if (hasCountedQueueUseRef.current) return;
     hasCountedQueueUseRef.current = true;
-    // Loss-tolerant analytics counter. Deferring it coalesces the write so a
-    // render loop (see comment above) can no longer drive the lock contention
-    // that triggers GH #3117.
-    saveGlobalConfigDeferred(current => ({
+    saveGlobalConfig(current => ({
       ...current,
       promptQueueUseCount: (current.promptQueueUseCount ?? 0) + 1
     }));
@@ -4888,7 +4820,7 @@ apiMetricsRef.current = [];
         {isAntEmployee() && <TungstenLiveMonitor />}
         {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
         <Box flexGrow={1} />
-        {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix ?? activeToolSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
+        {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
         {/* CompletionFlash removed: depends on PR #1605 (UI upgraded) skipped per AGENTS.md sync policy */}
         {compactProgressRatio !== null && feature('RESUME_COMPACT_PROMPT') && <CompactProgressBar ratio={compactProgressRatio} />}
         {!showSpinner && !isLoading && !userInputOnProcessing && !hasRunningTeammates && isBriefOnly && !viewedAgentTask && <BriefIdleStatus />}

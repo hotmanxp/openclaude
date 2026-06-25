@@ -256,12 +256,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // after: the only other persistFileSnapshotIfRemote call (api.ts) runs
     // in normalizeToolInput, pre-permission — it captured the old plan.
     if (inputPlan !== undefined && filePath) {
-      try {
-        await writeFile(filePath, inputPlan, 'utf-8')
-      } catch (e) {
-        logError(`Failed to write plan to ${filePath}: ${e}`)
-        throw e
-      }
+      await writeFile(filePath, inputPlan, 'utf-8').catch(e => logError(e))
       void persistFileSnapshotIfRemote()
     }
 

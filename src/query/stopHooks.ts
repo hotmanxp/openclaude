@@ -305,11 +305,9 @@ export async function* handleStopHooks(
 
           queryDepth: toolUseContext.queryTracking?.depth,
         })
-        if (toolUseContext.abortController.signal.reason !== 'interrupt') {
-          yield createUserInterruptionMessage({
-            toolUse: false,
-          })
-        }
+        yield createUserInterruptionMessage({
+          toolUse: false,
+        })
         return {
           blockingErrors: [],
           preventContinuation: true,
