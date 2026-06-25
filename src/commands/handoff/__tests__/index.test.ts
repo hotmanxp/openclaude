@@ -30,10 +30,9 @@ function makeContext(
   > = {},
   messages?: unknown[],
 ): ToolUseContext {
-  // Default messages: alternate user/assistant so they count as real
-  // conversation turns under the handoff filter.
-  const generatedMessages = Array.from({ length: messageCount }, (_, i) => ({
-    type: i % 2 === 0 ? 'user' : 'assistant',
+  // Default messages: N assistant replies (the only thing handoff counts).
+  const generatedMessages = Array.from({ length: messageCount }, () => ({
+    type: 'assistant',
     content: '',
     message: { content: '' },
   }))
@@ -116,6 +115,14 @@ describe('handoff command', () => {
     expect(text).toContain('does not exist')
   })
 
+  test('generate mode (N=5) is generate (just above threshold)', async () => {
+    const ctx = makeContext(5)
+    const blocks = await cmd.getPromptForCommand('', ctx)
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+    expect(text).toContain('# Task: Generate a handoff document')
+    expect(text).toContain('messageCount: `5`')
+  })
+
   test('generate mode (N=11) returns generate prompt with TaskList', async () => {
     const ctx = makeContext(11, {
       '1': {
@@ -140,30 +147,43 @@ describe('handoff command', () => {
     expect(text).toContain('(empty)')
   })
 
-  test('pickup mode boundary (N=6) is still pickup', async () => {
+  test('pickup mode boundary (N=4) is still pickup', async () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'a.md'), '# a')
-    const ctx = makeContext(6)
+    const ctx = makeContext(4)
     const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Resume from a handoff document')
     expect(text).toContain('a.md')
   })
 
-  test('non-conversation messages (system/progress/attachment) are excluded from count', async () => {
+  test('only assistant messages count; user/system/progress are ignored', async () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'a.md'), '# a')
-    // 3 real user/assistant messages + 5 noise messages.
-    // Noise should NOT push us into generate mode.
+    // 4 assistant messages + many noise messages.
+    // Noise must NOT push us into generate mode.
     const messages = [
       { type: 'user', content: '', message: { content: '' } },
-      { type: 'assistant', content: '', message: { content: '' } },
-      { type: 'user', content: '', message: { content: '' } },
       { type: 'system', content: '', subtype: 'info' },
-      { type: 'progress', toolUseId: 't1', progress: 50 },
-      { type: 'attachment', id: 'a1', name: 'x', mimeType: 'text/plain', content: '' },
-      { type: 'system_local_command', command: 'ls' },
+      {
+        type: 'user',
+        content: '',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }],
+        },
+      },
+      {
+        type: 'user',
+        content: '',
+        message: { content: '<command-name>commit</command-name>' },
+      },
+      { type: 'progress', toolUseId: 't2', progress: 50 },
+      { type: 'assistant', content: '', message: { content: '' } },
+      { type: 'assistant', content: '', message: { content: '' } },
       { type: 'tombstone', content: '' },
+      { type: 'assistant', content: '', message: { content: '' } },
+      { type: 'attachment', id: 'a1', name: 'x', mimeType: 'text/plain', content: '' },
+      { type: 'assistant', content: '', message: { content: '' } },
     ]
     const ctx = makeContext(0, {}, messages)
     const blocks = await cmd.getPromptForCommand('', ctx)
