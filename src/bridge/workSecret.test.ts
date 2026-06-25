@@ -1,14 +1,10 @@
 // @ts-nocheck
 import { expect, test } from 'bun:test'
-<<<<<<< HEAD
-import { buildSdkUrl } from './workSecret.js'
-=======
 import {
   buildSdkUrl,
   isInsecureHttpBaseUrl,
   isLocalhostBaseUrl,
 } from './workSecret.js'
->>>>>>> 66ddbece (fix(bridge): match loopback hostname exactly in HTTPS credential guard (#1760))
 
 // Finding #42-5: buildSdkUrl uses string.includes() on the full URL,
 // so a remote URL containing "localhost" in its path gets ws:// (unencrypted).
