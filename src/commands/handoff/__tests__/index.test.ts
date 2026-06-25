@@ -30,6 +30,13 @@ function makeContext(
   > = {},
   messages?: unknown[],
 ): ToolUseContext {
+  // Default messages: alternate user/assistant so they count as real
+  // conversation turns under the handoff filter.
+  const generatedMessages = Array.from({ length: messageCount }, (_, i) => ({
+    type: i % 2 === 0 ? 'user' : 'assistant',
+    content: '',
+    message: { content: '' },
+  }))
   return {
     options: {
       commands: [],
@@ -45,7 +52,7 @@ function makeContext(
     },
     abortController: new AbortController(),
     readFileState: {} as never,
-    messages: messages ?? new Array(messageCount).fill({}),
+    messages: messages ?? generatedMessages,
     getAppState: () =>
       ({
         tasks,
@@ -133,13 +140,34 @@ describe('handoff command', () => {
     expect(text).toContain('(empty)')
   })
 
-  test('pickup mode boundary (N=10) is still pickup', async () => {
+  test('pickup mode boundary (N=6) is still pickup', async () => {
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'a.md'), '# a')
-    const ctx = makeContext(10)
+    const ctx = makeContext(6)
     const blocks = await cmd.getPromptForCommand('', ctx)
     const text = (blocks[0] as { type: 'text'; text: string }).text
     expect(text).toContain('# Task: Resume from a handoff document')
     expect(text).toContain('a.md')
+  })
+
+  test('non-conversation messages (system/progress/attachment) are excluded from count', async () => {
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'a.md'), '# a')
+    // 3 real user/assistant messages + 5 noise messages.
+    // Noise should NOT push us into generate mode.
+    const messages = [
+      { type: 'user', content: '', message: { content: '' } },
+      { type: 'assistant', content: '', message: { content: '' } },
+      { type: 'user', content: '', message: { content: '' } },
+      { type: 'system', content: '', subtype: 'info' },
+      { type: 'progress', toolUseId: 't1', progress: 50 },
+      { type: 'attachment', id: 'a1', name: 'x', mimeType: 'text/plain', content: '' },
+      { type: 'system_local_command', command: 'ls' },
+      { type: 'tombstone', content: '' },
+    ]
+    const ctx = makeContext(0, {}, messages)
+    const blocks = await cmd.getPromptForCommand('', ctx)
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+    expect(text).toContain('# Task: Resume from a handoff document')
   })
 })
