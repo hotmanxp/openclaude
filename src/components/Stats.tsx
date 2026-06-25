@@ -20,7 +20,7 @@ import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
 import { aggregateClaudeCodeStatsForRange, type ClaudeCodeStats, type DailyModelTokens, type StatsDateRange } from '../utils/stats.js';
 import { resolveThemeSetting } from '../utils/systemTheme.js';
 import { getTheme, themeColorToAnsi } from '../utils/theme.js';
-import { Tab, Tabs, useTabHeaderFocus } from './design-system/Tabs.js';
+import { Tab, Tabs, useOuterTabsFocus, useTabHeaderFocus } from './design-system/Tabs.js';
 import { Spinner } from './Spinner.js';
 import { isAntEmployee } from '../utils/buildConfig.js';
 function formatPeakDay(dateStr: string): string {
@@ -122,12 +122,17 @@ type StatsContentProps = {
  * Suspends while loading all-time stats, then handles date range changes without suspending.
  */
 function StatsContent(t0: StatsContentProps): React.ReactNode {
-  const $ = _c(34);
+  const $ = _c(36);
   const {
     allTimePromise,
     onClose
   } = t0;
   const allTimeResult: StatsResult = use(allTimePromise);
+  // Up-arrow hand-off: focus the OUTERMOST Tabs header (Settings) so the
+  // user can ←/→ to a different outer tab. The Tabs component chains
+  // OuterTabsFocusContext through nested Tabs, so this reaches the
+  // Settings Tabs even though Stats is wrapped in an inner Tabs.
+  const outerTabsFocus = useOuterTabsFocus();
   const [dateRange, setDateRange] = useState<StatsDateRange>("all");
   let t1: StatsCache;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -205,15 +210,19 @@ function StatsContent(t0: StatsContentProps): React.ReactNode {
   }
   useKeybinding("confirm:no", handleClose, t5);
   let t6: (input: string, key: Key) => void;
-  if ($[8] !== activeTab || $[9] !== dateRange || $[10] !== displayStats || $[11] !== onClose) {
+  if ($[8] !== activeTab || $[9] !== dateRange || $[10] !== displayStats || $[11] !== onClose || $[35] !== outerTabsFocus) {
     t6 = (input: string, key: Key) => {
       if (key.ctrl && (input === "c" || input === "d")) {
         onClose("Stats dialog dismissed", {
           display: "system"
         });
       }
-      if (key.tab) {
-        setActiveTab(_temp);
+      if (key.upArrow && !key.ctrl && !key.meta && outerTabsFocus) {
+        // Hand focus back to the outer (Settings) Tabs so the user can
+        // ←/→ to a different outer tab. Only fires when the inner
+        // sub-tabs are the active focus (headerFocused on inner Tabs),
+        // matching the Config/Gates "↑ tabs" pattern.
+        outerTabsFocus.focusHeader();
       }
       if (input === "r" && !key.ctrl && !key.meta) {
         setDateRange(getNextDateRange(dateRange));
@@ -226,6 +235,7 @@ function StatsContent(t0: StatsContentProps): React.ReactNode {
     $[9] = dateRange;
     $[10] = displayStats;
     $[11] = onClose;
+    $[35] = outerTabsFocus;
     $[12] = t6;
   } else {
     t6 = $[12];
@@ -284,10 +294,11 @@ function StatsContent(t0: StatsContentProps): React.ReactNode {
     t8 = $[25];
   }
   let t9;
-  if ($[26] !== t7 || $[27] !== t8) {
-    t9 = <Box flexDirection="row" gap={1} marginBottom={1}><Tabs title="" color="claude" defaultTab="Overview">{t7}{t8}</Tabs></Box>;
+  if ($[26] !== t7 || $[27] !== t8 || $[34] !== activeTab) {
+    t9 = <Box flexDirection="row" gap={1} marginBottom={1}><Tabs title="" color="claude" selectedTab={activeTab} onTabChange={setActiveTab}>{t7}{t8}</Tabs></Box>;
     $[26] = t7;
     $[27] = t8;
+    $[34] = activeTab;
     $[28] = t9;
   } else {
     t9 = $[28];
@@ -295,7 +306,7 @@ function StatsContent(t0: StatsContentProps): React.ReactNode {
   const t10 = copyStatus ? ` · ${copyStatus}` : "";
   let t11;
   if ($[29] !== t10) {
-    t11 = <Box paddingLeft={2}><Text dimColor={true}>Esc to cancel · r to cycle dates · ctrl+s to copy{t10}</Text></Box>;
+    t11 = <Box paddingLeft={2}><Text dimColor={true}>Esc to cancel · ↑ tabs · r to cycle dates · ctrl+s to copy{t10}</Text></Box>;
     $[29] = t10;
     $[30] = t11;
   } else {

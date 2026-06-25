@@ -45,6 +45,16 @@ type TabsProps = {
    * needed. Switching from content focuses the header.
    */
   navFromContent?: boolean;
+  /**
+   * Tab ids whose content owns its own keybinding/focus (nested Tabs,
+   * `useTabHeaderFocus`, etc.). When `handleTabChange` lands on one of
+   * these, the header is BLURRED instead of focused — so the inner
+   * control's `tabs:next`/`tabs:previous` binding can fire. Without
+   * this, navigating INTO such a tab (e.g. /status → Stats) via keyboard
+   * leaves the outer header focused and its binding (registered first
+   * with `context="Tabs"`) steals the key from the inner one.
+   */
+  noHeaderFocusTabIds?: string[];
 };
 type TabsContextValue = {
   selectedTab: string | undefined;
@@ -85,7 +95,8 @@ export function Tabs(t0) {
     disableNavigation,
     initialHeaderFocused: t1,
     contentHeight,
-    navFromContent: t2
+    navFromContent: t2,
+    noHeaderFocusTabIds: noHeaderFocusTabIdsProp
   } = t0;
   const initialHeaderFocused = t1 === undefined ? true : t1;
   const navFromContent = t2 === undefined ? false : t2;
@@ -137,7 +148,11 @@ export function Tabs(t0) {
     } else {
       setInternalSelectedTab(newIndex);
     }
-    setHeaderFocused(true);
+    if (newTabId && noHeaderFocusTabIdsProp?.includes(newTabId)) {
+      setHeaderFocused(false);
+    } else {
+      setHeaderFocused(true);
+    }
   };
   const t6 = !hidden && !disableNavigation && headerFocused;
   let t7;
@@ -238,8 +253,13 @@ export function Tabs(t0) {
   } else {
     t18 = $[24];
   }
-  // Render outer tabs focus context provider so Stats can access it
-  const outerTabsValue = { focusHeader, blurHeader };
+  // Walk through any ancestor Tabs and propagate THEIR focus functions so
+  // `useOuterTabsFocus()` returns the outermost (top-level) Tabs' focus,
+  // not the immediate parent. Without this chaining, a deeply nested
+  // child like Stats content can't reach the outer Settings Tabs to hand
+  // focus back (e.g. on up-arrow from a sub-tabs view).
+  const ancestorOuterFocus = useContext(OuterTabsFocusContext);
+  const outerTabsValue = ancestorOuterFocus ?? { focusHeader, blurHeader };
   return <OuterTabsFocusContext.Provider value={outerTabsValue}><TabsContext.Provider value={{
     selectedTab: tabs[selectedTabIndex][0],
     width: contentWidth,
