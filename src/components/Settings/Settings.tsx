@@ -21,6 +21,14 @@ type Props = {
   context: LocalJSXCommandContext;
   defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates' | 'Stats';
 };
+// Only Stats needs the dynamic blur — it's the only tab that nests a
+// second <Tabs> (Overview/Models) that also registers
+// tabs:next/tabs:previous with context="Tabs". Config/Gates use
+// useTabHeaderFocus instead (down-arrow blurs header, no nested Tabs
+// competing for the same keybinding), so they MUST stay in the outer
+// focus path — otherwise the user couldn't right-arrow from Config to
+// Usage after entering Config.
+const STATIC_FOCUS_BLUR_TAB_IDS = ['Stats'];
 export function Settings(t0) {
   const $ = _c(27);
   const {
@@ -122,11 +130,20 @@ export function Settings(t0) {
     t8 = $[20];
   }
   const tabs = t8;
-  const t9 = defaultTab !== "Config" && defaultTab !== "Gates";
+  // Config/Gates handle their own inner focus via useTabHeaderFocus. Stats
+  // contains a nested Tabs (Overview/Models) that also manages its own
+  // header focus — keeping the outer header focused steals the
+  // tabs:next/tabs:previous keybinding (context="Tabs" is shared, so the
+  // outer registers first and wins) and breaks left/right arrow switching
+  // between Overview and Models. `initialHeaderFocused` handles the
+  // initial mount; `noHeaderFocusTabIds` handles the same case when the
+  // user navigates INTO one of these tabs via keyboard (mouse clicks
+  // are a known limitation — see memory).
+  const t9 = defaultTab !== "Config" && defaultTab !== "Gates" && defaultTab !== "Stats";
   const t10 = tabsHidden || insideModal ? undefined : contentHeight;
   let t11;
   if ($[21] !== selectedTab || $[22] !== t10 || $[23] !== t9 || $[24] !== tabs || $[25] !== tabsHidden) {
-    t11 = <Pane color="permission"><Tabs color="permission" selectedTab={selectedTab} onTabChange={setSelectedTab} hidden={tabsHidden} initialHeaderFocused={t9} contentHeight={t10}>{tabs}</Tabs></Pane>;
+    t11 = <Pane color="permission"><Tabs color="permission" selectedTab={selectedTab} onTabChange={setSelectedTab} hidden={tabsHidden} initialHeaderFocused={t9} noHeaderFocusTabIds={STATIC_FOCUS_BLUR_TAB_IDS} contentHeight={t10}>{tabs}</Tabs></Pane>;
     $[21] = selectedTab;
     $[22] = t10;
     $[23] = t9;

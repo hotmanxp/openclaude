@@ -27,8 +27,8 @@ export function AutoUpdaterWrapper(t0) {
     showSuccessMessage,
     verbose
   } = t0;
-  const [useNativeInstaller, setUseNativeInstaller] = React.useState(null);
-  const [isPackageManager, setIsPackageManager] = React.useState(null);
+  const [useNativeInstaller, setUseNativeInstaller] = React.useState<boolean | null>(null);
+  const [isPackageManager, setIsPackageManager] = React.useState<boolean | null>(null);
   let t1;
   let t2;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
