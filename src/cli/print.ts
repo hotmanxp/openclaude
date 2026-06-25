@@ -2829,7 +2829,7 @@ function runHeadlessStreaming(
             }))
           }
           if (abortController) {
-            abortController.abort()
+            abortController.abort('interrupt')
           }
           suggestionState.abortController?.abort()
           suggestionState.abortController = null
@@ -3924,7 +3924,7 @@ clients: prev.mcp.clients.map((c: MCPServerConnection) =>
                     structuredIO.injectControlResponse(response)
                   },
                   onInterrupt() {
-                    abortController?.abort()
+                    abortController?.abort('interrupt')
                   },
                   onSetModel(model) {
                     const resolved =
