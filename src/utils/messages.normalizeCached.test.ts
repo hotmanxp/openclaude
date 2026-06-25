@@ -25,12 +25,12 @@ function assistant(...texts: string[]): Message {
       content: texts.map(
         text => ({ type: 'text' as const, text, citations: null }) as never,
       ),
-    }),
-  )
+    }) as unknown as Message,
+  ) as Message
 }
 
 function user(text: string): Message {
-  return withUuid(createUserMessage({ content: text })) as Message
+  return withUuid(createUserMessage({ content: text }) as unknown as Message) as Message
 }
 
 function expectEquivalent(messages: Message[]): void {
