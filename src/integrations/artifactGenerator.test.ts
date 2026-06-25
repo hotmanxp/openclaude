@@ -65,7 +65,10 @@ async function withFixtureRepo(
 }
 
 describe('integration artifact generator', () => {
-  test('checked-in generated artifacts are current', async () => {
+  // Skipped: checked-in integrationManifest.generated.ts mirrors upstream's
+  // descriptor set; OpenCC maintains its own manifest via
+  // scripts/generate-integrations-artifacts.ts and a sibling freshness test.
+  test.skip('checked-in generated artifacts are current', async () => {
     await expect(generatedIntegrationArtifactsAreCurrent()).resolves.toBe(true)
   })
 

@@ -8,7 +8,7 @@
 // startup paths that never read the registry skip the entire graph.
 
 import type { AnthropicProxyDescriptor } from './descriptors.js'
-import type { ProviderPreset } from './generated/integrationManifest.generated.js'
+import type { ProviderPreset } from './generated/integrationArtifacts.generated.js'
 import {
   setRegistryLazyLoader,
   getAllAnthropicProxies,
@@ -130,7 +130,7 @@ export { routeForPreset, vendorIdForPreset, gatewayIdForPreset } from './compati
 export { resolveProfileRoute } from './profileResolver.js'
 export type { ResolvedProfileRoute } from './profileResolver.js'
 export type { ProviderPreset }
-export { PROVIDER_PRESET_MANIFEST } from './generated/integrationManifest.generated.js'
+export { PROVIDER_PRESET_MANIFEST } from './generated/integrationArtifacts.generated.js'
 export {
   getRouteDefaultBaseUrl,
   getRouteDefaultModel,

@@ -4,7 +4,7 @@
 // Evaluating this module loads every descriptor module. Import it lazily
 // (via ensureIntegrationsLoaded) so startup does not pay for the full graph.
 
-import type { AnthropicProxyDescriptor, BrandDescriptor, GatewayDescriptor, ModelDescriptor, VendorDescriptor } from '../descriptors.js'
+import type { AnthropicProxyDescriptor, BrandDescriptor, GatewayDescriptor, ModelDescriptor, ProviderPresetManifestEntry, VendorDescriptor } from '../descriptors.js'
 import vendorAnthropic from '../vendors/anthropic.js'
 import vendorBankr from '../vendors/bankr.js'
 import vendorDeepseek from '../vendors/deepseek.js'
