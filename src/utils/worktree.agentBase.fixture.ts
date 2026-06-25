@@ -9,21 +9,26 @@
 //
 // Usage: bun run worktree.agentBase.fixture.ts <cfgDir> <repoDir> <name>
 // Prints { worktreePath } as JSON on stdout.
-import {
-  getClaudeConfigHomeDir,
-  setClaudeConfigHomeDirForTesting,
-} from './envUtils.js'
-import { createAgentWorktree } from './worktree.js'
+//
+// OpenCC fork adaptation: upstream uses `setClaudeConfigHomeDirForTesting()`
+// from envUtils.js to override the config dir at runtime. OpenCC's envUtils.js
+// has no such setter — `getClaudeConfigHomeDir()` is memoized off
+// `process.env.OPENCC_CONFIG_DIR`. Set the env var BEFORE importing
+// worktree.js (the import chain pulls in envUtils, and the first call freezes
+// the cache key), so the child process picks up the test's cfgDir.
+export {}
 
-const [cfgDir, repoDir, name] = process.argv.slice(2)
+const [cfgDir, repoDir, slug] = process.argv.slice(2)
 
-if (!cfgDir || !repoDir || !name) {
-  process.stderr.write('usage: <cfgDir> <repoDir> <name>\n')
+if (!cfgDir || !repoDir || !slug) {
+  process.stderr.write('usage: <cfgDir> <repoDir> <slug>\n')
   process.exit(2)
 }
 
-setClaudeConfigHomeDirForTesting(cfgDir)
-getClaudeConfigHomeDir.cache?.clear?.()
+process.env.OPENCC_CONFIG_DIR = cfgDir
+delete process.env.CLAUDE_CONFIG_DIR
 
-const result = await createAgentWorktree(name, { cwd: repoDir })
+const { createAgentWorktree } = await import('./worktree.js')
+
+const result = await createAgentWorktree(slug, { cwd: repoDir })
 process.stdout.write(JSON.stringify({ worktreePath: result.worktreePath }))
