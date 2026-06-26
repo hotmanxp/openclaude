@@ -1,5 +1,4 @@
 // @ts-nocheck
-// @ts-ignore
 import {
   buildComputerUseTools,
   createComputerUseMcpServer,

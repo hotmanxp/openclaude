@@ -93,11 +93,11 @@ export function getDefaultCommitCoAuthorName({
   }
 
   const sanitizedModel = sanitizeCoAuthorNamePart(model)
-  return sanitizedModel ? `OpenCC (${sanitizedModel})` : 'OpenCC'
+  return 'OpenCC'
 }
 
 export function getDefaultCommitCoAuthorEmail(_apiProvider: string): string {
-  return 'opencc@opencc.com'
+  return 'opencc@pingan.com.cn'
 }
 
 /**
