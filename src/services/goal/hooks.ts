@@ -434,10 +434,13 @@ export function bumpGoalIteration(opts: {
   const appState = opts.toolUseContext.getAppState()
   const existing = appState.activeGoal
   if (!existing || existing.achievedAt !== undefined) return false
-  opts.toolUseContext.setAppState(prev => ({
-    ...prev,
-    activeGoal: incrementIteration(prev.activeGoal as ActiveGoal),
-  }))
+  opts.toolUseContext.setAppState(prev => {
+    if (!prev.activeGoal) return prev
+    return {
+      ...prev,
+      activeGoal: incrementIteration(prev.activeGoal),
+    }
+  })
   // Persist the bumped iteration as a goal_status attachment so
   // --resume restores the same iteration count. Mirrors upstream
   // 2.1.177 `vlK()` which yields a goal_status attachment on every
