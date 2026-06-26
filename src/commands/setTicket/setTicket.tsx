@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Box, Text } from 'ink'
+import { Box, Text } from '../../ink.js'
 import React, { useState } from 'react'
 import {
   Select,
