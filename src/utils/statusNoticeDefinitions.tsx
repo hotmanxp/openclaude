@@ -323,8 +323,32 @@ const dangerouslySkipPermissionsNotice: StatusNoticeDefinition = {
 // All notice definitions
 // [local-dev] thirdPartyPermissiveModeNotice + dangerouslySkipPermissionsNotice disabled — uncomment when needed
 export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, localModelContextLoadNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice/*, thirdPartyPermissiveModeNotice, dangerouslySkipPermissionsNotice*/];
+// [local-dev] thirdPartyPermissiveModeNotice / dangerouslySkipPermissionsNotice are
+// suppressed by default (see shouldShowSafetyNotices). Set
+// OPENCC_SHOW_SAFETY_NOTICES=1 to re-enable them at runtime. The definitions
+// stay in the array so consumers can still look them up directly via
+// statusNoticeDefinitions.find().
+// export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, localModelContextLoadNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice, thirdPartyPermissiveModeNotice, dangerouslySkipPermissionsNotice];
+
+const SAFETY_NOTICE_IDS = new Set<string>([
+  'third-party-permissive-mode',
+  'dangerously-skip-permissions-no-sandbox',
+]);
+
+function shouldShowSafetyNotices(): boolean {
+  // Default suppressed in dev. Production/CI never sets this and the notices
+  // stay hidden too, so the runtime behaviour matches the previous hardcode.
+  // Set OPENCC_SHOW_SAFETY_NOTICES=1 to surface them (e.g. in tests).
+  return process.env.OPENCC_SHOW_SAFETY_NOTICES === '1';
+}
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {
-  return statusNoticeDefinitions.filter(notice => notice.isActive(context));
+  const suppressSafety = !shouldShowSafetyNotices();
+  return statusNoticeDefinitions.filter(notice => {
+    if (suppressSafety && SAFETY_NOTICE_IDS.has(notice.id)) {
+      return false;
+    }
+    return notice.isActive(context);
+  });
 }

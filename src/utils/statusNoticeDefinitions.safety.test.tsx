@@ -31,6 +31,7 @@ function activeIds(ctx: StatusNoticeContext): string[] {
 
 const SAVED_ARGV = process.argv
 const SAVED_API_KEY = process.env.ANTHROPIC_API_KEY
+const SAVED_SHOW_SAFETY = process.env.OPENCC_SHOW_SAFETY_NOTICES
 
 beforeEach(() => {
   // Reset argv each test so the dangerously-skip-permissions detector starts
@@ -40,6 +41,10 @@ beforeEach(() => {
   // which throws when no key/token is present. Seed a dummy so getActiveNotices
   // can iterate every notice without unrelated failures crashing the test.
   process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? 'sk-test-dummy'
+  // Safety notices (3P permissive mode + --dangerously-skip-permissions) are
+  // suppressed by default in dev. Re-enable them for this suite so the
+  // regression coverage in #244 still runs against the live isActive logic.
+  process.env.OPENCC_SHOW_SAFETY_NOTICES = '1'
 })
 
 afterEach(() => {
@@ -48,6 +53,11 @@ afterEach(() => {
     delete process.env.ANTHROPIC_API_KEY
   } else {
     process.env.ANTHROPIC_API_KEY = SAVED_API_KEY
+  }
+  if (SAVED_SHOW_SAFETY === undefined) {
+    delete process.env.OPENCC_SHOW_SAFETY_NOTICES
+  } else {
+    process.env.OPENCC_SHOW_SAFETY_NOTICES = SAVED_SHOW_SAFETY
   }
   mock.restore()
 })

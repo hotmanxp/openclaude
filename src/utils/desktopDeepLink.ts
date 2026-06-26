@@ -230,7 +230,7 @@ export async function openCurrentSessionInDesktop(): Promise<{
   if (!opened) {
     return {
       success: false,
-      error: 'Failed to open Open CC Desktop. Please try opening it manually.',
+      error: 'Failed to open OpenCC Desktop. Please try opening it manually.',
       deepLinkUrl,
     }
   }

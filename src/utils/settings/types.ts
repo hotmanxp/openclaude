@@ -1108,7 +1108,7 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Whether the user has accepted the bypass permissions mode dialog',
         ),
-      ...(true
+      ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
             skipAutoPermissionPrompt: z
               .boolean()
