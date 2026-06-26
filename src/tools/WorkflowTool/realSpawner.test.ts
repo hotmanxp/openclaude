@@ -629,6 +629,83 @@ describe('buildRealSpawner', () => {
     await spawner('p', { onProgress: () => calls++ })
     expect(calls).toBe(0)
   })
+
+  // Workflow author can scope a subagent's tool allowlist for one
+  // specific call without registering a new agent type. When
+  // opts.tools is a string array, the spawner shadows agentDef's
+  // `tools` field with that array and forwards the shadow to
+  // runAgent. disallowedTools is untouched.
+  test('opts.tools replaces agentDef.tools for the call', async () => {
+    let captured: { tools?: unknown } = {}
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      const def = (opts as { agentDefinition: { tools?: unknown } }).agentDefinition
+      captured.tools = def.tools
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([
+        { agentType: 'general-purpose', tools: ['*'] },
+      ]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('read only', { tools: ['Read'] })
+    expect(captured.tools).toEqual(['Read'])
+  })
+
+  // The spawner does NOT validate tool names — it just forwards
+  // opts.tools verbatim. resolveAgentTools (called inside runAgent)
+  // owns the lenient-drop policy. Verifying pass-through here pins
+  // the contract: the spawner is a pass-through, not a filter.
+  test('opts.tools passes unknown names through to runAgent', async () => {
+    let captured: { tools?: unknown } = {}
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      const def = (opts as { agentDefinition: { tools?: unknown } }).agentDefinition
+      captured.tools = def.tools
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([
+        { agentType: 'general-purpose', tools: ['*'] },
+      ]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('mixed', { tools: ['Read', 'Bash', 'Foo'] })
+    expect(captured.tools).toEqual(['Read', 'Bash', 'Foo'])
+  })
+
+  // Backward compatibility: when opts.tools is absent, the
+  // agentDefinition forwarded to runAgent IS the registry object
+  // (identity check, not a spread copy). This guarantees the
+  // fast-path adds zero allocations for existing call sites.
+  test('omitting opts.tools forwards the original agentDef (no shadow)', async () => {
+    let captured: { def?: unknown } = {}
+    const registryDef = { agentType: 'general-purpose', tools: ['Read', 'Grep'] }
+    const fakeRunAgent: RunAgentFn = async function* (opts) {
+      captured.def = (opts as { agentDefinition: unknown }).agentDefinition
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'ok' }] },
+      }
+    }
+    const spawner = await buildRealSpawner(
+      makeToolUseCtx([registryDef]) as never,
+      undefined,
+      'wf_test',
+      { runAgent: fakeRunAgent, createUserMessage: (() => ({})) as CreateUserMessageFn },
+    )
+    await spawner('no override', {})
+    expect(captured.def).toBe(registryDef)
+  })
 })
 
 // Schema handling: when opts.schema is set, the spawner injects a
