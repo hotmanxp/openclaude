@@ -162,7 +162,7 @@ export async function countMessagesTokensWithAPI(
         }),
       })
 
-      if (typeof response.input_tokens !== 'number') {
+      if (typeof response?.input_tokens !== 'number') {
         return null
       }
 
@@ -414,9 +414,9 @@ export async function countTokensViaHaikuFallback(
   })
 
   const usage = response.usage
-  const inputTokens = usage.input_tokens
-  const cacheCreationTokens = usage.cache_creation_input_tokens || 0
-  const cacheReadTokens = usage.cache_read_input_tokens || 0
+  const inputTokens = usage?.input_tokens ?? 0
+  const cacheCreationTokens = usage?.cache_creation_input_tokens || 0
+  const cacheReadTokens = usage?.cache_read_input_tokens || 0
 
   return inputTokens + cacheCreationTokens + cacheReadTokens
 }

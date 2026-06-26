@@ -3,7 +3,7 @@ import type { Command } from '../../commands.js'
 const installSlackApp = {
   type: 'local',
   name: 'install-slack-app',
-  description: 'Install the Open CC Slack app',
+  description: '安装 OpenCC Slack 应用',
   availability: ['claude-ai'],
   supportsNonInteractive: false,
   load: () => import('./install-slack-app.js'),

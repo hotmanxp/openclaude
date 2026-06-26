@@ -9,7 +9,7 @@ function isLabeledHookSummary(
   return (
     msg.type === 'system' &&
     msg.subtype === 'stop_hook_summary' &&
-    // @ts-ignore
+    // @ts-ignore - TS2339: hookLabel may not exist on RenderableMessage
     msg.hookLabel !== undefined
   )
 }

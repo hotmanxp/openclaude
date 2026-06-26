@@ -2848,7 +2848,7 @@ async function* queryModel(
   }
 
   // Mark all registered tools as sent to API so they become eligible for deletion
-  if (true && cachedMCEnabled) {
+  if (cachedMCEnabled) {
     markToolsSentToAPIState()
   }
 
@@ -2942,6 +2942,7 @@ export function updateUsage(
   usage: Readonly<NonNullableUsage>,
   partUsage: BetaMessageDeltaUsage | undefined,
 ): NonNullableUsage {
+  if (!usage) return EMPTY_USAGE
   if (!partUsage) {
     return { ...usage }
   }
@@ -2949,7 +2950,7 @@ export function updateUsage(
     input_tokens:
       partUsage.input_tokens !== null && partUsage.input_tokens > 0
         ? partUsage.input_tokens
-        : usage.input_tokens,
+        : usage?.input_tokens ?? 0,
     cache_creation_input_tokens:
       partUsage.cache_creation_input_tokens !== null &&
       partUsage.cache_creation_input_tokens > 0
@@ -2998,7 +2999,7 @@ export function updateUsage(
         }
       : {}),
     inference_geo: usage.inference_geo,
-    iterations: partUsage.iterations ?? usage.iterations,
+    iterations: partUsage?.iterations ?? usage?.iterations,
     speed: (partUsage as BetaUsage).speed ?? usage.speed,
   }
 }
@@ -3012,29 +3013,29 @@ export function accumulateUsage(
   messageUsage: Readonly<NonNullableUsage>,
 ): NonNullableUsage {
   return {
-    input_tokens: totalUsage.input_tokens + messageUsage.input_tokens,
+    input_tokens: totalUsage?.input_tokens ?? 0 + messageUsage?.input_tokens ?? 0,
     cache_creation_input_tokens:
-      totalUsage.cache_creation_input_tokens +
-      messageUsage.cache_creation_input_tokens,
+      (totalUsage?.cache_creation_input_tokens ?? 0) +
+      (messageUsage?.cache_creation_input_tokens ?? 0),
     cache_read_input_tokens:
-      totalUsage.cache_read_input_tokens + messageUsage.cache_read_input_tokens,
-    output_tokens: totalUsage.output_tokens + messageUsage.output_tokens,
+      (totalUsage?.cache_read_input_tokens ?? 0) + (messageUsage?.cache_read_input_tokens ?? 0),
+    output_tokens: (totalUsage?.output_tokens ?? 0) + (messageUsage?.output_tokens ?? 0),
     server_tool_use: {
       web_search_requests:
-        totalUsage.server_tool_use.web_search_requests +
-        messageUsage.server_tool_use.web_search_requests,
+        (totalUsage?.server_tool_use?.web_search_requests ?? 0) +
+        (messageUsage?.server_tool_use?.web_search_requests ?? 0),
       web_fetch_requests:
-        totalUsage.server_tool_use.web_fetch_requests +
-        messageUsage.server_tool_use.web_fetch_requests,
+        (totalUsage?.server_tool_use?.web_fetch_requests ?? 0) +
+        (messageUsage?.server_tool_use?.web_fetch_requests ?? 0),
     },
-    service_tier: messageUsage.service_tier, // Use the most recent service tier
+    service_tier: messageUsage?.service_tier, // Use the most recent service tier
     cache_creation: {
       ephemeral_1h_input_tokens:
-        totalUsage.cache_creation.ephemeral_1h_input_tokens +
-        messageUsage.cache_creation.ephemeral_1h_input_tokens,
+        totalUsage?.cache_creation.ephemeral_1h_input_tokens +
+        messageUsage?.cache_creation.ephemeral_1h_input_tokens,
       ephemeral_5m_input_tokens:
-        totalUsage.cache_creation.ephemeral_5m_input_tokens +
-        messageUsage.cache_creation.ephemeral_5m_input_tokens,
+        totalUsage?.cache_creation.ephemeral_5m_input_tokens +
+        messageUsage?.cache_creation.ephemeral_5m_input_tokens,
     },
     // See comment in updateUsage — field is not on NonNullableUsage to keep
     // the string out of external builds.
@@ -3048,9 +3049,9 @@ export function accumulateUsage(
             ).cache_deleted_input_tokens ?? 0),
         }
       : {}),
-    inference_geo: messageUsage.inference_geo, // Use the most recent
-    iterations: messageUsage.iterations, // Use the most recent
-    speed: messageUsage.speed, // Use the most recent
+    inference_geo: messageUsage?.inference_geo, // Use the most recent
+    iterations: messageUsage?.iterations, // Use the most recent
+    speed: messageUsage?.speed, // Use the most recent
   }
 }
 

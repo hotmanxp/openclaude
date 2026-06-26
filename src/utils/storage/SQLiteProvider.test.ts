@@ -6,7 +6,8 @@ import {
   getGlobalGraph,
   initOrama
 } from '../knowledgeGraph.js'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { SQLiteProvider } from './SQLiteProvider.js'
+import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getProjectsDir } from '../envUtils.js'
@@ -78,17 +79,51 @@ describe('SQLite Storage Layer', () => {
   it('handles large transactions (Stress Test)', async () => {
     const count = 100
     const start = Date.now()
-    
+
     // Add 100 entities sequentially (mutation queue)
     for (let i = 0; i < count; i++) {
       await addGlobalEntity('bulk', `item_${i}`, { index: String(i) })
     }
-    
+
     const duration = Date.now() - start
     console.log(`Inserted ${count} items into SQLite+JSON+Orama in ${duration}ms`)
-    
+
     clearMemoryOnly()
     const graph = getGlobalGraph()
     expect(Object.keys(graph.entities).length).toBe(count)
+  })
+
+  it('init() silently rebuilds a SQLite file whose header is corrupted (non-empty garbage)', async () => {
+    // SQLiteProvider currently only unlinks EMPTY files before open.
+    // A non-empty garbage file passes that check, then triggers
+    // SQLITE_NOTADB on the first PRAGMA — which produces a console.error
+    // even though selfHeal() recovers cleanly. This test pins the
+    // expectation that init() should NOT emit that noise.
+    const projectDir = join(configDir, 'corrupted-header-unit')
+    mkdirSync(projectDir, { recursive: true })
+    const sqlitePath = join(projectDir, 'knowledge.db')
+    writeFileSync(sqlitePath, Buffer.from('NOT_SQLITE_BINARY'))
+
+    const errors: string[] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(' '))
+    }
+
+    try {
+      const provider = new SQLiteProvider(projectDir)
+      await provider.init()
+      expect(provider.isReady).toBe(true)
+    } finally {
+      console.error = originalError
+    }
+
+    const noise = errors.filter(
+      e =>
+        e.includes('SQLITE_NOTADB') ||
+        e.includes('file is not a database') ||
+        e.includes('Failed to initialize SQLite'),
+    )
+    expect(noise).toEqual([])
   })
 })

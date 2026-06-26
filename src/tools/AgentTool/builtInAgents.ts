@@ -6,6 +6,7 @@ import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { PLAN_AGENT } from './built-in/planAgent.js'
 import { STATUSLINE_SETUP_AGENT } from './built-in/statuslineSetup.js'
+import { getCoordinatorAgents } from '../../coordinator/workerAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
@@ -25,11 +26,8 @@ export function getBuiltInAgents(): AgentDefinition[] {
 
   // Enable worker agent via env var in opencc
   if (isCoordinatorMode()) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { getCoordinatorAgents } =
-      require('../../coordinator/workerAgent.js') as typeof import('../../coordinator/workerAgent.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
     return getCoordinatorAgents()
+    
   }
 
   const agents: AgentDefinition[] = [

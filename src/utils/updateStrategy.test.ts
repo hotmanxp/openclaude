@@ -11,7 +11,7 @@ import {
 
 describe('isThirdPartyBuildBlockedFor', () => {
   const UPSTREAM = '@anthropic-ai/claude-code'
-  const OPENCC = '@hotmanxp/opencc'
+  const OPENCC = '@zn-ai/opencc'
 
   test('blocks a third-party provider running the upstream build', () => {
     for (const provider of ['openai'] as APIProvider[]) {

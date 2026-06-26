@@ -733,17 +733,22 @@ export const CYBER_RISK_MITIGATION_REMINDER2 =
 // Models where cyber risk mitigation should be skipped
 const MITIGATION_EXEMPT_MODELS = new Set(['claude-opus-4-6'])
 
+// The malware-detection reminder is off by default. Opt in with
+// OPENCC_ENABLE_FILE_READ_MITIGATION=1. Two kill switches override the
+// opt-in: CLAUDE_DISABLE_TOOL_REMINDERS (global tool reminder kill
+// switch) and OPENCC_DISABLE_FILE_READ_MITIGATION (this reminder only,
+// kept for backward compatibility with pre-flip configs).
 function shouldIncludeFileReadMitigation(): boolean {
-  if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
+  if (isEnvTruthy(process.env.CLAUDE_DISABLE_TOOL_REMINDERS)) {
     return false
   }
-  // Dedicated kill switch for the file-read malware reminder only — leaves
-  // todo/task reminders (and other tool reminders) untouched. Useful when
-  // you want to silence this specific noise without losing the other
-  // reminder behaviors.
   if (isEnvTruthy(process.env.OPENCC_DISABLE_FILE_READ_MITIGATION)) {
     return false
   }
+  if (!isEnvTruthy(process.env.OPENCC_ENABLE_FILE_READ_MITIGATION)) {
+    return false
+  }
+  // Models where cyber risk mitigation should be skipped
   const shortName = getCanonicalName(getMainLoopModel())
   return !MITIGATION_EXEMPT_MODELS.has(shortName)
 }

@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { existsSync, mkdirSync, unlinkSync, statSync } from 'fs'
+import { existsSync, mkdirSync, openSync, readSync, closeSync, unlinkSync } from 'fs'
 import type { Entity, Relation, SemanticSummary, KnowledgeGraph } from '../knowledgeGraph.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 
@@ -40,8 +40,14 @@ export class SQLiteProvider {
       // Dynamic import to prevent Node.js from failing during bundle load
       const { Database } = await import('bun:sqlite')
 
-      if (existsSync(this.dbPath) && statSync(this.dbPath).size === 0) {
-        unlinkSync(this.dbPath)
+      // Empty file or non-SQLite header (e.g. corrupted disk write) → remove
+      // before opening. Without this, bun:sqlite opens lazily and the first
+      // PRAGMA below throws SQLITE_NOTADB, which we currently surface as a
+      // console.error even though selfHeal() recovers cleanly.
+      if (existsSync(this.dbPath) && !this.hasValidSQLiteHeader()) {
+        for (const f of [this.dbPath, `${this.dbPath}-wal`, `${this.dbPath}-shm`]) {
+          try { unlinkSync(f) } catch {}
+        }
       }
 
       this.db = new Database(this.dbPath)
@@ -54,6 +60,29 @@ export class SQLiteProvider {
         console.error(`Failed to initialize SQLite database at ${this.dbPath}:`, e)
       }
       await this.selfHeal()
+    }
+  }
+
+  /**
+   * True if the file at dbPath begins with the 16-byte SQLite header
+   * ("SQLite format 3\0"). Returns false for missing, empty, or truncated
+   * files — used to detect corrupt disk state before bun:sqlite lazy-opens
+   * and throws SQLITE_NOTADB on the first PRAGMA.
+   */
+  private hasValidSQLiteHeader(): boolean {
+    let fd: number | undefined
+    try {
+      fd = openSync(this.dbPath, 'r')
+      const buf = Buffer.alloc(16)
+      const bytesRead = readSync(fd, buf, 0, 16, 0)
+      if (bytesRead < 16) return false
+      return buf.toString('utf-8', 0, 15) === 'SQLite format 3'
+    } catch {
+      return false
+    } finally {
+      if (fd !== undefined) {
+        try { closeSync(fd) } catch {}
+      }
     }
   }
 

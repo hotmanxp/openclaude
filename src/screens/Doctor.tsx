@@ -22,7 +22,8 @@ import { useAppState } from '../state/AppState.js';
 import { assembleToolPool } from '../tools.js';
 import type { Tools } from '../Tool.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
-import { getGcsDistTags, getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
+import { getGcsDistTags, getNpmDistTags } from '../utils/autoUpdater.js';
+import { getDistTags, type DistTagsResult } from '../utils/autoUpgrade.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { buildLocalModelContextLoad, isActiveProviderLocalModel } from '../utils/statusNoticeLocalModel.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
@@ -547,6 +548,25 @@ function _temp8(v) {
 }
 function _temp7(error) {
   return error.mcpErrorMetadata === undefined;
+}
+function _temp6(diag) {
+  // Use new getDistTags from autoUpgrade module, fall back to GCS if npm fails
+  const fetchFromNpm = async () => {
+    const result = await getDistTags(MACRO.PACKAGE_URL);
+    // If npm returns null for latest, try GCS as fallback
+    if (!result.latest) {
+      const gcsResult = await getGcsDistTags();
+      return gcsResult;
+    }
+    return result;
+  };
+  return fetchFromNpm().catch(_temp5);
+}
+function _temp5() {
+  return {
+    latest: null,
+    stable: null
+  };
 }
 function _temp4(s_2) {
   return s_2.plugins.errors;

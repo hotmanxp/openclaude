@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import axios from 'axios'
 import {

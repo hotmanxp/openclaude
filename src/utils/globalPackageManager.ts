@@ -22,7 +22,7 @@ const FALLBACK_PRIORITY: GlobalPackageManager[] = ['npm', 'bun', 'pnpm', 'yarn']
 
 /**
  * Build the argv (after the binary name) to globally install `spec`
- * (e.g. "@hotmanxp/opencc@latest") with the given package manager.
+ * (e.g. "@zn-ai/opencc@latest") with the given package manager.
  */
 export function getGlobalInstallArgs(
   pm: GlobalPackageManager,

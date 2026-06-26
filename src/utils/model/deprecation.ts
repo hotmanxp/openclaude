@@ -36,6 +36,9 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
     retirementDates: {
       firstParty: 'January 5, 2026',
       openai: null,
+      anthropic: null,
+      mistral: null,
+      gemini: null,
     },
   },
   'claude-3-7-sonnet': {
@@ -43,6 +46,9 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
     retirementDates: {
       firstParty: 'February 19, 2026',
       openai: null,
+      anthropic: null,
+      mistral: null,
+      gemini: null,
     },
   },
   'claude-3-5-haiku': {
@@ -50,6 +56,9 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
     retirementDates: {
       firstParty: 'February 19, 2026',
       openai: null,
+      anthropic: null,
+      mistral: null,
+      gemini: null,
     },
   },
 }

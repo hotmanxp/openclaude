@@ -1,4 +1,3 @@
-// @ts-nocheck
 import axios from 'axios'
 import { constants as fsConstants } from 'fs'
 import { access, writeFile } from 'fs/promises'
@@ -36,6 +35,9 @@ import { jsonParse } from './slowOperations.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'
+
+// Ping An internal npm registry — OpenCC publishes here, not on registry.npmjs.org.
+const PA_NPM_REGISTRY_URL = 'http://maven.paic.com.cn/repository/npm/'
 
 class AutoUpdaterError extends ClaudeError {}
 
@@ -95,7 +97,7 @@ export async function assertMinVersion(): Promise<void> {
 
   // Skip version check for third-party providers using upstream Anthropic
   // builds — the min version kill-switch is first-party-specific. Builds
-  // with a custom PACKAGE_URL (like OpenCC's @hotmanxp/opencc) should still
+  // with a custom PACKAGE_URL (like OpenCC's @zn-ai/opencc) should still
   // be checked.
   if (
     getAPIProvider() !== 'firstParty' &&
@@ -302,8 +304,18 @@ async function releaseLock(): Promise<void> {
 async function getInstallationPrefix(): Promise<string | null> {
   // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
   const isBun = env.isRunningWithBun()
-  let prefixResult = null
-  if (isBun) {
+  const isPnpm = isRunningWithPnpm()
+  let prefixResult:
+    | { stdout: string; stderr: string; code: number; error?: string }
+    | null = null
+  if (isPnpm) {
+    // For pnpm, use pnpm prefix to get the global modules path
+    prefixResult = await execFileNoThrowWithCwd(
+      'pnpm',
+      ['prefix', '-g'],
+      { cwd: homedir() },
+    )
+  } else if (isBun) {
     prefixResult = await execFileNoThrowWithCwd('bun', ['pm', 'bin', '-g'], {
       cwd: homedir(),
     })
@@ -314,11 +326,23 @@ async function getInstallationPrefix(): Promise<string | null> {
       { cwd: homedir() },
     )
   }
-  if (prefixResult.code !== 0) {
-    logError(new Error(`Failed to check ${isBun ? 'bun' : 'npm'} permissions`))
+  if (!prefixResult || prefixResult.code !== 0) {
+    logError(new Error(`Failed to check ${isPnpm ? 'pnpm' : isBun ? 'bun' : 'npm'} permissions`))
     return null
   }
   return prefixResult.stdout.trim()
+}
+
+/**
+ * Check if the current installation is a pnpm global installation
+ */
+function isRunningWithPnpm(): boolean {
+  // const pnpmHome = process.env.PPNM_HOME
+  const pnpmPaths = ['.pnpm', '.local/share/pnpm', '/pnpm/']
+  const execPath = process.execPath || ''
+  return !!(
+    pnpmPaths.some(path => execPath.includes(path))
+  )
 }
 
 export async function checkGlobalInstallPermissions(): Promise<{
@@ -381,15 +405,15 @@ export async function getLatestVersion(
 }
 
 /**
- * Look up a dist-tag's version directly from the public npm registry over HTTP.
- * Used as a fallback when `npm view` is unavailable or fails.
+ * Look up a dist-tag's version directly from the Ping An internal npm registry
+ * over HTTP. Used as a fallback when `npm view` is unavailable or fails.
  */
 async function getLatestVersionFromRegistryHttp(
   tag: string,
 ): Promise<string | null> {
   try {
     const response = await axios.get(
-      `https://registry.npmjs.org/${MACRO.PACKAGE_URL}`,
+      `${PA_NPM_REGISTRY_URL}${MACRO.PACKAGE_URL}`,
       { timeout: 10_000 },
     )
     const distTags = (
@@ -423,7 +447,12 @@ export async function getNpmDistTags(): Promise<NpmDistTags> {
   )
 
   if (result.code !== 0) {
-    logForDebugging(`npm view dist-tags failed with code ${result.code}`)
+    logForDebugging(`npm view dist-tags failed with code ${result.code}, stderr: ${result.stderr || 'none'}`)
+    return { latest: null, stable: null }
+  }
+
+  if (!result.stdout.trim()) {
+    logForDebugging('npm view returned empty output')
     return { latest: null, stable: null }
   }
 
@@ -434,7 +463,7 @@ export async function getNpmDistTags(): Promise<NpmDistTags> {
       stable: typeof parsed.stable === 'string' ? parsed.stable : null,
     }
   } catch (error) {
-    logForDebugging(`Failed to parse dist-tags: ${error}`)
+    logForDebugging(`Failed to parse dist-tags: ${error}, output: ${result.stdout}`)
     return { latest: null, stable: null }
   }
 }
@@ -575,23 +604,60 @@ To fix this issue:
       }
     }
 
-    // Use specific version if provided, otherwise use latest
-    const packageSpec = specificVersion
-      ? `${MACRO.PACKAGE_URL}@${specificVersion}`
-      : MACRO.PACKAGE_URL
+    const isPnpm = isRunningWithPnpm()
 
-    // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
-    // which could be maliciously crafted to redirect to an attacker's registry
-    const installResult = await execFileNoThrowWithCwd(
-      packageManager,
-      getGlobalInstallArgs(packageManager, packageSpec),
-      { cwd: homedir() },
-    )
+    // Use specific version if provided, otherwise use latest
+    const versionSpec = specificVersion
+      ? specificVersion
+      : 'latest'
+
+    // Use execFileNoThrowWithCwd for install (consistent with version verification).
+    // This ensures both install and verification use the SAME npm binary.
+    // --force: ensures npm actually reinstalls even if it thinks the package is up to date
+    // --prefer-online: ensures npm checks the registry instead of using cache
+    logForDebugging(`installGlobalPackage: installing ${MACRO.PACKAGE_URL}@${versionSpec}`)
+
+    let installResult
+    if (isPnpm) {
+      installResult = await execFileNoThrowWithCwd(
+        'pnpm',
+        ['add', '-g', `${MACRO.PACKAGE_URL}@${versionSpec}`],
+        { cwd: homedir() },
+      )
+    } else {
+      const isBun = env.isRunningWithBun()
+      const installArgs = isBun
+        ? ['install', '-g', `${MACRO.PACKAGE_URL}@${versionSpec}`]
+        : ['install', '-g', `${MACRO.PACKAGE_URL}@${versionSpec}`, '--prefer-online', '--force']
+      installResult = await execFileNoThrowWithCwd(
+        isBun ? 'bun' : 'npm',
+        installArgs,
+        { cwd: homedir() },
+      )
+    }
     if (installResult.code !== 0) {
       const error = new AutoUpdaterError(
-        `Failed to install new version of claude: ${installResult.stdout} ${installResult.stderr}`,
+        `Failed to install new version: ${installResult.stdout} ${installResult.stderr}`,
       )
       logError(error)
+      return 'install_failed'
+    }
+
+    // Verify the installed version matches the expected version
+    const expectedVersion = specificVersion ?? (await getLatestVersion('stable'))
+    if (!expectedVersion) {
+      logError(new AutoUpdaterError('Failed to determine expected version for verification'))
+      return 'install_failed'
+    }
+    const installedVersion = isPnpm
+      ? await getInstalledPnpmGlobalVersion()
+      : await getInstalledGlobalVersion()
+    if (installedVersion !== expectedVersion) {
+      logError(
+        new AutoUpdaterError(
+          `Version mismatch after install: expected ${expectedVersion}, got ${installedVersion ?? 'unknown'}`,
+        ),
+      )
       return 'install_failed'
     }
 
@@ -605,6 +671,69 @@ To fix this issue:
   } finally {
     // Ensure we always release the lock
     await releaseLock()
+  }
+}
+
+/**
+ * Get the currently installed global version of the package
+ */
+async function getInstalledGlobalVersion(): Promise<string | null> {
+  const result = await withTimeoutSignal(5000, async signal => {
+    return execFileNoThrowWithCwd(
+      'npm',
+      ['list', '-g', '--depth=0', '--json', '--prefer-online'],
+      { abortSignal: signal, cwd: homedir() },
+    )
+  })
+  if (result.code !== 0) {
+    logForDebugging(
+      `npm list -g failed: ${result.stderr.trim() || result.stdout.trim()}`,
+    )
+    return null
+  }
+
+  try {
+    const parsed = jsonParse(result.stdout.trim()) as {
+      dependencies?: Record<string, { version?: string }>
+    }
+    // Use full package name (e.g. @zn-ai/opencc) as the key, not just 'opencc'
+    const pkg = parsed.dependencies?.[MACRO.PACKAGE_URL]
+    return pkg?.version ?? null
+  } catch {
+    logForDebugging(`Failed to parse npm list -g output: ${result.stdout.trim()}`)
+    return null
+  }
+}
+
+/**
+ * Get the currently installed global version of the package using pnpm
+ */
+async function getInstalledPnpmGlobalVersion(): Promise<string | null> {
+  const result = await withTimeoutSignal(5000, async signal => {
+    return execFileNoThrowWithCwd(
+      'pnpm',
+      ['list', '-g', '--json'],
+      { abortSignal: signal, cwd: homedir() },
+    )
+  })
+  if (result.code !== 0) {
+    logForDebugging(
+      `pnpm list -g failed: ${result.stderr.trim() || result.stdout.trim()}`,
+    )
+    return null
+  }
+
+  try {
+    const parsed = jsonParse(result.stdout.trim()) as Array<{
+      name?: string
+      version?: string
+    }>
+    // Use full package name (e.g. @zn-ai/opencc) to match correctly
+    const pkg = parsed.find(p => p.name === MACRO.PACKAGE_URL)
+    return pkg?.version ?? null
+  } catch {
+    logForDebugging(`Failed to parse pnpm list -g output: ${result.stdout.trim()}`)
+    return null
   }
 }
 

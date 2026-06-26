@@ -93,7 +93,7 @@ describe('getDefaultCommitCoAuthorName', () => {
         apiProvider: 'openai',
         isInternalRepo: false,
       }),
-    ).toBe('OpenCC (gpt-5.5)')
+    ).toBe('OpenCC')
   })
 
   it('does not apply internal Claude formatting to non-Claude providers', () => {
@@ -103,7 +103,7 @@ describe('getDefaultCommitCoAuthorName', () => {
         apiProvider: 'openai',
         isInternalRepo: true,
       }),
-    ).toBe('OpenCC (gpt-5.5)')
+    ).toBe('OpenCC')
   })
 
   it('keeps the codename-safe fallback for unknown first-party models', () => {
@@ -137,9 +137,9 @@ describe('getDefaultCommitCoAuthorName', () => {
   })
 
   it('uses the OpenCC email for commit attribution across providers', () => {
-    expect(getDefaultCommitCoAuthorEmail('openai')).toBe('opencc@opencc.com')
+    expect(getDefaultCommitCoAuthorEmail('openai')).toBe('opencc@pingan.com.cn')
     expect(getDefaultCommitCoAuthorEmail('firstParty')).toBe(
-      'opencc@opencc.com',
+      'opencc@pingan.com.cn',
     )
   })
 })
@@ -187,7 +187,7 @@ describe('getAttributionTexts', () => {
     useSettings({ includeCoAuthoredBy: true })
 
     expect(getAttributionTexts()).toEqual({
-      commit: 'Co-Authored-By: OpenCC (gpt-5.5) <opencc@opencc.com>',
+      commit: 'Co-Authored-By: OpenCC <opencc@pingan.com.cn>',
       pr: defaultPrAttribution,
     })
   })

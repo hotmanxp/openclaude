@@ -264,7 +264,7 @@ export async function startNodeRelay(
       end: () => sock.end(),
     }
     sock.on('data', data =>
-      // @ts-ignore
+      // @ts-ignore Buffer is assignable to string | NonSharedBuffer
       handleData(adapter, st, data, wsUrl, authHeader, wsAuthHeader),
     )
     sock.on('close', () => cleanupConn(states.get(sock)))

@@ -784,7 +784,6 @@ export function collapseReadSearchGroups(
         // Memory file write/edit — check if it's team memory
         const count = countToolUses(msg)
         if (
-          true &&
           teamMemOps?.isTeamMemoryWriteOrEdit(toolInfo.name, toolInfo.input)
         ) {
           currentGroup.teamMemoryWriteCount =
@@ -838,7 +837,6 @@ export function collapseReadSearchGroups(
         currentGroup.searchCount += count
         // Check if the search targets memory files (via path or glob pattern)
         if (
-          true &&
           teamMemOps?.isTeamMemorySearch(toolInfo.input)
         ) {
           currentGroup.teamMemorySearchCount =
@@ -858,7 +856,7 @@ export function collapseReadSearchGroups(
         const filePaths = getFilePathsFromReadMessage(msg)
         for (const filePath of filePaths) {
           currentGroup.readFilePaths.add(filePath)
-          if (true && teamMemOps?.isTeamMemFile(filePath)) {
+          if (teamMemOps?.isTeamMemFile(filePath)) {
             currentGroup.teamMemoryReadFilePaths?.add(filePath)
           } else if (isAutoManagedMemoryFile(filePath)) {
             currentGroup.memoryReadFilePaths.add(filePath)
@@ -1010,7 +1008,7 @@ export function getSearchReadSummaryText(
       )
     }
     // Team memory operations
-    if (true && teamMemOps) {
+    if (teamMemOps) {
       teamMemOps.appendTeamMemorySummaryParts(memoryCounts, isActive, parts)
     }
   }

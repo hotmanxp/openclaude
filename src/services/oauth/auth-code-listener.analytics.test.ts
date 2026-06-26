@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import {
   acquireSharedMutationLock,

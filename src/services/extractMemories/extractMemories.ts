@@ -59,10 +59,8 @@ import {
   buildExtractAutoOnlyPrompt,
   buildExtractCombinedPrompt,
 } from './prompts.js'
+import * as teamMemPaths from '../../memdir/teamMemPaths.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js')
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 // ============================================================================
 // Helpers
@@ -433,19 +431,25 @@ export function initExtractMemories(): void {
       const writtenPaths = extractWrittenPaths(result.messages)
       const turnCount = count(result.messages, m => m.type === 'assistant')
 
+      const totalUsage = result.totalUsage ?? {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      }
       const totalInput =
-        result.totalUsage.input_tokens +
-        result.totalUsage.cache_creation_input_tokens +
-        result.totalUsage.cache_read_input_tokens
+        totalUsage.input_tokens +
+        totalUsage.cache_creation_input_tokens +
+        totalUsage.cache_read_input_tokens
       const hitPct =
         totalInput > 0
           ? (
-              (result.totalUsage.cache_read_input_tokens / totalInput) *
+              (totalUsage.cache_read_input_tokens / totalInput) *
               100
             ).toFixed(1)
           : '0.0'
       logForDebugging(
-        `[extractMemories] finished — ${writtenPaths.length} files written, cache: read=${result.totalUsage.cache_read_input_tokens} create=${result.totalUsage.cache_creation_input_tokens} input=${result.totalUsage.input_tokens} (${hitPct}% hit)`,
+        `[extractMemories] finished — ${writtenPaths.length} files written, cache: read=${totalUsage.cache_read_input_tokens} create=${totalUsage.cache_creation_input_tokens} input=${totalUsage.input_tokens} (${hitPct}% hit)`,
       )
 
       if (writtenPaths.length > 0) {
@@ -465,11 +469,10 @@ export function initExtractMemories(): void {
 
       // Log extraction event with usage from the forked agent
       logEvent('tengu_extract_memories_extraction', {
-        input_tokens: result.totalUsage.input_tokens,
-        output_tokens: result.totalUsage.output_tokens,
-        cache_read_input_tokens: result.totalUsage.cache_read_input_tokens,
-        cache_creation_input_tokens:
-          result.totalUsage.cache_creation_input_tokens,
+        input_tokens: totalUsage.input_tokens,
+        output_tokens: totalUsage.output_tokens,
+        cache_read_input_tokens: totalUsage.cache_read_input_tokens,
+        cache_creation_input_tokens: totalUsage.cache_creation_input_tokens,
         message_count: newMessageCount,
         turn_count: turnCount,
         files_written: writtenPaths.length,

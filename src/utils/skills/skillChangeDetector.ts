@@ -104,6 +104,12 @@ export async function initialize(): Promise<void> {
     })
   }
 
+  // Check if skill watching is disabled via environment variable
+  if (process.env.OPENCC_DISABLE_SKILL_WATCH === '1') {
+    logForDebugging('Skill watching disabled via OPENCC_DISABLE_SKILL_WATCH')
+    return
+  }
+
   const paths = await getWatchablePaths()
   if (paths.length === 0) return
 

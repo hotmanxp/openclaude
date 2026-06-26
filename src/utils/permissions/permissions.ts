@@ -518,7 +518,6 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
     // Apply auto mode: use AI classifier instead of prompting user
     // Check this BEFORE shouldAvoidPermissionPrompts so classifiers work in headless mode
     if (
-      true &&
       (appState.toolPermissionContext.mode === 'auto' ||
         (appState.toolPermissionContext.mode === 'plan' &&
           (autoModeStateModule?.isAutoModeActive() ?? false)))

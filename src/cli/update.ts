@@ -27,28 +27,9 @@ import { getPackageManager } from 'src/utils/nativeInstaller/packageManagers.js'
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
-import { isThirdPartyBuildBlocked } from 'src/utils/updateStrategy.js'
+import { checkForUpdates as checkForUpdatesNew } from 'src/utils/autoUpgrade.js'
 
 export async function update() {
-  // Block updates for third-party providers using upstream Anthropic builds.
-  // The update mechanism downloads from the first-party distribution bucket,
-  // which would silently replace the OpenCC build with the upstream
-  // Claude Code binary. However, builds with a custom PACKAGE_URL (like
-  // OpenCC's @hotmanxp/opencc) are safe to self-update.
-  if (isThirdPartyBuildBlocked()) {
-    writeToStdout(
-      chalk.yellow(
-        `Auto-update is not available for third-party provider builds.\n`,
-      ) +
-        `Current version: ${MACRO.DISPLAY_VERSION}\n\n` +
-        `To update, reinstall from npm:\n` +
-        chalk.bold(`  npm install -g ${MACRO.PACKAGE_URL}@latest`) + '\n\n' +
-        `Or, if you built from source, pull and rebuild:\n` +
-        chalk.bold('  git pull && bun install && bun run build') + '\n',
-    )
-    await gracefulShutdown(0)
-  }
-
   logEvent('tengu_update_check', {})
   writeToStdout(`Current version: ${MACRO.DISPLAY_VERSION}\n`)
 
@@ -78,18 +59,19 @@ export async function update() {
     }
   }
 
-  // Display warnings if any exist
+  // Display warnings if any exist (skip permission-related warnings since handleAutoUpdate handles this differently)
+  const skipWarnings = ['Insufficient permissions', 'requires sudo']
   if (diagnostic.warnings.length > 0) {
     writeToStdout('\n')
     for (const warning of diagnostic.warnings) {
+      // Skip permission warnings - handleAutoUpdate handles permissions differently
+      if (skipWarnings.some(s => warning.issue.includes(s))) {
+        logForDebugging(`update: Skipping permission warning: ${warning.issue}`)
+        continue
+      }
+
       logForDebugging(`update: Warning detected: ${warning.issue}`)
-
-      // Don't skip PATH warnings - they're always relevant
-      // The user needs to know that 'which claude' points elsewhere
-      logForDebugging(`update: Showing warning: ${warning.issue}`)
-
       writeToStdout(chalk.yellow(`Warning: ${warning.issue}\n`))
-
       writeToStdout(chalk.bold(`Fix: ${warning.fix}\n`))
     }
   }
@@ -148,7 +130,7 @@ export async function update() {
     if (packageManager === 'homebrew') {
       writeToStdout('Open CC is managed by Homebrew.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
+      if (latest != null && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -159,7 +141,7 @@ export async function update() {
     } else if (packageManager === 'winget') {
       writeToStdout('Open CC is managed by winget.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
+      if (latest != null && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -172,7 +154,7 @@ export async function update() {
     } else if (packageManager === 'apk') {
       writeToStdout('Open CC is managed by apk.\n')
       const latest = await getLatestVersion(channel)
-      if (latest && !gte(MACRO.DISPLAY_VERSION, latest)) {
+      if (latest != null && !gte(MACRO.DISPLAY_VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.DISPLAY_VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
@@ -204,6 +186,7 @@ export async function update() {
     const typeMapping: Record<string, string> = {
       'npm-local': 'local',
       'npm-global': 'global',
+      'pnpm-global': 'global',
       native: 'native',
       development: 'development',
       unknown: 'unknown',
@@ -292,13 +275,29 @@ export async function update() {
 
   logForDebugging('update: Checking npm registry for latest version')
   logForDebugging(`update: Package URL: ${MACRO.PACKAGE_URL}`)
-  const npmTag = channel === 'stable' ? 'stable' : 'latest'
-  const npmCommand = `npm view ${MACRO.PACKAGE_URL}@${npmTag} version`
-  logForDebugging(`update: Running: ${npmCommand}`)
-  const latestVersion = await getLatestVersion(channel)
-  logForDebugging(
-    `update: Latest version from npm: ${latestVersion || 'FAILED'}`,
-  )
+
+  // Try the new update check module first (uses latest-version npm package)
+  let latestVersion: string | null = null
+  try {
+    const updateInfo = await checkForUpdatesNew(MACRO.PACKAGE_URL, MACRO.DISPLAY_VERSION)
+    if (updateInfo?.update?.latest) {
+      latestVersion = updateInfo.update.latest
+      logForDebugging(`update: New module found version: ${latestVersion}`)
+    }
+  } catch (e) {
+    logForDebugging(`update: New update check failed, trying original method: ${e}`)
+  }
+
+  // Fall back to original getLatestVersion if new module didn't find a version
+  if (!latestVersion) {
+    const npmTag = channel === 'stable' ? 'stable' : 'latest'
+    const npmCommand = `npm view ${MACRO.PACKAGE_URL}@${npmTag} version`
+    logForDebugging(`update: Running: ${npmCommand}`)
+    latestVersion = await getLatestVersion(channel)
+    logForDebugging(
+      `update: Original method found version: ${latestVersion || 'FAILED'}`,
+    )
+  }
 
   if (!latestVersion) {
     logForDebugging('update: Failed to get latest version from npm registry')
@@ -354,6 +353,7 @@ export async function update() {
       updateMethodName = 'local'
       break
     case 'npm-global':
+    case 'pnpm-global':
       useLocalUpdate = false
       updateMethodName = 'global'
       break
@@ -385,9 +385,7 @@ export async function update() {
   let status: InstallStatus
 
   if (useLocalUpdate) {
-    logForDebugging(
-      'update: Calling installOrUpdateClaudePackage() for local update',
-    )
+    logForDebugging('update: Calling installOrUpdateClaudePackage() for local update')
     status = await installOrUpdateClaudePackage(channel)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
@@ -406,9 +404,7 @@ export async function update() {
       await regenerateCompletionCache()
       break
     case 'no_permissions':
-      process.stderr.write(
-        'Error: Insufficient permissions to install update\n',
-      )
+      process.stderr.write('Error: Insufficient permissions to install update\n')
       if (useLocalUpdate) {
         process.stderr.write('Try manually updating with:\n')
         process.stderr.write(

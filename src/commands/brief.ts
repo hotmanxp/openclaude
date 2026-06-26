@@ -49,7 +49,7 @@ function getBriefConfig(): BriefConfig {
 const brief = {
   type: 'local-jsx',
   name: 'brief',
-  description: 'Toggle brief-only mode',
+  description: '切换简洁模式',
   isEnabled: () => {
     if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
       return getBriefConfig().enable_slash_command

@@ -323,12 +323,12 @@ function addToTotalModelUsage(
     maxOutputTokens: 0,
   }
 
-  modelUsage.inputTokens += usage.input_tokens
-  modelUsage.outputTokens += usage.output_tokens
-  modelUsage.cacheReadInputTokens += usage.cache_read_input_tokens ?? 0
-  modelUsage.cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0
+  modelUsage.inputTokens += usage?.input_tokens ?? 0
+  modelUsage.outputTokens += usage?.output_tokens ?? 0
+  modelUsage.cacheReadInputTokens += usage?.cache_read_input_tokens ?? 0
+  modelUsage.cacheCreationInputTokens += usage?.cache_creation_input_tokens ?? 0
   modelUsage.webSearchRequests +=
-    usage.server_tool_use?.web_search_requests ?? 0
+    usage?.server_tool_use?.web_search_requests ?? 0
   modelUsage.costUSD += cost
   modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas())
   modelUsage.maxOutputTokens = getModelMaxOutputTokens(model).default
@@ -368,10 +368,10 @@ export function addToTotalSessionCost(
         tag: 'opencc.tokenUsage',
         model,
         provider: cacheProvider,
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
-        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+        input_tokens: usage?.input_tokens ?? 0,
+        output_tokens: usage?.output_tokens ?? 0,
+        cache_read_input_tokens: usage?.cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens: usage?.cache_creation_input_tokens ?? 0,
         cache_supported: cacheMetrics.supported,
         cache_hit_rate: cacheMetrics.hitRate,
         cost_usd: cost,
@@ -380,18 +380,18 @@ export function addToTotalSessionCost(
   }
 
   const attrs =
-    isFastModeEnabled() && usage.speed === 'fast'
+    isFastModeEnabled() && usage?.speed === 'fast'
       ? { model, speed: 'fast' }
       : { model }
 
   getCostCounter()?.add(cost, attrs)
-  getTokenCounter()?.add(usage.input_tokens, { ...attrs, type: 'input' })
-  getTokenCounter()?.add(usage.output_tokens, { ...attrs, type: 'output' })
-  getTokenCounter()?.add(usage.cache_read_input_tokens ?? 0, {
+  getTokenCounter()?.add(usage?.input_tokens ?? 0, { ...attrs, type: 'input' })
+  getTokenCounter()?.add(usage?.output_tokens ?? 0, { ...attrs, type: 'output' })
+  getTokenCounter()?.add(usage?.cache_read_input_tokens ?? 0, {
     ...attrs,
     type: 'cacheRead',
   })
-  getTokenCounter()?.add(usage.cache_creation_input_tokens ?? 0, {
+  getTokenCounter()?.add(usage?.cache_creation_input_tokens ?? 0, {
     ...attrs,
     type: 'cacheCreation',
   })
@@ -402,11 +402,11 @@ export function addToTotalSessionCost(
     logEvent('tengu_advisor_tool_token_usage', {
       advisor_model:
         advisorUsage.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      input_tokens: advisorUsage.input_tokens,
-      output_tokens: advisorUsage.output_tokens,
-      cache_read_input_tokens: advisorUsage.cache_read_input_tokens ?? 0,
+      input_tokens: advisorUsage?.input_tokens ?? 0,
+      output_tokens: advisorUsage?.output_tokens ?? 0,
+      cache_read_input_tokens: advisorUsage?.cache_read_input_tokens ?? 0,
       cache_creation_input_tokens:
-        advisorUsage.cache_creation_input_tokens ?? 0,
+        advisorUsage?.cache_creation_input_tokens ?? 0,
       cost_usd_micros: Math.round(advisorCost * 1_000_000),
     })
     totalCost += addToTotalSessionCost(

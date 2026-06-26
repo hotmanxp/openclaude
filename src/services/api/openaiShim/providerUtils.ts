@@ -60,6 +60,28 @@ function isMoonshotBaseUrl(baseUrl: string | undefined): boolean {
   }
 }
 
+// Ping An Tech's API gateway hosts every model as `zhiniao-*` and rejects
+// unprefixed names with 403. We auto-prepend `zhiniao-` here so callers can
+// pass the bare API name and the shim handles the rest.
+const ZHINIAO_MODEL_PREFIX = 'zhiniao-'
+const WIZARD_AI_HOST_TOKEN = 'wizard-ai'
+
+function isWizardAiBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false
+  try {
+    return new URL(baseUrl).hostname.toLowerCase().includes(WIZARD_AI_HOST_TOKEN)
+  } catch {
+    return false
+  }
+}
+
+function applyZhiniaoModelPrefix(baseUrl: string | undefined, model: string): string {
+  if (!model) return model
+  if (!isWizardAiBaseUrl(baseUrl)) return model
+  if (model.startsWith(ZHINIAO_MODEL_PREFIX)) return model
+  return `${ZHINIAO_MODEL_PREFIX}${model}`
+}
+
 function formatRetryAfterHint(response: Response): string {
   const ra = response.headers.get('retry-after')
   return ra ? ` (Retry-After: ${ra})` : ''
@@ -188,6 +210,8 @@ export {
   hasGeminiApiHost,
   hasCerebrasApiHost,
   isMoonshotBaseUrl,
+  isWizardAiBaseUrl,
+  applyZhiniaoModelPrefix,
   formatRetryAfterHint,
   shouldRedactUrlQueryParam,
   redactUrlForDiagnostics,

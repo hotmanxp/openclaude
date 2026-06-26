@@ -15,6 +15,7 @@ CLAUDE.md
 package-lock.json
 /.claude/*.json
 /.claude/wiki
+/.claude/worktrees/
 coverage/
 agent.log
 .worktrees/

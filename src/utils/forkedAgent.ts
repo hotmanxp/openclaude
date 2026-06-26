@@ -661,9 +661,9 @@ function logForkAgentQueryEvent({
 }): void {
   // Calculate cache hit rate
   const totalInputTokens =
-    totalUsage.input_tokens +
-    totalUsage.cache_creation_input_tokens +
-    totalUsage.cache_read_input_tokens
+    totalUsage?.input_tokens ?? 0 +
+    totalUsage?.cache_creation_input_tokens ?? 0 +
+    totalUsage?.cache_read_input_tokens ?? 0
   const cacheHitRate =
     totalInputTokens > 0
       ? totalUsage.cache_read_input_tokens / totalInputTokens
@@ -679,8 +679,8 @@ function logForkAgentQueryEvent({
     messageCount,
 
     // NonNullableUsage fields
-    inputTokens: totalUsage.input_tokens,
-    outputTokens: totalUsage.output_tokens,
+    inputTokens: totalUsage?.input_tokens ?? 0,
+    outputTokens: totalUsage?.output_tokens ?? 0,
     cacheReadInputTokens: totalUsage.cache_read_input_tokens,
     cacheCreationInputTokens: totalUsage.cache_creation_input_tokens,
     serviceTier:

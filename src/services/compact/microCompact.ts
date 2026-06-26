@@ -540,7 +540,7 @@ export function maybeTimeBasedMicrocompact(
   // symbol to the import was flagged by the circular-deps check.
   // Pass the actual querySource: getTrackingKey returns the full source string
   // (e.g. 'repl_main_thread:outputStyle:custom'), not just the prefix.
-  if (true && querySource) {
+  if (querySource) {
     notifyCacheDeletion(querySource)
   }
 

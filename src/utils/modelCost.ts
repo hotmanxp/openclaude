@@ -133,13 +133,13 @@ export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {
  */
 function tokensToUSDCost(modelCosts: ModelCosts, usage: Usage): number {
   return (
-    (usage.input_tokens / 1_000_000) * modelCosts.inputTokens +
-    (usage.output_tokens / 1_000_000) * modelCosts.outputTokens +
-    ((usage.cache_read_input_tokens ?? 0) / 1_000_000) *
+    ((usage?.input_tokens ?? 0) / 1_000_000) * modelCosts?.inputTokens +
+    ((usage?.output_tokens ?? 0) / 1_000_000) * modelCosts?.outputTokens +
+    ((usage?.cache_read_input_tokens ?? 0) / 1_000_000) *
       modelCosts.promptCacheReadTokens +
-    ((usage.cache_creation_input_tokens ?? 0) / 1_000_000) *
+    ((usage?.cache_creation_input_tokens ?? 0) / 1_000_000) *
       modelCosts.promptCacheWriteTokens +
-    (usage.server_tool_use?.web_search_requests ?? 0) *
+    (usage?.server_tool_use?.web_search_requests ?? 0) *
       modelCosts.webSearchRequests
   )
 }

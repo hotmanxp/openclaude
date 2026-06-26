@@ -22,7 +22,7 @@ async function _temp() {
   if (!shouldEnableClaudeInChrome(chromeFlag)) {
     return null;
   }
-  if (true && !isClaudeAISubscriber()) {
+  if (!isClaudeAISubscriber()) {
     return {
       key: "chrome-requires-subscription",
       jsx: <Text color="error">Claude in Chrome requires a claude.ai subscription</Text>,

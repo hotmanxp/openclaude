@@ -49,6 +49,7 @@ import {
   normalizeToolArguments,
   hasToolFieldMapping,
 } from './toolArgumentNormalization.js'
+import { applyZhiniaoModelPrefix } from './openaiShim/providerUtils.js'
 import { logApiCallStart, logApiCallEnd } from '../../utils/requestLogging.js'
 import {
   createStreamState,
@@ -1699,7 +1700,14 @@ class OpenAIShimMessages {
     let httpResponse: Response | undefined
 
     const promise = (async () => {
+      // const request = resolveProviderRequest({ model: self.providerOverride?.model ?? params.model, baseUrl: self.providerOverride?.baseURL, reasoningEffortOverride: self.reasoningEffort })
+      // Ping An Tech's wizard-ai gateway rejects unprefixed model names with
+      // 403. Auto-prepend `zhiniao-` so all downstream uses (body.model,
+      // compressToolHistory, stream conversion, response handling) see the
+      // corrected name.
       const request = resolveProviderRequest({ model: self.providerOverride?.model ?? params.model, baseUrl: self.providerOverride?.baseURL })
+      request.resolvedModel = applyZhiniaoModelPrefix(request.baseUrl, request.resolvedModel)
+      // const response = await self._doRequest(request, params, options)
       const { response, correlationId, startTime } = await self._doRequest(request, params, options)
       httpResponse = response
 
@@ -1717,7 +1725,20 @@ class OpenAIShimMessages {
 
       const contentType = response.headers.get('content-type') ?? ''
       if (contentType.includes('application/json')) {
-        const data = await response.json()
+        let data = await response.json()
+
+        // Handle double-JSON-encoded responses from some OpenAI-compatible
+        // providers (e.g., zhiniao-qwen3.6-plus). The first response.json()
+        // yields a string; a second parse yields the proper object.
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data)
+          } catch {
+            // If re-parse fails, proceed with string-typed data — _convertNonStreamingResponse
+            // will handle it gracefully (content will be empty, user sees no output).
+          }
+        }
+
         return self._convertNonStreamingResponse(data, request.resolvedModel)
       }
 
@@ -1930,11 +1951,10 @@ class OpenAIShimMessages {
     }
 
     const isGemini = isGeminiMode()
-    const isMiniMax = !!process.env.MINIMAX_API_KEY
     const apiKey =
       this.providerOverride?.apiKey ??
       process.env.OPENAI_API_KEY ??
-      (isMiniMax ? process.env.MINIMAX_API_KEY : '')
+      process.env.MINIMAX_API_KEY
     const configuredAuthHeaderValue = process.env.OPENAI_AUTH_HEADER_VALUE?.trim()
     if (configuredAuthHeaderValue && /[\r\n]/.test(configuredAuthHeaderValue)) {
       throw new Error('OPENAI_AUTH_HEADER_VALUE must not contain CR/LF characters')
@@ -1963,6 +1983,12 @@ class OpenAIShimMessages {
       } else {
         headers.Authorization = `Bearer ${authValue}`
       }
+    }
+
+    // MiniMax corporate deployment requires these headers for stream requests
+    if (request.baseUrl?.includes('paic.com.cn')) {
+      headers['client-code'] = 'Gemini'
+      headers['plugin-version'] = 'Gemini'
     }
 
     const buildChatCompletionsUrl = (baseUrl: string): string => {
@@ -2355,10 +2381,15 @@ class OpenAIShimMessages {
     if (typeof reasoningText === 'string' && reasoningText) {
       content.push({ type: 'thinking', thinking: reasoningText })
     }
+
+    // MiniMax and some other providers use delta.content even in non-streaming responses
+    const deltaContent = (choice as { delta?: { content?: string | null } })?.delta?.content
     const rawContent =
       choice?.message?.content !== '' && choice?.message?.content != null
         ? choice?.message?.content
-        : null
+        : deltaContent !== '' && deltaContent != null
+          ? deltaContent
+          : null
     if (typeof rawContent === 'string' && rawContent) {
       content.push({
         type: 'text',

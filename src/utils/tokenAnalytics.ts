@@ -56,11 +56,11 @@ export class TokenUsageTracker {
   }): void {
     const entry: TokenUsageEntry = {
       timestamp: Date.now(),
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
-      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
-      model: usage.model,
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
+      model: usage?.model,
     }
 
     this.history.push(entry)

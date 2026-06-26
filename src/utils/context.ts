@@ -7,6 +7,7 @@ import { getModelCapability } from './model/modelCapabilities.js'
 import { getOpenAIContextWindow, getOpenAIMaxOutputTokens } from './model/openaiContextWindows.js'
 import { resolveAntModel } from './model/antModels.js'
 import { resolveModelRuntimeLimits } from '../integrations/runtimeMetadata.js'
+import { logForDebugging } from './debug.js'
 import {
   getTransportKindForRoute,
   resolveActiveRouteIdFromEnv,
@@ -111,9 +112,10 @@ export function getContextWindowForModel(
     if (runtimeLimits.contextWindow !== undefined) {
       return runtimeLimits.contextWindow
     }
-    console.error(
+    logForDebugging(
       `[context] Warning: model "${model}" not in integration model metadata — using conservative 128k default. ` +
         'Add it to src/integrations/models for accurate compaction.',
+      { level: 'warn' },
     )
     return OPENAI_FALLBACK_CONTEXT_WINDOW
   }
@@ -226,12 +228,16 @@ export function getModelMaxOutputTokens(model: string): {
     }
   }
 
-  // Legacy env var override (for custom deployments not yet in integration metadata)
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
-    const openaiMax = getOpenAIMaxOutputTokens(model)
-    if (openaiMax !== undefined) {
-      return { default: openaiMax, upperLimit: openaiMax }
-    }
+  // Model-name keyed fallback (mirrors getContextWindowForModel above).
+  // Route-independent so 3P models served via anthropic-proxy (e.g. zn-nova
+  // MiniMax-M3) resolve their descriptor limits even when
+  // shouldUseIntegrationRuntimeLimits() returns false. Claude native models
+  // have no entry in OPENAI_MAX_OUTPUT_TOKENS (intentionally omitted per the
+  // bare-Claude-name note in openaiContextWindows.ts) and fall through to
+  // the canonical-name if/else chain below.
+  const openaiMax = getOpenAIMaxOutputTokens(model)
+  if (openaiMax !== undefined) {
+    return { default: openaiMax, upperLimit: openaiMax }
   }
 
   const m = getCanonicalName(model)

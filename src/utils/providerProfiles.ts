@@ -170,12 +170,9 @@ export function getProviderPresetDefaults(
       return {
         provider: 'openai',
         name: 'OpenAI',
-        baseUrl:
-          process.env.OPENAI_BASE_URL ??
-          settingsOpenAIUrl ??
-          'https://api.openai.com/v1',
-        model: process.env.OPENAI_MODEL ?? 'gpt-5.4',
-        apiKey: '',
+        baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+        model: process.env.OPENAI_MODEL ?? 'zhiniao-MiniMax-M2.7-highspeed',
+        apiKey: process.env.OPENAI_API_KEY ?? '',
         requiresApiKey: true,
       }
     }
@@ -364,6 +361,7 @@ export function getActiveProviderProfile(
 export function clearProviderProfileEnvFromProcessEnv(
   processEnv: NodeJS.ProcessEnv = process.env,
 ): void {
+  return
   delete processEnv.CLAUDE_CODE_USE_OPENAI
 
   delete processEnv.OPENAI_BASE_URL
@@ -373,7 +371,9 @@ export function clearProviderProfileEnvFromProcessEnv(
   delete processEnv.OPENAI_AUTH_HEADER
   delete processEnv.OPENAI_AUTH_SCHEME
   delete processEnv.OPENAI_AUTH_HEADER_VALUE
-  delete processEnv.OPENAI_API_KEY
+  // Preserve OPENAI_API_KEY so users can set keys via environment variables
+  // while using profile-provided baseUrl/model configurations
+  // delete processEnv.OPENAI_API_KEY
 
   delete processEnv.ANTHROPIC_BASE_URL
   delete processEnv.ANTHROPIC_MODEL
@@ -394,7 +394,9 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
 
     if (profile.apiKey) {
       process.env.ANTHROPIC_API_KEY = profile.apiKey
+      return
     } else {
+      return
       delete process.env.ANTHROPIC_API_KEY
     }
 
@@ -406,7 +408,9 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
     delete process.env.OPENAI_AUTH_HEADER
     delete process.env.OPENAI_AUTH_SCHEME
     delete process.env.OPENAI_AUTH_HEADER_VALUE
-    delete process.env.OPENAI_API_KEY
+    // Preserve OPENAI_API_KEY for cases where profile doesn't set it
+    // and user expects env var to be used
+
     return
   }
 

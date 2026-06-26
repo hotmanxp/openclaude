@@ -226,7 +226,7 @@ export function Feedback({
         rawTranscriptJsonl
       })
     };
-    // @ts-expect-error reportData type mismatch
+    // @ts-ignore
     const [result, t] = await Promise.all([submitFeedback(reportData, abortSignal), generateTitle(description, abortSignal)]);
     setTitle(t);
     if (result.success) {

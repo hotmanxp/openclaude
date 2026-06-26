@@ -280,7 +280,7 @@ function Install({
 export const install = {
   type: 'local-jsx' as const,
   name: 'install',
-  description: 'Install OpenCC native build',
+  description: '安装 OpenCC 原生构建',
   argumentHint: '[options]',
   async call(onDone: (result: string, options?: {
     display?: CommandResultDisplay;
