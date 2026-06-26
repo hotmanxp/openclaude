@@ -141,6 +141,24 @@ export async function buildRealSpawner(
           .join(', ') || '<none>'})`,
       }
     }
+    // Workflow tool override: when opts.tools is a string array,
+    // shadow agentDef with that allowlist for this call. We do NOT
+    // touch disallowedTools — the agent's own denylist still applies.
+    // Unknown tool names are dropped later by resolveAgentTools,
+    // matching the frontmatter's lenient semantics. Non-array values
+    // (e.g. a bare string) are silently ignored.
+    let effectiveAgentDef = agentDef
+    if (
+      opts &&
+      typeof opts === 'object' &&
+      'tools' in opts &&
+      Array.isArray((opts as { tools?: unknown }).tools)
+    ) {
+      effectiveAgentDef = {
+        ...agentDef,
+        tools: (opts as { tools: string[] }).tools,
+      }
+    }
     let report = ''
     // Token / tool usage accumulated across the streamed run.
     // - tokensUsed: sum of input_tokens + output_tokens from each
@@ -228,7 +246,7 @@ export async function buildRealSpawner(
       if (needsChdir) process.chdir(effectiveCwd)
       try {
         for await (const msg of runAgent({
-          agentDefinition: agentDef,
+          agentDefinition: effectiveAgentDef,
           promptMessages: [createUserMessage({ content: prompt })],
           // All `unknown` because runAgent is @ts-nocheck and accepts
           // the full ToolUseContext shape; we can't reconstruct the

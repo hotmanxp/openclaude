@@ -1,6 +1,22 @@
 import vm from 'node:vm'
 
 export type WorkflowApi = {
+  /**
+   * Run a subagent from within a workflow script.
+   *
+   * @param opts Supported fields:
+   *   - agentType?: string         // default 'general-purpose'
+   *   - model?: string             // override model for this call
+   *   - schema?: JSONSchema        // inject StructuredOutputTool (additive, not restrictive)
+   *   - isolation?: 'worktree'     // run in a git worktree
+   *   - resumeRunId?: string       // cache replay for resumable workflows
+   *   - onProgress?: (s) => void   // progress callback
+   *   - tools?: string[]           // allowlist that REPLACES agentDef.tools for
+   *                                 // this call. Unknown names silently dropped
+   *                                 // (matches resolveAgentTools lenient policy).
+   *                                 // [] = no tools. ['*'] = all tools.
+   *                                 // Non-array values ignored.
+   */
   agent: (prompt: string, opts?: Record<string, unknown>) => Promise<unknown>
   parallel: <T>(fns: Array<() => Promise<T>>) => Promise<T[]>
   pipeline: <T>(stages: Array<() => Promise<T>>) => Promise<T[]>
