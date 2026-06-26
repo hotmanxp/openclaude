@@ -156,6 +156,15 @@ result = await Bun.build({
       JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
     'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
+    // OpenCC is a downstream rebuild — never a development build of
+    // Claude Code. JSON.stringify(false) substitutes as the bare
+    // identifier `false`, which satisfies both the `=== 'true'` string
+    // compare sites (config.ts:1840, handleAutoUpdate.ts:101,
+    // updateCheck.ts:91, doctorDiagnostic.ts:99) and the truthy check
+    // site (doctorDiagnostic.ts:179). Previously omitted → 5 source
+    // references left unresolved in dist/cli.mjs → ReferenceError when
+    // /config or /doctor renders.
+    'MACRO.IS_DEVELOPMENT_BUILD': JSON.stringify(false),
   },
   plugins: [
     noTelemetryPlugin,
@@ -533,6 +542,7 @@ sdkResult = await Bun.build({
       JSON.stringify('https://github.com/hotmanxp/opencc/issues'),
     'MACRO.PACKAGE_URL': JSON.stringify('@zn-ai/opencc'),
     'MACRO.NATIVE_PACKAGE_URL': 'undefined',
+    'MACRO.IS_DEVELOPMENT_BUILD': JSON.stringify(false),
   },
   // External: everything TUI-related + native modules
   external: SDK_EXTERNALS,
