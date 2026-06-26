@@ -12,6 +12,7 @@ import { WORKFLOW_TOOL_NAME } from './constants.js'
 import { buildRealSpawner } from './realSpawner.js'
 import { getWorkflowRegistry } from './singleton.js'
 import { listWorkflowRuns } from './workflowRunStore.js'
+import { registerWorkflowInAppState } from '../../tasks/LocalWorkflowTask/lifecycle.js'
 
 /**
  * List all workflow runs in this session. Newest-first.
@@ -720,11 +721,14 @@ export const WorkflowTool = {
         setAppState?: (f: (prev: any) => any) => void
       })?.setAppState
       if (setAppState) {
-        // Lazy-import the helper (it pulls in SetAppState from Task.ts and
-        // we'd rather not load the whole Task type surface eagerly here).
-        const { registerWorkflowInAppState } = await import(
-          '../../tasks/LocalWorkflowTask/lifecycle.js'
-        )
+        // Static import — eliminates the async gap that let `task.start()`
+        // (fire-and-forget at line 710) flip `task.state.status` to
+        // 'completed' before registerWorkflowInAppState wrote the slice.
+        // See memory/team/feedback/feedback_workflow_monitor_no_agent_info.md
+        // Round 9 for the root-cause analysis. lifecycle.ts has no circular
+        // dependency on Task.ts (only imports `SetAppState` type + framework
+        // `registerTask`), so the previous lazy import's justification
+        // ("avoid loading Task.ts eagerly") doesn't apply.
         const unregister = registerWorkflowInAppState(task, setAppState)
         // Poll task.state.status every 1s. When the task reaches a
         // terminal state (completed/failed/killed), keep the row visible

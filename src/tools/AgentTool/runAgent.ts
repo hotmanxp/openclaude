@@ -469,7 +469,6 @@ export async function* runAgent({
       state.toolPermissionContext.mode !== 'bypassPermissions' &&
       state.toolPermissionContext.mode !== 'acceptEdits' &&
       !(
-        true &&
         state.toolPermissionContext.mode === 'auto'
       )
     ) {

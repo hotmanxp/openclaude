@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import type { PermissionUpdate } from '../../types/permissions.js'
 import { formatFileSize } from '../../utils/format.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -111,6 +112,13 @@ export const WebFetchTool = buildTool({
     return true
   },
   isReadOnly() {
+    return true
+  },
+  isEnabled() {
+    // 检查环境变量控制
+    if (!isEnvTruthy(process.env.CLAUDE_CODE_WEBTOOL_ENABEL)) {
+      return false
+    }
     return true
   },
   toAutoClassifierInput(input) {
