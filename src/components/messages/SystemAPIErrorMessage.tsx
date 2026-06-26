@@ -25,7 +25,7 @@ export function SystemAPIErrorMessage(t0) {
     retryInMs,
     maxRetries
   } = t1;
-  const hidden = true && retryAttempt < 4;
+  const hidden = retryAttempt < 4;
   const [countdownMs, setCountdownMs] = useState(0);
   const done = countdownMs >= retryInMs;
   let t2;

@@ -519,7 +519,7 @@ export function Config({
       const priorityOrder: PermissionMode[] = ['default', 'plan'];
       const allModes: readonly PermissionMode[] = true ? PERMISSION_MODES : EXTERNAL_PERMISSION_MODES;
       const excluded: PermissionMode[] = [];
-      if (true && !showAutoInDefaultModePicker) {
+      if (!showAutoInDefaultModePicker) {
         excluded.push('auto');
       }
       return [...priorityOrder, ...allModes.filter(m => !priorityOrder.includes(m) && !excluded.includes(m))];
@@ -561,7 +561,7 @@ export function Config({
         value: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
-  }, ...(true && showAutoInDefaultModePicker ? [{
+  }, ...(showAutoInDefaultModePicker ? [{
     id: 'useAutoModeDuringPlan',
     label: '计划期间使用自动模式',
     value: (settingsData as {

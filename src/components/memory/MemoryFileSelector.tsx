@@ -27,10 +27,9 @@ import { updateSettingsForSource } from '../../utils/settings/settings.js';
 import { Select } from '../CustomSelect/index.js';
 import { ListItem } from '../design-system/ListItem.js';
 import { getProjectMemoryPathForSelector } from './memoryFileSelectorPaths.js';
+import * as teamMemPaths from '../../memdir/teamMemPaths.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = true ? require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js') : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
+
 
 interface ExtendedMemoryFileInfo extends MemoryFileInfo {
   isNested?: boolean;
@@ -129,7 +128,7 @@ export function MemoryFileSelector(t0) {
       t1 = $[0];
     }
     folderOptions.push(t1);
-    if (true && teamMemPaths.isTeamMemoryEnabled()) {
+    if (teamMemPaths.isTeamMemoryEnabled()) {
       let t2;
       if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
         t2 = {
