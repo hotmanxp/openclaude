@@ -43,7 +43,7 @@ const handoff: Command = {
   type: 'prompt',
   name: 'handoff',
   description:
-    'Hand off the current session: generate a handoff document (when many messages) or resume the latest handoff (when few messages).',
+    '交接当前会话：消息多时生成交接文档，消息少时恢复最近的交接',
   argumentHint: '[--pick <filename>]',
   progressMessage: 'preparing handoff',
   contentLength: 0,

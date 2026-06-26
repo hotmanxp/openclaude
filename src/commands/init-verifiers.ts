@@ -5,8 +5,7 @@ import { BRAND_NAME } from '../constants.js'
 const command = {
   type: 'prompt',
   name: 'init-verifiers',
-  description:
-    'Create verifier skill(s) for automated verification of code changes',
+  description: '创建验证器技能以自动验证代码变更',
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your project and creating verifier skills',
   source: 'builtin',
