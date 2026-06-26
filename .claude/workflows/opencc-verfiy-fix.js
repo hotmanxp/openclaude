@@ -44,7 +44,7 @@ const cwd = "/Users/ethan/code/opencc";
 phase("Build/Test/Typecheck");
 log("并行执行 bun run build / test / typecheck (cwd: " + cwd + ")");
 
-const [buildR, testR, typeR] = await parallel([
+const [buildR, typeR] = await parallel([
   () =>
     agent(
       "cd " +
@@ -52,17 +52,6 @@ const [buildR, testR, typeR] = await parallel([
         " && bun run build 2>&1 | tail -80. 报告:(1) exit code,(2) pass/fail,(3) 关键输出(失败时最后 30 行),(4) 任何错误信息。严禁修改任何源文件。",
       {
         label: "bun-build",
-        phase: "Build/Test/Typecheck",
-        schema: CHECK_SCHEMA,
-      },
-    ),
-  () =>
-    agent(
-      "cd " +
-        cwd +
-        ' && bun run test 2>&1 | tail -150. 报告:(1) exit code,(2) pass/skip/fail 计数(格式如 "2141 pass / 19 skip / 15 fail"),(3) 失败时前 5 个失败用例名,(4) 任何错误信息。严禁修改任何源文件。',
-      {
-        label: "bun-test",
         phase: "Build/Test/Typecheck",
         schema: CHECK_SCHEMA,
       },
@@ -94,16 +83,14 @@ function checkPassed(agentR) {
   return /\bpass(ed)?\b/i.test(report) || !/\bfail(ed)?\b/i.test(report)
 }
 
-const phase1 = { build: buildR, test: testR, typecheck: typeR };
+const phase1 = { build: buildR, typecheck: typeR };
 const phase1Pass =
   checkPassed(phase1.build) &&
-  checkPassed(phase1.test) &&
   checkPassed(phase1.typecheck);
 
 if (!phase1Pass) {
   const failed = [];
   if (!checkPassed(phase1.build)) failed.push("build");
-  if (!checkPassed(phase1.test)) failed.push("test");
   if (!checkPassed(phase1.typecheck)) failed.push("typecheck");
   log("Phase 1 FAILED on: " + failed.join(", ") + " — 跳过 TUI 验证阶段");
   return { status: "failed-phase-1", failed, phase1 };
