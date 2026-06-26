@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { isCoordinatorMode } from '../coordinator/coordinatorMode.js'
 import partition from 'lodash-es/partition.js'
 import uniqBy from 'lodash-es/uniqBy.js'
@@ -64,10 +63,8 @@ export function mergeAndFilterTools(
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   const tools = [...builtIn.sort(byName), ...mcp.sort(byName)]
 
-  if (true) {
-    if (isCoordinatorMode()) {
-      return applyCoordinatorToolFilter(tools)
-    }
+ if (isCoordinatorMode()) {
+    return applyCoordinatorToolFilter(tools)
   }
 
   return tools

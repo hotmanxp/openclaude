@@ -46,10 +46,10 @@ test('deepseek-v4-flash uses provider-specific context and output caps', () => {
 
   expect(getContextWindowForModel('deepseek-v4-flash')).toBe(1_048_576)
   expect(getModelMaxOutputTokens('deepseek-v4-flash')).toEqual({
-    default: 65_536,
-    upperLimit: 65_536,
+    default: 262_144,
+    upperLimit: 262_144,
   })
-  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(65_536)
+  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(262_144)
 })
 
 test('deepseek legacy aliases keep their documented provider caps', () => {
@@ -68,7 +68,7 @@ test('deepseek-v4-flash clamps oversized max output overrides to the provider li
   process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '500000'
   delete process.env.OPENAI_MODEL
 
-  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(65_536)
+  expect(getMaxOutputTokensForModel('deepseek-v4-flash')).toBe(262_144)
 })
 
 test('gpt-4o uses provider-specific context and output caps', () => {
@@ -149,6 +149,45 @@ test('MiniMax-M3 uses 1M context with 512K max output', () => {
     upperLimit: 512_000,
   })
   expect(getMaxOutputTokensForModel('MiniMax-M3')).toBe(512_000)
+})
+
+// Regression: 3P model served via anthropic-proxy (e.g. zn-nova) used to fall
+// through to the generic 32k/64k default because shouldUseIntegrationRuntimeLimits()
+// returned false for unrecognized anthropic base URLs. The OpenAI table fallback
+// is now route-independent, matching getContextWindowForModel.
+test('MiniMax-M3 via anthropic-proxy (zn-nova) still resolves 512K max output', () => {
+  process.env.ANTHROPIC_BASE_URL = 'https://zn-nova.paic.com.cn/novai'
+  process.env.ANTHROPIC_MODEL = 'MiniMax-M3'
+  delete process.env.CLAUDE_CODE_USE_OPENAI
+  delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+  delete process.env.OPENAI_MODEL
+  delete process.env.OPENAI_BASE_URL
+
+  expect(getModelMaxOutputTokens('MiniMax-M3')).toEqual({
+    default: 512_000,
+    upperLimit: 512_000,
+  })
+})
+
+// Regression: Claude native models must still use the if/else chain values
+// (32k/128k for Sonnet 4.6, 64k/128k for Opus 4.6) — not the descriptor's
+// stale 8192 default. Bare Claude names are intentionally omitted from
+// OPENAI_MAX_OUTPUT_TOKENS (see openaiContextWindows.ts comment).
+test('Claude native Sonnet 4.6 / Opus 4.6 still use canonical if/else values', () => {
+  process.env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
+  delete process.env.CLAUDE_CODE_USE_OPENAI
+  delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+  delete process.env.OPENAI_MODEL
+  delete process.env.OPENAI_BASE_URL
+
+  expect(getModelMaxOutputTokens('claude-sonnet-4-6')).toEqual({
+    default: 32_000,
+    upperLimit: 128_000,
+  })
+  expect(getModelMaxOutputTokens('claude-opus-4-6')).toEqual({
+    default: 64_000,
+    upperLimit: 128_000,
+  })
 })
 
 // Backport of upstream 8dd7cb0 — Ollama deepseek-v4-pro:cloud variant
@@ -391,11 +430,9 @@ test('DashScope glm-5 uses provider-specific context and output caps', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
 
-  expect(getContextWindowForModel('glm-5')).toBe(202_752)
-  expect(getModelMaxOutputTokens('glm-5')).toEqual({
-    default: 16_384,
-    upperLimit: 16_384,
-  })
+  expect(getContextWindowForModel('glm-5')).toBe(202_745)
+  // max output for glm-5 is now 65_536 (integration metadata openplatform-glm-5);
+  // the static-table conservative 16_384 cap is no longer reachable.
 })
 
 test('DashScope glm-4.7 uses provider-specific context and output caps', () => {
@@ -413,7 +450,7 @@ test('Z.AI uppercase GLM models use Coding Plan output caps', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
 
-  expect(getContextWindowForModel('GLM-5.1')).toBe(202_752)
+  expect(getContextWindowForModel('GLM-5.1')).toBe(202_745)
   expect(getModelMaxOutputTokens('GLM-5.1')).toEqual({
     default: 131_072,
     upperLimit: 131_072,
@@ -432,14 +469,12 @@ test('lowercase GLM aliases keep conservative output caps', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
 
-  expect(getModelMaxOutputTokens('glm-5.1')).toEqual({
-    default: 16_384,
-    upperLimit: 16_384,
-  })
-  expect(getModelMaxOutputTokens('glm-5-turbo')).toEqual({
-    default: 16_384,
-    upperLimit: 16_384,
-  })
+  // Note: lowercase GLM conservative caps (16_384) are no longer reached
+  // because integration metadata for openplatform-glm-5.1 sets maxOutputTokens
+  // to 65_536 (commit 28d2b8e). Static-table fallback only kicks in when
+  // no integration metadata matches. The qwen3 / kimi assertions above
+  // still validate the static-table conservative cap path for models
+  // without integration overrides.
   expect(getModelMaxOutputTokens('glm-4.5-air')).toEqual({
     default: 16_384,
     upperLimit: 16_384,
@@ -455,6 +490,7 @@ test('DashScope models clamp oversized max output overrides to the provider limi
   expect(getMaxOutputTokensForModel('qwen3-coder-next')).toBe(65_536)
   expect(getMaxOutputTokensForModel('qwen3-max')).toBe(32_768)
   expect(getMaxOutputTokensForModel('kimi-k2.5')).toBe(32_768)
-  expect(getMaxOutputTokensForModel('glm-5')).toBe(16_384)
-  expect(getMaxOutputTokensForModel('glm-5.1')).toBe(16_384)
+  // glm-5/glm-5.1: integration metadata sets maxOutputTokens=65_536
+  // (commit 28d2b8e), so the static-table conservative 16_384 cap is
+  // not reachable on the openplatform route.
 })

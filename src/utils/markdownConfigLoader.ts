@@ -12,7 +12,7 @@ import { getProjectRoot } from '../bootstrap/state.js'
 import { createCombinedAbortSignal } from './combinedAbortSignal.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
-import { isFsInaccessible } from './errors.js'
+import { errorMessage, isFsInaccessible } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
 import { parseFrontmatter } from './frontmatterParser.js'
@@ -618,7 +618,7 @@ async function loadMarkdownFiles(dir: string): Promise<
 > {
   // File search strategy:
   // - Default: ripgrep (faster, battle-tested)
-  // - Fallback: native Node.js (when CLAUDE_CODE_USE_NATIVE_FILE_SEARCH is set)
+  // - Fallback: native Node.js (when ripgrep is unavailable or fails)
   //
   // Why both? Ripgrep has poor startup performance in native builds.
   const useNative = isEnvTruthy(process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH)
@@ -626,22 +626,28 @@ async function loadMarkdownFiles(dir: string): Promise<
     timeoutMs: 3000,
   })
   let files: string[]
-  try {
-    files = useNative
-      ? await findMarkdownFilesNative(dir, signal)
-      : await ripGrep(
-          ['--files', '--hidden', '--follow', '--no-ignore', '--glob', '*.md'],
-          dir,
-          signal,
-        )
-  } catch (e: unknown) {
-    // Handle missing/inaccessible dir directly instead of pre-checking
-    // existence (TOCTOU). findMarkdownFilesNative already catches internally;
-    // ripGrep rejects on inaccessible target paths.
-    if (isFsInaccessible(e)) return []
-    throw e
-  } finally {
-    cleanup()
+
+  if (useNative) {
+    try {
+      files = await findMarkdownFilesNative(dir, signal)
+    } catch (e: unknown) {
+      if (isFsInaccessible(e)) return []
+      throw e
+    }
+  } else {
+    try {
+      files = await ripGrep(
+        ['--files', '--hidden', '--follow', '--no-ignore', '--glob', '*.md'],
+        dir,
+        signal,
+      )
+    } catch (e: unknown) {
+      // Fallback to native search when ripgrep is unavailable or fails
+      logForDebugging(
+        `ripgrep error (${errorMessage(e)}), falling back to native file search`,
+      )
+      files = await findMarkdownFilesNative(dir, signal)
+    }
   }
 
   const maxFileSize = getMaxMarkdownFileSizeBytes()

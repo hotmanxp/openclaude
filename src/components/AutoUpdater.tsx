@@ -4,14 +4,21 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '../ink.js';
-import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallStatus, installGlobalPackage, shouldSkipVersion } from '../utils/autoUpdater.js';
+import { type AutoUpdaterResult } from '../utils/autoUpdater.js';
+import {
+  checkForUpdates as checkForUpdatesFromModule,
+  handleAutoUpdate,
+  isUpdateInProgress,
+  updateEventEmitter,
+  UPDATE_EVENTS,
+} from '../utils/autoUpgrade.js';
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
-import { installOrUpdateClaudePackage, localInstallationExists } from '../utils/localInstaller.js';
-import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
-import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
+import { gt, gte } from '../utils/semver.js';
+import { getMaxVersion } from '../utils/autoUpdater.js';
+
 type Props = {
   isUpdating: boolean;
   onChangeIsUpdating: (isUpdating: boolean) => void;
@@ -20,6 +27,7 @@ type Props = {
   showSuccessMessage: boolean;
   verbose: boolean;
 };
+
 export function AutoUpdater({
   isUpdating,
   onChangeIsUpdating,
@@ -32,34 +40,74 @@ export function AutoUpdater({
     global?: string | null;
     latest?: string | null;
   }>({});
-  const [hasLocalInstall, setHasLocalInstall] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'success' | 'failed'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const updateSemver = useUpdateNotification(autoUpdaterResult?.version);
-  useEffect(() => {
-    void localInstallationExists().then(setHasLocalInstall);
-  }, []);
 
-  // Track latest isUpdating value in a ref so the memoized checkForUpdates
-  // callback always sees the current value. Without this, the 30-minute
-  // interval fires with a stale closure where isUpdating is false, allowing
-  // a concurrent installGlobalPackage() to run while one is already in
-  // progress.
+  // Track latest isUpdating value in a ref
   const isUpdatingRef = useRef(isUpdating);
   isUpdatingRef.current = isUpdating;
-  const checkForUpdates = React.useCallback(async () => {
+
+  // Set up event listeners for update events
+  useEffect(() => {
+    const handleUpdateReceived = () => {
+      setUpdateStatus('available');
+    };
+
+    const handleUpdateSuccess = () => {
+      setUpdateStatus('success');
+      onChangeIsUpdating(false);
+    };
+
+    const handleUpdateFailed = (data: { message: string }) => {
+      setUpdateStatus('failed');
+      setErrorMessage(data.message);
+      onChangeIsUpdating(false);
+    };
+
+    const handleUpdateInfo = (data: { message: string }) => {
+      logForDebugging('AutoUpdater: ' + data.message);
+    };
+
+    updateEventEmitter.on(UPDATE_EVENTS.UPDATE_RECEIVED, handleUpdateReceived);
+    updateEventEmitter.on(UPDATE_EVENTS.UPDATE_SUCCESS, handleUpdateSuccess);
+    updateEventEmitter.on(UPDATE_EVENTS.UPDATE_FAILED, handleUpdateFailed);
+    updateEventEmitter.on(UPDATE_EVENTS.UPDATE_INFO, handleUpdateInfo);
+
+    return () => {
+      updateEventEmitter.off(UPDATE_EVENTS.UPDATE_RECEIVED, handleUpdateReceived);
+      updateEventEmitter.off(UPDATE_EVENTS.UPDATE_SUCCESS, handleUpdateSuccess);
+      updateEventEmitter.off(UPDATE_EVENTS.UPDATE_FAILED, handleUpdateFailed);
+      updateEventEmitter.off(UPDATE_EVENTS.UPDATE_INFO, handleUpdateInfo);
+    };
+  }, [onChangeIsUpdating]);
+
+  const performAutoUpdateCheck = React.useCallback(async () => {
     if (isUpdatingRef.current) {
       return;
     }
+
     // @ts-ignore - build-time constant check
     if ("production" === 'test' || "production" === 'development') {
       logForDebugging('AutoUpdater: Skipping update check in test/dev environment');
       return;
     }
+
     const currentVersion = MACRO.VERSION;
     const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest';
-    let latestVersion = await getLatestVersion(channel);
     const isDisabled = isAutoUpdaterDisabled();
 
     // Check if max version is set (server-side kill switch for auto-updates)
+    let latestVersion: string | null = null;
+    try {
+      const updateInfo = await checkForUpdatesFromModule(MACRO.PACKAGE_URL, currentVersion);
+      if (updateInfo?.update?.latest) {
+        latestVersion = updateInfo.update.latest;
+      }
+    } catch (e) {
+      logForDebugging('AutoUpdater: Failed to check for updates: ' + e);
+    }
+
     const maxVersion = await getMaxVersion();
     if (maxVersion && latestVersion && gt(latestVersion, maxVersion)) {
       logForDebugging(`AutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latestVersion} to ${maxVersion}`);
@@ -73,22 +121,17 @@ export function AutoUpdater({
       }
       latestVersion = maxVersion;
     }
+
     setVersions({
       global: currentVersion,
       latest: latestVersion
     });
 
-    // Check if update needed and perform update
-    if (!isDisabled && currentVersion && latestVersion && !gte(currentVersion, latestVersion) && !shouldSkipVersion(latestVersion)) {
+    // Check if update needed and trigger update
+    if (!isDisabled && currentVersion && latestVersion && !gte(currentVersion, latestVersion)) {
       const startTime = Date.now();
       onChangeIsUpdating(true);
-
-      // Remove native installer symlink since we're using JS-based updates
-      // But only if user hasn't migrated to native installation
-      const config = getGlobalConfig();
-      if (config.installMethod !== 'native') {
-        await removeInstalledSymlink();
-      }
+      setUpdateStatus('available');
 
       // Detect actual running installation type
       const installationType = await getCurrentInstallationType();
@@ -98,101 +141,71 @@ export function AutoUpdater({
       if (installationType === 'development') {
         logForDebugging('AutoUpdater: Cannot auto-update development build');
         onChangeIsUpdating(false);
+        setUpdateStatus('idle');
         return;
       }
 
-      // Choose the appropriate update method based on what's actually running
-      let installStatus: InstallStatus;
-      let updateMethod: 'local' | 'global';
-      if (installationType === 'npm-local') {
-        // Use local update for local installations
-        logForDebugging('AutoUpdater: Using local update method');
-        updateMethod = 'local';
-        installStatus = await installOrUpdateClaudePackage(channel);
-      } else if (installationType === 'npm-global') {
-        // Use global update for global installations
-        logForDebugging('AutoUpdater: Using global update method');
-        updateMethod = 'global';
-        installStatus = await installGlobalPackage();
-      } else if (installationType === 'native') {
-        // This shouldn't happen - native should use NativeAutoUpdater
-        logForDebugging('AutoUpdater: Unexpected native installation in non-native updater');
-        onChangeIsUpdating(false);
-        return;
-      } else {
-        // Fallback to config-based detection for unknown types
-        logForDebugging(`AutoUpdater: Unknown installation type, falling back to config`);
-        const isMigrated = config.installMethod === 'local';
-        updateMethod = isMigrated ? 'local' : 'global';
-        if (isMigrated) {
-          installStatus = await installOrUpdateClaudePackage(channel);
-        } else {
-          installStatus = await installGlobalPackage();
-        }
-      }
-      onChangeIsUpdating(false);
-      if (installStatus === 'success') {
-        logEvent('tengu_auto_updater_success', {
-          fromVersion: currentVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          toVersion: latestVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          durationMs: Date.now() - startTime,
-          wasMigrated: updateMethod === 'local',
-          installationType: installationType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-      } else {
-        logEvent('tengu_auto_updater_fail', {
-          fromVersion: currentVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          attemptedVersion: latestVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          status: installStatus as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          durationMs: Date.now() - startTime,
-          wasMigrated: updateMethod === 'local',
-          installationType: installationType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-      }
-      onAutoUpdaterResult({
-        version: latestVersion,
-        status: installStatus
-      });
+      // Use handleAutoUpdate which spawns a detached process
+      const settings = getInitialSettings();
+      handleAutoUpdate(
+        {
+          message: `OpenCC update available! ${currentVersion} → ${latestVersion}`,
+          update: {
+            latest: latestVersion,
+            current: currentVersion,
+            name: MACRO.PACKAGE_URL
+          }
+        },
+        settings as any,
+        process.cwd(),
+        false
+      );
+
+      // Note: handleAutoUpdate is non-blocking, status updates come via events
     }
-    // isUpdating intentionally omitted from deps; we read isUpdatingRef
-    // instead so the guard is always current without changing callback
-    // identity (which would re-trigger the initial-check useEffect below).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // biome-ignore lint/correctness/useExhaustiveDependencies: isUpdating read via ref
-  }, [onAutoUpdaterResult]);
+  }, [onChangeIsUpdating]);
 
   // Initial check
   useEffect(() => {
-    void checkForUpdates();
-  }, [checkForUpdates]);
+    void performAutoUpdateCheck();
+  }, [performAutoUpdateCheck]);
 
   // Check every 30 minutes
-  useInterval(checkForUpdates, 30 * 60 * 1000);
+  useInterval(performAutoUpdateCheck, 30 * 60 * 1000);
+
   if (!autoUpdaterResult?.version && (!versions.global || !versions.latest)) {
     return null;
   }
+
   if (!autoUpdaterResult?.version && !isUpdating) {
     return null;
   }
-  return <Box flexDirection="row" gap={1}>
-      {verbose && <Text dimColor wrap="truncate">
-          globalVersion: {versions.global} &middot; latestVersion:{' '}
-          {versions.latest}
-        </Text>}
-      {isUpdating ? <>
-          <Box>
-            <Text color="text" dimColor wrap="truncate">
-              Auto-updating…
-            </Text>
-          </Box>
-        </> : autoUpdaterResult?.status === 'success' && showSuccessMessage && updateSemver && <Text color="success" wrap="truncate">
-            ✓ Update installed · Restart to apply
-          </Text>}
-      {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && <Text color="error" wrap="truncate">
-          ✗ Auto-update failed &middot; Try <Text bold>opencc doctor</Text> or{' '}
-          <Text bold>
-            {hasLocalInstall ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}` : `npm i -g ${MACRO.PACKAGE_URL}`}
+
+  return (
+    <Box flexDirection="row" gap={1}>
+      {verbose && (
+        <Text dimColor wrap="truncate">
+          globalVersion: {versions.global} &middot; latestVersion: {versions.latest}
+        </Text>
+      )}
+      {isUpdating ? (
+        <Box>
+          <Text color="text" dimColor wrap="truncate">
+            Auto-updating…
           </Text>
-        </Text>}
-    </Box>;
+        </Box>
+      ) : autoUpdaterResult?.status === 'success' && showSuccessMessage && updateSemver ? (
+        <Text color="success" wrap="truncate">
+          ✓ Update installed · Restart to apply
+        </Text>
+      ) : autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions' ? (
+        <Text color="error" wrap="truncate">
+          ✗ Auto-update failed · Try <Text bold>opencc doctor</Text> or{' '}
+          <Text bold>
+            {`npm i -g ${MACRO.PACKAGE_URL}`}
+          </Text>
+        </Text>
+      ) : null}
+    </Box>
+  );
 }

@@ -9,6 +9,9 @@ import {
   validateProviderEnvOrExit,
 } from '../utils/providerValidation.js'
 
+import { applyActiveProviderProfileFromConfig } from '../utils/providerProfiles.js'
+  
+
 // OpenCC: polyfill globalThis.File for Node < 20.
 // undici v7 references `File` at module evaluation time (webidl type
 // assertions). Node 18 lacks the global, causing a ReferenceError inside
@@ -130,6 +133,9 @@ async function main(): Promise<void> {
       applyProfileEnvToProcessEnv(process.env, startupEnv)
     }
   }
+
+
+  applyActiveProviderProfileFromConfig(undefined, { force: true })
 
   await validateProviderEnvOrExit()
 

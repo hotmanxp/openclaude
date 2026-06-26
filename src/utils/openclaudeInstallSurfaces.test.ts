@@ -50,7 +50,7 @@ test.skip('install command displays opencc.exe path on Windows', async () => {
 test.skip('cleanupNpmInstallations removes both opencc and legacy claude local install dirs', async () => {
   const removedPaths: string[] = []
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@hotmanxp/opencc',
+    PACKAGE_URL: '@zn-ai/opencc',
   }
 
   mock.module('fs/promises', () => ({

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { relative } from 'path'
 import {
   getOriginalCwd,
@@ -728,7 +727,7 @@ export function initialPermissionModeFromCLI({
   }
   if (permissionModeCli) {
     const parsedMode = permissionModeFromString(permissionModeCli)
-    if (true && parsedMode === 'auto') {
+    if (parsedMode === 'auto') {
       if (autoModeCircuitBrokenSync) {
         logForDebugging(
           'auto mode circuit breaker active (cached) — falling back to default',
@@ -759,7 +758,7 @@ export function initialPermissionModeFromCLI({
       })
     }
     // auto from settings requires the same gate check as from CLI
-    else if (true && settingsMode === 'auto') {
+    else if (settingsMode === 'auto') {
       if (autoModeCircuitBrokenSync) {
         logForDebugging(
           'auto mode circuit breaker active (cached) — falling back to default',
@@ -804,7 +803,7 @@ export function initialPermissionModeFromCLI({
     result = { mode: 'default', notification }
   }
 
-  if (true && result.mode === 'auto') {
+  if (result.mode === 'auto') {
     autoModeStateModule?.setAutoModeActive(true)
   }
 
@@ -971,7 +970,7 @@ export async function initializeToolPermissionContext({
   // Dangerous permissions (like Bash(*), Bash(python:*), PowerShell(iex:*)) would auto-allow
   // before the classifier can evaluate them, defeating the purpose of safer YOLO mode
   let dangerousPermissions: DangerousPermissionInfo[] = []
-  if (true && permissionMode === 'auto') {
+  if (permissionMode === 'auto') {
     dangerousPermissions = findDangerousClassifierPermissions(
       rulesFromDisk,
       parsedAllowedToolsCli,

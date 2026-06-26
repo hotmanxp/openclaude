@@ -4,7 +4,7 @@ import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 export const requestSize = {
   type: 'local-jsx',
   name: 'request-size',
-  description: 'Show estimated request context load and top contributors',
+  description: '显示请求上下文负载估算和主要贡献者',
   isEnabled: () => !getIsNonInteractiveSession(),
   load: () => import('./request-size.js'),
 } satisfies Command
@@ -12,7 +12,7 @@ export const requestSize = {
 export const requestSizeNonInteractive = {
   type: 'local',
   name: 'request-size',
-  description: 'Show estimated request context load and top contributors',
+  description: '显示请求上下文负载估算和主要贡献者',
   supportsNonInteractive: true,
   get isHidden() {
     return !getIsNonInteractiveSession()

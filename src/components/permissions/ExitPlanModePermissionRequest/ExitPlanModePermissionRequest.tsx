@@ -349,7 +349,7 @@ export function ExitPlanModePermissionRequest({
         mode = 'bypassPermissions';
       } else if (value === 'yes-accept-edits') {
         mode = 'acceptEdits';
-      } else if (true && value === 'yes-auto-clear-context' && isAutoModeGateEnabled()) {
+      } else if (value === 'yes-auto-clear-context' && isAutoModeGateEnabled()) {
         // REPL's processInitialMessage handles stripDangerousPermissions + mode,
         // but does NOT set autoModeActive. Gate-off falls through to 'default'.
         mode = 'auto';
@@ -402,7 +402,7 @@ export function ExitPlanModePermissionRequest({
     // Handle auto keep-context option — needs special handling because
     // buildPermissionUpdates maps auto to 'default' via toExternalPermissionMode.
     // We set the mode directly via setAppState and sync the bootstrap state.
-    if (true && value === 'yes-resume-auto-mode' && isAutoModeGateEnabled()) {
+    if (value === 'yes-resume-auto-mode' && isAutoModeGateEnabled()) {
       logEvent('tengu_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -698,7 +698,7 @@ export function buildPlanApprovalOptions({
   const options: OptionWithDescription<ResponseValue>[] = [];
   const usedLabel = usedPercent !== null ? ` (${usedPercent}% used)` : '';
   if (showClearContext) {
-    if (true && isAutoModeAvailable) {
+    if (isAutoModeAvailable) {
       options.push({
         label: `Yes, clear context${usedLabel} and use auto mode`,
         value: 'yes-auto-clear-context'
@@ -717,7 +717,7 @@ export function buildPlanApprovalOptions({
   }
 
   // Slot 2: keep-context with elevated mode (same priority: auto > bypass > edits).
-  if (true && isAutoModeAvailable) {
+  if (isAutoModeAvailable) {
     options.push({
       label: 'Yes, and use auto mode',
       value: 'yes-resume-auto-mode'

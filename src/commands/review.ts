@@ -50,7 +50,7 @@ const review: Command = {
 const ultrareview: Command = {
   type: 'local-jsx',
   name: 'ultrareview',
-  description: `~10–20 min · Finds and verifies bugs in your branch. Runs in ${BRAND_NAME} on the web. See ${CCR_TERMS_URL}`,
+  description: `~10–20 分钟 · 在你的分支中查找并验证 bug。在 ${BRAND_NAME} 网页上运行。参见 ${CCR_TERMS_URL}`,
   isEnabled: () => isUltrareviewEnabled(),
   load: () => import('./review/ultrareviewCommand.js'),
 }

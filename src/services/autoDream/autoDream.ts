@@ -247,13 +247,19 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
           verb: 'Improved',
         })
       }
+      const totalUsage = result.totalUsage ?? {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      }
       logForDebugging(
-        `[autoDream] completed — cache: read=${result.totalUsage.cache_read_input_tokens} created=${result.totalUsage.cache_creation_input_tokens}`,
+        `[autoDream] completed — cache: read=${totalUsage.cache_read_input_tokens} created=${totalUsage.cache_creation_input_tokens}`,
       )
       logEvent('tengu_auto_dream_completed', {
-        cache_read: result.totalUsage.cache_read_input_tokens,
-        cache_created: result.totalUsage.cache_creation_input_tokens,
-        output: result.totalUsage.output_tokens,
+        cache_read: totalUsage.cache_read_input_tokens,
+        cache_created: totalUsage.cache_creation_input_tokens,
+        output: totalUsage.output_tokens,
         sessions_reviewed: sessionIds.length,
       })
     } catch (e: unknown) {

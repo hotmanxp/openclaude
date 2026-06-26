@@ -32,11 +32,9 @@ import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './theme.js'
+import * as teamMemPaths from '../memdir/teamMemPaths.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = true
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
+
 const ccrAutoConnect = feature('CCR_AUTO_CONNECT')
   ? (require('../bridge/bridgeEnabled.js') as typeof import('../bridge/bridgeEnabled.js'))
   : null
@@ -707,7 +705,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     copyFullResponse: false,
     providerProfiles: [],
     openaiAdditionalModelOptionsCacheByProfile: {},
-    knowledgeGraphEnabled: false,
+    knowledgeGraphEnabled: isEnvTruthy(process.env.CLAUDE_CODE_USE_KNOWLEDGE),
   }
   return config
 }
@@ -1839,7 +1837,7 @@ export function formatAutoUpdaterDisabledReason(
 }
 
 export function getAutoUpdaterDisabledReason(): AutoUpdaterDisabledReason | null {
-  if (process.env.NODE_ENV === 'development') {
+  if (MACRO.IS_DEVELOPMENT_BUILD === 'true') {
     return { type: 'development' }
   }
   if (isEnvTruthy(process.env.DISABLE_AUTOUPDATER)) {
@@ -1899,7 +1897,7 @@ export function getMemoryPath(memoryType: MemoryType): string {
   }
   // TeamMem is only a valid MemoryType when true is true
   if (true) {
-    return teamMemPaths!.getTeamMemEntrypoint()
+    return teamMemPaths.getTeamMemEntrypoint()
   }
   return '' // unreachable in external builds where TeamMem is not in MemoryType
 }

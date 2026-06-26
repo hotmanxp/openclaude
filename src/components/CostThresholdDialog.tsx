@@ -22,7 +22,6 @@ function getProviderLabel(): string {
       return 'Azure Foundry'
     case 'openai':
       return 'OpenAI-compatible API'
-    // @ts-expect-error provider type mismatch
     case 'gemini':
       return 'Gemini API'
     default:

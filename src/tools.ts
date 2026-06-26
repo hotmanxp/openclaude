@@ -271,10 +271,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
     // below which also hides REPL_ONLY_TOOLS when REPL is enabled.
     if (isReplModeEnabled() && REPLTool) {
       const replSimple: Tool[] = [REPLTool]
-      if (
-        true &&
-        isCoordinatorMode()
-      ) {
+      if (isCoordinatorMode()) {
         const sendMessageTool = getSendMessageTool()
         if (sendMessageTool) replSimple.push(TaskStopTool, sendMessageTool)
       }
@@ -284,10 +281,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
     // When coordinator mode is also active, include AgentTool and TaskStopTool
     // so the coordinator gets Task+TaskStop (via useMergedTools filtering) and
     // workers get Bash/Read/Edit (via filterToolsForAgent filtering).
-    if (
-      true &&
-      isCoordinatorMode()
-    ) {
+    if (isCoordinatorMode()) {
       simpleTools.push(AgentTool, TaskStopTool)
       const sendMessageTool = getSendMessageTool()
       if (sendMessageTool) simpleTools.push(sendMessageTool)

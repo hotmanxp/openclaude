@@ -16,7 +16,7 @@ const cacheStats = {
   type: 'local',
   name: 'cache-stats',
   description:
-    'Show per-turn and session cache hit/miss stats (works across all providers)',
+    '显示每轮和会话缓存命中/未命中统计（跨所有 Provider 生效）',
   supportsNonInteractive: true,
   load: () => import('./cacheStats.js'),
 } satisfies Command

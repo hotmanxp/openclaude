@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import z from 'zod/v4'
 import { PAUSE_ICON } from '../../constants/figures.js'
 // Types extracted to src/types/permissions.ts to break import cycles
@@ -65,7 +64,7 @@ const PERMISSION_MODE_CONFIG: Partial<
   },
   bypassPermissions: {
     title: 'Bypass Permissions',
-    shortTitle: 'Bypass',
+    shortTitle: 'bypass',
     symbol: '▶▶',
     color: 'error',
     external: 'bypassPermissions',

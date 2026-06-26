@@ -91,9 +91,11 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'turndown',
   'xss',
   // Data utilities
+  'acorn',
   'ajv',
   'auto-bind',
   'diff',
+  'jsonrepair',
   'fflate',
   'fuse.js',
   'ignore',
@@ -115,6 +117,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'duck-duck-scrape',
   'execa',
   'https-proxy-agent',
+  'latest-version',
   'tree-kill',
   'undici',
   'ws',
@@ -129,8 +132,6 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   '@modelcontextprotocol/sdk',
   // Schema validation
   'zod',
-  // Feature flags / analytics
-  '@growthbook/growthbook',
   // gRPC (bundled into CLI, not external)
   '@grpc/grpc-js',
   '@grpc/proto-loader',

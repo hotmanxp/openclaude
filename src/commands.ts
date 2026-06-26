@@ -51,6 +51,7 @@ import session from './commands/session/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
+import setTicket from './commands/setTicket/index.js'
 import tasks from './commands/tasks/index.js'
 import background from './commands/background/index.js'
 import teleport from './commands/teleport/index.js'
@@ -189,7 +190,7 @@ import effort from './commands/effort/index.js'
 const usageReport: Command = {
   type: 'prompt',
   name: 'insights',
-  description: 'Generate a report analyzing your Open CC sessions',
+  description: '生成分析你的OpenCC会话的报告',
   contentLength: 0,
   progressMessage: 'analyzing your sessions',
   source: 'builtin',
@@ -202,8 +203,7 @@ const usageReport: Command = {
 import oauthRefresh from './commands/oauth-refresh/index.js'
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { hasCodegraphDir, hasCodegraphIndex } from './utils/codegraph.js'
 import {
   type Command,
   getCommandName,
@@ -255,9 +255,6 @@ export const INTERNAL_ONLY_COMMANDS = [
 ].filter(Boolean)
 
 const codegraph = (cwd: string): Command => {
-  const codegraphDir = join(cwd, '.codegraph')
-  const dbPath = join(codegraphDir, 'codegraph.db')
-
   return {
     type: 'prompt',
     name: 'codegraph',
@@ -268,9 +265,9 @@ const codegraph = (cwd: string): Command => {
     progressMessage: '查询中',
     contentLength: 0,
     isHidden: false,
-    isEnabled: () => existsSync(codegraphDir),
+    isEnabled: () => hasCodegraphDir(cwd),
     async getPromptForCommand(args, _context) {
-      if (!existsSync(dbPath)) {
+      if (!hasCodegraphIndex(cwd)) {
         // .codegraph dir exists but no db — prompt user to initialize
         return [{
           type: 'text',
@@ -356,6 +353,7 @@ const COMMANDS = memoize((): Command[] => [
   status,
   statusline,
   stickers,
+  setTicket,
   tag,
   theme,
   feedback,

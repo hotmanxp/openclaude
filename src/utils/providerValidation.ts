@@ -1,3 +1,18 @@
+function isOpenAIProvider(env: NodeJS.ProcessEnv): boolean {
+  if (!isEnvTruthy(env.CLAUDE_CODE_USE_OPENAI)) {
+    return false
+  }
+
+  // If CLAUDE_CODE_USE_OPENAI was set by provider profile (not explicitly in shell),
+  // skip validation since config may use other auth methods (auth header, etc.)
+  if (env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED === '1') {
+    return false
+  }
+
+  return true
+
+}
+
 function isEnvTruthy(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
@@ -7,9 +22,7 @@ function isEnvTruthy(value: string | undefined): boolean {
 export async function getProviderValidationError(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
-  const useOpenAI = isEnvTruthy(env.CLAUDE_CODE_USE_OPENAI)
-
-  if (!useOpenAI) {
+  if (!isOpenAIProvider(env)) {
     return null
   }
 
@@ -70,3 +83,4 @@ export async function validateProviderEnvForStartupOrExit(
     `Warning: provider configuration is incomplete.\n${error}\nOpenCC will continue starting so you can run /provider and repair the saved provider settings.`,
   )
 }
+

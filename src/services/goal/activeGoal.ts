@@ -24,5 +24,6 @@ export function createActiveGoal(
 }
 
 export function incrementIteration(goal: ActiveGoal): ActiveGoal {
+  if (!goal) return createActiveGoal('', 0)
   return { ...goal, iterations: goal.iterations + 1 }
 }

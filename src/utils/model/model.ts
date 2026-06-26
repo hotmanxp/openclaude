@@ -36,9 +36,9 @@ export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
   if (process.env.ANTHROPIC_SMALL_FAST_MODEL) return process.env.ANTHROPIC_SMALL_FAST_MODEL
-  // For OpenAI provider, use OPENAI_MODEL or a sensible default
+  // For OpenAI provider, prefer OPENAI_SMALL_FAST_MODEL, then OPENAI_MODEL, then a sensible default
   if (getAPIProvider() === 'openai') {
-    return process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    return process.env.OPENAI_SMALL_FAST_MODEL || process.env.OPENAI_MODEL || 'zhiniao-MiniMax-M2.7-highspeed'
   }
   return getDefaultHaikuModel()
 }
@@ -147,7 +147,7 @@ export function getDefaultHaikuModel(): ModelName {
   }
   // OpenAI provider
   if (getAPIProvider() === 'openai') {
-    return process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    return process.env.OPENAI_MODEL || 'zhiniao-MiniMax-M2.7-highspeed'
   }
   // Haiku 4.5 is available on first-party
   return getModelStrings().haiku45

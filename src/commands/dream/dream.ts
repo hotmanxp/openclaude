@@ -13,8 +13,7 @@ import {
 const command = {
   type: 'prompt',
   name: 'dream',
-  description:
-    'Run memory consolidation — synthesize recent sessions into durable memories',
+  description: '运行记忆整合 — 将最近的会话合成为持久化记忆',
   isEnabled: () => isAutoMemoryEnabled(),
   progressMessage: 'consolidating memories',
   contentLength: 0,

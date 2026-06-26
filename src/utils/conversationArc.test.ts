@@ -61,7 +61,7 @@ describe('conversationArc', () => {
       resetGlobalGraph()
       initializeArc()
       const e1 = await addEntity('system', 'RHEL-TEST', { os: 'linux' })
-      const e2 = await addEntity('feature', 'OpenClaude-TEST')
+      const e2 = await addEntity('feature', 'OpenCC-TEST')
       await addRelation(e2.id, e1.id, 'runs_on')
 
       const summary = await getArcSummary()

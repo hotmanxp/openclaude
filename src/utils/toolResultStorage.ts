@@ -1045,7 +1045,7 @@ export function reconstructContentReplacementState(
  *
  * Kept out of AgentTool.tsx — that file is at the feature() DCE complexity
  * cliff and cannot tolerate even +1 net source line without silently
- * breaking true eval in tests.
+ * breaking feature('TRANSCRIPT_CLASSIFIER') eval in tests.
  */
 export function reconstructForSubagentResume(
   parentState: ContentReplacementState | undefined,

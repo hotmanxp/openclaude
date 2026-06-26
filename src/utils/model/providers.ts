@@ -1,7 +1,10 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
+import { type Providers } from '../config.js'
 import { isEnvTruthy } from '../envUtils.js'
+import { getGlobalConfig } from '../config.js'
+import { getActiveProviderProfile } from '../providerProfiles.js'
 
-export type APIProvider = 'firstParty' | 'openai'
+export type APIProvider = 'firstParty' | Providers
 
 /**
  * Legacy / fork-removed provider env vars that route to a non-Anthropic
@@ -33,16 +36,16 @@ const NON_FIRST_PARTY_ENV_KEYS = [
 ] as const
 
 export function getAPIProvider(): APIProvider {
-  for (const key of NON_FIRST_PARTY_ENV_KEYS) {
-    if (is3PApiKey(key)) {
-      // 3P API keys (XAI_API_KEY, MINIMAX_API_KEY, ...) — any
-      // non-empty value signals the user is using that provider, so
-      // a placeholder like "xai-test-key" still routes correctly. The
-      // actual auth happens elsewhere; we just need the gate to fire.
-      if (process.env[key]) return 'openai'
-    } else {
-      if (isEnvTruthy(process.env[key])) return 'openai'
-    }
+  // First check providerProfiles config from ~/.claude.json
+  const globalConfig = getGlobalConfig()
+  const activeProfile = getActiveProviderProfile(globalConfig)
+  if (activeProfile) {
+    return activeProfile.provider === 'anthropic' ? 'firstParty' : activeProfile.provider
+  }
+
+  // Fall back to explicit env flag
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
+    return 'openai'
   }
   return 'firstParty'
 }

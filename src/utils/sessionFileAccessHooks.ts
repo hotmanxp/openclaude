@@ -28,10 +28,9 @@ import {
   memoryScopeForPath,
 } from './memoryFileDetection.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = true
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
+import * as teamMemPaths from '../memdir/teamMemPaths.js'
+
+
 const teamMemWatcher = true
   ? (require('../services/teamMemorySync/watcher.js') as typeof import('../services/teamMemorySync/watcher.js'))
   : null
@@ -133,7 +132,7 @@ export function isMemoryFileAccess(
   if (
     filePath &&
     (isAutoMemFile(filePath) ||
-      (true && teamMemPaths!.isTeamMemFile(filePath)))
+      (teamMemPaths.isTeamMemFile(filePath)))
   ) {
     return true
   }
@@ -187,7 +186,7 @@ async function handleSessionFileAccess(
   }
 
   // Team memory access tracking
-  if (true && filePath && teamMemPaths!.isTeamMemFile(filePath)) {
+  if (filePath && teamMemPaths.isTeamMemFile(filePath)) {
     logEvent('tengu_team_mem_accessed', {
       tool: input.tool_name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       ...subagentProps,

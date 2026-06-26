@@ -1,6 +1,4 @@
-// Public entry point for the openaiShim module.
-// Re-exports from the refactored sub-modules and the main shim implementation.
-export { createOpenAIShimClient } from '../openaiShim.js'
+export { createOpenAIShimClient } from './openaiClient.js'
 
 // Re-export from sub-modules
 export type { AnthropicUsage, AnthropicStreamEvent, ShimCreateParams } from './types.js'

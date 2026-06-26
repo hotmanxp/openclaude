@@ -191,9 +191,8 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       return getEmptyCache()
     }
 
-    // [SHOT_STATS] was: If SHOT_STATS is enabled but cache doesn't have shotDistribution,
-    // If cache doesn't have shotDistribution, force full recomputation
-    // to get historical shot data
+    // If SHOT_STATS is enabled but cache doesn't have shotDistribution,
+    // force full recomputation to get historical shot data
     if (!parsed.shotDistribution) {
       logForDebugging(
         'Stats cache missing shotDistribution, forcing recomputation',

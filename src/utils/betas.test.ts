@@ -144,23 +144,8 @@ test('getMergedBetas returns a non-empty list for the firstParty provider', asyn
   expect(getMergedBetas(MODEL).length).toBeGreaterThan(0)
 })
 
-test('getMergedBetas returns a non-empty list for the bedrock provider', async () => {
-  process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-  const { getMergedBetas } = await importFreshBetas()
-  expect(getMergedBetas(MODEL).length).toBeGreaterThan(0)
-})
-
-test('getMergedBetas returns a non-empty list for the vertex provider', async () => {
-  process.env.CLAUDE_CODE_USE_VERTEX = '1'
-  const { getMergedBetas } = await importFreshBetas()
-  expect(getMergedBetas(MODEL).length).toBeGreaterThan(0)
-})
-
-test('getMergedBetas returns a non-empty list for the foundry provider', async () => {
-  process.env.CLAUDE_CODE_USE_FOUNDRY = '1'
-  const { getMergedBetas } = await importFreshBetas()
-  expect(getMergedBetas(MODEL).length).toBeGreaterThan(0)
-})
+// bedrock/vertex/foundry provider tests removed per OpenCC Provider Policy:
+// only anthropic / ollama / openai-compatible are supported.
 
 test('getMergedBetas returns a non-empty list in GitHub Native Anthropic mode', async () => {
   // GitHub resolves to the (non-Anthropic) "github" provider, but when the
@@ -196,23 +181,8 @@ test('isAnthropicProvider is true for firstParty', async () => {
   expect(isAnthropicProvider()).toBe(true)
 })
 
-test('isAnthropicProvider is true for bedrock', async () => {
-  process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-  const { isAnthropicProvider } = await importFreshBetas()
-  expect(isAnthropicProvider()).toBe(true)
-})
-
-test('isAnthropicProvider is true for vertex', async () => {
-  process.env.CLAUDE_CODE_USE_VERTEX = '1'
-  const { isAnthropicProvider } = await importFreshBetas()
-  expect(isAnthropicProvider()).toBe(true)
-})
-
-test('isAnthropicProvider is true for foundry', async () => {
-  process.env.CLAUDE_CODE_USE_FOUNDRY = '1'
-  const { isAnthropicProvider } = await importFreshBetas()
-  expect(isAnthropicProvider()).toBe(true)
-})
+// bedrock/vertex/foundry provider tests removed per OpenCC Provider Policy:
+// only anthropic / ollama / openai-compatible are supported.
 
 test('isAnthropicProvider is false for the openai provider', async () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'

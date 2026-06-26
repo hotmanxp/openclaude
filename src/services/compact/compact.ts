@@ -714,7 +714,7 @@ export async function compactConversation(
       compactionCacheCreationTokens:
         compactionUsage?.cache_creation_input_tokens ?? 0,
       compactionTotalTokens: compactionUsage
-        ? compactionUsage.input_tokens +
+        ? compactionUsage?.input_tokens ?? 0 +
           (compactionUsage.cache_creation_input_tokens ?? 0) +
           (compactionUsage.cache_read_input_tokens ?? 0) +
           compactionUsage.output_tokens
@@ -1323,18 +1323,23 @@ async function streamCompactSummary({
           // Skip success logging for PTL error text — it's returned so the
           // caller's retry loop catches it, but it's not a successful summary.
           if (!assistantText.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE)) {
+            const totalUsage = result.totalUsage ?? {
+              input_tokens: 0,
+              output_tokens: 0,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            }
             logEvent('tengu_compact_cache_sharing_success', {
               preCompactTokenCount,
-              outputTokens: result.totalUsage.output_tokens,
-              cacheReadInputTokens: result.totalUsage.cache_read_input_tokens,
-              cacheCreationInputTokens:
-                result.totalUsage.cache_creation_input_tokens,
+              outputTokens: totalUsage.output_tokens,
+              cacheReadInputTokens: totalUsage.cache_read_input_tokens,
+              cacheCreationInputTokens: totalUsage.cache_creation_input_tokens,
               cacheHitRate:
-                result.totalUsage.cache_read_input_tokens > 0
-                  ? result.totalUsage.cache_read_input_tokens /
-                    (result.totalUsage.cache_read_input_tokens +
-                      result.totalUsage.cache_creation_input_tokens +
-                      result.totalUsage.input_tokens)
+                totalUsage.cache_read_input_tokens > 0
+                  ? totalUsage.cache_read_input_tokens /
+                    (totalUsage.cache_read_input_tokens +
+                      totalUsage.cache_creation_input_tokens +
+                      totalUsage?.input_tokens ?? 0)
                   : 0,
             })
           }

@@ -1474,7 +1474,7 @@ function buildPendingClassifierCheck(
     return undefined
   }
   // Skip in auto mode - auto mode classifier handles all permission decisions
-  if (true && toolPermissionContext.mode === 'auto')
+  if (toolPermissionContext.mode === 'auto')
     return undefined
   if (toolPermissionContext.mode === 'bypassPermissions') return undefined
 
@@ -1512,7 +1512,7 @@ export function startSpeculativeClassifierCheck(
 ): boolean {
   // Same guards as buildPendingClassifierCheck
   if (!isClassifierPermissionsEnabled()) return false
-  if (true && toolPermissionContext.mode === 'auto')
+  if (toolPermissionContext.mode === 'auto')
     return false
   if (toolPermissionContext.mode === 'bypassPermissions') return false
   const allowDescriptions = getBashPromptAllowDescriptions(
@@ -1873,7 +1873,6 @@ export async function bashToolHasPermission(
   if (
     isClassifierPermissionsEnabled() &&
     !(
-      true &&
       appState.toolPermissionContext.mode === 'auto'
     )
   ) {

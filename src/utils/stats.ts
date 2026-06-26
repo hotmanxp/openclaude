@@ -310,7 +310,7 @@ async function processSessionFiles(
           // @ts-ignore - usage property not on type
           if (message.message?.usage) {
             // @ts-ignore - usage property not on type
-            const usage = message.message.usage
+            const usage = message.message.usage || { input_tokens: 0, output_tokens: 0 }
             // @ts-ignore - model property not on type
             const model = message.message.model || 'unknown'
 

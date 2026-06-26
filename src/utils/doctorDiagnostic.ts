@@ -2,7 +2,6 @@ import { execa } from 'execa'
 import { readFile, realpath } from 'fs/promises'
 import { homedir } from 'os'
 import { delimiter, join, posix, win32 } from 'path'
-import { checkGlobalInstallPermissions } from './autoUpdater.js'
 import { isInBundledMode } from './bundledMode.js'
 import {
   formatAutoUpdaterDisabledReason,
@@ -57,6 +56,7 @@ function getNativeDataDirName(): string {
 
 export type InstallationType =
   | 'npm-global'
+  | 'pnpm-global'
   | 'npm-local'
   | 'native'
   | 'package-manager'
@@ -96,7 +96,7 @@ function getNormalizedPaths(): [invokedPath: string, execPath: string] {
 }
 
 export async function getCurrentInstallationType(): Promise<InstallationType> {
-  if (process.env.NODE_ENV === 'development') {
+  if (MACRO.IS_DEVELOPMENT_BUILD === 'true') {
     return 'development'
   }
 
@@ -144,6 +144,22 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
     return 'npm-global'
   }
 
+  // Check for pnpm global installation
+  // Only detect as pnpm-global if invokedPath is actually under pnpmHome,
+  // not just because PNPM_HOME env var happens to be set for other tools
+  const pnpmHome = process.env.PPNM_HOME || process.env.PNPM_HOME
+  const pnpmPaths = [
+    '.pnpm',
+    '.local/share/pnpm',
+  ]
+
+  const isPnpmPath = pnpmPaths.some(path => invokedPath.includes(path)) || invokedPath.includes('/pnpm/')
+  const isUnderPnpmHome = pnpmHome && invokedPath.startsWith(pnpmHome)
+
+  if (isUnderPnpmHome || isPnpmPath) {
+    return 'pnpm-global'
+  }
+
   const npmConfigResult = await execa('npm config get prefix', {
     shell: true,
     reject: false,
@@ -160,7 +176,7 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
 }
 
 async function getInstallationPath(): Promise<string> {
-  if (process.env.NODE_ENV === 'development') {
+  if (MACRO.IS_DEVELOPMENT_BUILD) {
     return getCwd()
   }
 
@@ -536,8 +552,8 @@ export function detectLinuxGlobPatternWarnings(): Array<{
 
 export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const installationType = await getCurrentInstallationType()
-  const version =
-    typeof MACRO !== 'undefined' && MACRO.VERSION ? MACRO.VERSION : 'unknown'
+  // MACRO.VERSION is replaced at build time with the actual version
+  const version = MACRO.VERSION || 'unknown'
   const installationPath = await getInstallationPath()
   const invokedBinary = getInvokedBinary()
   const multipleInstallations = await detectMultipleInstallations()
@@ -596,16 +612,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   // Check permissions for global installations
   let hasUpdatePermissions: boolean | null = null
   if (installationType === 'npm-global') {
-    const permCheck = await checkGlobalInstallPermissions()
-    hasUpdatePermissions = permCheck.hasPermissions
-
-    // Add warning if no permissions
-    if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
-      warnings.push({
-        issue: 'Insufficient permissions for auto-updates',
-        fix: `Do one of: (1) Re-install node without sudo, or (2) Use \`${getCliBinaryName()} install\` for native installation`,
-      })
-    }
+    // Note: Permission check is now handled differently by handleAutoUpdate
+    // which spawns a detached process with user permissions, so we skip
+    // the old permission warning here.
+    hasUpdatePermissions = null // Unknown with new auto-updater
   }
 
   // Get ripgrep status and configuration

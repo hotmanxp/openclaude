@@ -9,6 +9,7 @@ import vendorGemini from '../vendors/gemini.js'
 import vendorMinimax from '../vendors/minimax.js'
 import vendorMoonshot from '../vendors/moonshot.js'
 import vendorOpenai from '../vendors/openai.js'
+import vendorOpenaiCompatible from '../vendors/openai-compatible.js'
 import vendorVenice from '../vendors/venice.js'
 import vendorXai from '../vendors/xai.js'
 import vendorXiaomiMimo from '../vendors/xiaomi-mimo.js'
@@ -31,6 +32,8 @@ import gatewayOllama from '../gateways/ollama.js'
 import gatewayOpenrouter from '../gateways/openrouter.js'
 import gatewayTogether from '../gateways/together.js'
 import gatewayVertex from '../gateways/vertex.js'
+import gatewayWizardAi from '../gateways/wizard-ai.js'
+import gatewayZnNova from '../gateways/zn-nova.js'
 import anthropicProxyMinimax from '../anthropicProxies/minimax.js'
 import brandClaude from '../brands/claude.js'
 import brandDeepseek from '../brands/deepseek.js'
@@ -43,9 +46,11 @@ import brandMinimax from '../brands/minimax.js'
 import brandMistral from '../brands/mistral.js'
 import brandNemotron from '../brands/nemotron.js'
 import brandOpenaiCompatibleAlias from '../brands/openai-compatible-alias.js'
+import brandOpenplatform from '../brands/openplatform.js'
 import brandQwen from '../brands/qwen.js'
 import brandXai from '../brands/xai.js'
 import brandXiaomiMimo from '../brands/xiaomi-mimo.js'
+import brandZhiniao from '../brands/zhiniao.js'
 import modelClaude from '../models/claude.js'
 import modelDeepseek from '../models/deepseek.js'
 import modelGemini from '../models/gemini.js'
@@ -57,15 +62,17 @@ import modelMinimax from '../models/minimax.js'
 import modelMistral from '../models/mistral.js'
 import modelNemotron from '../models/nemotron.js'
 import modelOpenaiCompatibleAlias from '../models/openai-compatible-alias.js'
+import modelOpenplatform from '../models/openplatform.js'
 import modelQwen from '../models/qwen.js'
 import modelXai from '../models/xai.js'
 import modelXiaomiMimo from '../models/xiaomi-mimo.js'
+import modelZhiniao from '../models/zhiniao.js'
 
-export const VENDOR_DESCRIPTORS = [vendorAnthropic, vendorBankr, vendorDeepseek, vendorGemini, vendorMinimax, vendorMoonshot, vendorOpenai, vendorVenice, vendorXai, vendorXiaomiMimo, vendorZai] as const satisfies readonly VendorDescriptor[]
-export const GATEWAY_DESCRIPTORS = [gatewayAtomicChat, gatewayAzureOpenai, gatewayBedrock, gatewayCustom, gatewayDashscopeCn, gatewayDashscopeIntl, gatewayGithub, gatewayGitlawbOpengateway, gatewayGroq, gatewayHicap, gatewayKimiCode, gatewayLmstudio, gatewayMistral, gatewayNvidiaNim, gatewayOllama, gatewayOpenrouter, gatewayTogether, gatewayVertex] as const satisfies readonly GatewayDescriptor[]
-export const ANTHROPIC_PROXY_DESCRIPTORS = [anthropicProxyMinimax] as const satisfies readonly AnthropicProxyDescriptor[]
-export const BRAND_DESCRIPTORS = [brandClaude, brandDeepseek, brandGemini, brandGlm, brandGpt, brandKimi, brandLlama, brandMinimax, brandMistral, brandNemotron, brandOpenaiCompatibleAlias, brandQwen, brandXai, brandXiaomiMimo] as const satisfies readonly BrandDescriptor[]
-export const MODEL_DESCRIPTOR_GROUPS = [modelClaude, modelDeepseek, modelGemini, modelGlm, modelGpt, modelKimi, modelLlama, modelMinimax, modelMistral, modelNemotron, modelOpenaiCompatibleAlias, modelQwen, modelXai, modelXiaomiMimo] as const satisfies readonly (readonly ModelDescriptor[])[]
+export const VENDOR_DESCRIPTORS = [vendorAnthropic, vendorBankr, vendorDeepseek, vendorGemini, vendorMinimax, vendorMoonshot, vendorOpenai, vendorOpenaiCompatible, vendorVenice, vendorXai, vendorXiaomiMimo, vendorZai] as const satisfies readonly VendorDescriptor[]
+export const GATEWAY_DESCRIPTORS = [gatewayAtomicChat, gatewayAzureOpenai, gatewayBedrock, gatewayCustom, gatewayDashscopeCn, gatewayDashscopeIntl, gatewayGithub, gatewayGitlawbOpengateway, gatewayGroq, gatewayHicap, gatewayKimiCode, gatewayLmstudio, gatewayMistral, gatewayNvidiaNim, gatewayOllama, gatewayOpenrouter, gatewayTogether, gatewayVertex, gatewayWizardAi, gatewayZnNova] as const satisfies readonly GatewayDescriptor[]
+export const ANTHROPIC_PROXY_DESCRIPTORS = [] as const satisfies readonly AnthropicProxyDescriptor[]
+export const BRAND_DESCRIPTORS = [brandClaude, brandDeepseek, brandGemini, brandGlm, brandGpt, brandKimi, brandLlama, brandMinimax, brandMistral, brandNemotron, brandOpenaiCompatibleAlias, brandOpenplatform, brandQwen, brandXai, brandXiaomiMimo, brandZhiniao] as const satisfies readonly BrandDescriptor[]
+export const MODEL_DESCRIPTOR_GROUPS = [modelClaude, modelDeepseek, modelGemini, modelGlm, modelGpt, modelKimi, modelLlama, modelMinimax, modelMistral, modelNemotron, modelOpenaiCompatibleAlias, modelOpenplatform, modelQwen, modelXai, modelXiaomiMimo, modelZhiniao] as const satisfies readonly (readonly ModelDescriptor[])[]
 export const MODEL_DESCRIPTORS = MODEL_DESCRIPTOR_GROUPS.flat() satisfies readonly ModelDescriptor[]
 
 export const PROVIDER_PRESET_MANIFEST = [
@@ -309,6 +316,55 @@ export const PROVIDER_PRESET_MANIFEST = [
     ]
   },
   {
+    // "preset": "anthropic",
+    // "routeKind": "vendor",
+    // "routeId": "anthropic",
+    "vendorId": "anthropic",
+    "preset": "zn-nova",
+    "routeKind": "gateway",
+    "routeId": "zn-nova",
+    "gatewayId": "zn-nova",
+    "description": "Ping An internal 开放平台 (Anthropic-MIX) — OpenAI-compatible aggregator hosting MiniMax / Qwen / GLM / DeepSeek models at zn-nova.paic.com.cn/novai (no API key required)",
+    "label": "Anthropic-MIX",
+    "name": "Anthropic-MIX",
+    "baseUrlEnvVars": [
+      "ZN_NOVA_BASE_URL",
+      "ANTHROPIC_BASE_URL"
+    ],
+    "apiKeyEnvVars": [
+      "WIZARD_AI_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN"
+    ],
+    "modelEnvVars": [
+      "ANTHROPIC_MODEL"
+    ],
+    "fallbackBaseUrl": "https://zn-nova.paic.com.cn/novai",
+    "fallbackModel": "MiniMax-M3"
+  },
+  {
+    "preset": "wizard-ai",
+    "routeKind": "gateway",
+    "routeId": "wizard-ai",
+    "vendorId": "openai",
+    "gatewayId": "wizard-ai",
+    "description": "Ping An Tech Wizard AI gateway (wizard-ai.paic.com.cn) — OpenAI-compatible aggregator that hosts zhiniao-prefixed model names",
+    "label": "Wizard AI (ZhiNiao)",
+    "name": "Wizard AI (ZhiNiao)",
+    "apiKeyEnvVars": [
+      "WIZARD_AI_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "baseUrlEnvVars": [
+      "WIZARD_AI_BASE_URL",
+      "OPENAI_BASE_URL"
+    ],
+    "modelEnvVars": [
+      "OPENAI_MODEL"
+    ],
+    "fallbackBaseUrl": "https://wizard-ai.paic.com.cn/code_pilot/api/v1",
+    "fallbackModel": "zhiniao-MiniMax-M2.7-highspeed"
+  },
+  {
     "preset": "together",
     "routeKind": "gateway",
     "routeId": "together",
@@ -419,6 +475,8 @@ export const ORDERED_PROVIDER_PRESETS = [
   "nvidia-nim",
   "openai",
   "openrouter",
+  "zn-nova",
+  "wizard-ai",
   "together",
   "venice",
   "xai",

@@ -52,7 +52,7 @@ import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 import { isCoordinatorMode } from './coordinator/coordinatorMode.js';
 import { installAsciicastRecorder } from './utils/asciicast.js';
-import { getSubscriptionType, isClaudeAISubscriber, prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe, validateForceLoginOrg } from './utils/auth.js';
+import { getSubscriptionType, isClaudeAISubscriber, prefetchAwsCredentialsAndBedRockInfoIfSafe, validateForceLoginOrg } from './utils/auth.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
@@ -102,6 +102,7 @@ import { getActiveAgentsFromList, getAgentDefinitionsWithOverrides, isBuiltInAge
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
 import { assertMinVersion } from './utils/autoUpdater.js';
+import { checkForUpdates, handleAutoUpdate } from './utils/autoUpgrade.js';
 import { CLAUDE_IN_CHROME_SKILL_HINT, CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER } from './utils/claudeInChrome/prompt.js';
 import { setupClaudeInChrome, shouldAutoEnableClaudeInChrome, shouldEnableClaudeInChrome } from './utils/claudeInChrome/setup.js';
 import { getContextWindowForModel } from './utils/context.js';
@@ -438,9 +439,10 @@ export function startDeferredPrefetches(): void {
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) && !isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)) {
     void prefetchAwsCredentialsAndBedRockInfoIfSafe();
   }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) && !isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)) {
-    void prefetchGcpCredentialsIfSafe();
-  }
+  // GCP/Vertex login disabled — OpenCC only supports anthropic, ollama, openai-compatible providers.
+  // if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) && !isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)) {
+  //   void prefetchGcpCredentialsIfSafe();
+  // }
   const { signal: countFilesSignal, cleanup: cleanupCountFilesSignal } =
     createCombinedAbortSignal(undefined, { timeoutMs: 3000 });
   void countFilesRoundedRg(getCwd(), countFilesSignal, []).finally(
@@ -1073,7 +1075,7 @@ async function run(): Promise<CommanderCommand> {
     // the trust dialog, and by then we've already appended
     // .claude/agents/assistant.md to the system prompt. Refuse to activate
     // until the directory has been explicitly trusted.
-    let kairosEnabled = false;
+    let kairosEnabled = feature('KAIROS');
     let assistantTeamContext: Awaited<ReturnType<NonNullable<typeof assistantModule>['initializeAssistantTeam']>> | undefined;
     if (feature('KAIROS') && (options as {
       assistant?: boolean;
@@ -1794,7 +1796,7 @@ async function run(): Promise<CommanderCommand> {
       }
       toolPermissionContext = removeDangerousPermissions(toolPermissionContext, overlyBroadBashPermissions);
     }
-    if (true && dangerousPermissions.length > 0) {
+    if (dangerousPermissions.length > 0) {
       toolPermissionContext = stripDangerousPermissionsForAutoMode(toolPermissionContext);
     }
 
@@ -1804,6 +1806,18 @@ async function run(): Promise<CommanderCommand> {
       console.error(warning);
     });
     void assertMinVersion();
+
+    // Check for updates automatically on startup (non-blocking)
+    const settings = getInitialSettings()
+    checkForUpdates(MACRO.PACKAGE_URL, MACRO.VERSION)
+      .then((info) => {
+        if (info) {
+          handleAutoUpdate(info, settings, getCwd(), false)
+        }
+      })
+      .catch(() => {
+        // Silently ignore update check errors
+      })
 
     // claude.ai config fetch: -p mode only (interactive uses useManageMCPConnections
     // two-phase loading). Kicked off here to overlap with setup(); awaited
@@ -4416,9 +4430,9 @@ async function run(): Promise<CommanderCommand> {
   // - UI shows both versions including build metadata for clarity
   program.command('update').alias('upgrade').description('Check for updates and install if available').action(async () => {
     const {
-      update
-    } = await import('src/cli/update.js');
-    await update();
+      updateNew
+    } = await import('src/cli/updateNew.js');
+    await updateNew();
   });
 
   // claude up — run the project's AGENTS.md "# claude up" setup instructions.
@@ -4645,7 +4659,7 @@ async function logTenguInit({
         appendSystemPromptFlag: appendSystemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),
       is_simple: isBareMode() || undefined,
-      is_coordinator: true && coordinatorModeModule.isCoordinatorMode() ? true : undefined,
+      is_coordinator: coordinatorModeModule?.isCoordinatorMode() ? true : undefined,
       ...(assistantActivationPath && {
         assistantActivationPath: assistantActivationPath as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),

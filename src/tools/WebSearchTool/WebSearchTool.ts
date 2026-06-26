@@ -4,6 +4,7 @@ import type {
   BetaWebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 
 import { z } from 'zod/v4'
@@ -575,6 +576,10 @@ export const WebSearchTool = buildTool({
     return summary ? `Searching for ${summary}` : 'Searching the web'
   },
   isEnabled() {
+    // 检查环境变量控制
+    if (!isEnvTruthy(process.env.CLAUDE_CODE_WEBTOOL_ENABEL)) {
+      return false
+    }
     const mode = getProviderMode()
 
     // Specific provider mode: enabled if any adapter is configured

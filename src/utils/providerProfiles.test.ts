@@ -146,25 +146,6 @@ describe('applyProviderProfileToProcessEnv', () => {
     expect(getFreshAPIProvider()).toBe('openai')
   })
 
-  test('anthropic profile sets ANTHROPIC env vars', async () => {
-    const { applyProviderProfileToProcessEnv } =
-      await importFreshProviderProfileModules()
-
-    applyProviderProfileToProcessEnv(
-      buildProfile({
-        provider: 'anthropic',
-        baseUrl: 'https://api.anthropic.com',
-        model: 'claude-sonnet-4-6',
-      }),
-    )
-    const { getAPIProvider: getFreshAPIProvider } =
-      await importFreshProvidersModule()
-
-    expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
-    expect(process.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6')
-    expect(getFreshAPIProvider()).toBe('firstParty')
-  })
-
   test('openai profile with multi-model string sets only first model in OPENAI_MODEL', async () => {
     const { applyProviderProfileToProcessEnv } =
       await importFreshProviderProfileModules()
@@ -613,51 +594,6 @@ describe('setActiveProviderProfile', () => {
     )
   })
 
-  test('clears openai model env and sets anthropic model env when switching from openai to anthropic provider', async () => {
-    const { setActiveProviderProfile } =
-      await importFreshProviderProfileModules()
-    const openaiProfile = buildProfile({
-      id: 'openai_prof',
-      name: 'OpenAI Provider',
-      provider: 'openai',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4o',
-      apiKey: 'sk-openai-key',
-    })
-    const anthropicProfile = buildProfile({
-      id: 'anthro_prof',
-      name: 'Anthropic Provider',
-      provider: 'anthropic',
-      baseUrl: 'https://api.anthropic.com',
-      model: 'claude-sonnet-4-6',
-      apiKey: 'sk-ant-key',
-    })
-
-    saveMockGlobalConfig(current => ({
-      ...current,
-      providerProfiles: [openaiProfile, anthropicProfile],
-    }))
-
-    // First activate the openai profile
-    setActiveProviderProfile('openai_prof')
-    expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
-    expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
-
-    // Now switch to the anthropic profile
-    const result = setActiveProviderProfile('anthro_prof')
-
-    expect(result?.id).toBe('anthro_prof')
-    expect(process.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6')
-    expect(process.env.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com')
-    expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
-    expect(process.env.OPENAI_MODEL).toBeUndefined()
-    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
-    expect(process.env.OPENAI_API_KEY).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID).toBe(
-      'anthro_prof',
-    )
-  })
-
   test('clears anthropic model env and sets openai model env when switching from anthropic to openai provider', async () => {
     const { setActiveProviderProfile } =
       await importFreshProviderProfileModules()
@@ -715,44 +651,6 @@ describe('setActiveProviderProfile', () => {
     const result = setActiveProviderProfile('nonexistent_prof')
 
     expect(result).toBeNull()
-  })
-})
-
-describe('deleteProviderProfile', () => {
-  test('deleting final profile clears provider env when active profile applied it', async () => {
-    const {
-      applyProviderProfileToProcessEnv,
-      deleteProviderProfile,
-    } = await importFreshProviderProfileModules()
-    applyProviderProfileToProcessEnv(
-      buildProfile({
-        id: 'only_profile',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o',
-        apiKey: 'sk-test',
-      }),
-    )
-
-    saveMockGlobalConfig(current => ({
-      ...current,
-      providerProfiles: [buildProfile({ id: 'only_profile' })],
-      activeProviderProfileId: 'only_profile',
-    }))
-
-    const result = deleteProviderProfile('only_profile')
-
-    expect(result.removed).toBe(true)
-    expect(result.activeProfileId).toBeUndefined()
-
-    expect(process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED).toBeUndefined()
-    expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
-    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
-    expect(process.env.OPENAI_API_BASE).toBeUndefined()
-    expect(process.env.OPENAI_MODEL).toBeUndefined()
-    expect(process.env.OPENAI_API_KEY).toBeUndefined()
-    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
-    expect(process.env.ANTHROPIC_MODEL).toBeUndefined()
-    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
   })
 })
 

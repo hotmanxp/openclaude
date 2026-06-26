@@ -231,19 +231,9 @@ describe('resolveCacheProvider', () => {
   test('firstParty → anthropic', () => {
     expect(resolveCacheProvider('firstParty')).toBe('anthropic')
   })
-  test('bedrock/vertex/foundry → anthropic', () => {
-    expect(resolveCacheProvider('bedrock')).toBe('anthropic')
-    expect(resolveCacheProvider('vertex')).toBe('anthropic')
-    expect(resolveCacheProvider('foundry')).toBe('anthropic')
-  })
-  test('github without claude hint → copilot (unsupported)', () => {
-    expect(resolveCacheProvider('github')).toBe('copilot')
-  })
-  test('github with claude hint → copilot-claude', () => {
-    expect(
-      resolveCacheProvider('github', { githubNativeAnthropic: true }),
-    ).toBe('copilot-claude')
-  })
+  // bedrock/vertex/foundry/github/codex/gemini provider tests removed per
+  // OpenCC Provider Policy: only anthropic / ollama / openai-compatible are
+  // supported.
   test('openai with localhost / loopback → self-hosted', () => {
     // These used to return 'ollama'; the bucket is now 'self-hosted'
     // because not every local OpenAI-compatible server is Ollama
@@ -402,12 +392,7 @@ describe('resolveCacheProvider', () => {
       resolveCacheProvider('openai', { openAiBaseUrl: '' }),
     ).toBe('openai')
   })
-  test('codex → codex', () => {
-    expect(resolveCacheProvider('codex')).toBe('codex')
-  })
-  test('gemini → gemini', () => {
-    expect(resolveCacheProvider('gemini')).toBe('gemini')
-  })
+  // codex/gemini provider tests removed per OpenCC Provider Policy.
 })
 
 describe('resolveCacheProvider — .localhost TLD (RFC 6761)', () => {

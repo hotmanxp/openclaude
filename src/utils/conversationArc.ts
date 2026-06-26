@@ -205,16 +205,10 @@ async function extractFactsAutomatically(content: string): Promise<void> {
     }
   }
 
-  // B. Detect Technical Concepts (Hyphenated-Terms, PascalCase, camelCase)
-  // Now also capturing lowercase hyphenated terms (worker-node-49)
-  const technicalMatches = content.matchAll(
-    /\b([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+|[A-Z][a-z]+[A-Z][\w]*|[a-z]+[A-Z][\w]*)\b/g,
-  )
+  // B. Detect Technical Concepts (Hyphenated-Terms, PascalCase only, no camelCase)
+  const technicalMatches = content.matchAll(/\b([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+|[A-Z][a-z]+[A-Z][\w]*)\b/g)
   for (const match of technicalMatches) {
-    const word = match[1]
-    if (!['The', 'This', 'That', 'With', 'From', 'Here', 'There'].includes(word)) {
-      promises.push(addGlobalEntity('concept', word, { source: 'auto_discovery' }))
-    }
+    addGlobalEntity('concept', match[1], { source: 'auto_discovery' })
   }
 
   // C. Specific pattern for availability/percentages

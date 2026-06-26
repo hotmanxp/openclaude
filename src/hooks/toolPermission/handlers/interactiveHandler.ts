@@ -476,7 +476,6 @@ function handleInteractivePermission(
           }
 
           if (
-            true &&
             decisionReason.type === 'classifier'
           ) {
             if (decisionReason.classifier === 'auto-mode') {
