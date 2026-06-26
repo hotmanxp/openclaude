@@ -1,7 +1,8 @@
 // SDK entry point - re-exports from agentSdkTypes
 // All exports here must match src/entrypoints/sdk.d.ts (drift caught by
 // scripts/validate-externals.ts).
-// ../agentSdkTypes.js
+
+// Runtime implementations from agentSdkTypes
 export {
   createSdkMcpServer,
   forkSession,
@@ -16,15 +17,13 @@ export {
   unstable_v2_createSession,
   unstable_v2_prompt,
   unstable_v2_resumeSession,
-}
+} from '../agentSdkTypes.js'
 
-// ../sdk/controlTypes.js
-export {
-  SDKControlInitializeResponse,
-}
+// Control protocol types
+export type { SDKControlInitializeResponse } from './controlTypes.js'
 
-// ../sdk/coreTypes.generated.js
-export {
+// Core generated types
+export type {
   AccountInfo,
   AgentInfo,
   ApiKeySource,
@@ -38,23 +37,16 @@ export {
   SDKSessionInfo,
   SDKUserMessage,
   SlashCommand,
-}
+} from './coreTypes.generated.js'
 
-// ../sdk/permissions.js
-export {
-  PermissionResolveDecision,
-}
+// Permission types
+export type { PermissionResolveDecision } from './permissions.js'
 
-// ../sdk/runtimeTypes.js
-export {
-  Query,
-  SDKSession,
-  SDKSessionOptions,
-  SdkMcpToolDefinition,
-}
+// Runtime types
+export type { Query, SDKSession, SDKSessionOptions, SdkMcpToolDefinition } from './runtimeTypes.js'
 
-// ../sdk/shared.js
-export {
+// Shared types
+export type {
   ForkSessionOptions,
   ForkSessionResult,
   GetSessionInfoOptions,
@@ -66,9 +58,9 @@ export {
   SDKPermissionTimeoutMessage,
   SessionMessage,
   SessionMutationOptions,
-}
+} from './shared.js'
 
-// ../utils/errors.js
+// Error classes
 export {
   AbortError,
   ClaudeError,
@@ -81,11 +73,10 @@ export {
   SDKRateLimitError,
   SDKServerError,
   sdkErrorFromType,
-}
+} from '../../utils/errors.js'
 
-
-// ../agentSdkTypes.js (stub types declared in sdk.d.ts but not yet defined)
-export {
+// Stub types declared in sdk.d.ts but not yet in source
+export type {
   QueryOptions,
   SdkMcpStdioConfig,
   SdkMcpSSEConfig,
@@ -93,5 +84,7 @@ export {
   SdkMcpSdkConfig,
   SdkMcpServerConfig,
   SdkScopedMcpServerConfig,
-  deleteSession,
-}
+} from './sdkTypes.js'
+
+// Runtime deleteSession
+export { deleteSession } from '../../utils/sessionPersistence.js'

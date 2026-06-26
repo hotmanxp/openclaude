@@ -32,14 +32,6 @@ function validate(bundleName: string, externals: string[]): boolean {
     return false
   }
 
-  const extra = [...externalSet].filter(d => !allDeps.has(d))
-  if (extra.length > 0) {
-    console.warn(`⚠️  ${bundleName}: External entries not in package.json (may be ok):`)
-    for (const dep of extra) {
-      console.warn(`   - ${dep}`)
-    }
-  }
-
   console.log(`✓ ${bundleName}: All dependencies accounted for (${missing.length} missing, ${externalSet.size} external)`)
   return true
 }
