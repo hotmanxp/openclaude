@@ -531,3 +531,19 @@ export type TaskCompletedHookInput = any
 export type TaskCreatedHookInput = any
 export type TeammateIdleHookInput = any
 export type UserPromptSubmitHookInput = any
+// ============================================================================
+// SDK stub types — declared in sdk.d.ts but not yet defined in source.
+// Tracked by validate-externals.ts. Promote to real definitions when the
+// corresponding features ship.
+// ============================================================================
+export type QueryOptions = any
+export type SdkMcpStdioConfig = any
+export type SdkMcpSSEConfig = any
+export type SdkMcpHttpConfig = any
+export type SdkMcpSdkConfig = any
+export type SdkMcpServerConfig = any
+export type SdkScopedMcpServerConfig = any
+
+export async function deleteSession(_sessionId: string): Promise<boolean> {
+  throw new Error('not implemented')
+}

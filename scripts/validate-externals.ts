@@ -32,6 +32,14 @@ function validate(bundleName: string, externals: string[]): boolean {
     return false
   }
 
+  const extra = [...externalSet].filter(d => !allDeps.has(d))
+  if (extra.length > 0) {
+    console.warn(`⚠️  ${bundleName}: External entries not in package.json (may be ok):`)
+    for (const dep of extra) {
+      console.warn(`   - ${dep}`)
+    }
+  }
+
   console.log(`✓ ${bundleName}: All dependencies accounted for (${missing.length} missing, ${externalSet.size} external)`)
   return true
 }
@@ -64,3 +72,51 @@ if (!cliOk || !sdkOk || !intentionallyBundledOk) {
 }
 
 console.log('\n✓ All external lists valid.')
+
+// ============================================================================
+// Validate sdk.d.ts ↔ index.ts export drift
+// ============================================================================
+
+const SDK_DTS_PATH = 'src/entrypoints/sdk.d.ts'
+const SDK_INDEX_PATH = 'src/entrypoints/sdk/index.ts'
+
+function extractExportNames(filePath: string): Set<string> {
+  const content = readFileSync(filePath, 'utf8')
+  const names = new Set<string>()
+  // Match: export { name1, name2 } / export type { name1 } / export class/function/interface/const/type Name
+  for (const match of content.matchAll(/export\s+(?:type\s+)?\{([^}]+)\}/g)) {
+    for (const name of match[1].split(',')) {
+      const trimmed = name.trim().split(/\s+as\s+/)[0].trim()
+      if (trimmed) names.add(trimmed)
+    }
+  }
+  // Match: export class/function/interface/const/type/enum Name — also handles async function
+  for (const match of content.matchAll(
+    /export\s+(?:type\s+)?(?:async\s+)?(?:class|function|interface|const|type|enum)\s+(\w+)/g,
+  )) {
+    names.add(match[1])
+  }
+  return names
+}
+
+const dtsExports = extractExportNames(SDK_DTS_PATH)
+const indexExports = extractExportNames(SDK_INDEX_PATH)
+
+const inDtsNotIndex = [...dtsExports].filter(n => !indexExports.has(n))
+const inIndexNotDts = [...indexExports].filter(n => !dtsExports.has(n))
+
+if (inDtsNotIndex.length > 0 || inIndexNotDts.length > 0) {
+  console.error(`\n❌ SDK type declaration drift detected:`)
+  if (inDtsNotIndex.length > 0) {
+    console.error(`   In sdk.d.ts but not in index.ts:`)
+    for (const name of inDtsNotIndex) console.error(`     - ${name}`)
+  }
+  if (inIndexNotDts.length > 0) {
+    console.error(`   In index.ts but not in sdk.d.ts:`)
+    for (const name of inIndexNotDts) console.error(`     - ${name}`)
+  }
+  console.error(`\n   Keep sdk.d.ts in sync with src/entrypoints/sdk/index.ts.`)
+  process.exit(1)
+}
+
+console.log(`✓ SDK type declarations in sync (${dtsExports.size} exports match).`)
