@@ -478,10 +478,10 @@ function logAPISuccess({
       : {}),
     messageCount,
     messageTokens,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cachedInputTokens: usage.cache_read_input_tokens ?? 0,
-    uncachedInputTokens: usage.cache_creation_input_tokens ?? 0,
+    inputTokens: usage?.input_tokens ?? 0,
+    outputTokens: usage?.output_tokens ?? 0,
+    cachedInputTokens: usage?.cache_read_input_tokens ?? 0,
+    uncachedInputTokens: usage?.cache_creation_input_tokens ?? 0,
     durationMs: durationMs,
     durationMsIncludingRetries: durationMsIncludingRetries,
     attempt: attempt,
@@ -556,7 +556,7 @@ function logAPISuccess({
     // Log cache_deleted_input_tokens for cache editing analysis. Casts needed
     // because the field is intentionally not on NonNullableUsage (excluded from
     // external builds). Set by updateUsage() when cache editing is active.
-    ...(true &&
+    ...(
     ((usage as unknown as { cache_deleted_input_tokens?: number })
       .cache_deleted_input_tokens ?? 0) > 0
       ? {
@@ -718,10 +718,10 @@ export function logAPISuccessAndDuration({
   // Log API request event for OTLP
   void logOTelEvent('api_request', {
     model,
-    input_tokens: String(usage.input_tokens),
-    output_tokens: String(usage.output_tokens),
-    cache_read_tokens: String(usage.cache_read_input_tokens),
-    cache_creation_tokens: String(usage.cache_creation_input_tokens),
+    input_tokens: String(usage?.input_tokens ?? 0),
+    output_tokens: String(usage?.output_tokens ?? 0),
+    cache_read_tokens: String(usage?.cache_read_input_tokens ?? 0),
+    cache_creation_tokens: String(usage?.cache_creation_input_tokens ?? 0),
     cost_usd: String(costUSD),
     duration_ms: String(durationMs),
     speed: fastMode ? 'fast' : 'normal',
@@ -764,10 +764,10 @@ export function logAPISuccessAndDuration({
   // Pass the span to correctly match responses to requests when beta tracing is enabled
   endLLMRequestSpan(llmSpan, {
     success: true,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
     attempt,
     modelOutput,
     thinkingOutput,

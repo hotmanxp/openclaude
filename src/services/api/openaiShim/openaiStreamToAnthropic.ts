@@ -97,7 +97,9 @@ async function* openaiStreamToAnthropic(
       for (const line of lines) {
         const trimmed = line.trim()
         if (!trimmed || trimmed === 'data: [DONE]') continue
-        if (!trimmed.startsWith('data: ')) continue
+        if (!trimmed.startsWith('data: ')) {
+          continue
+        }
 
         let chunk: OpenAIStreamChunk
         try {
