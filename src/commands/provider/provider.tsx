@@ -893,17 +893,14 @@ export function ProviderWizard({
       )
 
     case 'openai-base':
+      const envOpenAIBaseUrl = process.env.OPENAI_BASE_URL?.trim()
       return (
         <TextEntryDialog
           resetStateKey={step.name}
           title="OpenAI-compatible setup"
           subtitle="Step 2 of 3"
           description={`Optionally enter a base URL. Leave blank for ${DEFAULT_OPENAI_BASE_URL}.`}
-          initialValue={
-            defaults.openAIBaseUrl === DEFAULT_OPENAI_BASE_URL
-              ? ''
-              : defaults.openAIBaseUrl
-          }
+          initialValue={envOpenAIBaseUrl || (defaults.openAIBaseUrl === DEFAULT_OPENAI_BASE_URL ? '' : defaults.openAIBaseUrl)}
           placeholder={DEFAULT_OPENAI_BASE_URL}
           allowEmpty
           onSubmit={value => {

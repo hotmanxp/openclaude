@@ -134,7 +134,9 @@ export function useAssistantHistory({
         // Drop existing sentinel (index 0, known stable UUID — O(1)).
         const base =
           prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev
-        return sentinel ? [sentinel, ...msgs, ...base] : [...msgs, ...base]
+        return (sentinel
+          ? [sentinel, ...msgs, ...base]
+          : [...msgs, ...base]) as Message[]
       })
 
       logForDebugging(
@@ -175,7 +177,7 @@ export function useAssistantHistory({
     setMessages(prev => {
       const base =
         prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev
-      return [mkSentinel(SENTINEL_LOADING), ...base]
+      return [mkSentinel(SENTINEL_LOADING), ...base] as Message[]
     })
     try {
       const page = await fetchOlderEvents(ctx, cursor)
@@ -185,7 +187,7 @@ export function useAssistantHistory({
         setMessages(prev => {
           const base =
             prev[0]?.uuid === sentinelUuidRef.current ? prev.slice(1) : prev
-          return [mkSentinel(SENTINEL_LOADING_FAILED), ...base]
+          return [mkSentinel(SENTINEL_LOADING_FAILED), ...base] as Message[]
         })
         return
       }

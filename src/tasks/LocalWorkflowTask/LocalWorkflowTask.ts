@@ -420,6 +420,14 @@ export class LocalWorkflowTask implements Task {
    * just deliver it through the right channel now.
    */
   private pushCompletionMessage(): void {
+    // Idempotent: stop() and runWorkflowInVm's finally both call
+    // this on the way to a terminal status. Without the guard, a
+    // x-stop followed by an in-flight abort resolution would
+    // enqueue two completion notifications back-to-back, and the
+    // LLM would see a duplicate `<task_notification>` instead of
+    // the single 'killed' message it expects.
+    if (this.state.notified) return
+    this.state.notified = true
     const content = formatCompletionMessage({
       workflowName: this.workflow.name,
       status: this.state.status,
@@ -439,6 +447,21 @@ export class LocalWorkflowTask implements Task {
     this.abortController.abort()
     this.state.status = 'killed'
     this.state.completedAt = Date.now()
+    // Push the completion notification from the synchronous stop
+    // path too. Without this, the message was only emitted from
+    // runWorkflowInVm's finally block — which only runs after the
+    // script awaits reject on the aborted signal. If the script
+    // happens to be in a synchronous stretch when stop() fires, or
+    // if runWorkflowInVm was still spinning up, the LLM would
+    // never see a `<task_notification>` and would have no way to
+    // know the workflow was killed. The idempotent guard in
+    // pushCompletionMessage makes it safe to call from both
+    // paths.
+    try {
+      this.pushCompletionMessage()
+    } catch {
+      // best-effort; never block stop() on chat UX
+    }
   }
 
   pause(): void {
@@ -480,8 +503,17 @@ export class LocalWorkflowTask implements Task {
         // Copy UI metadata from opts so WorkflowDetailDialog can show
         // the label / phase / model without re-parsing the prompt or
         // reaching back to the bridge.
+        //
+        // `phase` falls back to the most recently announced stage
+        // (state.currentPhase, set by `phase('...')` in the script) when
+        // the script's `agent()` call doesn't pass `opts.phase` — the
+        // linear stage ordering means the current stage is always the
+        // one any nested agent call belongs to. Scripts that run agents
+        // outside a `phase()` block (or before the first phase()) get
+        // an undefined phase, which the dialog groups as
+        // "(no phase)" alongside the declared phases.
         label: opts?.label,
-        phase: opts?.phase,
+        phase: opts?.phase ?? this.state.currentPhase,
         model: opts?.model,
       }
       this.state.agents.push(agent)

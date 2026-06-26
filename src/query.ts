@@ -1122,7 +1122,7 @@ async function* queryLoop(
           // token deletion count instead of client-side estimates.
           // Entire block gated behind feature() so the excluded string
           // is eliminated from external builds.
-          if (true && pendingCacheEdits) {
+          if (pendingCacheEdits) {
             const lastAssistant = assistantMessages.at(-1)
             // The API field is cumulative/sticky across requests, so we
             // subtract the baseline captured before this request to get the delta.

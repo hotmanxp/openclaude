@@ -192,7 +192,6 @@ function createPermissionContext(
               return null
             }
             if (
-              true &&
               classifierDecision.type === 'classifier'
             ) {
               const matchedRule = classifierDecision.reason.match(

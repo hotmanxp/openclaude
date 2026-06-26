@@ -8,9 +8,9 @@ import { getAPIProvider } from '../utils/model/providers.js'
 import { getWorkload } from '../utils/workloadContext.js'
 
 const DEFAULT_PREFIX =
-  `You are OpenCC, an open-source coding agent and CLI.`
+  `You are OpenCC, an coding agent and CLI.`
 const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX =
-  `You are OpenCC, an open-source coding agent and CLI running within the Open CC Agent SDK.`
+  `You are OpenCC, an coding agent and CLI running within the Open CC Agent SDK.`
 const AGENT_SDK_PREFIX =
   `You are OpenCC, built on the Open CC Agent SDK.`
 

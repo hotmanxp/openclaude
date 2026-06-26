@@ -17,6 +17,7 @@ import { updateTaskState } from '../utils/task/framework.js';
 import { archiveRemoteSession, teleportToRemote } from '../utils/teleport.js';
 import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultraplan/ccrSession.js';
 import { isAntEmployee } from '../utils/buildConfig.js';
+import { BRAND_NAME } from '../constants'
 
 // TODO(prod-hardening): OAuth token may go stale over the 30min poll;
 // consider refresh.
@@ -462,7 +463,7 @@ const call: LocalJSXCommandCall = async (onDone, context, args) => {
 export default {
   type: 'local-jsx',
   name: 'ultraplan',
-  description: `~10–30 min · OpenCC on the web drafts an advanced plan you can edit and approve. See ${CCR_TERMS_URL}`,
+  description: `~10–30 分钟 · ${BRAND_NAME} 在网页上起草一份可编辑和审批的高级计划。参见 ${CCR_TERMS_URL}`,
   argumentHint: '<prompt>',
   isEnabled: () => isAntEmployee(),
   load: () => Promise.resolve({

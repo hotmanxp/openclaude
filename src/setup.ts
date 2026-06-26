@@ -93,7 +93,7 @@ export async function setup(
     // and $CLAUDE_CODE_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.
     if (feature('UDS_INBOX')) {
-      // @ts-ignore - module not found
+      // @ts-expect-error
       const m = await import('./utils/udsMessaging.js')
       await m.startUdsMessaging(
         messagingSocketPath ?? m.getDefaultUdsSocketPath(),

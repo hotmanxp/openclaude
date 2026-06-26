@@ -436,7 +436,7 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
                   };
                 }
               }
-              if (true && mode === 'auto' && !isAutoModeGateEnabled()) {
+              if (mode === 'auto' && !isAutoModeGateEnabled()) {
                 const reason = getAutoModeUnavailableReason();
                 return {
                   ok: false,

@@ -121,6 +121,14 @@ export function query(): Query {
   throw new Error('query is not implemented in the SDK')
 }
 
+export async function queryAsync(
+  _params: { prompt: string | AsyncIterable<SDKUserMessage>; options?: QueryOptions } = {
+    prompt: '',
+  },
+): Promise<Query> {
+  throw new Error('queryAsync is not implemented in the SDK')
+}
+
 /**
  * V2 API - UNSTABLE
  * Create a persistent session for multi-turn conversations.

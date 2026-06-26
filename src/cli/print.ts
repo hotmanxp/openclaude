@@ -1057,7 +1057,7 @@ function runHeadlessStreaming(
       newMode === 'acceptEdits' ||
       newMode === 'bypassPermissions' ||
       newMode === 'plan' ||
-      newMode === (true && 'auto') ||
+      newMode === ('auto') ||
       newMode === 'dontAsk'
     ) {
       output.enqueue({
