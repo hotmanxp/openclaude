@@ -7,7 +7,7 @@ import {
 } from './globalPackageManager.js'
 
 describe('getGlobalInstallArgs', () => {
-  const spec = '@hotmanxp/opencc@latest'
+  const spec = '@zn-ai/opencc@latest'
   const cases: Array<[GlobalPackageManager, string[]]> = [
     ['npm', ['install', '-g', spec]],
     ['pnpm', ['add', '-g', spec]],
@@ -21,10 +21,10 @@ describe('getGlobalInstallArgs', () => {
   }
 
   test('passes an explicit version spec through unchanged', () => {
-    expect(getGlobalInstallArgs('npm', '@hotmanxp/opencc@1.2.3')).toEqual([
+    expect(getGlobalInstallArgs('npm', '@zn-ai/opencc@1.2.3')).toEqual([
       'install',
       '-g',
-      '@hotmanxp/opencc@1.2.3',
+      '@zn-ai/opencc@1.2.3',
     ])
   })
 })
@@ -46,7 +46,7 @@ describe('selectOwningPackageManager', () => {
   test('matches the package manager whose root contains the binary', () => {
     expect(
       selectOwningPackageManager(
-        '/home/u/.local/share/pnpm/global/5/node_modules/@hotmanxp/opencc/cli.js',
+        '/home/u/.local/share/pnpm/global/5/node_modules/@zn-ai/opencc/cli.js',
         [
           { pm: 'npm', root: '/usr/local/lib/node_modules' },
           {
