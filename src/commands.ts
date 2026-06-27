@@ -69,7 +69,7 @@ import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import workflows from './commands/workflows/index.js'
 import { feature } from 'bun:bundle'
-import { runtimeFeature } from './utils/envUtils.js'
+import { isWorkflowsDisabled, runtimeFeature } from './utils/envUtils.js'
 import { isBuddyEnabled } from './buddy/feature.js'
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -524,6 +524,23 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
 })
 
 /**
+ * True for any command that should disappear when workflows are runtime-disabled
+ * (OPENCC_DISABLE_WORKFLOWS=1 or settings.workflows.disabled=true).
+ *
+ * Two shapes to recognize:
+ *   - Built-in `/workflows` (local-jsx) — only signal is `name === 'workflows'`
+ *     (no `kind` field; it predates the workflow kind taxonomy).
+ *   - User- and project-scoped workflows — `kind: 'workflow'` is set by
+ *     `workflowToCommand()` in src/tools/WorkflowTool/createWorkflowCommand.ts.
+ *
+ * Bundled workflows are filtered earlier in `getWorkflowCommands()` and never
+ * reach this list, so no separate case is needed here.
+ */
+function isWorkflowCommand(cmd: Command): boolean {
+  return cmd.name === 'workflows' || cmd.kind === 'workflow'
+}
+
+/**
  * Returns commands available to the current user. The expensive loading is
  * memoized, but availability and isEnabled checks run fresh every call so
  * auth changes (e.g. /login) take effect immediately.
@@ -535,9 +552,17 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   const dynamicSkills = getDynamicSkills()
 
   // Build base commands without dynamic skills
-  const baseCommands = allCommands.filter(
-    _ => meetsAvailabilityRequirement(_) && isCommandEnabled(_),
-  )
+  // `isWorkflowsDisabled()` is re-evaluated per call (cheap: env + cached
+  // settings) so flipping OPENCC_DISABLE_WORKFLOWS or settings.workflows.disabled
+  // mid-session takes effect on the next `/`-list refresh — same freshness
+  // guarantee as meetsAvailabilityRequirement / isCommandEnabled.
+  const workflowsDisabled = isWorkflowsDisabled()
+  const baseCommands = allCommands.filter(_ => {
+    if (!meetsAvailabilityRequirement(_)) return false
+    if (!isCommandEnabled(_)) return false
+    if (workflowsDisabled && isWorkflowCommand(_)) return false
+    return true
+  })
 
   if (dynamicSkills.length === 0) {
     return baseCommands

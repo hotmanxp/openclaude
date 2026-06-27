@@ -1,3 +1,4 @@
+import { isWorkflowsDisabled } from '../../utils/envUtils.js'
 import type { Command } from '../../types/command.js'
 import { getWorkflowRegistry } from './singleton.js'
 import type { Workflow } from './types.js'
@@ -133,6 +134,14 @@ export function workflowToCommand(workflow: Workflow): Command {
  * the workflow runtime (worker threads, scheduler) is loaded on demand.
  */
 export async function getWorkflowCommands(cwd: string): Promise<Command[]> {
+  // Gate at the registry surface so OPENCC_DISABLE_WORKFLOWS / settings.workflows.disabled
+  // hide user- and project-scoped workflows from the `/` autocomplete. The WorkflowTool
+  // execution path has its own gate (WorkflowTool.ts) — this one stops them from
+  // being listed AND triggered at all. Bundled workflows are filtered separately
+  // (see the `source !== 'bundled'` check below) and are not affected here.
+  if (isWorkflowsDisabled()) {
+    return []
+  }
   const registry = getWorkflowRegistry(cwd)
   // Force a fresh scan: the registry's cold-scan only fires when its
   // internal map is empty, but bundled workflows are registered at
