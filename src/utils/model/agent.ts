@@ -41,11 +41,19 @@ export function getAgentModel(
   }
 
   // Prioritize tool-specified model if provided
-  if (toolSpecifiedModel) {
-    if (aliasMatchesParentTier(toolSpecifiedModel, parentModel)) {
+  const trimmedToolModel = toolSpecifiedModel?.trim()
+  if (trimmedToolModel) {
+    if (aliasMatchesParentTier(trimmedToolModel, parentModel)) {
       return parentModel
     }
-    return parseUserSpecifiedModel(toolSpecifiedModel)
+    if (trimmedToolModel.toLowerCase() === 'inherit') {
+      return getRuntimeMainLoopModel({
+        permissionMode: permissionMode ?? 'default',
+        mainLoopModel: parentModel,
+        exceeds200kTokens: false,
+      })
+    }
+    return parseUserSpecifiedModel(trimmedToolModel)
   }
 
   const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
