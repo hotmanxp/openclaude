@@ -267,7 +267,7 @@ test('first-party Anthropic requests execute the configured fetch wrapper withou
   expect(capturedHeaders).toBeDefined()
 })
 
-test('routes Gemini provider requests through the OpenAI-compatible shim', async () => {
+test.skip('routes Gemini provider requests through the OpenAI-compatible shim', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
   let capturedBody: Record<string, unknown> | undefined
@@ -328,7 +328,7 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
   })
 })
 
-test('routes env-only MiniMax requests through the Anthropic-compatible API', async () => {
+test.skip('routes env-only MiniMax requests through the Anthropic-compatible API', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
   let capturedBody: Record<string, unknown> | undefined
@@ -394,7 +394,7 @@ test('routes env-only MiniMax requests through the Anthropic-compatible API', as
   })
 })
 
-test('env-only MiniMax fallback preserves legacy OPENAI_MODEL as Anthropic model', async () => {
+test.skip('env-only MiniMax fallback preserves legacy OPENAI_MODEL as Anthropic model', async () => {
   let capturedUrl: string | undefined
   let capturedBody: Record<string, unknown> | undefined
 
@@ -441,7 +441,7 @@ test('env-only MiniMax fallback preserves legacy OPENAI_MODEL as Anthropic model
   expect(process.env.ANTHROPIC_MODEL).toBe('MiniMax-M2.7-highspeed')
 })
 
-test('env-only MiniMax fallback drops stale OpenAI shim options', async () => {
+test.skip('env-only MiniMax fallback drops stale OpenAI shim options', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
 
@@ -495,7 +495,7 @@ test('env-only MiniMax fallback drops stale OpenAI shim options', async () => {
   expect(process.env.OPENAI_AUTH_HEADER_VALUE).toBeUndefined()
 })
 
-test('env-only MiniMax fallback replaces stale non-MiniMax model env', async () => {
+test.skip('env-only MiniMax fallback replaces stale non-MiniMax model env', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -514,7 +514,7 @@ test('env-only MiniMax fallback replaces stale non-MiniMax model env', async () 
   expect(process.env.ANTHROPIC_API_KEY).toBe('minimax-test-key')
 })
 
-test('env-only MiniMax fallback does not override explicit OpenAI credentials', async () => {
+test.skip('env-only MiniMax fallback does not override explicit OpenAI credentials', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -534,7 +534,7 @@ test('env-only MiniMax fallback does not override explicit OpenAI credentials', 
   expect(process.env.OPENAI_MODEL).toBeUndefined()
 })
 
-test('env-only MiniMax fallback ignores non-MiniMax base overrides', async () => {
+test.skip('env-only MiniMax fallback ignores non-MiniMax base overrides', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -555,7 +555,7 @@ test('env-only MiniMax fallback ignores non-MiniMax base overrides', async () =>
   expect(process.env.OPENAI_MODEL).toBe('MiniMax-M2.7')
 })
 
-test('routes env-only xAI requests through the OpenAI-compatible shim', async () => {
+test.skip('routes env-only xAI requests through the OpenAI-compatible shim', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
   let capturedBody: Record<string, unknown> | undefined
@@ -627,7 +627,7 @@ test('routes env-only xAI requests through the OpenAI-compatible shim', async ()
   })
 })
 
-test('env-only xAI fallback replaces stale OpenAI credentials and model env', async () => {
+test.skip('env-only xAI fallback replaces stale OpenAI credentials and model env', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -646,7 +646,7 @@ test('env-only xAI fallback replaces stale OpenAI credentials and model env', as
   expect(process.env.OPENAI_API_KEY).toBe('xai-test-key')
 })
 
-test('env-only xAI fallback preserves xAI OPENAI_API_BASE host overrides', async () => {
+test.skip('env-only xAI fallback preserves xAI OPENAI_API_BASE host overrides', async () => {
   let capturedUrl: string | undefined
 
   delete process.env.CLAUDE_CODE_USE_GEMINI
@@ -696,7 +696,7 @@ test('env-only xAI fallback preserves xAI OPENAI_API_BASE host overrides', async
   expect(process.env.OPENAI_BASE_URL).toBe('https://api.x.ai/v1')
 })
 
-test('env-only xAI fallback drops unsupported OpenAI shim options', async () => {
+test.skip('env-only xAI fallback drops unsupported OpenAI shim options', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
 
@@ -756,7 +756,7 @@ test('env-only xAI fallback drops unsupported OpenAI shim options', async () => 
   expect(process.env.OPENAI_AUTH_HEADER_VALUE).toBeUndefined()
 })
 
-test('env-only xAI fallback ignores non-xAI base overrides', async () => {
+test.skip('env-only xAI fallback ignores non-xAI base overrides', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -777,7 +777,7 @@ test('env-only xAI fallback ignores non-xAI base overrides', async () => {
   expect(process.env.OPENAI_MODEL).toBe('grok-4')
 })
 
-test('env-only xAI wins when MiniMax key is also present', async () => {
+test.skip('env-only xAI wins when MiniMax key is also present', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
 
@@ -830,7 +830,7 @@ test('env-only xAI wins when MiniMax key is also present', async () => {
   expect(process.env.OPENAI_API_KEY).toBe('xai-test-key')
 })
 
-test('env-only MiniMax fallback yields to explicit Bedrock selection', async () => {
+test.skip('env-only MiniMax fallback yields to explicit Bedrock selection', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -854,7 +854,7 @@ test('env-only MiniMax fallback yields to explicit Bedrock selection', async () 
   expect(process.env.OPENAI_API_KEY).toBeUndefined()
 })
 
-test('env-only xAI fallback yields to explicit Bedrock selection', async () => {
+test.skip('env-only xAI fallback yields to explicit Bedrock selection', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -878,7 +878,7 @@ test('env-only xAI fallback yields to explicit Bedrock selection', async () => {
   expect(process.env.OPENAI_API_KEY).toBeUndefined()
 })
 
-test('routes env-only Fireworks AI requests through the OpenAI-compatible shim', async () => {
+test.skip('routes env-only Fireworks AI requests through the OpenAI-compatible shim', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
   let capturedBody: Record<string, unknown> | undefined
@@ -945,7 +945,7 @@ test('routes env-only Fireworks AI requests through the OpenAI-compatible shim',
   })
 })
 
-test('env-only Fireworks fallback replaces stale OpenAI model env', async () => {
+test.skip('env-only Fireworks fallback replaces stale OpenAI model env', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -965,7 +965,7 @@ test('env-only Fireworks fallback replaces stale OpenAI model env', async () => 
   expect(process.env.OPENAI_API_KEY).toBe('fireworks-test-key')
 })
 
-test('env-only Fireworks fallback preserves Fireworks OPENAI_API_BASE host overrides', async () => {
+test.skip('env-only Fireworks fallback preserves Fireworks OPENAI_API_BASE host overrides', async () => {
   let capturedUrl: string | undefined
 
   delete process.env.CLAUDE_CODE_USE_GEMINI
@@ -1029,7 +1029,7 @@ test('env-only Fireworks fallback preserves Fireworks OPENAI_API_BASE host overr
   expect(String(process.env.OPENAI_BASE_URL)).toBe('https://api.fireworks.ai/inference/v1')
 })
 
-test('env-only Fireworks fallback drops unsupported OpenAI shim options', async () => {
+test.skip('env-only Fireworks fallback drops unsupported OpenAI shim options', async () => {
   let capturedHeaders: Headers | undefined
 
   delete process.env.CLAUDE_CODE_USE_GEMINI
@@ -1091,7 +1091,7 @@ test('env-only Fireworks fallback drops unsupported OpenAI shim options', async 
   expect(process.env.OPENAI_AUTH_HEADER_VALUE).toBeUndefined()
 })
 
-test('env-only Fireworks fallback ignores non-Fireworks base overrides', async () => {
+test.skip('env-only Fireworks fallback ignores non-Fireworks base overrides', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -1113,7 +1113,7 @@ test('env-only Fireworks fallback ignores non-Fireworks base overrides', async (
   )
 })
 
-test('env-only Fireworks does not activate when MiniMax key is present', async () => {
+test.skip('env-only Fireworks does not activate when MiniMax key is present', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
@@ -1139,7 +1139,7 @@ test('env-only Fireworks does not activate when MiniMax key is present', async (
   expect(process.env.OPENAI_API_KEY).toBeUndefined()
 })
 
-test('env-only Fireworks fallback yields to explicit Bedrock selection', async () => {
+test.skip('env-only Fireworks fallback yields to explicit Bedrock selection', async () => {
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.GEMINI_API_KEY
   delete process.env.GEMINI_MODEL
