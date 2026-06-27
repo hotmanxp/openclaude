@@ -77,6 +77,7 @@ export async function call(
     <TicketSelector
       recent={list.slice(0, 4)}
       onPicked={(picked) => finalize(onDone, picked)}
+      onCancelled={() => onDone('✗ 已取消 ticket 选择')}
     />
   )
 }
@@ -84,9 +85,11 @@ export async function call(
 function TicketSelector({
   recent,
   onPicked,
+  onCancelled,
 }: {
   recent: string[]
   onPicked: (id: string) => Promise<void>
+  onCancelled: () => void
 }) {
   const [entered, setEntered] = useState('')
 
@@ -118,8 +121,8 @@ function TicketSelector({
 
   return (
     <Box flexDirection="column">
-      <Text>选择 Ticket ID（上下键移动，回车确认，Tab 切换到输入框）：</Text>
-      <Select<string> options={options} onChange={handleSelect} />
+      <Text>选择 Ticket ID（上下键移动，回车确认，Tab 切换到输入框，Esc 取消）：</Text>
+      <Select<string> options={options} onChange={handleSelect} onCancel={onCancelled} />
     </Box>
   )
 }
