@@ -17,6 +17,10 @@ import type { WorkflowApi } from '../../tools/WorkflowTool/runtime/vmContext.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js'
 import { logError } from '../../utils/log.js'
+import {
+  writeWorkflowReport,
+  type WorkflowReport,
+} from '../../utils/task/diskOutput.js'
 
 // Re-export so consumers (notably src/tasks/types.ts) can import
 // LocalWorkflowTaskState from this entrypoint.
@@ -375,6 +379,63 @@ export class LocalWorkflowTask implements Task {
       }
     } finally {
       this.state.completedAt = Date.now()
+
+      // Persist the aggregated per-agent report before notifying so
+      // the LLM can `Read` it via the path we surface in
+      // formatCompletionMessage. Best-effort: a disk failure must
+      // not block task completion / notification.
+      try {
+        const startedAt = this.state.startedAt
+        const completedAt = this.state.completedAt ?? Date.now()
+        const agents = this.state.agents
+        const summary = {
+          total: agents.length,
+          completed: agents.filter(a => a.status === 'completed').length,
+          failed: agents.filter(a => a.status === 'failed').length,
+          skipped: agents.filter(a => a.status === 'skipped').length,
+        }
+        const report: WorkflowReport = {
+          schemaVersion: 1,
+          taskId: this.state.id,
+          workflowName: this.state.name,
+          description: this.state.description,
+          status: this.state.status as WorkflowReport['status'],
+          startedAt,
+          completedAt,
+          durationMs: Math.max(0, completedAt - startedAt),
+          args: this.state.args,
+          meta: this.state.meta,
+          result: this.state.result,
+          error: this.state.error,
+          agents: agents.map(a => ({
+            id: a.id,
+            label: a.label,
+            phase: a.phase,
+            model: a.model,
+            status: a.status,
+            prompt: a.prompt,
+            result: a.result,
+            error: a.error,
+            startedAt: a.startedAt,
+            completedAt: a.completedAt,
+            durationMs:
+              a.startedAt && a.completedAt
+                ? Math.max(0, a.completedAt - a.startedAt)
+                : undefined,
+            tokensUsed: a.tokensUsed,
+            toolsUsed: a.toolsUsed,
+            toolCalls: a.toolCalls as unknown[] | undefined,
+            worktreePath: a.worktreePath,
+            isolationRemoved: a.isolationRemoved,
+          })),
+          summary,
+        }
+        this.state.reportPath = await writeWorkflowReport(this.state.id, report)
+      } catch (e) {
+        // best-effort; never block workflow completion on disk I/O
+        logError(e)
+      }
+
       // Terminal state reached — drop from the lifecycle registry so the
       // dialog no longer offers kill / skip / retry controls for it.
       unregisterWorkflowTask(this.state.id)

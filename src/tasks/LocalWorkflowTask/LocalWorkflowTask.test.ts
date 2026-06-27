@@ -12,6 +12,10 @@ import type {
   SpawnResult,
   Workflow,
 } from '../../tools/WorkflowTool/types.js'
+import {
+  getWorkflowReportPath,
+  readWorkflowReport,
+} from '../../utils/task/diskOutput.js'
 
 const sampleWorkflow: Workflow = {
   name: 'echo',
@@ -400,5 +404,83 @@ describe('LocalWorkflowTask.start (nested workflow() on VM path)', () => {
       }
       rmSync(tmpRoot, { recursive: true, force: true })
     }
+  })
+})
+
+describe('LocalWorkflowTask report persistence', () => {
+  test('completed run writes a report file with per-agent status', async () => {
+    const { ctx } = makeParentContext('agent-out')
+    const task = new LocalWorkflowTask({
+      workflow: { ...sampleWorkflow, name: 'persist-test' },
+      argsJson: ['arg1'],
+      parentContext: ctx,
+    })
+    task.setVmRunner((async () => ({
+      report: 'final-result',
+      events: [],
+      budgetSpent: 0,
+    })) as never)
+    await task.start(`async function userScript() { return 'unused'; }`)
+    expect(task.state.status).toBe('completed')
+    expect(task.state.reportPath).toBe(getWorkflowReportPath(task.state.id))
+    const report = await readWorkflowReport(task.state.id)
+    expect(report).not.toBeNull()
+    expect(report?.workflowName).toBe('persist-test')
+    expect(report?.status).toBe('completed')
+    expect(report?.result).toBe('final-result')
+    expect(report?.summary).toEqual({
+      total: 0,
+      completed: 0,
+      failed: 0,
+      skipped: 0,
+    })
+  })
+
+  test('failed run writes a report file with error', async () => {
+    const { ctx } = makeParentContext('unused')
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    task.setVmRunner((async () => {
+      throw new Error('script crashed')
+    }) as never)
+    await task.start(
+      `async function userScript() { throw new Error('script crashed'); }`,
+    )
+    expect(task.state.status).toBe('failed')
+    expect(task.state.reportPath).toBeTruthy()
+    const report = await readWorkflowReport(task.state.id)
+    expect(report?.status).toBe('failed')
+    expect(report?.error?.message).toContain('script crashed')
+  })
+
+  test('summary counts failed/completed agents correctly', async () => {
+    let call = 0
+    const spawner: LocalSpawner = async () => {
+      call++
+      if (call === 2) throw new Error('agent 2 failed')
+      return { agentId: `a${call}`, report: `out${call}` }
+    }
+    const ctx: LocalWorkflowParentContext = {
+      spawner,
+      abortController: new AbortController(),
+    }
+    const task = new LocalWorkflowTask({
+      workflow: sampleWorkflow,
+      argsJson: [],
+      parentContext: ctx,
+    })
+    await task.start(`async function userScript() {
+      const a1 = await agent('p1');
+      try { await agent('p2'); } catch (e) {}
+      const a3 = await agent('p3');
+      return 'done';
+    }`)
+    const report = await readWorkflowReport(task.state.id)
+    expect(report?.summary.total).toBe(3)
+    expect(report?.summary.completed).toBe(2)
+    expect(report?.summary.failed).toBe(1)
   })
 })
