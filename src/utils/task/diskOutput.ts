@@ -73,6 +73,88 @@ export function getTaskOutputPath(taskId: string): string {
   return join(getTaskOutputDir(), `${taskId}.output`)
 }
 
+/**
+ * Aggregated per-agent report written by LocalWorkflowTask on terminal
+ * state. Lives next to `<taskId>.output` so the LLM can `Read` it via
+ * the path surfaced in the inline completion notification. After
+ * /workflows panel evicts the run from appState.workflows, this file is
+ * the durable access channel for per-agent success/failure details.
+ */
+export type WorkflowReport = {
+  schemaVersion: 1
+  taskId: string
+  workflowName: string
+  description: string
+  status: 'completed' | 'failed' | 'killed' | 'paused'
+  startedAt: number
+  completedAt: number
+  durationMs: number
+  args: unknown
+  meta?: unknown
+  result?: string
+  error?: { message: string; stack?: string }
+  agents: Array<{
+    id: string
+    label?: string
+    phase?: string
+    model?: string
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+    prompt: string
+    result?: string
+    error?: string
+    startedAt?: number
+    completedAt?: number
+    durationMs?: number
+    tokensUsed?: number
+    toolsUsed?: number
+    toolCalls?: unknown[]
+    worktreePath?: string
+    isolationRemoved?: boolean
+  }>
+  summary: { total: number; completed: number; failed: number; skipped: number }
+}
+
+/**
+ * Get the on-disk path for a workflow run's aggregated report JSON.
+ * Parallel to getTaskOutputPath — same dir, different extension.
+ */
+export function getWorkflowReportPath(taskId: string): string {
+  return join(getTaskOutputDir(), `${taskId}.report.json`)
+}
+
+/**
+ * Serialize a WorkflowReport to disk. Atomic via Bun.write (truncate
+ * + rewrite). JSON format so the LLM can `Read` and reason about
+ * per-agent status without re-parsing.
+ */
+export async function writeWorkflowReport(
+  taskId: string,
+  report: WorkflowReport,
+): Promise<string> {
+  await ensureOutputDir()
+  const path = getWorkflowReportPath(taskId)
+  await Bun.write(path, JSON.stringify(report, null, 2))
+  return path
+}
+
+/**
+ * Read a previously-written WorkflowReport. Returns null when the
+ * file doesn't exist or fails to parse — callers should treat that
+ * as "report unavailable" and fall back to inline preview only.
+ */
+export async function readWorkflowReport(
+  taskId: string,
+): Promise<WorkflowReport | null> {
+  const path = getWorkflowReportPath(taskId)
+  const file = Bun.file(path)
+  if (!(await file.exists())) return null
+  try {
+    return (await file.json()) as WorkflowReport
+  } catch {
+    return null
+  }
+}
+
 // Tracks fire-and-forget promises (initTaskOutput, initTaskOutputAsSymlink,
 // evictTaskOutput, #drain) so tests can drain before teardown. Prevents the
 // async-ENOENT-after-teardown flake class (#24957, #25065): a voided async
