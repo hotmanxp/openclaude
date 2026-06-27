@@ -60,6 +60,7 @@ import {
   buildExtractCombinedPrompt,
 } from './prompts.js'
 import * as teamMemPaths from '../../memdir/teamMemPaths.js'
+import { isTeamMemoryEnabled } from '../../memdir/teamMemPaths.js'
 
 
 // ============================================================================
@@ -354,7 +355,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    const teamMemoryEnabled = teamMemPaths.isTeamMemoryEnabled()
+    const teamMemoryEnabled = isTeamMemoryEnabled()
 
     const skipIndex = getFeatureValue_CACHED_MAY_BE_STALE(
       'tengu_moth_copse',

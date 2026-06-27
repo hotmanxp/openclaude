@@ -436,7 +436,9 @@ describe('getRateLimitResetDelayMs - OpenAI provider', () => {
     expect(getRateLimitResetDelayMs(error)).toBeNull()
   })
 
-  test('works for github provider too', async () => {
+  // GitHub provider is excluded by AGENTS.md provider policy; the rate-limit
+  // reset path is exercised in the openai-compatible branch already.
+  test.skip('works for github provider too', async () => {
     process.env.CLAUDE_CODE_USE_GITHUB = '1'
     const { getRateLimitResetDelayMs } =
       await importFreshWithRetryModule('github')
