@@ -10,8 +10,8 @@
 // Usage: bun run worktree.agentBase.fixture.ts <cfgDir> <repoDir> <name>
 // Prints { worktreePath } as JSON on stdout.
 import {
+  __resetConfigDirEnvWarningForTesting,
   getClaudeConfigHomeDir,
-  setClaudeConfigHomeDirForTesting,
 } from './envUtils.js'
 import { createAgentWorktree } from './worktree.js'
 
@@ -22,7 +22,10 @@ if (!cfgDir || !repoDir || !name) {
   process.exit(2)
 }
 
-setClaudeConfigHomeDirForTesting(cfgDir)
+// OpenCC rebrand: upstream's setClaudeConfigHomeDirForTesting is not in our
+// envUtils.ts. Drive the same behavior via direct env assignment + cache reset.
+process.env.OPENCC_CONFIG_DIR = cfgDir
+__resetConfigDirEnvWarningForTesting()
 getClaudeConfigHomeDir.cache?.clear?.()
 
 const result = await createAgentWorktree(name, { cwd: repoDir })
