@@ -3,10 +3,7 @@ import { join } from 'path'
 import { getFsImplementation } from '../utils/fsOperations.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = true
-  ? (require('./teamMemPaths.js') as typeof import('./teamMemPaths.js'))
-  : null
+import * as teamMemPaths from './teamMemPaths.js'
 
 import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'

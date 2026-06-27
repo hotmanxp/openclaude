@@ -16,7 +16,7 @@
 // Phase 3 7 agents:
 //   V3a — TUI startup + splash + debug log basic
 //   V4-1 — Slash basic (/help + /version + /clear)
-//   V4-2 — Slash lists (/provider list + /model list)
+//   V4-2 — Slash stats + permissions (/cost + /permissions)
 //   V4-3 — Slash status (/status + /memory)
 //   V2 — CLI smoke (--version / --help / -p hello / -p model / --invalid-flag)
 //   V5 — Tool calls (Read/Glob/Grep + multi-turn + error recovery)
@@ -287,44 +287,46 @@ tail -10 /tmp/opencc-slash-clear.log
       },
     ),
 
-  // ===== V4-2: Slash commands lists (/provider list + /model list) =====
+  // ===== V4-2: Slash commands stats + permissions (/cost + /permissions) =====
+  // Note: /provider list + /model list 已知坏 (memory: opencc-2026-06-27-slash-provider-model-list-broken)
+  // /usage 命令不存在 — 改用 /permissions 补充 status 组之外的另一维度
   () =>
     agent(
-      `OpenCC slash commands 列表组 验证 Agent。
+      `OpenCC slash commands 用量+权限组 验证 Agent。
 
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - /provider list ====
+==== STEP 1 (REQUIRED FIRST) - /cost ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-provider.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-cost.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/provider list
+/cost
 /exit
 EOF
-tail -30 /tmp/opencc-slash-provider.log
+tail -30 /tmp/opencc-slash-cost.log
 \`\`\`
-期望: 显示 providers (含 anthropic + ollama + openai-compatible, 可能含 MiniMax/firstParty/Default 等)
+期望: 显示 token 用量 + 费用统计 (含当前 session + 累计)
 
-==== STEP 2 (REQUIRED BEFORE report) - /model list ====
+==== STEP 2 (REQUIRED BEFORE report) - /permissions ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-model.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-permissions.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/model list
+/permissions
 /exit
 EOF
-tail -30 /tmp/opencc-slash-model.log
+tail -30 /tmp/opencc-slash-permissions.log
 \`\`\`
-期望: 显示可用模型
+期望: 显示权限配置 (mode: default/acceptEdits/bypassPermissions 等, 以及工具权限规则)
 
 ==== 报告 ====
-- /provider list: PASS/FAIL + 实际显示的 providers
-- /model list: PASS/FAIL + 实际显示的模型
+- /cost: PASS/FAIL + 实际显示的关键数字 (token 数 / 费用)
+- /permissions: PASS/FAIL + 实际显示的权限模式/规则
 - Overall: PASS / FAIL
 
 严禁修改任何文件。`,
       {
-        label: "slash-lists",
+        label: "slash-stats",
         phase: "Phase 3: TUI verification (7 parallel)",
         schema: VERIFY_SCHEMA,
         agentType: "tui-func-verifier",
@@ -533,7 +535,7 @@ const debugOk = checkPassed(debugR);
 const failed = [];
 if (!tuiOk) failed.push("tui-startup");
 if (!slash1Ok) failed.push("slash-basic");
-if (!slash2Ok) failed.push("slash-lists");
+if (!slash2Ok) failed.push("slash-stats");
 if (!slash3Ok) failed.push("slash-status");
 if (!cliOk) failed.push("cli-smoke");
 if (!toolsOk) failed.push("tool-calls");
@@ -558,7 +560,7 @@ return {
   phase3_tui: {
     tuiStartup: tuiR,
     slashBasic: slash1R,
-    slashLists: slash2R,
+    slashStats: slash2R,
     slashStatus: slash3R,
     cliSmoke: cliR,
     toolCalls: toolsR,

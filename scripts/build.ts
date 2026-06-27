@@ -1027,7 +1027,6 @@ if (result?.success) {
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
     'src/daemon/workerRegistry',
-    'src/utils/udsClient',
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer

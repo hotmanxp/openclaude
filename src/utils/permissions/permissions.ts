@@ -446,7 +446,7 @@ async function runPermissionRequestHooksForHeadlessAgent(
           logForDebugging(
             `Hook interrupt: tool=${tool.name} hookMessage=${decision.message}`,
           )
-          context.abortController.abort()
+          context.abortController.abort('interrupt')
         }
         return {
           behavior: 'deny',
