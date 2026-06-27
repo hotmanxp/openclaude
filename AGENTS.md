@@ -276,20 +276,23 @@ Use codegraph for **structural** questions — what calls what, what would break
 |---|---|
 | "Where is X defined?" / "Find symbol named X" | `codegraph_search` |
 | "What calls function Y?" | `codegraph_callers` |
-| "What does Y call?" | `codegraph_callees` |
-| "What would break if I changed Z?" | `codegraph_impact` |
-| "Show me Y's signature / source / docstring" | `codegraph_node` |
-| "Give me focused context for a task/area" | `codegraph_context` |
-| "See several related symbols' source at once" | `codegraph_explore` |
-| "What files exist under path/" | `codegraph_files` |
-| "Is the index healthy?" | `codegraph_status` |
+| "Show me Y's source / signature / docstring" | `codegraph_node` |
+| "Several related symbols at once" / "How does X reach Y?" / "What would break if I changed Z?" | `codegraph_explore` |
+
+The 4-tool surface is codegraph's default since v1.0.0 (June 2026).
+`codegraph_callees` / `codegraph_impact` / `codegraph_files` / `codegraph_status`
+are gated behind the MCP server's `CODEGRAPH_MCP_TOOLS` env var and are
+NOT listed here. For questions the 4-tool surface doesn't directly cover
+(forward call graph, file listing, index health), fall back to Glob/Grep/Read,
+or rely on `codegraph_explore`'s blast-radius section (callees + impact
+inline) and `codegraph_node`'s dependents note.
 
 ### Rules of thumb
 
-- **Answer directly — don't delegate exploration.** For "how does X work" / architecture / trace questions, answer with 2-3 codegraph calls: `codegraph_context` first, then ONE `codegraph_explore` for the source of the symbols it surfaces. Codegraph IS the pre-built index, so spawning a separate file-reading sub-task/agent — or running a grep + read loop — repeats work codegraph already did and costs more for the same answer.
+- **Answer directly — don't delegate exploration.** For "how does X work" / architecture / trace questions, ONE `codegraph_explore` call usually surfaces every relevant symbol and its source. Codegraph IS the pre-built index, so spawning a separate file-reading sub-task/agent — or running a grep + read loop — repeats work codegraph already did and costs more for the same answer.
 - **Trust codegraph results.** They come from a full AST parse. Do NOT re-verify them with grep — that's slower, less accurate, and wastes context.
 - **Don't grep first** when looking up a symbol by name. `codegraph_search` is faster and returns kind + location + signature in one call.
-- **Don't chain `codegraph_search` + `codegraph_node`** when you just want context — `codegraph_context` is one call.
+- **Don't chain `codegraph_search` + `codegraph_node`** when you just want context — `codegraph_explore` is the one call that returns related symbols' source AND call paths in a single capped response.
 - **Don't loop `codegraph_node` over many symbols** — one `codegraph_explore` call returns several symbols' source grouped in a single capped call, while each separate node/Read call re-reads the whole context and costs far more.
 - **Index lag**: the file watcher debounces ~500ms behind writes; don't re-query immediately after editing a file in the same turn.
 

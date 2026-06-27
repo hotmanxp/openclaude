@@ -72,6 +72,15 @@ export type LocalWorkflowTaskState = TaskStateBase & {
    * warning-styled line in the dialog header.
    */
   warning?: string
+  /**
+   * Absolute path to the persisted per-agent report JSON file.
+   * Written by LocalWorkflowTask.start() in the finally block so
+   * the LLM can `Read` the file via the path surfaced in the
+   * inline completion notification. After /workflows evicts the
+   * run from appState.workflows, this file is the durable access
+   * channel for per-agent success/failure details.
+   */
+  reportPath?: string
 }
 
 export function createInitialState(args: {
@@ -110,6 +119,9 @@ export function createInitialState(args: {
     outputFile: '',
     outputOffset: 0,
     notified: false,
+    // Set by LocalWorkflowTask.start() in the finally block when the
+    // report JSON is written to disk. Empty until then.
+    reportPath: '',
   }
 }
 

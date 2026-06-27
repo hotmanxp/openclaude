@@ -17,6 +17,10 @@ import type { WorkflowApi } from '../../tools/WorkflowTool/runtime/vmContext.js'
 import { createInitialState, type LocalWorkflowTaskState } from './state.js'
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js'
 import { logError } from '../../utils/log.js'
+import {
+  writeWorkflowReport,
+  type WorkflowReport,
+} from '../../utils/task/diskOutput.js'
 
 // Re-export so consumers (notably src/tasks/types.ts) can import
 // LocalWorkflowTaskState from this entrypoint.
@@ -375,6 +379,63 @@ export class LocalWorkflowTask implements Task {
       }
     } finally {
       this.state.completedAt = Date.now()
+
+      // Persist the aggregated per-agent report before notifying so
+      // the LLM can `Read` it via the path we surface in
+      // formatCompletionMessage. Best-effort: a disk failure must
+      // not block task completion / notification.
+      try {
+        const startedAt = this.state.startedAt
+        const completedAt = this.state.completedAt ?? Date.now()
+        const agents = this.state.agents
+        const summary = {
+          total: agents.length,
+          completed: agents.filter(a => a.status === 'completed').length,
+          failed: agents.filter(a => a.status === 'failed').length,
+          skipped: agents.filter(a => a.status === 'skipped').length,
+        }
+        const report: WorkflowReport = {
+          schemaVersion: 1,
+          taskId: this.state.id,
+          workflowName: this.state.name,
+          description: this.state.description,
+          status: this.state.status as WorkflowReport['status'],
+          startedAt,
+          completedAt,
+          durationMs: Math.max(0, completedAt - startedAt),
+          args: this.state.args,
+          meta: this.state.meta,
+          result: this.state.result,
+          error: this.state.error,
+          agents: agents.map(a => ({
+            id: a.id,
+            label: a.label,
+            phase: a.phase,
+            model: a.model,
+            status: a.status,
+            prompt: a.prompt,
+            result: a.result,
+            error: a.error,
+            startedAt: a.startedAt,
+            completedAt: a.completedAt,
+            durationMs:
+              a.startedAt && a.completedAt
+                ? Math.max(0, a.completedAt - a.startedAt)
+                : undefined,
+            tokensUsed: a.tokensUsed,
+            toolsUsed: a.toolsUsed,
+            toolCalls: a.toolCalls as unknown[] | undefined,
+            worktreePath: a.worktreePath,
+            isolationRemoved: a.isolationRemoved,
+          })),
+          summary,
+        }
+        this.state.reportPath = await writeWorkflowReport(this.state.id, report)
+      } catch (e) {
+        // best-effort; never block workflow completion on disk I/O
+        logError(e)
+      }
+
       // Terminal state reached — drop from the lifecycle registry so the
       // dialog no longer offers kill / skip / retry controls for it.
       unregisterWorkflowTask(this.state.id)
@@ -436,6 +497,7 @@ export class LocalWorkflowTask implements Task {
       agents: this.state.agents.length,
       result: this.state.result,
       error: this.state.error?.message,
+      reportPath: this.state.reportPath ?? '',
     })
     enqueuePendingNotification({
       value: content,
@@ -717,8 +779,15 @@ type CompletionMessageInput = {
   startedAt: number
   completedAt: number
   agents: number
-  result: string | undefined
-  error: string | undefined
+  result?: string
+  error?: string
+  /**
+   * Absolute path to the persisted per-agent report JSON written
+   * by start()'s finally block. When empty (legacy / disk write
+   * failed), the report line is omitted and the LLM has no way
+   * to inspect per-agent details — graceful degradation only.
+   */
+  reportPath: string
 }
 
 const COMPLETION_RESULT_PREVIEW_LIMIT = 500
@@ -731,35 +800,39 @@ const COMPLETION_RESULT_PREVIEW_LIMIT = 500
  *   <blank>
  *   <preview or error or killed line>
  *   <blank>
- *   Full report in `/workflows` (or no pointer if inline)
+ *   Report: <abs path>   (omitted if reportPath is empty)
  *
  * The verb depends on status (completed / failed / killed). The
  * preview is truncated at 500 chars to keep the chat scrollable.
+ * The report path lets the LLM `Read` the on-disk JSON for full
+ * per-agent details after /workflows evicts the run from
+ * appState.workflows.
  */
-function formatCompletionMessage(input: CompletionMessageInput): string {
+export function formatCompletionMessage(input: CompletionMessageInput): string {
   const dur = formatDurationMs(input.completedAt - input.startedAt)
   const verb = statusVerb(input.status)
   const header = `[Workflow \`${input.workflowName}\` ${verb} in ${dur} · ${input.agents} agent${input.agents === 1 ? '' : 's'}]`
+  // Always include the on-disk report path so the LLM can `Read`
+  // it after the run evicts from /workflows. Empty path means the
+  // disk write failed; omit the line instead of showing empty.
+  const reportLine = input.reportPath
+    ? `\n\nReport: ${input.reportPath}\n(Use Read tool to inspect per-agent details.)`
+    : ''
   if (input.status === 'completed') {
     const preview = (input.result ?? '').trim()
     if (!preview) {
-      return `${header}\n\n(workflow returned no result)`
+      return `${header}${reportLine}`
     }
     const truncated = preview.length > COMPLETION_RESULT_PREVIEW_LIMIT
       ? preview.slice(0, COMPLETION_RESULT_PREVIEW_LIMIT) + '\n…'
       : preview
-    // For long structured results, point at /workflows for the
-    // full report. Short results are shown in full.
-    const fullReportHint = preview.length > COMPLETION_RESULT_PREVIEW_LIMIT
-      ? '\n\nFull report: open `/workflows` and select this run.'
-      : ''
-    return `${header}\n\n${truncated}${fullReportHint}`
+    return `${header}\n\n${truncated}${reportLine}`
   }
   if (input.status === 'failed') {
-    return `${header}\n\nError: ${input.error ?? '(unknown error)'}`
+    return `${header}\n\nError: ${input.error ?? '(unknown error)'}${reportLine}`
   }
   if (input.status === 'killed') {
-    return `${header}\n\nKilled by user.`
+    return `${header}\n\nKilled by user.${reportLine}`
   }
   // pending / running — shouldn't reach here in the finally block
   return header
