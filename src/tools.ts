@@ -117,7 +117,7 @@ const ListPeersTool = feature('UDS_INBOX')
 import type { ToolPermissionContext } from './Tool.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
-import { isEnvTruthy } from './utils/envUtils.js'
+import { isEnvTruthy, isWorkflowsDisabled } from './utils/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js'
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js'
@@ -224,7 +224,16 @@ export function getAllBaseTools(): Tools {
       : []),
     ...(VerifyPlanExecutionTool ? [VerifyPlanExecutionTool] : []),
     ...(process.env.USER_TYPE === 'ant' && REPLTool ? [REPLTool] : []),
-    ...(WorkflowTool ? [WorkflowTool] : []),
+    // Gate WorkflowTool at the LLM-tools-pool surface (sibling pattern: see
+    // isTodoV2Enabled / isWorktreeModeEnabled above). Without this gate the
+    // tool stays in the prompt and the model keeps "seeing" it; the
+    // WorkflowTool.call() execution gate (WorkflowTool.ts:555) only fires
+    // when the model actually invokes it. Hiding the tool here means:
+    //   1. The LLM doesn't waste a tools[] slot describing a disabled feature.
+    //   2. The system prompt doesn't surface a "tool exists but refuses" UX.
+    //   3. Mid-session flips of OPENCC_DISABLE_WORKFLOWS take effect on the
+    //      next /commands/tools refresh, mirroring meetsAvailabilityRequirement.
+    ...(WorkflowTool && !isWorkflowsDisabled() ? [WorkflowTool] : []),
     ...(SleepTool ? [SleepTool] : []),
     ...(cronTools ?? []),
     ...(RemoteTriggerTool ? [RemoteTriggerTool] : []),

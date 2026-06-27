@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { UUID } from 'crypto'
+import { getContextWindowForModel } from '../../utils/context.js'
 import { deriveShortMessageId } from '../../utils/messages.js'
 
 // Module-level registry of message UUIDs queued for removal. We resolve the
@@ -66,8 +67,21 @@ export const SNIP_NUDGE_TEXT =
   `describe or mention them. This frees up space so you can continue working ` +
   `without a full compaction.`
 
-// Nudge once every ~10 000 tokens of new content since the last reset point.
-const NUDGE_INTERVAL_TOKENS = 10_000
+// Nudge interval scales with the model's context window: 10% of the catalog
+// window, but never below the legacy floor of 10 000 tokens. Used to be a flat
+// 10 000; that under-scaled for 1M-capable models (nudge would fire ~50× per
+// session) and over-scaled for small-context models (nudge would never fire
+// before autoCompact). The floor keeps behavior on 32k-class models no more
+// aggressive than the original, so existing playbooks aren't surprised.
+const SNIP_NUDGE_RATIO = 0.1
+const SNIP_NUDGE_MIN_TOKENS = 10_000
+
+function getNudgeIntervalTokens(model: string | undefined): number {
+  if (!model) return SNIP_NUDGE_MIN_TOKENS
+  const window = getContextWindowForModel(model)
+  if (!window || window <= 0) return SNIP_NUDGE_MIN_TOKENS
+  return Math.max(SNIP_NUDGE_MIN_TOKENS, Math.floor(window * SNIP_NUDGE_RATIO))
+}
 
 /**
  * Rough per-message token estimate: content length ÷ 4.
@@ -78,7 +92,11 @@ function estimateTokens(msg: any): number {
   return Math.ceil(text.length / 4)
 }
 
-export function shouldNudgeForSnips(messages: any[]): boolean {
+export function shouldNudgeForSnips(
+  messages: any[],
+  model?: string,
+): boolean {
+  const NUDGE_INTERVAL_TOKENS = getNudgeIntervalTokens(model)
   let accumulated = 0
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]

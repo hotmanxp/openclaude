@@ -976,7 +976,12 @@ export async function getAttachments(
         ]
       : []),
     maybe('context_efficiency', () =>
-      Promise.resolve(getContextEfficiencyAttachment(messages ?? [])),
+      Promise.resolve(
+        getContextEfficiencyAttachment(
+          messages ?? [],
+          toolUseContext.options.mainLoopModel,
+        ),
+      ),
     ),
   ]
 
@@ -4015,12 +4020,14 @@ export function getCompactionReminderAttachment(
 
 /**
  * Context-efficiency nudge. Injected after every N tokens of growth without
- * a snip. Pacing is handled entirely by shouldNudgeForSnips — the 10k
- * interval resets on prior nudges, snip markers, snip boundaries, and
- * compact boundaries.
+ * a snip. Pacing is handled entirely by shouldNudgeForSnips — the interval
+ * scales with the model's context window (10% of catalog size; 10k fallback
+ * when the model is unknown), and resets on prior nudges, snip markers,
+ * snip boundaries, and compact boundaries.
  */
 export function getContextEfficiencyAttachment(
   messages: Message[],
+  model?: string,
 ): Attachment[] {
   // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that
   // isn't in the tool list. Lazy require keeps this file snip-string-free.
@@ -4031,7 +4038,7 @@ export function getContextEfficiencyAttachment(
     return []
   }
 
-  if (!shouldNudgeForSnips(messages)) {
+  if (!shouldNudgeForSnips(messages, model)) {
     return []
   }
 
