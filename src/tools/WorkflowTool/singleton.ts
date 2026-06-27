@@ -25,13 +25,17 @@ const instances = new Map<string, WorkflowRegistry>()
  * one shallow object spread per projectDir), so the per-cwd cache is
  * fine to grow during a long session.
  */
-export function getWorkflowRegistry(projectDir?: string): WorkflowRegistry {
+export function getWorkflowRegistry(
+  projectDir?: string,
+  userDir?: string,
+): WorkflowRegistry {
   const dir = projectDir ?? process.cwd()
+  const userDirKey = userDir ?? homedir()
   const existing = instances.get(dir)
   if (existing) return existing
   const instance = new WorkflowRegistry({
     projectDir: dir,
-    userDir: homedir(),
+    userDir: userDirKey,
   })
   initBundledWorkflows(instance)
   instances.set(dir, instance)
