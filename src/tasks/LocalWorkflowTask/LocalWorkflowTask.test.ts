@@ -6,6 +6,7 @@ import {
   LocalWorkflowTask,
   type LocalSpawner,
   type LocalWorkflowParentContext,
+  formatCompletionMessage,
 } from './LocalWorkflowTask.js'
 import type {
   SpawnOpts,
@@ -482,5 +483,43 @@ describe('LocalWorkflowTask report persistence', () => {
     expect(report?.summary.total).toBe(3)
     expect(report?.summary.completed).toBe(2)
     expect(report?.summary.failed).toBe(1)
+  })
+})
+
+describe('formatCompletionMessage', () => {
+  const base = {
+    workflowName: 'demo',
+    startedAt: 1000,
+    completedAt: 3000,
+    agents: 10,
+    reportPath: '/tmp/wf/demo.report.json',
+  }
+
+  test('completed includes header + report path', () => {
+    const out = formatCompletionMessage({ ...base, status: 'completed', result: 'ok' })
+    expect(out).toContain('[Workflow `demo` completed in 2s · 10 agents]')
+    expect(out).toContain('Report: /tmp/wf/demo.report.json')
+  })
+
+  test('failed includes error + report path', () => {
+    const out = formatCompletionMessage({ ...base, status: 'failed', error: 'boom' })
+    expect(out).toContain('Error: boom')
+    expect(out).toContain('Report: /tmp/wf/demo.report.json')
+  })
+
+  test('killed includes report path', () => {
+    const out = formatCompletionMessage({ ...base, status: 'killed' })
+    expect(out).toContain('Killed by user.')
+    expect(out).toContain('Report: /tmp/wf/demo.report.json')
+  })
+
+  test('omits path line when reportPath is empty (legacy / disk failure)', () => {
+    const out = formatCompletionMessage({
+      ...base,
+      reportPath: '',
+      status: 'completed',
+      result: 'ok',
+    })
+    expect(out).not.toContain('Report:')
   })
 })
