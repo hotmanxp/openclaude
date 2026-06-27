@@ -9,9 +9,9 @@ export const WORKFLOW_DEFAULTS = {
   defaultTimeoutMs: 30 * 60 * 1000,  // 30 min
 } as const
 
-/** Env vars (OpenCC convention: OPENCC_* for kill switches per AGENTS.md) */
+/** Env vars (workflows are opt-in via OPENCC_ENABLE_WORKFLOWS, not kill-switched) */
 export const WORKFLOW_ENV = {
-  DISABLE: 'OPENCC_DISABLE_WORKFLOWS',
+  ENABLE: 'OPENCC_ENABLE_WORKFLOWS',
   TIMEOUT_MS: 'OPENCC_WORKFLOW_TIMEOUT_MS',
   MAX_AGENTS: 'OPENCC_WORKFLOW_MAX_AGENTS',
   KEYWORD: 'OPENCC_WORKFLOW_KEYWORD',  // custom trigger word (default: 'ultracode')

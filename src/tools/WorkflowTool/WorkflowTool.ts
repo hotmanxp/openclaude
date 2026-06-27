@@ -551,35 +551,6 @@ export const WorkflowTool = {
         }
       }
 
-      // Honor the `disableWorkflows` kill switch — env var
-      // (OPENCC_DISABLE_WORKFLOWS) or settings.json flag. If either is
-      // set, refuse to launch and return a clear message instead of
-      // running the worker. The check is placed AFTER the script
-      // read so a misspelled workflow name still surfaces as "unknown
-      // workflow" rather than "disabled" — helps users diagnose the
-      // right thing first.
-      //
-      // Lazy-require envUtils to avoid the pre-existing settings ↔
-      // envUtils circular TDZ (see envUtils.ts:265 for the rationale
-      // on this exact pattern).
-      try {
-        const { isWorkflowsDisabled } = require('../../utils/envUtils.js') as typeof import('../../utils/envUtils.js')
-        if (isWorkflowsDisabled()) {
-          return {
-            data: {
-              message:
-                'Workflows are disabled (OPENCC_DISABLE_WORKFLOWS=1 or settings.disableWorkflows=true). ' +
-                'Unset the env var or flip the settings flag to enable.',
-            },
-          }
-        }
-      } catch {
-        // envUtils may not be importable in some test/standalone
-        // contexts (the require path itself can throw). Fall through
-        // to the normal launch path — better to run than to
-        // false-positive a disable.
-      }
-
       // Plan4 Task 2 — persist the script so the LLM can re-invoke
       // it via `{ scriptPath }` for iterative editing. When the
       // caller passed `scriptPath` directly, the on-disk file IS

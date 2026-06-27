@@ -109,7 +109,7 @@ src/commands.ts                  # ← 修改：注册 `/workflows` 命令
 src/commands/workflows/          # ← 新建目录
 src/tools/AgentTool/runAgent.ts  # ← 修改：暴露 allowAcceptEditsInheritance 给 workflow
 src/services/api/                 # ← 修改：加 getActiveProvider() 工具函数
-src/utils/settings/types.ts      # ← 修改：加 disableWorkflows setting
+src/utils/settings/types.ts      # ← 修改：加 workflows.enabled setting (opt-in)
 src/constants/CLAUDE.md / OpenCC # ← 修改：加 WORKFLOW_* 错误码常量
 
 测试文件（4 个 co-located）：
@@ -503,25 +503,27 @@ WorkflowTool 在 call() 入口检查，非 anthropic → throw 友好错误。
 
 ```json
 {
-  "disableWorkflows": false,           // 关闭整个 feature
-  "workflowKeyword": "ultracode",      // 自定义触发词
-  "workflowPermissions": {
-    "allow": [
-      { "name": "deep-research", "path": "/Users/me/projects/*" }
-    ]
+  "workflows": {
+    "enabled": true,                   // 启用整个 feature (opt-in, 默认 false)
+    "keyword": "ultracode",            // 自定义触发词
+    "permissions": {
+      "allow": [
+        { "name": "deep-research", "path": "/Users/me/projects/*" }
+      ]
+    }
   }
 }
 ```
 
 ### 10.2 环境变量
 
-- `OPENCC_DISABLE_WORKFLOWS=1` — 关闭（对齐 `opencc-env-var-disable-naming-convention` 规范）
+- `OPENCC_ENABLE_WORKFLOWS=1` — 启用 workflows（opt-in，2026-06-27 起替代原 `OPENCC_DISABLE_WORKFLOWS`）
 - `OPENCC_WORKFLOW_TIMEOUT_MS=1800000` — 脚本超时（默认 30 分钟）
 - `OPENCC_WORKFLOW_MAX_AGENTS=1000` — 总 agent 上限
 
 ### 10.3 `/config` UI
 
-新增一行："Dynamic workflows" — toggle，默认开。旁边有说明文字"Run multi-agent scripts that Claude writes for you"。
+新增一行："Dynamic workflows" — toggle，默认**关**。旁边有说明文字"Run multi-agent scripts that Claude writes for you"。
 
 ---
 
@@ -582,9 +584,9 @@ WorkflowTool 在 call() 入口检查，非 anthropic → throw 友好错误。
 12. REPL.tsx 加 ultracode 关键词监听 + 紫色高亮
 
 **Phase 4 — 集成 & 收尾（1-2 天）**
-13. settings.json schema 加 disableWorkflows / workflowKeyword / workflowPermissions
+13. settings.json schema 加 workflows.enabled / workflowKeyword / workflowPermissions
 14. `/config` UI 加 workflows toggle
-15. env vars: `OPENCC_DISABLE_WORKFLOWS` / `OPENCC_WORKFLOW_TIMEOUT_MS` / `OPENCC_WORKFLOW_MAX_AGENTS`
+15. env vars: `OPENCC_ENABLE_WORKFLOWS` / `OPENCC_WORKFLOW_TIMEOUT_MS` / `OPENCC_WORKFLOW_MAX_AGENTS` (since 2026-06-27: opt-in via `OPENCC_ENABLE_WORKFLOWS`, not the legacy kill switch)
 16. provider gating 集成
 17. 5-phase verification
 

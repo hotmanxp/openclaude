@@ -1,8 +1,13 @@
 # Plan: Ultracode typing-time feedback (rainbow highlight + system-reminder for LLM)
 
+> **2026-06-27 update:** This plan references `OPENCC_DISABLE_WORKFLOWS` and `disableWorkflows` settings. As of the 2026-06-27 migration those have been replaced by `OPENCC_ENABLE_WORKFLOWS` and `settings.workflows.enabled` (default: false, opt-in). Workflows are no longer kill-switched; they are feature-flagged via opt-in.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** When the user types `ultracode` (or `OPENCC_WORKFLOW_KEYWORD`) in the prompt, give them (a) a rainbow per-character color animation, (b) a "Dynamic workflow requested" notification, and (c) a `<system-reminder>` reaching the LLM so it knows to invoke `WorkflowTool`. Currently the prefix is stripped at submit time but the LLM has no way to know the user used the keyword, so the tool rarely fires.
+
+> **2026-06-27 update — opt-in by default migration.**
+> References to `OPENCC_DISABLE_WORKFLOWS` / `disableWorkflows` in this plan describe the original kill-switch design. Since 2026-06-27 workflows are opt-in via `OPENCC_ENABLE_WORKFLOWS=1` or `settings.workflows.enabled=true`; the disable switch has been removed. See `docs/superpowers/plans/2026-06-06-dynamic-workflow.md` header note for the full migration summary.
 
 **Architecture:** Mirror the existing ultrathink/ultraplan/ultrareview/buddy pattern. Add `findUltracodeTriggerPositions(text)` to `src/utils/ultracode.ts` reusing the `findKeywordTriggerPositions` helper from `src/utils/ultraplan/keyword.ts` (export it). In `PromptInput.tsx` add an `ultracodeTriggers` `useMemo`, fold per-character rainbow highlights into the existing `combinedHighlights` block, and add a `useEffect` for the "Dynamic workflow requested for this turn" notification. In `REPL.tsx` inject `<system-reminder>ultracode keyword detected for this turn…</system-reminder>` into the user message right after `detectUltracodeTrigger` strips the prefix — the LLM is the consumer. Also update `WORKFLOW_DESCRIPTION` to spell out the "ultracode opt-in" rule so the LLM knows when to call `WorkflowTool` (verbatim from upstream 2.1.173).
 

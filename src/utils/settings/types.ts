@@ -445,17 +445,20 @@ export const SettingsSchema = lazySchema(() =>
         ),
       // OpenCC Dynamic Workflows — multi-agent orchestration tool.
       // See src/tools/WorkflowTool/ for runtime. Env-var equivalents
-      // (OPENCC_DISABLE_WORKFLOWS, OPENCC_WORKFLOW_TIMEOUT_MS,
+      // (OPENCC_ENABLE_WORKFLOWS, OPENCC_WORKFLOW_TIMEOUT_MS,
       // OPENCC_WORKFLOW_MAX_AGENTS, OPENCC_WORKFLOW_KEYWORD) live in
       // src/utils/envUtils.ts.
+      //
+      // Workflows are opt-in: default is disabled. Set this to true OR set
+      // OPENCC_ENABLE_WORKFLOWS=1 to enable.
       workflows: z
         .object({
-          disabled: z
+          enabled: z
             .boolean()
             .optional()
             .describe(
-              'Disable Open CC dynamic workflows (equivalent to OPENCC_DISABLE_WORKFLOWS=1). ' +
-                'Useful for projects where multi-agent orchestration is not desired.',
+              'Enable Open CC dynamic workflows. Equivalent to OPENCC_ENABLE_WORKFLOWS=1. ' +
+                'Default: false (workflows are opt-in).',
             ),
           keyword: z
             .string()
@@ -492,17 +495,7 @@ export const SettingsSchema = lazySchema(() =>
             .describe('Permission overrides that apply only inside workflow execution'),
         })
         .optional()
-        .describe('Open CC Dynamic Workflows configuration'),
-      // Legacy top-level kill switch — kept for backward compatibility with
-      // users who set it before the nested `workflows` object existed.
-      disableWorkflows: z
-        .boolean()
-        .optional()
-        .describe(
-          'Disable Open CC dynamic workflows. Equivalent to OPENCC_DISABLE_WORKFLOWS=1 ' +
-            'and to setting workflows.disabled = true. Kept for backward compatibility; ' +
-            'prefer the nested workflows.disabled form in new settings files.',
-        ),
+        .describe('Open CC Dynamic Workflows configuration (opt-in)'),
       worktree: z
         .object({
           symlinkDirectories: z

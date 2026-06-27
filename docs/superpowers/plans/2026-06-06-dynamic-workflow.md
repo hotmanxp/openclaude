@@ -1,8 +1,20 @@
 # Dynamic Workflows Implementation Plan
 
+> **2026-06-27 update:** Workflows flipped to opt-in. The original plan used `OPENCC_DISABLE_WORKFLOWS` + `settings.disableWorkflows` (kill switch). As of the 2026-06-27 migration (commit cc3c150e + opt-in follow-up) the active API is `OPENCC_ENABLE_WORKFLOWS=1` and `settings.workflows.enabled=true` (default: false). The legacy kill switch has been removed; this plan's "disable" steps describe the historical implementation, not the current code.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Port claude-code v2.1.154+ Dynamic Workflows to OpenCC — Claude writes a JS script, runtime executes in a `node:vm` sandbox, script spawns up to 16 concurrent / 1000 total subagents, returns a final report.
+
+> **2026-06-27 update — opt-in by default migration.**
+> The kill-switch design in this plan (`OPENCC_DISABLE_WORKFLOWS` env var + top-level `disableWorkflows` settings field + nested `workflows.disabled`) has been superseded. Workflows are now **opt-in** by default:
+>
+> - **Env var:** `OPENCC_ENABLE_WORKFLOWS=1` enables (default unset = disabled). `OPENCC_DISABLE_WORKFLOWS` is no longer recognized.
+> - **Settings:** `workflows.enabled: true` enables. The legacy top-level `disableWorkflows` field is removed.
+> - **`isWorkflowsDisabled()`** still exists (name retained to avoid touching 11+ call sites) but its default flipped to `true`; it returns `false` only when one of the two opt-in sources above is set.
+> - Migration commit: `cc3c150e` (gate extension) + a subsequent commit (default flip). The opt-in gate covers all four surfaces (LLM `tools[]` pool, slash-command list, registry, execution).
+>
+> References below that still mention `OPENCC_DISABLE_WORKFLOWS` / `disableWorkflows` describe the original implementation steps as they were executed; the runtime has since been rebalanced to the opt-in model above.
 
 **Architecture:** New `WorkflowTool` (model-invocable) + new `LocalWorkflowTask` (background runner) + new `commands/workflows/` (file discovery) + new `bundled/deep-research` (shipped example) + UI integration in `BackgroundTasksDialog` + `ultracode` keyword trigger in REPL.
 

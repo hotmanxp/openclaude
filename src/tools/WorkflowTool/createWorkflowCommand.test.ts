@@ -8,6 +8,10 @@ describe('getWorkflowCommands', () => {
   let tmp: string
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'wf-cmds-'))
+    // getWorkflowCommands() is gated by isWorkflowsDisabled(); workflows
+    // are opt-in since 2026-06-27. Each test opts in explicitly so the
+    // gate doesn't shadow what's being tested.
+    process.env.OPENCC_ENABLE_WORKFLOWS = '1'
   })
 
   test('returns no user-workflow slash commands when none are registered', async () => {
