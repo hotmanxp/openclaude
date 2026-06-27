@@ -98,4 +98,41 @@ describe('setTicket call()', () => {
       Object.defineProperty(process.stdout, 'isTTY', { value: original, configurable: true })
     }
   })
+
+  test('no-arg + TTY: wires Esc cancel via TicketSelector.onCancelled', async () => {
+    // The Select component renders Esc handling via the `select:cancel`
+    // keybinding → `state.onCancel()` → `props.onCancel`. We can't mount
+    // the full picker in bun:test (Select depends on Ink's useInput
+    // provider context), but we can statically verify the wiring: call()
+    // returns a TicketSelector element whose `onCancelled` prop, when
+    // invoked, routes through onDone with the cancel message. The live
+    // Select's onCancel calls this exact prop on Esc.
+    const { readTicketList } = await import('../../utils/tickets/persistence.js')
+    ;(readTicketList as ReturnType<typeof mock>).mockImplementation(async () => ['X', 'Y'])
+
+    const original = process.stdout.isTTY
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    try {
+      const onDone = makeOnDone()
+      const tree = await call(onDone, undefined, '')
+      expect(tree).not.toBeNull()
+
+      // Walk the (single-level) element tree. call() returns exactly one
+      // TicketSelector element; pull its onCancelled prop and fire it —
+      // that is the callback Select.onCancel triggers on Esc.
+      const el = tree as {
+        type: { name?: string }
+        props: { onCancelled?: () => void }
+      }
+      expect(el.type.name).toBe('TicketSelector')
+      expect(el.props.onCancelled).toBeFunction()
+      el.props.onCancelled!()
+
+      expect(onDone).toHaveBeenCalledTimes(1)
+      const text = onDone.mock.calls[0][0] as string
+      expect(text).toContain('已取消')
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', { value: original, configurable: true })
+    }
+  })
 })
