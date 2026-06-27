@@ -15,6 +15,9 @@ import { getErrnoCode } from '../errors.js'
 import { readFileRange, tailFile } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { getProjectTempDir } from '../permissions/filesystem.js'
+import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { sanitizePath } from '../sessionStoragePortable.js'
+import { getOriginalCwd } from '../../bootstrap/state.js'
 
 // SECURITY: O_NOFOLLOW prevents following symlinks when opening task output files.
 // Without this, an attacker in the sandbox could create symlinks in the tasks directory
@@ -117,11 +120,24 @@ export type WorkflowReport = {
 }
 
 /**
+ * Get the workflow reports directory.
+ * Path: <claude-home>/.workflows_reports/<sanitized-project-path>/
+ * Uses the original CWD (before any worktree switch) as the project identifier.
+ */
+function getWorkflowReportDir(): string {
+  return join(
+    getClaudeConfigHomeDir(),
+    '.workflows_reports',
+    sanitizePath(getOriginalCwd()),
+  )
+}
+
+/**
  * Get the on-disk path for a workflow run's aggregated report JSON.
- * Parallel to getTaskOutputPath — same dir, different extension.
+ * Parallel to getTaskOutputPath — different dir, same file naming.
  */
 export function getWorkflowReportPath(taskId: string): string {
-  return join(getTaskOutputDir(), `${taskId}.report.json`)
+  return join(getWorkflowReportDir(), `${taskId}.report.json`)
 }
 
 /**
@@ -134,7 +150,7 @@ export async function writeWorkflowReport(
   taskId: string,
   report: WorkflowReport,
 ): Promise<string> {
-  await ensureOutputDir()
+  await mkdir(getWorkflowReportDir(), { recursive: true })
   const path = getWorkflowReportPath(taskId)
   await writeFile(path, JSON.stringify(report, null, 2), 'utf-8')
   return path

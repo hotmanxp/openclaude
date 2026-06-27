@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { unlinkSync } from 'fs'
 import {
-  getTaskOutputPath,
   getWorkflowReportPath,
   readWorkflowReport,
   writeWorkflowReport,
@@ -55,16 +54,14 @@ describe('writeWorkflowReport / readWorkflowReport', () => {
     expect(back).toEqual(sample)
   })
 
-  test('getWorkflowReportPath is parallel to getTaskOutputPath', () => {
+  test('getWorkflowReportPath uses workflows_reports dir under claude home', () => {
     const taskId = uid()
     writtenPaths.push(getWorkflowReportPath(taskId))
     const reportPath = getWorkflowReportPath(taskId)
-    const outputPath = getTaskOutputPath(taskId)
-    // Same dir, different extension — confirms writeWorkflowReport
-    // uses the framework's tasks/ dir, not a separate location.
-    expect(reportPath.split('/').slice(0, -1).join('/')).toBe(
-      outputPath.split('/').slice(0, -1).join('/'),
-    )
+    // Report lives under claude home/.workflows_reports/, not in the
+    // tasks temp dir used for task output files.
+    expect(reportPath).toContain('.workflows_reports/')
+    expect(reportPath).toContain(`/${taskId}.report.json`)
   })
 
   test('returns null when no report exists', async () => {
