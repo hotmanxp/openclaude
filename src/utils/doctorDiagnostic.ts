@@ -96,7 +96,7 @@ function getNormalizedPaths(): [invokedPath: string, execPath: string] {
 }
 
 export async function getCurrentInstallationType(): Promise<InstallationType> {
-if (MACRO.IS_DEVELOPMENT_BUILD === 'true') {
+  if (MACRO.IS_DEVELOPMENT_BUILD === 'true') {
     return 'development'
   }
 
