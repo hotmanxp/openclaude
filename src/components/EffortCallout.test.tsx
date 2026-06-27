@@ -1,24 +1,24 @@
 // @ts-nocheck
 import { afterEach, describe, expect, test } from 'bun:test'
 
-// Use OPENCC_DISABLE_WORKFLOWS to control isWorkflowsDisabled() since it reads
-// from that env var (and the settings files — but env takes precedence so the
-// tests can override purely through env). Each test sets it explicitly.
-const ORIGINAL_ENV = process.env.OPENCC_DISABLE_WORKFLOWS
+// Use OPENCC_ENABLE_WORKFLOWS to opt in (workflows are disabled by default
+// since the 2026-06-27 opt-in migration; isWorkflowsDisabled() returns true
+// unless this env var is truthy). Each test sets it explicitly.
+const ORIGINAL_ENV = process.env.OPENCC_ENABLE_WORKFLOWS
 
 afterEach(() => {
   if (ORIGINAL_ENV === undefined) {
-    delete process.env.OPENCC_DISABLE_WORKFLOWS
+    delete process.env.OPENCC_ENABLE_WORKFLOWS
   } else {
-    process.env.OPENCC_DISABLE_WORKFLOWS = ORIGINAL_ENV
+    process.env.OPENCC_ENABLE_WORKFLOWS = ORIGINAL_ENV
   }
 })
 
 function withWorkflowsEnabled() {
-  delete process.env.OPENCC_DISABLE_WORKFLOWS
+  process.env.OPENCC_ENABLE_WORKFLOWS = 'true'
 }
 function withWorkflowsDisabled() {
-  process.env.OPENCC_DISABLE_WORKFLOWS = 'true'
+  delete process.env.OPENCC_ENABLE_WORKFLOWS
 }
 
 const { getEffortCalloutOptions } = await import('./EffortCallout.js')

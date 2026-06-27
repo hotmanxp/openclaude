@@ -987,20 +987,26 @@ export function Config({
       }));
     }
   }] : []),
-  // Dynamic workflows (always shown — feature is fully enabled)
+  // Dynamic workflows (always shown — opt-in toggle, default off since 2026-06-27)
   ...(true ? [{
-    id: 'disableWorkflows',
-    label: '禁用动态工作流',
-    description: '开启后 Claude 不能再使用 WorkflowTool 运行多 agent 脚本。',
-    value: settingsData?.disableWorkflows ?? false,
+    id: 'workflowsEnabled',
+    label: '启用动态工作流',
+    description: '开启后 OpenCC 可以使用 WorkflowTool 运行多 agent 脚本（默认关闭，需显式启用）。等价于 settings.workflows.enabled=true 或 OPENCC_ENABLE_WORKFLOWS=1。',
+    value: settingsData?.workflows?.enabled ?? false,
     type: 'boolean' as const,
-    onChange(disableWorkflows: boolean) {
+    onChange(workflowsEnabled: boolean) {
+      // updateSettingsForSource uses mergeWith() which deep-merges, so
+      // passing `{ workflows: { enabled } }` preserves sibling keys
+      // (keyword, permissions) already on the settings file.
       updateSettingsForSource('userSettings', {
-        disableWorkflows
+        workflows: { enabled: workflowsEnabled },
       });
       setSettingsData(prev => ({
         ...prev,
-        disableWorkflows
+        workflows: {
+          ...(prev.workflows ?? {}),
+          enabled: workflowsEnabled,
+        },
       }));
     }
   }] : []),

@@ -285,23 +285,23 @@ export function getVertexRegionForModel(
 // ---------------------------------------------------------------------------
 // Runtime knobs for the WorkflowTool. Mirrored in settings.workflows.* so
 // users can pin them in .claude/settings.json instead of exporting env vars.
-// Env vars win over settings when both are set, matching the rest of
-// OpenCC's "env-var kill switch" convention.
+// Either source opts in (truthy env var OR settings.workflows.enabled === true).
 
 /**
  * Whether Open CC dynamic workflows are disabled.
  *
- * Truthy when ANY of:
- * - OPENCC_DISABLE_WORKFLOWS is a truthy env var (1/true/yes/on)
- * - settings.disableWorkflows === true (legacy top-level flag)
- * - settings.workflows?.disabled === true (newer nested form)
+ * Workflows default to DISABLED — users opt in explicitly via either:
+ * - OPENCC_ENABLE_WORKFLOWS is a truthy env var (1/true/yes/on)
+ * - settings.workflows?.enabled === true
  *
- * Env var is checked first so admins / CI can hard-disable workflows even
- * for users who accidentally opted in via settings.
+ * Returns true when NEITHER opt-in source is present. This is the inverse
+ * of the legacy "disable" kill switch (OPENCC_DISABLE_WORKFLOWS / settings
+ * .disableWorkflows), which has been removed; see the 2026-06-27
+ * opt-in-by-default migration.
  */
 export function isWorkflowsDisabled(): boolean {
-  if (isEnvTruthy(process.env.OPENCC_DISABLE_WORKFLOWS)) {
-    return true
+  if (isEnvTruthy(process.env.OPENCC_ENABLE_WORKFLOWS)) {
+    return false
   }
   try {
     // Lazy require: breaks the envUtils ↔ settings circular import.
@@ -313,18 +313,16 @@ export function isWorkflowsDisabled(): boolean {
     // which is always after the module graph finishes loading.
     const { getInitialSettings } = require('./settings/settings.js') as typeof import('./settings/settings.js')
     const settings = getInitialSettings()
-    if (settings.disableWorkflows === true) {
-      return true
-    }
-    if (settings.workflows?.disabled === true) {
-      return true
+    if (settings.workflows?.enabled === true) {
+      return false
     }
   } catch {
     // getInitialSettings can throw during early bootstrap (settings files
-    // unreadable, JSON parse error, etc.). Default to "not disabled" so a
-    // misconfigured env doesn't accidentally turn off the feature.
+    // unreadable, JSON parse error, etc.). Default to "disabled" (the new
+    // opt-in default) so a misconfigured bootstrap doesn't accidentally
+    // turn on a feature the user didn't ask for.
   }
-  return false
+  return true
 }
 
 /**
