@@ -3,9 +3,11 @@ import {
   type FileHandle,
   mkdir,
   open,
+  readFile,
   stat,
   symlink,
   unlink,
+  writeFile,
 } from 'fs/promises'
 import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
@@ -123,9 +125,10 @@ export function getWorkflowReportPath(taskId: string): string {
 }
 
 /**
- * Serialize a WorkflowReport to disk. Atomic via Bun.write (truncate
- * + rewrite). JSON format so the LLM can `Read` and reason about
- * per-agent status without re-parsing.
+ * Serialize a WorkflowReport to disk. Uses node:fs/promises.writeFile
+ * so the bundled dist/cli.mjs (which runs under Node, not Bun) still
+ * works. JSON format so the LLM can `Read` and reason about per-agent
+ * status without re-parsing.
  */
 export async function writeWorkflowReport(
   taskId: string,
@@ -133,7 +136,7 @@ export async function writeWorkflowReport(
 ): Promise<string> {
   await ensureOutputDir()
   const path = getWorkflowReportPath(taskId)
-  await Bun.write(path, JSON.stringify(report, null, 2))
+  await writeFile(path, JSON.stringify(report, null, 2), 'utf-8')
   return path
 }
 
@@ -146,11 +149,13 @@ export async function readWorkflowReport(
   taskId: string,
 ): Promise<WorkflowReport | null> {
   const path = getWorkflowReportPath(taskId)
-  const file = Bun.file(path)
-  if (!(await file.exists())) return null
   try {
-    return (await file.json()) as WorkflowReport
-  } catch {
+    const content = await readFile(path, 'utf-8')
+    return JSON.parse(content) as WorkflowReport
+  } catch (e) {
+    if (getErrnoCode(e) === 'ENOENT') return null
+    // Malformed JSON also returns null — caller treats as unavailable.
+    logError(e)
     return null
   }
 }
