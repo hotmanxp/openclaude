@@ -383,7 +383,7 @@ function ModeIndicator({
         {currentMode === 'bypassPermissions' ? 'bypass' : permissionModeTitle(currentMode).toLowerCase()} on
         {shouldShowModeHint && <Text dimColor>
             {' '}
-            <KeyboardShortcutHint shortcut={modeCycleShortcut} action="cycle" parens />
+            <KeyboardShortcutHint shortcut={modeCycleShortcut} action="↻" parens preposition="" />
           </Text>}
       </Text> : null;
 
