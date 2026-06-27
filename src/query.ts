@@ -17,6 +17,7 @@ import { resolveForceReason } from './services/compact/forceReasonResolver.js'
 import { consumeCompactionRequest } from './utils/memoryPressure.js'
 import { validateBoundedIntEnvVar } from './utils/envValidation.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
+import type { MicrocompactResult } from './services/compact/microCompact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')
   ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
@@ -466,6 +467,12 @@ async function* queryLoop(
     }
 
     let tracking = autoCompactTracking
+    const configuredMaxMessagesCompactionThreshold =
+      getGlobalConfig().maxMessagesCompactionThreshold
+    const maxMessagesCompactionThreshold =
+      normalizeMaxMessagesCompactionThreshold(
+        configuredMaxMessagesCompactionThreshold,
+      )
 
     // Enforce per-message budget on aggregate tool result size. Runs BEFORE
     // microcompact — cached MC operates purely by tool_use_id (never inspects
@@ -516,17 +523,22 @@ async function* queryLoop(
 
     // Apply microcompact before autocompact
     queryCheckpoint('query_microcompact_start')
-    const microcompactResult = await deps.microcompact(
-      messagesForQuery,
-      toolUseContext,
-      querySource,
-    )
-    messagesForQuery = microcompactResult.messages
+    let microcompactResult: MicrocompactResult | undefined
+    if (
+      querySource === 'compact' ||
+      configuredMaxMessagesCompactionThreshold !== 'off'
+    ) {
+      microcompactResult = await deps.microcompact(
+        messagesForQuery,
+        toolUseContext,
+        querySource,
+      )
+      messagesForQuery = microcompactResult.messages
+    }
     // For cached microcompact (cache editing), defer boundary message until after
     // the API response so we can use actual cache_deleted_input_tokens.
-    // Gated behind feature() so the string is eliminated from external builds.
     const pendingCacheEdits = true
-      ? microcompactResult.compactionInfo?.pendingCacheEdits
+      ? microcompactResult?.compactionInfo?.pendingCacheEdits
       : undefined
     queryCheckpoint('query_microcompact_end')
 
