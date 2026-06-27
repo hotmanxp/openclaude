@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ProviderProfile } from './config.js'
+import { saveGlobalConfig } from './config.js'
 
 async function importFreshProvidersModule() {
   return import(`./model/providers.ts?ts=${Date.now()}-${Math.random()}`)
@@ -76,6 +77,11 @@ afterEach(() => {
       process.env[key] = originalEnv[key]
     }
   }
+
+  // Reset the shared test singleton so cross-file tests (betas, compact,
+  // anthropic provider gate) don't see a leaked providerProfiles[] from
+  // this file. See opencc-mock-module-bun-test-pollution memory.
+  saveGlobalConfig(current => ({ ...current, providerProfiles: [] }))
 
   mock.restore()
   mockConfigState = createMockConfigState()
