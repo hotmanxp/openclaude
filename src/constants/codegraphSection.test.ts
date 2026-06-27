@@ -37,14 +37,16 @@ describe('codegraphSection', () => {
     expect(result).toContain('This project is indexed by CodeGraph')
     expect(result).toContain('codegraph_search')
     expect(result).toContain('codegraph_callers')
-    expect(result).toContain('codegraph_callees')
-    expect(result).toContain('codegraph_trace')
-    expect(result).toContain('codegraph_impact')
     expect(result).toContain('codegraph_node')
     expect(result).toContain('codegraph_explore')
-    expect(result).toContain('codegraph_files')
-    expect(result).toContain('codegraph_status')
     expect(result).toContain('staleness banner')
+    // The 4 tools disabled by codegraph's default MCP surface (since v1.0.0)
+    // MUST NOT appear in the system-prompt section — listing them would
+    // encourage the model to call phantom tools.
+    expect(result).not.toContain('codegraph_callees')
+    expect(result).not.toContain('codegraph_impact')
+    expect(result).not.toContain('codegraph_files')
+    expect(result).not.toContain('codegraph_status')
   })
 
   test('.codegraph/ 目录不存在时返回 null', () => {
