@@ -15,7 +15,7 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { logEvent } from '../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../services/analytics/metadata.js'
-import type { Message } from '../types/message.js'
+import type { Message, UserMessage } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { getErrnoCode, toError } from './errors.js'
 import { formatFileSize } from './format.js'
@@ -1034,6 +1034,45 @@ export function reconstructContentReplacementState(
     }
   }
   return state
+}
+
+export function filterContentReplacementsForMessages(
+  messages: Message[],
+  records: ContentReplacementRecord[],
+): ContentReplacementRecord[] {
+  const retainedToolResultIds = new Set<string>()
+  for (const message of messages) {
+    // Type guard: only UserMessage has the nested `message.message` shape we need.
+    // SystemMessage/AssistantMessage/ProgressMessage don't have tool_result blocks
+    // we care about for content-replacement filtering.
+    if (message.type !== 'user') {
+      continue
+    }
+    // Message is a flat interface in the fork (not a discriminated union), so we
+    // assert to the named UserMessage interface to access `.message.content`.
+    const userMessage = message as UserMessage
+    if (!userMessage.message || !Array.isArray(userMessage.message.content)) {
+      continue
+    }
+    for (const block of userMessage.message.content) {
+      if (block.type === 'tool_result') {
+        retainedToolResultIds.add(block.tool_use_id)
+      }
+    }
+  }
+  // C-2 (review 2026-06-28): warn when filter would have retained much more than it does,
+  // so silent data loss from stripped tool_use_ids in the source transcript is diagnosable.
+  if (records.length > 0 && retainedToolResultIds.size === 0) {
+    logForDebugging(
+      `[toolResultStorage] filterContentReplacementsForMessages: source transcript has 0 retained tool_result blocks but ${records.length} replacement records — likely all silently dropped (stripped tool_use_id)`,
+      { level: 'warn' },
+    )
+  }
+  return records.filter(
+    record =>
+      record.kind === 'tool-result' &&
+      retainedToolResultIds.has(record.toolUseId),
+  )
 }
 
 /**
