@@ -28,6 +28,11 @@ import { getAntModelOverrideConfig, resolveAntModel } from './antModels.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
+import {
+  lookupAliasOverride,
+  type AliasOverrideProvider,
+  type AliasOverrideTier,
+} from './aliasOverrides.js'
 import { capitalize } from '../stringUtils.js'
 
 export type ModelShortName = string
@@ -495,6 +500,39 @@ export function parseUserSpecifiedModel(
     : normalizedModel
 
   if (isModelAlias(modelString)) {
+    // ANTHROPIC_DEFAULT_*_MODEL env vars take precedence over both the
+    // provider-aware alias override and the canonical alias → default-model
+    // resolution. Pinning a tier via env forces that exact value regardless
+    // of the alias override table below.
+    const envOverride =
+      modelString === 'opus'
+        ? process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+        : modelString === 'sonnet'
+          ? process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+          : modelString === 'haiku'
+            ? process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
+            : undefined
+    if (envOverride !== undefined && envOverride !== '') {
+      return envOverride + (has1mTag ? '[1m]' : '')
+    }
+
+    // Provider-aware alias override (firstParty / openai) takes precedence over
+    // the canonical alias → default-model resolution. Only the three tier
+    // aliases participate; 'opusplan' / 'best' keep their existing
+    // getDefaultSonnetModel / getBestModel semantics.
+    if (modelString === 'opus' || modelString === 'sonnet' || modelString === 'haiku') {
+      const provider = getAPIProvider()
+      if (provider === 'firstParty' || provider === 'openai') {
+        const override = lookupAliasOverride(
+          provider as AliasOverrideProvider,
+          modelString as AliasOverrideTier,
+        )
+        if (override !== undefined) {
+          return override + (has1mTag ? '[1m]' : '')
+        }
+      }
+    }
+
     switch (modelString) {
       case 'opusplan':
         return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
