@@ -195,6 +195,15 @@ bun run doctor:runtime:json
 # persist a diagnostics report to reports/doctor-runtime.json
 bun run doctor:report
 
+# print a redacted public issue report
+opencc doctor report --markdown
+
+# write a redacted JSON issue report for attachment
+opencc doctor report --json --out opencc-report.json
+
+# write a deterministic JSON task report from a session transcript
+opencc report --json --transcript ~/.opencc/projects/-path-to-project/session-id.jsonl --out task-report.json
+
 # full local hardening check (smoke + runtime doctor)
 bun run hardening:check
 
@@ -207,6 +216,8 @@ Notes:
 - `doctor:runtime` fails fast if `CLAUDE_CODE_USE_OPENAI=1` with a placeholder key or a missing key for non-local providers.
 - Local providers such as `http://localhost:11434/v1`, `http://10.0.0.1:11434/v1`, and `http://127.0.0.1:1337/v1` can run without `OPENAI_API_KEY`.
 - Codex profiles validate `CODEX_API_KEY` or the Codex CLI auth file and probe `POST /responses` instead of `GET /models`.
+- `opencc doctor report` is redacted by default and is intended for GitHub issues. It summarizes provider/runtime/build/settings state without prompts, transcripts, raw settings files, API keys, MCP command details, or full home-directory paths.
+- `opencc report --json` summarizes observed session facts such as tool uses, Bash commands, validation commands, changed files, branch metadata, warnings, and linked issue/PR references. Use `--transcript <file>` for an explicit transcript, `--session <id>` for a stored session, or omit both to report the latest session for the current project. Large previews are truncated and credential-shaped strings are redacted. When no validation command is observed, the report keeps `validations` empty and includes a warning instead of claiming checks passed.
 
 ## Provider Launch Profiles
 
