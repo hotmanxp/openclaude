@@ -490,10 +490,10 @@ export async function call(
 
     // Resume into the fork
     const titleInfo = title ? ` "${title}"` : ''
-    const branchConfirmation = `Branched conversation${titleInfo} from ${originalSessionId} to ${sessionId}.`
+    const branchConfirmation = `Branched conversation${titleInfo} from ${sourceSessionId} to ${sessionId}.`
     const filesystemCaveat =
       'Files remain in the same working tree; this is conversation branching, not filesystem isolation.'
-    const originalResumeHint = `To resume the original: opencc -r ${originalSessionId}`
+    const originalResumeHint = `To resume the original: opencc -r ${sourceSessionId}`
 
     if (context.resume) {
       try {
