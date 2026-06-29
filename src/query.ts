@@ -116,7 +116,10 @@ import {
   updateToolFailureLoopGuard,
 } from './query/toolFailureLoopGuard.js'
 import { buildQueryConfig } from './query/config.js'
-import { getGlobalConfig } from './utils/config.js'
+import {
+  getGlobalConfig,
+  normalizeMaxMessagesCompactionThreshold,
+} from './utils/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
 import { feature } from 'bun:bundle'
