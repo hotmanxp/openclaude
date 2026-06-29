@@ -1,21 +1,34 @@
-// @ts-nocheck
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-
-import {
-  MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES,
-  type AutoCompactTrackingState,
-} from '../services/compact/autoCompact.js'
+import type { AutoCompactTrackingState } from '../services/compact/autoCompact.js'
 import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../test/sharedMutationLock.js'
 import type { Message } from '../types/message.js'
-import { query } from '../query.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
+import type { MaxMessagesCompactionThreshold } from '../utils/config.js'
+import type { QueryDeps } from './deps.js'
+
+type AutocompactArgs = Parameters<QueryDeps['autocompact']>
+
+// Some smoke-suite files mock config globally; bun:test does not unregister
+// mock.module() registrations on mock.restore(). Pin this suite to the real
+// config before importing query so saved settings are visible to the query loop.
+const realConfigModule = (await import(
+  `../utils/config.js?autoCompactCooldownReal=${Date.now()}-${Math.random()}`
+)) as typeof import('../utils/config.js')
+mock.module('../utils/config.js', () => ({ ...realConfigModule }))
+
+const { getGlobalConfig, saveGlobalConfig } = realConfigModule
+const {
+  getAutoCompactThreshold,
+  MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES,
+} = (await import(
+  `../services/compact/autoCompact.js?autoCompactCooldownReal=${Date.now()}-${Math.random()}`
+)) as typeof import('../services/compact/autoCompact.js')
 
 const SAVED_ENV = {
   CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
@@ -23,59 +36,84 @@ const SAVED_ENV = {
     process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW,
   CLAUDE_AUTOCOMPACT_PCT_OVERRIDE:
     process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE,
+  DISABLE_AUTO_COMPACT: process.env.DISABLE_AUTO_COMPACT,
+  DISABLE_COMPACT: process.env.DISABLE_COMPACT,
+  OPENCLAUDE_MAX_ACTIVE_MESSAGES: process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES,
 }
-let savedAutoCompactEnabled: boolean | undefined
+
+let savedGlobalConfig:
+  | {
+      autoCompactEnabled: boolean
+      maxMessagesCompactionThreshold:
+        | MaxMessagesCompactionThreshold
+        | undefined
+    }
+  | undefined
 let tempDir: string | undefined
 
 beforeEach(async () => {
   await acquireSharedMutationLock('query/autoCompactCooldown.test.ts')
   tempDir = mkdtempSync(join(tmpdir(), 'openclaude-autocompact-test-'))
   process.env.CLAUDE_CONFIG_DIR = tempDir
-  savedAutoCompactEnabled = getGlobalConfig().autoCompactEnabled
-  saveGlobalConfig(current => ({ ...current, autoCompactEnabled: true }))
+  const globalConfig = getGlobalConfig()
+  savedGlobalConfig = {
+    autoCompactEnabled: globalConfig.autoCompactEnabled,
+    maxMessagesCompactionThreshold:
+      globalConfig.maxMessagesCompactionThreshold,
+  }
+  saveGlobalConfig(current => ({
+    ...current,
+    autoCompactEnabled: true,
+    maxMessagesCompactionThreshold: undefined,
+  }))
   process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '200000'
   process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '1'
+  delete process.env.DISABLE_AUTO_COMPACT
+  delete process.env.DISABLE_COMPACT
+  delete process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES
 })
 
 afterEach(() => {
-  if (SAVED_ENV.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === undefined) {
-    delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
-  } else {
-    process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE =
-      SAVED_ENV.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+  try {
+    if (savedGlobalConfig) {
+      const { autoCompactEnabled, maxMessagesCompactionThreshold } =
+        savedGlobalConfig
+      saveGlobalConfig(current => ({
+        ...current,
+        autoCompactEnabled,
+        maxMessagesCompactionThreshold,
+      }))
+      savedGlobalConfig = undefined
+    }
+
+    for (const [key, value] of Object.entries(SAVED_ENV)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true })
+      tempDir = undefined
+    }
+  } finally {
+    releaseSharedMutationLock()
   }
-  releaseSharedMutationLock()
 })
 
 function userMessage(content: string): Message {
   return {
     type: 'user',
     message: { role: 'user', content },
-    uuid: `test-${Math.random()}`,
+    uuid: `test-${Math.random()}` as Message['uuid'],
     timestamp: new Date().toISOString(),
   }
 }
 
-function highContextMessages(): Message[] {
-  return [
-    {
-      type: 'assistant',
-      message: {
-        id: 'msg-high-context',
-        role: 'assistant',
-        content: [{ type: 'text', text: 'previous response' }],
-        usage: {
-          input_tokens: 170_000,
-          output_tokens: 1_000,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
-        },
-      },
-      uuid: `assistant-${Math.random()}` as Message['uuid'],
-      timestamp: new Date().toISOString(),
-    } as unknown as Message,
-    userMessage('continue'),
-  ]
+function overAutoCompactThresholdMessage(): Message {
+  const threshold = getAutoCompactThreshold('claude-sonnet-4')
+  return userMessage('x'.repeat((threshold + 1_000) * 4))
 }
 
 function toolUseContext() {
@@ -110,6 +148,7 @@ function toolUseContext() {
 }
 
 function assistantToolUseMessage(): Message {
+  // Minimal fixture (no model/usage) — cast type-side only.
   return {
     type: 'assistant',
     message: {
@@ -124,9 +163,9 @@ function assistantToolUseMessage(): Message {
         },
       ],
     },
-    uuid: 'assistant-tool-use',
+    uuid: 'assistant-tool-use' as Message['uuid'],
     timestamp: new Date().toISOString(),
-  }
+  } as unknown as Message
 }
 
 async function canUseTool() {
@@ -146,17 +185,134 @@ async function drain<T, TReturn>(
   }
 }
 
-test.skip('active auto-compact cooldown blocks before model call with cooldown guidance', async () => {
-  const messages = highContextMessages()
+async function loadQuery() {
+  return (await import(
+    `../query.js?autoCompactCooldown=${Date.now()}-${Math.random()}`
+  )) as typeof import('../query.js')
+}
+
+function successfulQueryDeps(
+  microcompactImpl?: (input: Message[]) => Promise<{ messages: Message[] }>,
+) {
+  const callModel = mock(async function* (_params: { messages: Message[] }) {
+    yield assistantToolUseMessage()
+  })
+  const microcompact = mock(
+    microcompactImpl ?? (async (input: Message[]) => ({ messages: input })),
+  )
+  const autocompact = mock(async () => ({
+    wasCompacted: false,
+  }))
+  const deps: QueryDeps = {
+    callModel: callModel as QueryDeps['callModel'],
+    microcompact: microcompact as QueryDeps['microcompact'],
+    autocompact: autocompact as QueryDeps['autocompact'],
+    uuid: () => 'test-uuid',
+  }
+  return {
+    deps,
+    callModel,
+    microcompact,
+    autocompact,
+  }
+}
+
+async function runSuccessfulQuery(
+  deps: QueryDeps,
+  querySource: 'repl_main_thread' | 'compact' = 'repl_main_thread',
+) {
+  const { query } = await loadQuery()
+  return await drain(
+    query({
+      messages: [userMessage('hello')],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool,
+      toolUseContext: toolUseContext(),
+      querySource,
+      maxTurns: 1,
+      deps,
+    }),
+  )
+}
+
+test('explicit off skips automatic microcompact during query flow', async () => {
+  saveGlobalConfig(current => ({
+    ...current,
+    maxMessagesCompactionThreshold: 'off',
+  }))
+  const { deps, callModel, microcompact, autocompact } = successfulQueryDeps(
+    async input => ({ messages: input }),
+  )
+
+  const { terminal } = await runSuccessfulQuery(deps)
+
+  expect(terminal.reason).toBe('max_turns')
+  expect(callModel).toHaveBeenCalledTimes(1)
+  expect(autocompact).toHaveBeenCalledTimes(1)
+  expect(microcompact).not.toHaveBeenCalled()
+})
+
+test('unset message-count threshold keeps automatic microcompact behavior', async () => {
+  const { deps, microcompact } = successfulQueryDeps()
+
+  const { terminal } = await runSuccessfulQuery(deps)
+
+  expect(terminal.reason).toBe('max_turns')
+  expect(microcompact).toHaveBeenCalledTimes(1)
+})
+
+test('automatic microcompact passes compacted messages to the model call', async () => {
+  const compactedMessages = [userMessage('compacted hello')]
+  const { deps, callModel, microcompact } = successfulQueryDeps(async () => ({
+    messages: compactedMessages,
+  }))
+
+  const { terminal } = await runSuccessfulQuery(deps)
+
+  expect(terminal.reason).toBe('max_turns')
+  expect(microcompact).toHaveBeenCalledTimes(1)
+  expect(callModel.mock.calls[0]?.[0].messages).toEqual(compactedMessages)
+})
+
+test('numeric message-count threshold keeps automatic microcompact behavior', async () => {
+  saveGlobalConfig(current => ({
+    ...current,
+    maxMessagesCompactionThreshold: '100',
+  }))
+  const { deps, microcompact } = successfulQueryDeps()
+
+  const { terminal } = await runSuccessfulQuery(deps)
+
+  expect(terminal.reason).toBe('max_turns')
+  expect(microcompact).toHaveBeenCalledTimes(1)
+})
+
+test('explicit compact query source still runs microcompact when threshold is off', async () => {
+  saveGlobalConfig(current => ({
+    ...current,
+    maxMessagesCompactionThreshold: 'off',
+  }))
+  const { deps, microcompact } = successfulQueryDeps()
+
+  const { terminal } = await runSuccessfulQuery(deps, 'compact')
+
+  expect(terminal.reason).toBe('max_turns')
+  expect(microcompact).toHaveBeenCalledTimes(1)
+})
+
+test('active auto-compact cooldown blocks before model call with cooldown guidance', async () => {
+  const messages = [overAutoCompactThresholdMessage()]
   const nextRetryAtMs = Date.now() + 60_000
   const callModel = mock(() => {
     throw new Error('model should not be called while autocompact cools down')
   })
-  const deps = {
-    callModel,
+  const deps: QueryDeps = {
+    callModel: callModel as QueryDeps['callModel'],
     microcompact: mock(async (input: Message[]) => ({
       messages: input,
-    })),
+    })) as QueryDeps['microcompact'],
     autocompact: mock(
       async (): Promise<{
         wasCompacted: boolean
@@ -171,10 +327,11 @@ test.skip('active auto-compact cooldown blocks before model call with cooldown g
         circuitBreakerActive: true,
         circuitBreakerTripped: false,
       }),
-    ),
+    ) as QueryDeps['autocompact'],
     uuid: () => 'test-uuid',
-  } as never
+  }
 
+  const { query } = await loadQuery()
   const { yielded, terminal } = await drain(
     query({
       messages,
@@ -202,24 +359,24 @@ test.skip('active auto-compact cooldown blocks before model call with cooldown g
 })
 
 test('auto-compact cooldown tracking is carried into the next query call', async () => {
-  const messages = highContextMessages()
+  const messages = [overAutoCompactThresholdMessage()]
   const nextRetryAtMs = Date.now() + 60_000
   const seenTracking: Array<AutoCompactTrackingState | undefined> = []
   const callModel = mock(() => {
     throw new Error('model should not be called while autocompact cools down')
   })
-  const deps = {
-    callModel,
+  const deps: QueryDeps = {
+    callModel: callModel as QueryDeps['callModel'],
     microcompact: mock(async (input: Message[]) => ({
       messages: input,
-    })),
+    })) as QueryDeps['microcompact'],
     autocompact: mock(
       async (
-        _messages: never,
-        _toolUseContext: never,
-        _params: never,
-        _querySource: never,
-        tracking: AutoCompactTrackingState | undefined,
+        _messages: AutocompactArgs[0],
+        _toolUseContext: AutocompactArgs[1],
+        _params: AutocompactArgs[2],
+        _querySource: AutocompactArgs[3],
+        tracking: AutocompactArgs[4],
       ) => {
         seenTracking.push(tracking)
         return {
@@ -230,9 +387,9 @@ test('auto-compact cooldown tracking is carried into the next query call', async
           circuitBreakerTripped: false,
         }
       },
-    ),
+    ) as QueryDeps['autocompact'],
     uuid: () => 'test-uuid',
-  } as never
+  }
 
   let persistedTracking: AutoCompactTrackingState | undefined
   const queryParams = () => ({
@@ -252,6 +409,7 @@ test('auto-compact cooldown tracking is carried into the next query call', async
     },
   })
 
+  const { query } = await loadQuery()
   const first = await drain(query(queryParams()))
   expect(first.terminal.reason).toBe('blocking_limit')
   expect(persistedTracking?.nextRetryAtMs).toBe(nextRetryAtMs)
@@ -275,19 +433,20 @@ test('post-compact turn tracking callback publishes a fresh object', async () =>
     consecutiveFailures: 0,
   }
   const trackingUpdates: AutoCompactTrackingState[] = []
-  const deps = {
+  const deps: QueryDeps = {
     callModel: mock(async function* () {
       yield assistantToolUseMessage()
-    }),
+    }) as QueryDeps['callModel'],
     microcompact: mock(async (input: Message[]) => ({
       messages: input,
-    })),
+    })) as QueryDeps['microcompact'],
     autocompact: mock(async () => ({
       wasCompacted: false,
-    })),
+    })) as QueryDeps['autocompact'],
     uuid: () => 'test-uuid',
-  } as never
+  }
 
+  const { query } = await loadQuery()
   const { terminal } = await drain(
     query({
       messages: [userMessage('hello')],
@@ -315,6 +474,55 @@ test('post-compact turn tracking callback publishes a fresh object', async () =>
   expect(initialTracking.turnCounter).toBe(0)
 })
 
+test('persisted breaker state does not block when auto-compact is disabled', async () => {
+  process.env.DISABLE_AUTO_COMPACT = '1'
+  const initialTracking: AutoCompactTrackingState = {
+    compacted: false,
+    turnId: 'turn',
+    turnCounter: 0,
+    consecutiveFailures: MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES,
+    nextRetryAtMs: Date.now() + 60_000,
+  }
+  const callModel = mock(async function* () {
+    yield assistantToolUseMessage()
+  })
+  const deps: QueryDeps = {
+    callModel: callModel as QueryDeps['callModel'],
+    microcompact: mock(async (input: Message[]) => ({
+      messages: input,
+    })) as QueryDeps['microcompact'],
+    autocompact: mock(async () => ({
+      wasCompacted: false,
+    })) as QueryDeps['autocompact'],
+    uuid: () => 'test-uuid',
+  }
+
+  const { query } = await loadQuery()
+  const { yielded, terminal } = await drain(
+    query({
+      messages: [overAutoCompactThresholdMessage()],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool,
+      toolUseContext: toolUseContext(),
+      querySource: 'repl_main_thread',
+      maxTurns: 1,
+      deps,
+      autoCompactTracking: initialTracking,
+    }),
+  )
+
+  expect(callModel).toHaveBeenCalledTimes(1)
+  expect(terminal.reason).toBe('max_turns')
+  expect(
+    yielded.some(
+      message =>
+        (message as { isApiErrorMessage?: boolean }).isApiErrorMessage === true,
+    ),
+  ).toBe(false)
+})
+
 test('breaker metadata tracking callback publishes a fresh object', async () => {
   const initialTracking: AutoCompactTrackingState = {
     compacted: false,
@@ -325,13 +533,13 @@ test('breaker metadata tracking callback publishes a fresh object', async () => 
     lastFailureAtMs: 5_000,
   }
   const trackingUpdates: AutoCompactTrackingState[] = []
-  const deps = {
+  const deps: QueryDeps = {
     callModel: mock(() => {
       throw new Error('model should not be called while autocompact cools down')
-    }),
+    }) as QueryDeps['callModel'],
     microcompact: mock(async (input: Message[]) => ({
       messages: input,
-    })),
+    })) as QueryDeps['microcompact'],
     autocompact: mock(async () => ({
       wasCompacted: false,
       consecutiveFailures: MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES,
@@ -339,13 +547,14 @@ test('breaker metadata tracking callback publishes a fresh object', async () => 
       lastFailureAtMs: 15_000,
       circuitBreakerActive: true,
       circuitBreakerTripped: true,
-    })),
+    })) as QueryDeps['autocompact'],
     uuid: () => 'test-uuid',
-  } as never
+  }
 
+  const { query } = await loadQuery()
   const { terminal } = await drain(
     query({
-      messages: highContextMessages(),
+      messages: [overAutoCompactThresholdMessage()],
       systemPrompt: asSystemPrompt([]),
       userContext: {},
       systemContext: {},

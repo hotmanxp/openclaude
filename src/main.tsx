@@ -4449,6 +4449,53 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
+  program
+    .command('report')
+    .description(
+      'Generate a deterministic JSON task report for an OpenCC session',
+    )
+    .option('--json', 'Print JSON output')
+    .option('--transcript <file>', 'Path to a session JSONL transcript')
+    .option(
+      '--session <id>',
+      'Session ID to report (defaults to latest session in the current project)',
+    )
+    .option('--out <file>', 'Write the report to a file')
+    .action(async (options: {
+      json?: boolean;
+      transcript?: string;
+      session?: string;
+      out?: string;
+    }) => {
+      const {
+        taskReportHandler,
+        printTaskReportError,
+      } = await import('./cli/handlers/taskReport.js');
+      try {
+        if (options.json !== true) {
+          throw new Error(
+            'Task reports currently support JSON output only. Pass --json.',
+          );
+        }
+        if (options.transcript && options.session) {
+          throw new Error(
+            'Pass either --transcript <file> or --session <id>, not both.',
+          );
+        }
+        await taskReportHandler({
+          format: 'json',
+          transcriptPath: options.transcript ?? null,
+          sessionId: options.session ?? null,
+          outFile: options.out ?? null,
+          cwd: process.cwd(),
+        });
+        process.exit(0);
+      } catch (error) {
+        await printTaskReportError(error);
+        process.exit(1);
+      }
+    });
+
   // Doctor command - check installation health
   program.command('doctor').description('Check the health of your OpenCC auto-updater. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {
     const [{
