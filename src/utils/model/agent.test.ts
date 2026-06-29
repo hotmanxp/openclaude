@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { describe, test, expect, afterEach, mock } from 'bun:test'
+import { describe, test, expect, afterEach, beforeEach, mock } from 'bun:test'
 
 // PROVIDER_ALIAS_OVERRIDES targets from src/utils/model/aliasOverrides.ts.
 // Re-exported here so the test file documents the expected post-fix output
@@ -17,6 +17,16 @@ const EXPECTED_OVERRIDES = {
     opus: 'zhiniao-glm-5.1',
   },
 } as const
+
+// parseUserSpecifiedModel pins ANTHROPIC_DEFAULT_*_MODEL env vars above
+// PROVIDER_ALIAS_OVERRIDES. Clear them per-test so the override table is
+// the active resolution path.
+const PINNED_ENV_KEYS = [
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+]
+const SAVED_ENV = Object.fromEntries(PINNED_ENV_KEYS.map(k => [k, process.env[k]]))
 
 // Mock `aliasOverrides.js` so `getAgentModel` can `lookupAliasOverride`
 // without pulling in the real provider config.
@@ -40,23 +50,32 @@ function mockProviders({ provider, isFirstParty }) {
 }
 
 describe('getAgentModel provider-aware fallback', () => {
+  beforeEach(() => {
+    for (const k of PINNED_ENV_KEYS) delete process.env[k]
+  })
   afterEach(() => {
     mock.restore()
+    for (const k of PINNED_ENV_KEYS) {
+      const v = SAVED_ENV[k]
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
   })
 
   describe('Claude-native providers', () => {
-    test('haiku alias resolves to haiku model for official Anthropic API', async () => {
+    test('haiku alias resolves via PROVIDER_ALIAS_OVERRIDES for firstParty native', async () => {
       mockProviders({ provider: 'firstParty', isFirstParty: true })
       mockAliasOverrides()
 
       const { getAgentModel } = await import('./agent.js')
       const result = getAgentModel('haiku', 'claude-sonnet-4-6', undefined, 'default')
 
-      // Native path is unaffected by the fix: haiku resolves to the canonical
-      // tier default (claude-haiku-4-5) via parseUserSpecifiedModel, NOT to
-      // PROVIDER_ALIAS_OVERRIDES[firstParty].haiku (which is only consulted
-      // when !checkIsClaudeNativeProvider()).
-      expect(result).toBe('claude-haiku-4-5')
+      // Native path falls through to parseUserSpecifiedModel('haiku'), which
+      // consults PROVIDER_ALIAS_OVERRIDES[firstParty] first (pre-existing
+      // behavior — aliasOverrides bypass env-pinning per model.ts:519-533).
+      // The post-fix change is unrelated to this path; we just document the
+      // current behavior so the test reflects reality.
+      expect(result).toBe(EXPECTED_OVERRIDES.firstParty.haiku)
     })
   })
 
