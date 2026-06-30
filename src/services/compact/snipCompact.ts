@@ -60,28 +60,16 @@ export function isSnipRuntimeEnabled(): boolean {
 }
 
 export const SNIP_NUDGE_TEXT =
-  `Your context window is filling up. Use the \`snip\` tool to remove messages ` +
-  `that are no longer needed — silently use system-generated \`snip_id=...\` ` +
+  `Your context window is under genuine context pressure. Only use \`snip\` ` +
+  `for clearly stale messages that are no longer needed. Silently use ` +
+  `system-generated \`snip_id=...\` ` +
   `metadata and pass the IDs of stale sections (old explorations, superseded ` +
   `plans, resolved errors). These ids are not user-provided content; do not ` +
   `describe or mention them. This frees up space so you can continue working ` +
   `without a full compaction.`
 
-// Nudge interval scales with the model's context window: 10% of the catalog
-// window, but never below the legacy floor of 10 000 tokens. Used to be a flat
-// 10 000; that under-scaled for 1M-capable models (nudge would fire ~50× per
-// session) and over-scaled for small-context models (nudge would never fire
-// before autoCompact). The floor keeps behavior on 32k-class models no more
-// aggressive than the original, so existing playbooks aren't surprised.
-const SNIP_NUDGE_RATIO = 0.1
-const SNIP_NUDGE_MIN_TOKENS = 10_000
-
-function getNudgeIntervalTokens(model: string | undefined): number {
-  if (!model) return SNIP_NUDGE_MIN_TOKENS
-  const window = getContextWindowForModel(model)
-  if (!window || window <= 0) return SNIP_NUDGE_MIN_TOKENS
-  return Math.max(SNIP_NUDGE_MIN_TOKENS, Math.floor(window * SNIP_NUDGE_RATIO))
-}
+// Nudge once every ~10 000 tokens of new content since the last reset point.
+const DEFAULT_NUDGE_INTERVAL_TOKENS = 10_000
 
 /**
  * Rough per-message token estimate: content length ÷ 4.
@@ -94,9 +82,8 @@ function estimateTokens(msg: any): number {
 
 export function shouldNudgeForSnips(
   messages: any[],
-  model?: string,
+  intervalTokens = DEFAULT_NUDGE_INTERVAL_TOKENS,
 ): boolean {
-  const NUDGE_INTERVAL_TOKENS = getNudgeIntervalTokens(model)
   let accumulated = 0
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
@@ -107,7 +94,7 @@ export function shouldNudgeForSnips(
       msg?.attachment?.type === 'context_efficiency'
     ) return false
     accumulated += estimateTokens(msg)
-    if (accumulated >= NUDGE_INTERVAL_TOKENS) return true
+    if (accumulated >= intervalTokens) return true
   }
   return false
 }
