@@ -8,6 +8,7 @@ import goal from './commands/goal/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
+import clearContextWindow from './commands/clear-context-window/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
 import commitMessage from './commands/commit-message/index.js'
@@ -48,6 +49,7 @@ import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
 import session from './commands/session/index.js'
+import setContextWindow from './commands/set-context-window/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
@@ -305,6 +307,7 @@ const COMMANDS = memoize((): Command[] => [
   cacheProbe,
   chrome,
   clear,
+  clearContextWindow,
   color,
   compact,
   commitMessage,
@@ -349,6 +352,7 @@ const COMMANDS = memoize((): Command[] => [
   rename,
   resume,
   session,
+  setContextWindow,
   skills,
   status,
   statusline,
