@@ -35,6 +35,12 @@ const APP_NAME = 'Open CC URL Handler'
 const DESKTOP_FILE_NAME = 'claude-code-url-handler.desktop'
 const MACOS_APP_NAME = 'Open CC URL Handler.app'
 
+// Build-time-resolved launcher name. When the upstream Anthropic package
+// URL is in effect, the binary keeps the legacy `claude` name; OpenCC
+// builds expose `openclaude`.
+const PROTOCOL_BINARY_BASE_NAME =
+  MACRO.PACKAGE_URL === '@anthropic-ai/claude-code' ? 'claude' : 'openclaude'
+
 // Shared between register* (writes these paths/values) and
 // isProtocolHandlerCurrent (reads them back). Keep the writer and reader
 // in lockstep — drift here means the check returns a perpetual false.
@@ -239,9 +245,9 @@ export async function registerProtocolHandler(
  * (dev builds, non-native installs).
  */
 export function getProtocolBinaryName(platform = process.platform): string {
-  const baseName =
-    MACRO.PACKAGE_URL === '@anthropic-ai/claude-code' ? 'claude' : 'openclaude'
-  return platform === 'win32' ? `${baseName}.exe` : baseName
+  return platform === 'win32'
+    ? `${PROTOCOL_BINARY_BASE_NAME}.exe`
+    : PROTOCOL_BINARY_BASE_NAME
 }
 
 async function resolveClaudePath(): Promise<string> {
