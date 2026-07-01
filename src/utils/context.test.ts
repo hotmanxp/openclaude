@@ -691,3 +691,15 @@ test('clearSessionContextWindowOverride resets state for session isolation', () 
   expect(getSessionContextWindowOverride('gpt-4o')).toBeUndefined()
   expect(getContextWindowForModel('gpt-4o')).not.toBe(256_000)
 })
+
+test('session override takes precedence over [1m] suffix detection', () => {
+  // Sanity: without session override, [1m] suffix yields the 1M window.
+  expect(modelSupports1M('claude-sonnet-4-6[1m]')).toBe(true)
+  // With session override set on the bare model, getContextWindowForModel
+  // must return the override even when the caller passes the [1m] form.
+  setSessionContextWindowOverride('claude-sonnet-4-6', 200_000)
+  expect(getContextWindowForModel('claude-sonnet-4-6[1m]')).toBe(200_000)
+  // Clearing restores the [1m] suffix path (1M).
+  clearSessionContextWindowOverride()
+  expect(getContextWindowForModel('claude-sonnet-4-6[1m]')).toBe(1_000_000)
+})
