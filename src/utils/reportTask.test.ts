@@ -925,8 +925,8 @@ describe('task report generation', () => {
           type: 'pr-link',
           sessionId,
           prNumber: 456,
-          prUrl: 'https://github.com/hotmanxp/openclaude/pull/456',
-          prRepository: 'hotmanxp/openclaude',
+          prUrl: 'https://github.com/Gitlawb/openclaude/pull/456',
+          prRepository: 'Gitlawb/openclaude',
           timestamp: '2026-06-27T08:01:00.000Z',
         },
         userMessage(

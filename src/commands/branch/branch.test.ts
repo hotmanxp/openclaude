@@ -593,7 +593,7 @@ test('/branch creates a new session, copies messages, keeps the source transcrip
   expect(message).toContain('experiment')
   expect(message).toContain('same working tree')
   expect(message).toContain('not filesystem isolation')
-  expect(message).toContain(`To resume the original: opencc -r ${originalSessionId}`)
+  expect(message).toContain(`To resume the original: opencc -r ${sourceSessionId}`)
 })
 
 test('/branch without a name auto-titles the fork and reports non-custom title metadata', async () => {
@@ -763,7 +763,7 @@ test('/branch shows a manual resume hint when automatic switching is unavailable
   expect(message).toContain('Resume this branch with: /resume ')
   expect(message).toContain('same working tree')
   expect(message).toContain('not filesystem isolation')
-  expect(message).toContain(`To resume the original: opencc -r ${originalSessionId}`)
+  expect(message).toContain(`To resume the original: opencc -r ${sourceSessionId}`)
   expect(message).not.toContain('You are now in the branch')
 })
 
