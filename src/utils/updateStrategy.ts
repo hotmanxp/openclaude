@@ -28,7 +28,7 @@ export type UpdateStrategy =
  * build the user is running. Custom-PACKAGE_URL builds (OpenCC's
  * `@zn-ai/opencc`) are safe to self-update.
  *
- * Shared by the `openclaude update` CLI and the `/update` slash command so both
+ * Shared by the `opencc update` CLI and the `/update` slash command so both
  * honour the same guard.
  */
 export function isThirdPartyBuildBlocked(): boolean {

@@ -117,7 +117,7 @@ describe('createHeadlessHeartbeat', () => {
     clock.advance(1)
     clock.tick()
     expect(stderrLines).toHaveLength(1)
-    expect(stderrLines[0]).toContain('openclaude: heartbeat')
+    expect(stderrLines[0]).toContain('opencc: heartbeat')
     expect(stderrLines[0]).toContain('elapsed=5s')
     expect(stderrLines[0]).toContain('quiet=5s')
     expect(stderrLines[0]).toContain('state=running')

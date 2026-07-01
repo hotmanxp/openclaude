@@ -9,6 +9,7 @@ import {
   parseUserSpecifiedModel,
 } from './model.js'
 import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
+import { lookupAliasOverride } from './aliasOverrides.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
@@ -60,22 +61,44 @@ export function getAgentModel(
 
   // Provider-aware model alias fallback for agents.
   // Claude-native providers (Bedrock, Vertex, Foundry, official Anthropic API)
-  // have guaranteed haiku/sonnet model availability. Custom Anthropic-compatible
-  // endpoints, OpenAI-shim, Gemini, Mistral, and other providers may not have
-  // equivalent models, causing "model not found" errors when resolving aliases.
-  // For haiku/sonnet aliases on non-Claude-native providers, inherit parent model.
+  // have guaranteed haiku/sonnet model availability and resolve haiku/sonnet
+  // aliases to the canonical tier defaults (claude-haiku-4-5, claude-sonnet-4-6).
+  //
+  // Non-Claude-native providers may not have equivalent models, causing
+  // "model not found" errors when resolving haiku/sonnet aliases. For those
+  // providers we fall through to alias-aware resolution:
+  //   - firstParty + custom URL (Anthropic-compatible proxy): `lookupAliasOverride`
+  //     is consulted for an explicit provider-specific target (see
+  //     `PROVIDER_ALIAS_OVERRIDES`). When the table has an entry, the alias
+  //     resolves to that target via `parseUserSpecifiedModel`. When it does
+  //     not, we fall back to inheriting the parent model.
+  //   - OpenAI-shim: haiku/sonnet are Anthropic-tier names with no OpenAI
+  //     equivalent. Always inherit the parent model.
   // Note: 'opus' is NOT included here because it's handled separately by
   // aliasMatchesParentTier() which checks if parent's tier matches the alias.
   if (
     (agentModelWithExp === 'haiku' || agentModelWithExp === 'sonnet') &&
     !checkIsClaudeNativeProvider()
   ) {
-    // Non-Claude-native provider → inherit parent model
-    return getRuntimeMainLoopModel({
-      permissionMode: permissionMode ?? 'default',
-      mainLoopModel: parentModel,
-      exceeds200kTokens: false,
-    })
+    const provider = getAPIProvider()
+    // When a provider-specific alias override exists (Anthropic-compatible
+    // proxy or OpenAI-shim configured with explicit OpenAI targets), honor
+    // it instead of inheriting parent. See PROVIDER_ALIAS_OVERRIDES in
+    // src/utils/model/aliasOverrides.ts.
+    if (
+      (provider === 'firstParty' || provider === 'openai') &&
+      lookupAliasOverride(provider, agentModelWithExp) !== undefined
+    ) {
+      // Fall through to parseUserSpecifiedModel below — it consults the
+      // alias override table and returns the explicit target.
+    } else {
+      // No override for this provider → inherit parent model.
+      return getRuntimeMainLoopModel({
+        permissionMode: permissionMode ?? 'default',
+        mainLoopModel: parentModel,
+        exceeds200kTokens: false,
+      })
+    }
   }
 
   if (agentModelWithExp === 'inherit') {

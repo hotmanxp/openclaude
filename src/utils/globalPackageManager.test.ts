@@ -62,7 +62,7 @@ describe('selectOwningPackageManager', () => {
     // npm's root is a parent of bun's here; bun must win because its root is
     // the more specific match.
     expect(
-      selectOwningPackageManager('/opt/pm/node_modules/bun/global/openclaude', [
+      selectOwningPackageManager('/opt/pm/node_modules/bun/global/opencc', [
         { pm: 'npm', root: '/opt/pm/node_modules' },
         { pm: 'bun', root: '/opt/pm/node_modules/bun/global' },
       ]),
@@ -80,7 +80,7 @@ describe('selectOwningPackageManager', () => {
   test('does not match a sibling directory sharing a prefix', () => {
     // "/a/node_modules-other" must not be considered under "/a/node_modules".
     expect(
-      selectOwningPackageManager('/a/node_modules-other/openclaude/cli.js', [
+      selectOwningPackageManager('/a/node_modules-other/opencc/cli.js', [
         { pm: 'npm', root: '/a/node_modules' },
       ]),
     ).toBeNull()
@@ -88,7 +88,7 @@ describe('selectOwningPackageManager', () => {
 
   test('ignores candidates with an empty root', () => {
     expect(
-      selectOwningPackageManager('/usr/lib/node_modules/openclaude', [
+      selectOwningPackageManager('/usr/lib/node_modules/opencc', [
         { pm: 'yarn', root: '' },
         { pm: 'npm', root: '/usr/lib/node_modules' },
       ]),

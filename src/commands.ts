@@ -6,8 +6,9 @@ import btw from './commands/btw/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import goal from './commands/goal/index.js'
 import issue from './commands/issue/index.js'
-import feedback from './commands/feedback/index.js'
+// import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
+import clearContextWindow from './commands/clear-context-window/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
 import commitMessage from './commands/commit-message/index.js'
@@ -17,7 +18,7 @@ import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
-import cost from './commands/cost/index.js'
+// import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import dream from './commands/dream/index.js'
 import handoff from './commands/handoff/index.js'
@@ -30,8 +31,8 @@ import init from './commands/init.js'
 import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import lsp from './commands/lsp/index.js'
-import login from './commands/login/index.js'
-import logout from './commands/logout/index.js'
+// import login from './commands/login/index.js'
+// import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
 // import knowledge from './commands/knowledge/index.js'
@@ -48,6 +49,7 @@ import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
 import session from './commands/session/index.js'
+import setContextWindow from './commands/set-context-window/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
@@ -112,11 +114,7 @@ const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd: null = null
 // [FORK_SUBAGENT] was: feature-gated require, but ./commands/fork/ never existed
 const forkCmd = null
-const buddy = isBuddyEnabled()
-  ? (
-      require('./commands/buddy/index.js') as typeof import('./commands/buddy/index.js')
-    ).default
-  : null
+const buddy = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
@@ -305,6 +303,7 @@ const COMMANDS = memoize((): Command[] => [
   cacheProbe,
   chrome,
   clear,
+  clearContextWindow,
   color,
   compact,
   commitMessage,
@@ -313,7 +312,6 @@ const COMMANDS = memoize((): Command[] => [
   desktop,
   context,
   contextNonInteractive,
-  cost,
   ctx_viz,
   diff,
   dream,
@@ -349,6 +347,7 @@ const COMMANDS = memoize((): Command[] => [
   rename,
   resume,
   session,
+  setContextWindow,
   skills,
   status,
   statusline,
@@ -356,7 +355,6 @@ const COMMANDS = memoize((): Command[] => [
   setTicket,
   tag,
   theme,
-  feedback,
   goal,
   review,
   ultrareview,
@@ -389,7 +387,7 @@ const COMMANDS = memoize((): Command[] => [
   hooks,
   exportCommand,
   sandboxToggle,
-  ...(!isUsing3PServices() ? [logout, login()].filter(Boolean) : []),
+  ...(!isUsing3PServices() ? [].filter(Boolean) : []),
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
@@ -704,12 +702,10 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   theme, // Change terminal theme
   color, // Change agent color
   vim, // Toggle vim mode
-  cost, // Show session cost (local cost tracking)
   ctx_viz, // Context window usage
   usage, // Show usage info
   copy, // Copy last message
   btw, // Quick note
-  feedback, // Send feedback
   goal, // Manage session goal continuation
   plan, // Plan mode toggle
   keybindings, // Keybinding management
@@ -734,7 +730,6 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
   [
     compact, // Shrink context — useful mid-session from a phone
     clear, // Wipe transcript
-    cost, // Show session cost
     ctx_viz, // Context window usage
     summary, // Summarize conversation
     releaseNotes, // Show changelog
@@ -817,7 +812,7 @@ export function formatDescriptionWithSource(cmd: Command): string {
   const desc = cmd.description ?? ''
 
   if (cmd.kind === 'workflow') {
-    return `${desc} (workflow)`
+    return `${desc} (dynamic workflow)`
   }
 
   if (cmd.source === 'plugin') {

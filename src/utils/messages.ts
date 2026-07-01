@@ -471,6 +471,7 @@ export function createUserMessage({
   isCompactSummary,
   summarizeMetadata,
   toolUseResult,
+  isAgentStepLimitToolResult,
   mcpMeta,
   uuid,
   timestamp,
@@ -485,6 +486,7 @@ export function createUserMessage({
   isVirtual?: boolean
   isCompactSummary?: boolean
   toolUseResult?: unknown // Matches tool's `Output` type
+  isAgentStepLimitToolResult?: boolean
   /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
   mcpMeta?: {
     _meta?: Record<string, unknown>
@@ -524,6 +526,7 @@ export function createUserMessage({
     uuid: (uuid as UUID | undefined) || randomUUID(),
     timestamp: timestamp ?? new Date().toISOString(),
     toolUseResult,
+    isAgentStepLimitToolResult,
     mcpMeta,
     imagePasteIds,
     sourceToolAssistantUUID,
@@ -3752,7 +3755,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     }
     case 'todo_reminder': {
-      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const todoItems = attachment.content
@@ -3775,7 +3778,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       if (!isTodoV2Enabled()) {
         return []
       }
-      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const taskItems = attachment.content

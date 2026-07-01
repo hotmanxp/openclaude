@@ -341,6 +341,30 @@ describe('shouldNudgeForSnips', () => {
     expect(shouldNudgeForSnips(messages)).toBe(false)
   })
 
+  test('resets at a previous context-efficiency nudge until enough new content accumulates', () => {
+    const priorNudge = {
+      type: 'attachment',
+      attachment: { type: 'context_efficiency' },
+    }
+    const smallChunk = 'x'.repeat(12_000)
+    const oldChunkBeforeNudge = 'x'.repeat(36_000)
+    const largeRecent = [
+      makeUser('u1', smallChunk),
+      makeUser('u2', smallChunk),
+      makeUser('u3', smallChunk),
+      makeUser('u4', smallChunk),
+    ]
+
+    expect(
+      shouldNudgeForSnips([
+        makeUser('u0', oldChunkBeforeNudge),
+        priorNudge,
+        makeUser('u5', smallChunk),
+      ]),
+    ).toBe(false)
+    expect(shouldNudgeForSnips([priorNudge, ...largeRecent])).toBe(true)
+  })
+
   test('returns true when enough tokens have accumulated since last reset', () => {
     const bigChunk = 'x'.repeat(12_000)
     const messages = [
@@ -352,61 +376,16 @@ describe('shouldNudgeForSnips', () => {
     expect(shouldNudgeForSnips(messages)).toBe(true)
   })
 
-  test('falls back to 10k threshold when no model is provided', () => {
-    // Without a model, the interval stays at the historical 10k fallback so
-    // callers that haven't been threaded the model arg (or that don't know it)
-    // keep the previous behavior. 5k of accumulation should NOT nudge.
-    const messages = [makeUser('u1', 'x'.repeat(20_000))] // ~5k tokens
-    expect(shouldNudgeForSnips(messages)).toBe(false)
-  })
+  test('respects a custom interval threshold', () => {
+    const bigChunk = 'x'.repeat(12_000)
+    const messages = [
+      makeUser('u1', bigChunk),
+      makeUser('u2', bigChunk),
+      makeUser('u3', bigChunk),
+      makeUser('u4', bigChunk),
+    ]
 
-  test('scales interval to 10% of context window for the active model', () => {
-    // Default catalog context window for first-party models is 200k, so 10%
-    // is 20k tokens. 25k chars (~6.25k tokens) is well under that, so a
-    // 200k-window model should NOT nudge on this volume — even though the
-    // flat 10k fallback WOULD have nudged.
-    const messages = [makeUser('u1', 'x'.repeat(25_000))]
-    expect(shouldNudgeForSnips(messages, 'claude-sonnet-4-6')).toBe(false)
-    // But 200k worth of content (so >20k tokens) must nudge.
-    const lotsOfMessages = Array.from({ length: 200 }, (_, i) =>
-      makeUser(`u${i}`, 'x'.repeat(5_000)),
-    )
-    expect(shouldNudgeForSnips(lotsOfMessages, 'claude-sonnet-4-6')).toBe(true)
-  })
-
-  test('uses the larger 1M interval when model supports it', () => {
-    // A 1M-capable model (the [1m] suffix opts in) gets a 100k nudge
-    // interval. 50k tokens of content must NOT nudge.
-    const messages = Array.from({ length: 40 }, (_, i) =>
-      makeUser(`u${i}`, 'x'.repeat(5_000)),
-    )
-    expect(shouldNudgeForSnips(messages, 'claude-sonnet-4-6[1m]')).toBe(false)
-  })
-
-  test('clamps small-window models to the 10k floor', () => {
-    // For a 32k-window model, 10% = 3.2k — well below the historical 10k
-    // nudge cadence. We clamp to 10k so existing playbooks and operator
-    // expectations aren't surprised. We mock getContextWindowForModel to
-    // return a small window because the real catalog has no Claude model
-    // below 200k — without the floor the test would still pass for the
-    // wrong reason.
-    mock.module('../../utils/context.js', () => ({
-      getContextWindowForModel: (_model: string) => 32_000,
-    }))
-    // 5k tokens of content (20k chars). Without the floor, 32k * 0.1 = 3.2k
-    // threshold, so 5k WOULD nudge. With the 10k floor clamping the threshold,
-    // 5k stays below it and must NOT nudge — that's exactly the regression
-    // the floor exists to prevent.
-    const aboveRationBelowFloor = Array.from({ length: 4 }, (_, i) =>
-      makeUser(`u${i}`, 'x'.repeat(5_000)),
-    )
-    expect(
-      shouldNudgeForSnips(aboveRationBelowFloor, 'fake-small-model'),
-    ).toBe(false)
-    // Above the floor too (15k tokens / 60k chars) — must nudge.
-    const aboveFloor = Array.from({ length: 5 }, (_, i) =>
-      makeUser(`u${i}`, 'x'.repeat(12_000)),
-    )
-    expect(shouldNudgeForSnips(aboveFloor, 'fake-small-model')).toBe(true)
+    expect(shouldNudgeForSnips(messages, 10_000)).toBe(true)
+    expect(shouldNudgeForSnips(messages, 50_000)).toBe(false)
   })
 })

@@ -62,7 +62,10 @@ import {
 import { isTodoV2Enabled } from './tasks.js'
 import type { TodoList } from './todo/types.js'
 import { TodoListSchema } from './todo/types.js'
-import type { ContentReplacementRecord } from './toolResultStorage.js'
+import {
+  filterContentReplacementsForMessages,
+  type ContentReplacementRecord,
+} from './toolResultStorage.js'
 import {
   getCurrentWorktreeSession,
   restoreWorktreeSession,
@@ -374,6 +377,19 @@ type ResumeLoadResult = {
   prRepository?: string
 }
 
+export function createForkSessionInfoMessage(
+  sourceSessionId: string | undefined,
+  newSessionId: string = getSessionId(),
+): Message {
+  // @ts-ignore - SystemInformationalMessage not assignable to Message (fork type drift;
+  //   matches the existing escape hatch at line ~505 in this file). upstream PR #1801
+  //   (SHA 80233568). Re-check after upstream removes the @ts-ignore.
+  return createSystemMessage(
+    `Forked conversation from session ${sourceSessionId ?? 'unknown'} into new session ${newSessionId}. This is conversation branching, not filesystem isolation; no worktree branch or filesystem copy was created.`,
+    'info',
+  )
+}
+
 /**
  * Restore the worktree working directory on resume. The transcript records
  * the last worktree enter/exit; if the session crashed while inside a
@@ -488,7 +504,8 @@ export async function processResumedConversation(
   if (true) {
     modeWarning = context.modeApi?.matchSessionMode(result.mode)
     if (modeWarning) {
-      // @ts-ignore - SystemInformationalMessage not assignable to Message
+      // @ts-ignore - SystemInformationalMessage not assignable to Message (fork type drift).
+      // upstream PR #1801 (SHA 80233568). Pre-existing escape hatch, not introduced by #1801.
       result.messages.push(createSystemMessage(modeWarning, 'warning'))
     }
   }
@@ -520,7 +537,20 @@ export async function processResumedConversation(
     // → they're classified as FROZEN → full content sent (cache miss, permanent
     // overage). insertContentReplacement stamps sessionId = getSessionId() =
     // the fresh ID, so loadTranscriptFile's keyed lookup will match.
-    await recordContentReplacement(result.contentReplacements)
+    result.contentReplacements = filterContentReplacementsForMessages(
+      result.messages,
+      result.contentReplacements,
+    )
+    if (result.contentReplacements.length) {
+      await recordContentReplacement(result.contentReplacements)
+    }
+  }
+  if (opts.forkSession) {
+    result.messages.push(
+      createForkSessionInfoMessage(
+        opts.sessionIdOverride ?? result.sessionId,
+      ),
+    )
   }
 
   // Restore session metadata so /status shows the saved name and metadata

@@ -349,7 +349,7 @@ function formatStderrHeartbeat(event: {
   session_id: string
 }): string {
   const parts = [
-    'openclaude: heartbeat',
+    'opencc: heartbeat',
     `elapsed=${formatSeconds(event.elapsed_ms)}`,
     `quiet=${formatSeconds(event.since_last_activity_ms)}`,
     `state=${event.state}`,

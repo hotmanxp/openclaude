@@ -148,10 +148,22 @@ export function openAIShimSupportsApiFormatForModel(
 
 function inferRemoteModelOpenAIShimConfig(
   modelApiName: string | undefined,
+  routeId?: string | null,
 ): Partial<OpenAIShimTransportConfig> | undefined {
   const normalizedModel = normalizeModelApiName(modelApiName)
   if (!normalizedModel) {
     return undefined
+  }
+
+  // GitHub Copilot routes Claude models through the native Anthropic
+  // transport (see isGithubNativeAnthropicMode). The Copilot gateway
+  // accepts and echoes back thinking blocks; stripping them on resume
+  // (the 3P default) loses reasoning the model needs to continue.
+  if (routeId === 'github' && normalizedModel.includes('claude')) {
+    return {
+      preserveReasoningContent: true,
+      maxTokensField: 'max_tokens',
+    }
   }
 
   if (normalizedModel.startsWith('mimo-v2')) {
@@ -248,7 +260,7 @@ export function resolveOpenAIShimRuntimeContext(options?: {
       ? {
           maxTokensField: 'max_tokens' as const,
         }
-      : inferRemoteModelOpenAIShimConfig(options?.model)
+      : inferRemoteModelOpenAIShimConfig(options?.model, routeId)
 
   return {
     routeId,

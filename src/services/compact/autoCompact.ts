@@ -81,7 +81,7 @@ export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
 export const AUTOCOMPACT_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
 
-// Minimum cooldown override allowed via OPENCLAUDE_AUTOCOMPACT_FAILURE_COOLDOWN_MS.
+// Minimum cooldown override allowed via OPENCC_AUTOCOMPACT_FAILURE_COOLDOWN_MS.
 // Values below this floor are rejected (function falls back to the default) so
 // misconfiguration cannot effectively disable the circuit breaker.
 export const MIN_AUTOCOMPACT_FAILURE_COOLDOWN_MS = 10_000

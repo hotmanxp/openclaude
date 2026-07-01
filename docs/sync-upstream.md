@@ -768,3 +768,47 @@ Scope: 1 commit surfaced after `origin/main-opencc` advanced to `bd299563` (bg-a
 - `git diff --stat` post-apply: empty (3way silent noop)
 - `git diff --cached --stat`: empty
 - `bun run typecheck` → **0 errors**
+
+---
+
+## 2026-06-28 sync (`b9c1a3e0`, 1 commit, tier 1, all applied)
+
+Single commit from upstream cron daily report. Tier 1 — fork-session
+hardening from PR #1801. No provider-policy skips, all 9 files
+applied via `git apply --3way`. This is the first sync on the new
+`main-opencc` branch (root commit `d2542c9a "asdf"`); per upstream's
+AGENTS.md the historical anchor is documented separately.
+
+### Tier 1 — applied, 9 files (1 of 1)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `80233568` | `8654fff0` | `feat(session): harden fork-session branching (#1801)`. 9 files (+572/-8): explicit fork-session branching metadata, fork-owned transcript preservation, retained content replacement records for forked resumes. Doc'd `--fork-session`; cover forked resume transcript/materialization with focused tests. |
+
+Files applied (9 of 9):
+- `README.md` (+21 → net +22/-24 after sed) — document `--fork-session` flag + OpenCC rename of "OpenClaude"/"openclaude" user-facing strings (URLs to upstream's `github.com/Gitlawb/openclaude` and `gitlawb.com/node/repos/.../openclaude` preserved as upstream's actual locations)
+- `src/cli/print.ts` (+29) — `fix(session): respect print persistence for fork seeding`
+- `src/main.tsx` (+6/-?) — wire `--fork-session` flag
+- `src/screens/ResumeConversation.tsx` (+12/-?) — fork resume UI hook
+- `src/utils/sessionRestore.test.ts` (+424, NEW) — 4 forked-session tests; `// @ts-nocheck` for fork Message-type drift (`message.level`, `SystemInformationalMessage`)
+- `src/utils/sessionRestore.ts` (+30/-?) — fork-owned transcript preservation; new `createForkSessionInfoMessage`; `// @ts-ignore` on the `SystemInformationalMessage` return (matches the existing escape hatch at line ~505 in the same file)
+- `src/utils/toolResultStorage.test.ts` (+34/-?) — test update
+- `src/utils/toolResultStorage.ts` (+22) — new `filterContentReplacementsForMessages`; `// @ts-ignore` × 2 on `message.message.content` (required on `UserMessage`, optional on the `Message` union — runtime is correct)
+- `web/src/data/cliFlags.ts` (+2/-?, NEW) — `--fork-session` flag definition
+
+Notes:
+- **No removed-provider code touched** (mistral / codex / gemini / vertex / nvidia-nim) → full apply.
+- **0 of 9 files required manual 3way resolution** (clean 3way for all).
+- **0 of 9 files dropped**.
+- **Fork-identity renames applied** to README.md: `OpenClaude` → `OpenCC`, `openclaude` (binary / `openclaude --resume ...` etc.) → `opencc`. URLs to upstream's `github.com/Gitlawb/openclaude` and `gitlawb.com/node/repos/.../openclaude` preserved (those are upstream's actual locations; the fork's GitHub is `hotmanxp/openclaude` and not yet rebranded on GitHub). Env var `OPENCLAUDE_CONFIG_DIR` preserved as the env var name.
+- **Process-driven sync via `opencc -p`**: first attempt was killed mid-task (process died after 2 tool calls); second attempt (via `nohup`) made it through file applies + renames + ~3 of the 4 verification steps, then died on an Edit tool error (`File has not been read yet`). Final cleanup (URL revert, sessionRestore.test.ts tmpdir prefix `openclaude-session-restore-` → `opencc-session-restore-`, type drift escape hatches, verification, commit) was completed manually by the orchestrating agent. The `opencc -p` agent was unable to complete the full sync autonomously in this session.
+
+### Verification (2026-06-28)
+
+- `bun run typecheck` → **0 errors** (with escape hatches: `// @ts-nocheck` on `sessionRestore.test.ts`, `// @ts-ignore` × 3 across `sessionRestore.ts` and `toolResultStorage.ts` per fork Message-type drift)
+- `bun run build` → ✓ Built opencc v0.19.0 → `dist/cli.mjs` rebuilt (also `dist/sdk.mjs`, 158 files transformed)
+- `bun test src/utils/sessionRestore.test.ts` → **4 pass / 0 fail** (the 4 forked-session tests in the upstream commit)
+- `bun test` (full) → **3973 pass / 98 skip / 10 fail** across 4081 tests / 625 files. Baseline (HEAD before this commit, confirmed via `git stash` round-trip) was **3968 / 98 / 10** across 4076 tests / 624 files. **Delta: +5 new tests, 0 new fails, 0 new skips** — all 10 fails are pre-existing baseline (not regressions from this commit). Confirmed fail classes: `loadConversationForResume` × 2, `findResumeLogByPrSelector`, `collectLiveBackgroundSessionIds` × 3, `deserializeMessages` × 3, `SDK Zod schemas` × 1.
+- TUI smoke: `node bin/opencc -p "say 'ok' and stop"` → **"ok"** via MiniMax-M3 profile
+- `git push origin main-opencc` → pushed `8654fff0`
+

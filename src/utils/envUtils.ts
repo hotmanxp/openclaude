@@ -64,6 +64,18 @@ export function __resetConfigDirEnvWarningForTesting(): void {
   warnedAboutConflictingConfigDirEnvs = false
 }
 
+let claudeConfigHomeDirOverride: string | undefined
+
+export function setClaudeConfigHomeDirForTesting(
+  configDir: string | undefined,
+): void {
+  claudeConfigHomeDirOverride = configDir?.normalize('NFC')
+}
+
+export function getClaudeConfigHomeDirOverrideForTesting(): string | undefined {
+  return claudeConfigHomeDirOverride
+}
+
 // Memoized: 150+ callers, many on hot paths. Keyed off both override env
 // vars so tests that change either get a fresh value without explicit
 // cache.clear.

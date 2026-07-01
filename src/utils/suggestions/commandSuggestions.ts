@@ -293,7 +293,7 @@ function createCommandSuggestionItem(
   return {
     id: getCommandId(cmd),
     displayText: `/${commandName}${aliasText}`,
-    tag: isWorkflow ? 'workflow' : undefined,
+    tag: isWorkflow ? 'dynamic workflow' : undefined,
     description: fullDescription,
     metadata: cmd,
   }

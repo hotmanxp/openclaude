@@ -228,7 +228,53 @@ const EXPORT_ORDER = [
 // Zod v4 uses schema.def.type as the discriminator (lowercase strings).
 // All schemas have .def with { type: string, ... }.
 
+// Dedup table for long inline type literals. When convert() / convertObject()
+// emits a multi-line object literal (or any single-line literal that exceeds
+// DEDUP_MIN_LENGTH), we record it here and return a stable name
+// (`SDKUsage`, `SDKUsage2`, ...) on subsequent occurrences. The collected
+// named aliases are written at the top of the generated file (after the
+// auto-generated header, before any `export type ... = ...` line).
+//
+// Why: the same `{ total_tokens: number; tool_uses: number; duration_ms: number }`
+// inline object used to appear 4× in SDKMessage and again in SDKTaskProgressMessage
+// and SDKTaskNotificationMessage, ballooning the file. Extracting once is
+// cheaper to read, easier to diff, and keeps the on-disk SDK bundle lean.
+const DEDUP_MIN_LENGTH = 80
+const dedupTable = new Map<string, string>() // canonical literal -> assigned alias name
+const dedupNames = new Map<string, string>() // alias name -> canonical literal
+let dedupCounter = 0
+
+function dedup(literal: string): string {
+  // Only consider deduping multi-line object literals (those with newlines).
+  // Single-line outputs (Record<...>, string | "x" | "y", etc.) are kept as-is
+  // — they are typically short and unique enough that inlining is clearer
+  // than a named alias that is referenced once.
+  if (!literal.includes('\n')) return literal
+  if (literal.length < DEDUP_MIN_LENGTH) return literal
+  // Canonicalize indentation so the same logical literal produced at
+  // different depths still dedups. Strip leading whitespace from every line.
+  const stripped = literal.replace(/^[ \t]+/gm, '')
+  const existing = dedupTable.get(stripped)
+  if (existing) return existing
+  dedupCounter += 1
+  const name = dedupCounter === 1 ? 'SDKUsage' : `SDKUsage${dedupCounter}`
+  dedupTable.set(stripped, name)
+  // Re-indent the alias body for clean output: each interior line gets two
+  // spaces, matching the pre-dedup style (top-level object → fields at col 2).
+  const lines = stripped.split('\n')
+  const reindented = lines
+    .map((line, idx) => (idx === 0 || idx === lines.length - 1 || line === '') ? line : `  ${line}`)
+    .join('\n')
+  dedupNames.set(name, reindented)
+  return name
+}
+
 function convert(schema: any, depth = 0): string {
+  const result = convertInner(schema, depth)
+  return dedup(result)
+}
+
+function convertInner(schema: any, depth = 0): string {
   if (!schema || !schema.def) return 'unknown'
 
   // Check if this schema is a known placeholder (identity comparison)
@@ -377,6 +423,11 @@ function needsArrayElementParens(ts: string): boolean {
 // ---------------------------------------------------------------------------
 
 export function generateSdkTypes(): string {
+  // Reset dedup state so re-runs (and tests) start clean
+  dedupTable.clear()
+  dedupNames.clear()
+  dedupCounter = 0
+
   const lines: string[] = [
     '// AUTO-GENERATED — do not edit manually.',
     '// Regenerate with: bun scripts/generate-sdk-types.ts',
@@ -430,6 +481,23 @@ export function generateSdkTypes(): string {
       lines.push(`export type ${typeName} = any`)
       lines.push('')
     }
+  }
+
+  // Emit the dedup-extracted named aliases at the top (after the header,
+  // before the first schema export). Iteration order follows dedupCounter
+  // assignment order (first occurrence first), which is the same order
+  // schemas appear in EXPORT_ORDER — keeping diffs predictable.
+  if (dedupCounter > 0) {
+    const aliasLines: string[] = []
+    for (let i = 1; i <= dedupCounter; i++) {
+      const name = i === 1 ? 'SDKUsage' : `SDKUsage${i}`
+      const literal = dedupNames.get(name)
+      if (!literal) continue
+      aliasLines.push(`export type ${name} = ${literal}`)
+      aliasLines.push('')
+    }
+    // Place aliases at index 4 (right after the 4-line header + blank)
+    lines.splice(4, 0, ...aliasLines)
   }
 
   if (errors > 0) {

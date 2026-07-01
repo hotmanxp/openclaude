@@ -210,6 +210,7 @@ import {
   hydrateRemoteSession,
   hydrateFromCCRv2InternalEvents,
   resetSessionFilePointer,
+  recordContentReplacement,
   doesMessageExistInSession,
   findUnresolvedToolUse,
   recordAttributionSnapshot,
@@ -310,9 +311,11 @@ import {
   fileHistoryGetDiffStats,
 } from 'src/utils/fileHistory.js'
 import {
+  createForkSessionInfoMessage,
   restoreAgentFromSession,
   restoreSessionStateFromLog,
 } from 'src/utils/sessionRestore.js'
+import { filterContentReplacementsForMessages } from 'src/utils/toolResultStorage.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import {
   headlessProfilerStartTurn,
@@ -5098,6 +5101,17 @@ async function loadInitialMessages(
               await resetSessionFilePointer()
             }
           }
+        } else {
+          if (persistSession && result.contentReplacements?.length) {
+            result.contentReplacements = filterContentReplacementsForMessages(
+              result.messages,
+              result.contentReplacements,
+            )
+            if (result.contentReplacements.length) {
+              await recordContentReplacement(result.contentReplacements)
+            }
+          }
+          result.messages.push(createForkSessionInfoMessage(result.sessionId))
         }
         restoreSessionStateFromLog(result, setAppState)
 
@@ -5298,6 +5312,21 @@ async function loadInitialMessages(
         if (persistSession) {
           await resetSessionFilePointer()
         }
+      } else if (options.forkSession) {
+        if (persistSession && result.contentReplacements?.length) {
+          result.contentReplacements = filterContentReplacementsForMessages(
+            result.messages,
+            result.contentReplacements,
+          )
+          if (result.contentReplacements.length) {
+            await recordContentReplacement(result.contentReplacements)
+          }
+        }
+        result.messages.push(
+          createForkSessionInfoMessage(
+            parsedSessionId?.sessionId ?? result.sessionId,
+          ),
+        )
       }
       restoreSessionStateFromLog(result, setAppState)
 
