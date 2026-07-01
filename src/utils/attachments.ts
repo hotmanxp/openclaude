@@ -213,6 +213,7 @@ import {
   tokenCountWithEstimation,
 } from './tokens.js'
 import {
+  getAutoCompactThreshold,
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../services/compact/autoCompact.js'
@@ -975,14 +976,18 @@ export async function getAttachments(
           ),
         ]
       : []),
-    maybe('context_efficiency', () =>
-      Promise.resolve(
-        getContextEfficiencyAttachment(
-          messages ?? [],
-          toolUseContext.options.mainLoopModel,
-        ),
-      ),
-    ),
+    ...(feature('HISTORY_SNIP')
+      ? [
+          maybe('context_efficiency', () =>
+            Promise.resolve(
+              getContextEfficiencyAttachment(
+                messages ?? [],
+                toolUseContext.options.mainLoopModel,
+              ),
+            ),
+          ),
+        ]
+      : []),
   ]
 
   // Attachments which are semantically only for the main conversation or don't have concurrency-safe implementations
@@ -4025,9 +4030,43 @@ export function getCompactionReminderAttachment(
  * when the model is unknown), and resets on prior nudges, snip markers,
  * snip boundaries, and compact boundaries.
  */
+const MIN_SNIP_NUDGE_TOKENS = 10_000
+const MAX_SNIP_NUDGE_REPEAT_TOKENS = 100_000
+const SNIP_NUDGE_START_FRACTION = 0.60
+const SNIP_NUDGE_REPEAT_FRACTION = 0.10
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+export function getSnipNudgeRepeatInterval(model: string): number {
+  const effectiveWindow = getEffectiveContextWindowSize(model)
+  return clamp(
+    Math.floor(effectiveWindow * SNIP_NUDGE_REPEAT_FRACTION),
+    MIN_SNIP_NUDGE_TOKENS,
+    MAX_SNIP_NUDGE_REPEAT_TOKENS,
+  )
+}
+
+export function getSnipNudgeStartThreshold(model: string): number {
+  const effectiveWindow = getEffectiveContextWindowSize(model)
+  const autoCompactThreshold = getAutoCompactThreshold(model)
+  const leadTokens = getSnipNudgeRepeatInterval(model)
+  const fractionalStart = Math.floor(effectiveWindow * SNIP_NUDGE_START_FRACTION)
+  const preAutoCompactStart = Math.max(
+    MIN_SNIP_NUDGE_TOKENS,
+    autoCompactThreshold - leadTokens,
+  )
+
+  return Math.max(
+    MIN_SNIP_NUDGE_TOKENS,
+    Math.min(fractionalStart, preAutoCompactStart),
+  )
+}
+
 export function getContextEfficiencyAttachment(
   messages: Message[],
-  model?: string,
+  model: string,
 ): Attachment[] {
   // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that
   // isn't in the tool list. Lazy require keeps this file snip-string-free.
@@ -4038,7 +4077,14 @@ export function getContextEfficiencyAttachment(
     return []
   }
 
-  if (!shouldNudgeForSnips(messages, model)) {
+  const usedTokens = tokenCountWithEstimation(messages)
+  const startThreshold = getSnipNudgeStartThreshold(model)
+  if (usedTokens < startThreshold) {
+    return []
+  }
+
+  const repeatInterval = getSnipNudgeRepeatInterval(model)
+  if (!shouldNudgeForSnips(messages, repeatInterval)) {
     return []
   }
 
