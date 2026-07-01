@@ -59,6 +59,7 @@ import {
   getMessagesAfterCompactBoundary,
   createToolUseSummaryMessage,
   createMicrocompactBoundaryMessage,
+  createAssistantMessage,
 } from './utils/messages.js'
 import { buildInboxSystemReminder } from './utils/daemon/inboxSection.js'
 import { analyzeContinuationIntent } from './utils/continuation.js'
@@ -115,6 +116,7 @@ import {
   createToolFailureLoopGuardState,
   updateToolFailureLoopGuard,
 } from './query/toolFailureLoopGuard.js'
+import { AGENT_STEP_LIMIT_TOOL_RESULT_PREFIX } from './query/agentStepLimit.js'
 import { buildQueryConfig } from './query/config.js'
 import {
   getGlobalConfig,
@@ -176,6 +178,123 @@ function* yieldMissingToolResultBlocks(
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 const MAX_CONTINUATION_NUDGES = 20
 
+type AgentStepLimitConfig = {
+  maxSteps: number
+  agentType?: string
+}
+
+type AgentStepLimitState = AgentStepLimitConfig & {
+  stepsUsed: number
+  summaryRequested: boolean
+}
+
+function normalizeAgentStepLimit(
+  limit: AgentStepLimitConfig | undefined,
+): AgentStepLimitState | undefined {
+  if (
+    !limit ||
+    !Number.isInteger(limit.maxSteps) ||
+    limit.maxSteps <= 0
+  ) {
+    return undefined
+  }
+  return {
+    maxSteps: limit.maxSteps,
+    agentType: limit.agentType,
+    stepsUsed: 0,
+    summaryRequested: false,
+  }
+}
+
+function findAssistantMessageForToolUse(
+  assistantMessages: AssistantMessage[],
+  toolUseId: string,
+): AssistantMessage | undefined {
+  return assistantMessages.find(message =>
+    message.message.content.some(
+      content => content.type === 'tool_use' && content.id === toolUseId,
+    ),
+  )
+}
+
+function createAgentStepLimitToolResult(
+  toolUse: ToolUseBlock,
+  assistantMessage: AssistantMessage | undefined,
+  limit: AgentStepLimitState,
+): UserMessage {
+  const content =
+    `${AGENT_STEP_LIMIT_TOOL_RESULT_PREFIX} for '${limit.agentType ?? 'subagent'}' ` +
+    `(${limit.stepsUsed}/${limit.maxSteps} tool uses). This tool call was not executed. ` +
+    'Do not call more tools; provide the final summary requested next.'
+
+  return createUserMessage({
+    content: [
+      {
+        type: 'tool_result',
+        content: `<tool_use_error>${content}</tool_use_error>`,
+        is_error: true,
+        tool_use_id: toolUse.id,
+      },
+    ],
+    toolUseResult: content,
+    isAgentStepLimitToolResult: true,
+    ...(assistantMessage
+      ? { sourceToolAssistantUUID: assistantMessage.uuid }
+      : {}),
+  })
+}
+
+function createAgentStepLimitSummaryRequest(
+  limit: AgentStepLimitState,
+): UserMessage {
+  return createUserMessage({
+    content:
+      `Agent '${limit.agentType ?? 'subagent'}' reached its configured step limit ` +
+      `after ${limit.stepsUsed}/${limit.maxSteps} tool uses. Stop using tools now. ` +
+      'Provide a concise final summary with these sections: completed work, findings, ' +
+      'remaining tasks, and whether another run is needed.',
+    isMeta: true,
+  })
+}
+
+function createAgentStepLimitForcedSummary(
+  limit: AgentStepLimitState,
+  blockedToolUseCount: number,
+): AssistantMessage {
+  const blockedCallText =
+    blockedToolUseCount === 1
+      ? '1 additional tool call was blocked'
+      : `${blockedToolUseCount} additional tool calls were blocked`
+
+  return createAssistantMessage({
+    content:
+      `Completed work: Agent '${limit.agentType ?? 'subagent'}' reached its configured step limit ` +
+      `after ${limit.stepsUsed}/${limit.maxSteps} tool uses. ` +
+      `Findings: ${blockedCallText} during the forced summary step and no more tools were run. ` +
+      'Remaining tasks: continue any unfinished work in another run if more tool access is needed. ' +
+      'Another run needed: yes, if the requested task is not complete.',
+  })
+}
+
+function hasAssistantSummaryText(
+  assistantMessage: AssistantMessage | undefined,
+): boolean {
+  const text = (assistantMessage?.message.content ?? [])
+    .map(part =>
+      part.type === 'text' && typeof part.text === 'string'
+        ? part.text.toLowerCase()
+        : '',
+    )
+    .join('\n')
+
+  return (
+    text.includes('completed') &&
+    text.includes('findings') &&
+    text.includes('remaining tasks') &&
+    text.includes('another run')
+  )
+}
+
 function formatAutoCompactRetryDelay(delayMs: number): string {
   const totalSeconds = Math.max(1, Math.ceil(delayMs / 1000))
   if (totalSeconds < 60) {
@@ -221,6 +340,7 @@ export type QueryParams = {
   // budget for the whole agentic turn; `remaining` is computed per iteration
   // from cumulative API usage. See configureTaskBudgetParams in claude.ts.
   taskBudget?: { total: number }
+  agentStepLimit?: AgentStepLimitConfig
   deps?: QueryDeps
 }
 
@@ -249,6 +369,7 @@ type State = {
   // Why the previous iteration continued. Undefined on first iteration.
   // Lets tests assert recovery paths fired without inspecting message contents.
   transition: Continue | undefined
+  agentStepLimit: AgentStepLimitState | undefined
 }
 
 export async function* query(
@@ -322,6 +443,7 @@ async function* queryLoop(
     continuationNudgeCount: 0,
     pendingToolUseSummary: undefined,
     transition: undefined,
+    agentStepLimit: normalizeAgentStepLimit(params.agentStepLimit),
   }
   const budgetTracker = true ? createBudgetTracker() : null
 
@@ -372,6 +494,7 @@ async function* queryLoop(
       pendingToolUseSummary,
       stopHookActive,
       turnCount,
+      agentStepLimit,
     } = state
 
     // Skill discovery prefetch — per-iteration (uses findWritePivot guard
@@ -766,7 +889,8 @@ async function* queryLoop(
     let needsFollowUp = false
 
     queryCheckpoint('query_setup_start')
-    const useStreamingToolExecution = config.gates.streamingToolExecution
+    const useStreamingToolExecution =
+      config.gates.streamingToolExecution && agentStepLimit === undefined
     let streamingToolExecutor = useStreamingToolExecution
       ? new StreamingToolExecutor(
           toolUseContext.options.tools,
@@ -898,6 +1022,9 @@ async function* queryLoop(
     }
 
     let attemptWithFallback = true
+    const toolsForModel = agentStepLimit?.summaryRequested
+      ? []
+      : toolUseContext.options.tools
 
     queryCheckpoint('query_api_loop_start')
     try {
@@ -910,7 +1037,7 @@ async function* queryLoop(
             messages: prependUserContext(messagesForQuery, userContext),
             systemPrompt: fullSystemPrompt,
             thinkingConfig: toolUseContext.options.thinkingConfig,
-            tools: toolUseContext.options.tools,
+            tools: toolsForModel,
             signal: toolUseContext.abortController.signal,
             options: {
               async getToolPermissionContext() {
@@ -947,6 +1074,9 @@ async function* queryLoop(
               agentId: toolUseContext.agentId,
               addNotification: toolUseContext.addNotification,
               providerOverride: toolUseContext.options.providerOverride,
+              ...(toolsForModel !== toolUseContext.options.tools && {
+                messageNormalizationTools: toolUseContext.options.tools,
+              }),
               ...(params.taskBudget && {
                 taskBudget: {
                   total: params.taskBudget.total,
@@ -1375,6 +1505,7 @@ async function* queryLoop(
               stopHookActive: undefined,
               turnCount,
               continuationNudgeCount: state.continuationNudgeCount,
+              agentStepLimit,
               transition: {
                 reason: 'collapse_drain_retry',
                 committed: drained.committed,
@@ -1431,6 +1562,7 @@ async function* queryLoop(
             stopHookActive: undefined,
             turnCount,
             continuationNudgeCount: state.continuationNudgeCount,
+            agentStepLimit,
             transition: { reason: 'reactive_compact_retry' },
           }
           state = next
@@ -1488,6 +1620,7 @@ async function* queryLoop(
             stopHookActive: undefined,
             turnCount,
             continuationNudgeCount: state.continuationNudgeCount,
+            agentStepLimit,
             transition: { reason: 'max_output_tokens_escalate' },
           }
           state = next
@@ -1518,6 +1651,7 @@ async function* queryLoop(
             stopHookActive: undefined,
             turnCount,
             continuationNudgeCount: state.continuationNudgeCount,
+            agentStepLimit,
             transition: {
               reason: 'max_output_tokens_recovery',
               attempt: maxOutputTokensRecoveryCount + 1,
@@ -1596,6 +1730,7 @@ async function* queryLoop(
               stopHookActive: undefined,
               turnCount,
               continuationNudgeCount: state.continuationNudgeCount,
+              agentStepLimit,
               transition: { reason: 'provider_fallback_retry' },
             }
             state = next

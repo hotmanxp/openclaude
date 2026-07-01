@@ -192,6 +192,8 @@ export interface UserMessage {
   isCompactSummary?: boolean
   summarizeMetadata?: unknown
   toolUseResult?: unknown
+  /** Internal marker for synthetic tool_result messages created by agent step limits. */
+  isAgentStepLimitToolResult?: boolean
   mcpMeta?: unknown
   imagePasteIds?: string[]
   sourceToolAssistantUUID?: string
