@@ -15,6 +15,14 @@ const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  OPENAI_API_BASE: process.env.OPENAI_API_BASE,
+  CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS:
+    process.env.CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS,
+  CLAUDE_CODE_OPENAI_MAX_OUTPUT_TOKENS:
+    process.env.CLAUDE_CODE_OPENAI_MAX_OUTPUT_TOKENS,
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+  ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
   CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED:
     process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED,
   CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID:
@@ -31,6 +39,12 @@ beforeEach(async () => {
   delete process.env.CLAUDE_CODE_USE_OPENAI
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   delete process.env.OPENAI_MODEL
+  delete process.env.OPENAI_BASE_URL
+  delete process.env.OPENAI_API_BASE
+  delete process.env.CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS
+  delete process.env.CLAUDE_CODE_OPENAI_MAX_OUTPUT_TOKENS
+  delete process.env.ANTHROPIC_BASE_URL
+  delete process.env.ANTHROPIC_MODEL
   delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED
   delete process.env.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID
   delete process.env.MINIMAX_API_KEY
@@ -41,21 +55,23 @@ beforeEach(async () => {
 
 afterEach(() => {
   try {
-    if (originalEnv.CLAUDE_CODE_USE_OPENAI === undefined) {
-      delete process.env.CLAUDE_CODE_USE_OPENAI
-    } else {
-      process.env.CLAUDE_CODE_USE_OPENAI = originalEnv.CLAUDE_CODE_USE_OPENAI
-    }
-    if (originalEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS === undefined) {
-      delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
-    } else {
-      process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS =
-        originalEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS
-    }
-    if (originalEnv.OPENAI_MODEL === undefined) {
-      delete process.env.OPENAI_MODEL
-    } else {
-      process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
+    for (const key of [
+      'CLAUDE_CODE_USE_OPENAI',
+      'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+      'OPENAI_MODEL',
+      'OPENAI_BASE_URL',
+      'OPENAI_API_BASE',
+      'CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS',
+      'CLAUDE_CODE_OPENAI_MAX_OUTPUT_TOKENS',
+      'ANTHROPIC_BASE_URL',
+      'ANTHROPIC_MODEL',
+    ] as const) {
+      const value = (originalEnv as Record<string, string | undefined>)[key]
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
     }
   } finally {
     clearSessionContextWindowOverride()
