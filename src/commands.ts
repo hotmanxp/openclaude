@@ -114,11 +114,7 @@ const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd: null = null
 // [FORK_SUBAGENT] was: feature-gated require, but ./commands/fork/ never existed
 const forkCmd = null
-const buddy = isBuddyEnabled()
-  ? (
-      require('./commands/buddy/index.js') as typeof import('./commands/buddy/index.js')
-    ).default
-  : null
+const buddy = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
