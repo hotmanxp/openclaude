@@ -5,7 +5,10 @@ import type React from 'react'
 import { z } from 'zod/v4'
 import type { Tool } from '../../Tool.js'
 import type { LocalSpawner } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import {
+  resolveClaudeConfigHomeDir,
+  resolveConfigDirEnv,
+} from '../../utils/envUtils.js'
 import { parseCliArgs } from './cliArgs.js'
 import { getBundledSource } from './bundled/index.js'
 import { WORKFLOW_TOOL_NAME } from './constants.js'
@@ -586,8 +589,25 @@ export const WorkflowTool = {
         persistedPath = scriptPath
       } else {
         const sessionId = process.env.CLAUDE_SESSION_ID ?? String(process.pid)
+        // Resolve the config dir inline rather than calling the
+        // lodash-memoized `getClaudeConfigHomeDir()`. That memoize cache
+        // captures the resolved dir keyed on the env vars at first call,
+        // so any process-local `process.env.CLAUDE_CONFIG_DIR` or
+        // `OPENCC_CONFIG_DIR` mutation done after the first call (notably
+        // from test setup `beforeEach` blocks in the shared bun test
+        // process) silently observes a stale `~/.claude` / `~/.opencc`
+        // value and the workflow script lands under the wrong dir. The
+        // exported pure functions below re-derive the value on every
+        // invocation; cheap (just `existsSync` for the legacy-default
+        // resolution branch) and correct.
+        const configHomeDir = resolveClaudeConfigHomeDir({
+          configDirEnv: resolveConfigDirEnv({
+            openccConfigDir: process.env.OPENCC_CONFIG_DIR,
+            legacyConfigDir: process.env.CLAUDE_CONFIG_DIR,
+          }),
+        })
         const sessionDir = join(
-          getClaudeConfigHomeDir(),
+          configHomeDir,
           'sessions',
           sessionId,
           'workflows',
