@@ -77,7 +77,7 @@ afterEach(() => {
 })
 
 function userMessage(estimatedTokens: number): Message {
-  return createUserMessage({ content: 'x'.repeat(estimatedTokens * 4) })
+  return createUserMessage({ content: 'x'.repeat(estimatedTokens * 4) }) as Message
 }
 
 describe('snip nudge policy', () => {

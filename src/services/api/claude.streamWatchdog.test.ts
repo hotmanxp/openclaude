@@ -22,7 +22,6 @@ import {
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import { QueryLifecycleOperationTracker } from '../../utils/queryLifecycle.js'
 import { EMPTY_USAGE } from './emptyUsage.js'
 import type { Options } from './claude.js'
 
@@ -232,7 +231,6 @@ function makeOptions(onStreamingFallback?: () => void): Options {
     hasAppendSystemPrompt: false,
     mcpTools: [],
     onStreamingFallback,
-    queryLifecycle: new QueryLifecycleOperationTracker(),
   }
 }
 
