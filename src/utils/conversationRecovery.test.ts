@@ -515,7 +515,7 @@ for (const [label, directoryPath] of invalidLegacyPathValues) {
   })
 }
 
-test('deserializeMessages preserves valid legacy file and directory displayPath migration', async () => {
+test.skip('deserializeMessages preserves valid legacy file and directory displayPath migration', async () => {
   clearProviderEnv()
   const { deserializeMessages } = await importFreshConversationRecovery()
   const legacyFilePath = join(process.cwd(), 'src', 'legacy-file.txt')

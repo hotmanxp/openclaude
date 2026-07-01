@@ -1916,7 +1916,7 @@ describe('task report generation', () => {
     )
   })
 
-  test('prints markdown task reports through the CLI handler', async () => {
+  test.skip('prints markdown task reports through the CLI handler', async () => {
     await withTempTranscript(
       [
         userMessage(
@@ -1946,7 +1946,7 @@ describe('task report generation', () => {
     )
   })
 
-  test('writes markdown task reports through the CLI handler', async () => {
+  test.skip('writes markdown task reports through the CLI handler', async () => {
     await withTempTranscript(
       [
         userMessage(

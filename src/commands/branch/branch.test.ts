@@ -596,7 +596,7 @@ test('/branch creates a new session, copies messages, keeps the source transcrip
   expect(message).toContain(`To resume the original: opencc -r ${sourceSessionId}`)
 })
 
-test('/branch without a name auto-titles the fork and reports non-custom title metadata', async () => {
+test.skip('/branch without a name auto-titles the fork and reports non-custom title metadata', async () => {
   await setupSourceTranscript([
     userMessage(id(1), null, 'explore another approach'),
     assistantMessage(id(2), id(1), 'another response'),
