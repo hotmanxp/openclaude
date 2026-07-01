@@ -138,7 +138,7 @@ function snipBoundary(
 }
 
 async function writeJsonl(entries: unknown[]): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-session-storage-'))
   tempDirs.push(dir)
   const filePath = join(dir, 'session.jsonl')
   await writeFile(filePath, `${entries.map(e => JSON.stringify(e)).join('\n')}\n`)
@@ -472,7 +472,7 @@ test('restoreSessionMetadata clears cached branch when resumed transcript has no
     }
     restoreSessionMetadata({ sessionBranch: staleBranch })
 
-    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    const dir = await mkdtemp(join(tmpdir(), 'opencc-session-storage-'))
     tempDirs.push(dir)
     const filePath = join(dir, `${sessionId}.jsonl`)
     await writeFile(
@@ -494,7 +494,7 @@ test.skip('recordGoalState writes goal metadata durably before resolving', async
   // OC's restoreSessionMetadata does not accept a `goal` field — goal
   // state lives on appState.goalSentinel. Body preserved upstream.
   await withSessionPersistence(async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+    const dir = await mkdtemp(join(tmpdir(), 'opencc-session-storage-'))
     tempDirs.push(dir)
     const filePath = join(dir, `${sessionId}.jsonl`)
     switchSession(sessionId as never, dir)
@@ -524,11 +524,11 @@ test.skip('recordGoalState writes goal metadata durably before resolving', async
 
 test('loadSameRepoMessageLogsProgressive preserves branch metadata across worktrees', async () => {
   const configDir = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-config-'),
+    join(tmpdir(), 'opencc-session-storage-config-'),
   )
   tempDirs.push(configDir)
   const worktreesRoot = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-worktrees-'),
+    join(tmpdir(), 'opencc-session-storage-worktrees-'),
   )
   tempDirs.push(worktreesRoot)
   const rootProject = join(worktreesRoot, 'main')
@@ -587,11 +587,11 @@ test('loadSameRepoMessageLogsProgressive preserves branch metadata across worktr
 
 test('loadSameRepoMessageLogsProgressive preserves branch metadata from the lite head window', async () => {
   const configDir = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-config-'),
+    join(tmpdir(), 'opencc-session-storage-config-'),
   )
   tempDirs.push(configDir)
   const worktreesRoot = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-worktrees-'),
+    join(tmpdir(), 'opencc-session-storage-worktrees-'),
   )
   tempDirs.push(worktreesRoot)
   const rootProject = join(worktreesRoot, 'main')
@@ -657,11 +657,11 @@ test('loadSameRepoMessageLogsProgressive preserves branch metadata from the lite
 
 test('loadSameRepoMessageLogsProgressive ignores branch metadata outside lite read windows', async () => {
   const configDir = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-config-'),
+    join(tmpdir(), 'opencc-session-storage-config-'),
   )
   tempDirs.push(configDir)
   const worktreesRoot = await mkdtemp(
-    join(tmpdir(), 'openclaude-session-storage-worktrees-'),
+    join(tmpdir(), 'opencc-session-storage-worktrees-'),
   )
   tempDirs.push(worktreesRoot)
   const rootProject = join(worktreesRoot, 'main')

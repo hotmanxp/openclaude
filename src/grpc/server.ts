@@ -21,7 +21,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 })
 
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any
-const openclaudeProto = protoDescriptor.opencc.v1
+const openccProto = protoDescriptor.opencc.v1
 
 const MAX_SESSIONS = 1000
 
@@ -89,7 +89,7 @@ export class GrpcServer {
 
   constructor() {
     this.server = new grpc.Server()
-    this.server.addService(openclaudeProto.AgentService.service, {
+    this.server.addService(openccProto.AgentService.service, {
       Chat: this.handleChat.bind(this),
     })
   }

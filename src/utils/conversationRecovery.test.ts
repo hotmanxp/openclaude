@@ -111,7 +111,7 @@ function activeGoal(condition = 'resume goal') {
 }
 
 async function writeJsonl(entry: unknown): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-conversation-recovery-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-conversation-recovery-'))
   tempDirs.push(dir)
   const filePath = join(dir, 'resume.jsonl')
   await writeFile(filePath, `${JSON.stringify(entry)}\n`)
@@ -119,7 +119,7 @@ async function writeJsonl(entry: unknown): Promise<string> {
 }
 
 async function writeJsonlEntries(entries: unknown[]): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-conversation-recovery-'))
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-conversation-recovery-'))
   tempDirs.push(dir)
   const filePath = join(dir, 'resume.jsonl')
   await writeFile(filePath, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n')
@@ -248,8 +248,8 @@ test('findResumeLogByPrSelector selects the first non-sidechain PR match', async
     isSidechain: false,
     sessionId: id(12),
     prNumber: 1642,
-    prUrl: 'https://github.com/Gitlawb/openclaude/pull/1642',
-    prRepository: 'Gitlawb/openclaude',
+    prUrl: 'https://github.com/Gitlawb/opencc/pull/1642',
+    prRepository: 'Gitlawb/opencc',
   } as any
   const sidechain = {
     ...linked,
@@ -260,7 +260,7 @@ test('findResumeLogByPrSelector selects the first non-sidechain PR match', async
     ...linked,
     sessionId: id(14),
     prNumber: 17,
-    prUrl: 'https://github.com/Gitlawb/openclaude/pull/17',
+    prUrl: 'https://github.com/Gitlawb/opencc/pull/17',
   } as any
 
   expect(findResumeLogByPrSelector([sidechain, linked, unrelated], true)).toBe(
@@ -272,7 +272,7 @@ test('findResumeLogByPrSelector selects the first non-sidechain PR match', async
   expect(
     findResumeLogByPrSelector(
       [sidechain, linked, unrelated],
-      'https://github.com/Gitlawb/openclaude/pull/1642',
+      'https://github.com/Gitlawb/opencc/pull/1642',
     ),
   ).toBe(linked)
   expect(

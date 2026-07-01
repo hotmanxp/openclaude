@@ -281,6 +281,14 @@ describe('WorkflowTool.scriptPath mode', () => {
 //     path) — `data.scriptPath` echoes the input verbatim.
 //   - Early failures (unknown workflow, missing file) must NOT create
 //     an entry in the sessions dir.
+//
+// Cross-file memoize-pollution caveat: the production code resolves the
+// config dir inline via `resolveConfigDirEnv` + `resolveClaudeConfigHomeDir`
+// (pure functions over `process.env`), so this test does not need to
+// invalidate the lodash-memoized `getClaudeConfigHomeDir` cache — the
+// inline call always sees the env value set in `beforeEach` below,
+// regardless of what earlier test files (e.g. openccInstallSurfaces
+// which `mock.module()`s envUtils with a non-memoized replacement) did.
 describe('WorkflowTool script persistence (Plan4 Task 2)', () => {
   let tmpRoot: string
   let prevConfigDir: string | undefined

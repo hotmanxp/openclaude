@@ -37,7 +37,7 @@ export function getGlobalInstallArgs(
       return ['add', '-g', spec]
     case 'yarn':
       // Classic yarn syntax; yarn berry aliases `global add` to the same effect
-      // for the documented openclaude install path.
+      // for the documented opencc install path.
       return ['global', 'add', spec]
   }
 }

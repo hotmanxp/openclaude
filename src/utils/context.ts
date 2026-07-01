@@ -183,6 +183,19 @@ export function getContextWindowForModel(
     }
   }
 
+  // Session-scoped override (set by /set_context_window) takes precedence
+  // over the [1m] suffix and all static lookup paths below. Only the
+  // ant+CLAUDE_CODE_MAX_CONTEXT_TOKENS hard cap above wins.
+  // The [1m] suffix is stripped before lookup so an override registered on
+  // the bare model name (e.g. `claude-sonnet-4-6`) also applies when the
+  // caller passes `claude-sonnet-4-6[1m]`.
+  const sessionOverride = getSessionContextWindowOverride(
+    model.replace(/\[1m\]$/i, ''),
+  )
+  if (sessionOverride !== undefined) {
+    return sessionOverride
+  }
+
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000

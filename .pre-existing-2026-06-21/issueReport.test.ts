@@ -23,7 +23,7 @@ describe('diagnostic issue report', () => {
   test('builds a safe JSON report without secrets or full home paths', async () => {
     const report = await buildIssueReport({
       env: baseEnv,
-      cwd: '/home/alice/private/openclaude',
+      cwd: '/home/alice/private/opencc',
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: {
         version: '0.18.0',
@@ -44,7 +44,7 @@ describe('diagnostic issue report', () => {
       errors: [
         {
           error:
-            'Error: request failed with sk-openai-secret at /home/alice/private/openclaude/src/file.ts',
+            'Error: request failed with sk-openai-secret at /home/alice/private/opencc/src/file.ts',
           timestamp: '2026-06-15T10:00:00.000Z',
         },
       ],
@@ -53,8 +53,8 @@ describe('diagnostic issue report', () => {
     const serialized = JSON.stringify(report)
     expect(report.schemaVersion).toBe(1)
     expect(report.generatedAt).toBe('2026-06-15T10:30:00.000Z')
-    expect(report.openclaude.version).toBe('0.18.0')
-    expect(report.workspace.cwd).toBe('openclaude')
+    expect(report.opencc.version).toBe('0.18.0')
+    expect(report.workspace.cwd).toBe('opencc')
     expect(report.provider.routeId).toBe('openai')
     expect(report.provider.credential.present).toBe(true)
     expect(report.provider.credential.sources).toEqual(['OPENAI_API_KEY'])
@@ -72,7 +72,7 @@ describe('diagnostic issue report', () => {
   test('formats markdown suitable for a GitHub issue', async () => {
     const report = await buildIssueReport({
       env: baseEnv,
-      cwd: '/home/alice/private/openclaude',
+      cwd: '/home/alice/private/opencc',
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: { version: '0.18.0' },
       checks: {
@@ -89,7 +89,7 @@ describe('diagnostic issue report', () => {
 
     const markdown = formatIssueReportAsMarkdown(report)
 
-    expect(markdown).toContain('# OpenClaude diagnostic report')
+    expect(markdown).toContain('# OpenCC diagnostic report')
     expect(markdown).toContain('## Summary')
     expect(markdown).toContain('| Check | Status | Detail |')
     expect(markdown).toContain(
@@ -107,7 +107,7 @@ describe('diagnostic issue report', () => {
     try {
       const report = await buildIssueReport({
         env: baseEnv,
-        cwd: '/home/alice/private/openclaude',
+        cwd: '/home/alice/private/opencc',
         now: new Date('2026-06-15T10:30:00.000Z'),
         checks: {
           buildArtifactsPresent: true,
@@ -121,7 +121,7 @@ describe('diagnostic issue report', () => {
         errors: [],
       })
 
-      expect(report.openclaude.version).toBe('unknown')
+      expect(report.opencc.version).toBe('unknown')
     } finally {
       if (hadMacro) {
         ;(globalThis as Record<string, unknown>).MACRO = originalMacro
@@ -162,7 +162,7 @@ describe('diagnostic issue report', () => {
     const home = homedir()
     const report = await buildIssueReport({
       env: baseEnv,
-      cwd: `${home}/private/openclaude`,
+      cwd: `${home}/private/opencc`,
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: { version: '0.18.0' },
       checks: {
@@ -176,7 +176,7 @@ describe('diagnostic issue report', () => {
       mcpServers: {},
       errors: [
         {
-          error: `ProviderError: failed with sk-openai-secret-token at ${home}/private/openclaude/src/file.ts`,
+          error: `ProviderError: failed with sk-openai-secret-token at ${home}/private/opencc/src/file.ts`,
           timestamp: '2026-06-15T10:00:00.000Z',
         },
       ],
@@ -185,7 +185,7 @@ describe('diagnostic issue report', () => {
 
     expect(report.errors.recent).toEqual([{ category: 'ProviderError', count: 1 }])
     expect(report.errors.debug).toEqual([
-      'ProviderError: failed with [redacted] at ~/private/openclaude/src/file.ts',
+      'ProviderError: failed with [redacted] at ~/private/opencc/src/file.ts',
     ])
     expect(JSON.stringify(report)).not.toContain('sk-openai-secret-token')
     expect(JSON.stringify(report)).not.toContain(home)
@@ -200,7 +200,7 @@ describe('diagnostic issue report', () => {
         GITHUB_TOKEN: 'ghp_abcdefghijklmnopqrstuvwxyz',
         MY_PRIVATE_TOKEN: 'private-token-value',
       },
-      cwd: '/home/alice/private/openclaude',
+      cwd: '/home/alice/private/opencc',
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: { version: '0.18.0' },
       checks: {
@@ -235,7 +235,7 @@ describe('diagnostic issue report', () => {
         CODEX_API_KEY: 'codex-secret-token',
         CHATGPT_ACCOUNT_ID: 'acct_codex',
       },
-      cwd: '/home/alice/private/openclaude',
+      cwd: '/home/alice/private/opencc',
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: { version: '0.18.0' },
       checks: {
@@ -277,7 +277,7 @@ describe('diagnostic issue report', () => {
         CODEX_API_KEY: 'codex-secret-token',
         CODEX_ACCOUNT_ID: 'acct_codex',
       },
-      cwd: '/home/alice/private/openclaude',
+      cwd: '/home/alice/private/opencc',
       now: new Date('2026-06-15T10:30:00.000Z'),
       packageInfo: { version: '0.18.0' },
       checks: {
@@ -303,7 +303,7 @@ describe('diagnostic issue report', () => {
   })
 
   test('writes report files and creates parent directories', () => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'openclaude-report-'))
+    const tempDir = mkdtempSync(join(tmpdir(), 'opencc-report-'))
     try {
       const outFile = join(tempDir, 'nested', 'report.md')
       const outputPath = writeIssueReport(outFile, 'redacted report')

@@ -925,13 +925,13 @@ describe('task report generation', () => {
           type: 'pr-link',
           sessionId,
           prNumber: 456,
-          prUrl: 'https://github.com/hotmanxp/openclaude/pull/456',
-          prRepository: 'hotmanxp/openclaude',
+          prUrl: 'https://github.com/Gitlawb/opencc/pull/456',
+          prRepository: 'Gitlawb/opencc',
           timestamp: '2026-06-27T08:01:00.000Z',
         },
         userMessage(
           '00000000-0000-4000-8000-000000000008',
-          'Update src/report.ts for https://github.com/Gitlawb/openclaude/issues/123.',
+          'Update src/report.ts for https://github.com/Gitlawb/opencc/issues/123.',
           '2026-06-27T08:00:00.000Z',
         ),
         assistantToolMessage(
@@ -975,8 +975,8 @@ describe('task report generation', () => {
         )
         expect(report.branch.pullRequest).toEqual({
           number: 456,
-          repository: 'Gitlawb/openclaude',
-          url: 'https://github.com/Gitlawb/openclaude/pull/456',
+          repository: 'Gitlawb/opencc',
+          url: 'https://github.com/Gitlawb/opencc/pull/456',
         })
         expect(report.git).toEqual(
           expect.objectContaining({
@@ -995,14 +995,14 @@ describe('task report generation', () => {
           {
             kind: 'issue',
             number: 123,
-            repository: 'Gitlawb/openclaude',
-            url: 'https://github.com/Gitlawb/openclaude/issues/123',
+            repository: 'Gitlawb/opencc',
+            url: 'https://github.com/Gitlawb/opencc/issues/123',
           },
           {
             kind: 'pull_request',
             number: 456,
-            repository: 'Gitlawb/openclaude',
-            url: 'https://github.com/Gitlawb/openclaude/pull/456',
+            repository: 'Gitlawb/opencc',
+            url: 'https://github.com/Gitlawb/opencc/pull/456',
           },
         ])
       },
@@ -1051,7 +1051,7 @@ describe('task report generation', () => {
   })
 
   test('normalizes Windows-style tool paths before merging with git paths', async () => {
-    const windowsCwd = 'C:\\workspace\\openclaude'
+    const windowsCwd = 'C:\\workspace\\opencc'
 
     await withTempTranscript(
       [
@@ -1069,7 +1069,7 @@ describe('task report generation', () => {
             id: 'tool-windows-path',
             name: 'Edit',
             input: {
-              file_path: 'C:\\workspace\\openclaude\\src\\report.ts',
+              file_path: 'C:\\workspace\\opencc\\src\\report.ts',
               old_string: 'old',
               new_string: 'new',
             },
@@ -1088,7 +1088,7 @@ describe('task report generation', () => {
             id: 'tool-windows-dot-path',
             name: 'Edit',
             input: {
-              file_path: 'C:\\workspace\\openclaude\\..fixtures\\report.ts',
+              file_path: 'C:\\workspace\\opencc\\..fixtures\\report.ts',
               old_string: 'old',
               new_string: 'new',
             },
@@ -1219,7 +1219,7 @@ describe('task report generation', () => {
         toolResultMessage(
           '00000000-0000-4000-8000-000000000023',
           'tool-read',
-          'File body mentions https://github.com/Gitlawb/openclaude/issues/999.',
+          'File body mentions https://github.com/Gitlawb/opencc/issues/999.',
           '2026-06-27T08:01:01.000Z',
         ),
       ],
@@ -1740,8 +1740,8 @@ describe('task report generation', () => {
   })
 
   test('formats markdown for changed files and branch metadata', async () => {
-    const reportCwd = join(tmpdir(), 'openclaude')
-    const worktreePath = join(tmpdir(), 'openclaude-report')
+    const reportCwd = join(tmpdir(), 'opencc')
+    const worktreePath = join(tmpdir(), 'opencc-report')
     const reportFilePath = join(reportCwd, 'src', 'report.ts')
     const reportSourcePath = posix.join('src', 'report.ts')
     const reportTestPath = posix.join('src', 'report.test.ts')
@@ -1759,7 +1759,7 @@ describe('task report generation', () => {
           worktreeSession: {
             originalCwd: reportCwd,
             worktreePath,
-            worktreeName: 'openclaude-report',
+            worktreeName: 'opencc-report',
             worktreeBranch: 'feat/session-task-report-json',
             originalBranch: 'main',
             originalHeadCommit: '13cf30af',
@@ -1770,13 +1770,13 @@ describe('task report generation', () => {
           type: 'pr-link',
           sessionId,
           prNumber: 456,
-          prUrl: 'https://github.com/Gitlawb/openclaude/pull/456',
-          prRepository: 'Gitlawb/openclaude',
+          prUrl: 'https://github.com/Gitlawb/opencc/pull/456',
+          prRepository: 'Gitlawb/opencc',
           timestamp: '2026-06-27T08:01:00.000Z',
         },
         userMessage(
           '00000000-0000-4000-8000-000000000103',
-          'Update src/report.ts for https://github.com/Gitlawb/openclaude/issues/123.',
+          'Update src/report.ts for https://github.com/Gitlawb/opencc/issues/123.',
           '2026-06-27T08:00:00.000Z',
           reportCwd,
         ),
@@ -1820,12 +1820,12 @@ describe('task report generation', () => {
           '- Worktree branch: `feat/session-task-report-json`',
         )
         expect(markdown).toContain(
-          '- Pull request: [#456](<https://github.com/Gitlawb/openclaude/pull/456>) (`Gitlawb/openclaude`)',
+          '- Pull request: [#456](<https://github.com/Gitlawb/opencc/pull/456>) (`Gitlawb/opencc`)',
         )
         expect(markdown).toContain(`- \`${reportSourcePath}\` (git, tool)`)
         expect(markdown).toContain(`- \`${reportTestPath}\` (git)`)
         expect(markdown).toContain(
-          '- pull_request: [#456](<https://github.com/Gitlawb/openclaude/pull/456>) (`Gitlawb/openclaude`)',
+          '- pull_request: [#456](<https://github.com/Gitlawb/opencc/pull/456>) (`Gitlawb/opencc`)',
         )
       },
     )
@@ -1849,8 +1849,8 @@ describe('task report generation', () => {
           {
             kind: 'issue',
             number: 321,
-            repository: 'Gitlawb/openclaude',
-            url: 'https://github.com/Gitlawb/openclaude/issues/321?label=a(b)',
+            repository: 'Gitlawb/opencc',
+            url: 'https://github.com/Gitlawb/opencc/issues/321?label=a(b)',
           },
           {
             kind: 'pull_request',
@@ -1862,7 +1862,7 @@ describe('task report generation', () => {
         const markdown = formatTaskReportAsMarkdown(report)
 
         expect(markdown).toContain(
-          '- issue: [#321](<https://github.com/Gitlawb/openclaude/issues/321?label=a(b)>) (`Gitlawb/openclaude`)',
+          '- issue: [#321](<https://github.com/Gitlawb/opencc/issues/321?label=a(b)>) (`Gitlawb/opencc`)',
         )
         expect(markdown).toContain('- pull_request: `#9`')
         expect(markdown).not.toContain('javascript:alert')
@@ -1871,7 +1871,7 @@ describe('task report generation', () => {
   })
 
   test('formats markdown with redacted secrets and truncated command output', async () => {
-    const secret = 'sk-openclaude-test-secret'
+    const secret = 'sk-opencc-test-secret'
     const longOutput = `${secret}\n${'passed '.repeat(40)}`
 
     await withTempTranscript(
@@ -1994,7 +1994,7 @@ describe('task report generation', () => {
     })
 
     await program.parseAsync(
-      ['node', 'openclaude', 'report', '--markdown', '--transcript', 'session.jsonl'],
+      ['node', 'opencc', 'report', '--markdown', '--transcript', 'session.jsonl'],
       { from: 'node' },
     )
 
@@ -2029,7 +2029,7 @@ describe('task report generation', () => {
     })
 
     await program.parseAsync(
-      ['node', 'openclaude', 'report', '--json', '--session', sessionId, '--out', 'task-report.json'],
+      ['node', 'opencc', 'report', '--json', '--session', sessionId, '--out', 'task-report.json'],
       { from: 'node' },
     )
 
@@ -2062,7 +2062,7 @@ describe('task report generation', () => {
       },
     })
 
-    await missingProgram.parseAsync(['node', 'openclaude', 'report'], {
+    await missingProgram.parseAsync(['node', 'opencc', 'report'], {
       from: 'node',
     })
 
@@ -2078,7 +2078,7 @@ describe('task report generation', () => {
 
     await expect(
       conflictingProgram.parseAsync(
-        ['node', 'openclaude', 'report', '--json', '--markdown'],
+        ['node', 'opencc', 'report', '--json', '--markdown'],
         { from: 'node' },
       ),
     ).rejects.toThrow("option '--json' cannot be used with option '--markdown'")
@@ -2107,7 +2107,7 @@ describe('task report generation', () => {
   })
 
   test('omits dirty status when git status cannot be collected', async () => {
-    const repoDir = join(homedir(), 'openclaude-task-report-git-repo')
+    const repoDir = join(homedir(), 'opencc-task-report-git-repo')
     const calls: string[] = []
 
     const metadata = await collectTaskReportGitMetadata(
@@ -2146,7 +2146,7 @@ describe('task report generation', () => {
     )
     expect(metadata).toEqual({
       status: 'available',
-      cwd: join('~', 'openclaude-task-report-git-repo'),
+      cwd: join('~', 'opencc-task-report-git-repo'),
       branch: 'feat/report',
       head: '13cf30afa469',
       changedFiles: [],

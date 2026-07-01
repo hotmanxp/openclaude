@@ -139,7 +139,7 @@ test('validateToolResultPairing reports server tool uses without in-message resu
         type: 'server_tool_use',
         id: 'srvu_missing',
         name: 'web_search',
-        input: { query: 'openclaude' },
+        input: { query: 'opencc' },
       } as unknown as BetaContentBlock,
     ],
   })
