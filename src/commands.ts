@@ -812,7 +812,7 @@ export function formatDescriptionWithSource(cmd: Command): string {
   const desc = cmd.description ?? ''
 
   if (cmd.kind === 'workflow') {
-    return `${desc} (workflow)`
+    return `${desc} (dynamic workflow)`
   }
 
   if (cmd.source === 'plugin') {
