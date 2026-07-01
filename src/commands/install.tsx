@@ -128,7 +128,7 @@ export function Install({
         }
 
         // Now that native installation succeeded, clean up old npm installations.
-        // npm uninstall owns its bin entries and can remove ~/.local/bin/openclaude
+        // npm uninstall owns its bin entries and can remove ~/.local/bin/opencc
         // when the npm prefix overlaps the native launcher directory, so repair the
         // native launcher after cleanup before checking the final install state.
         logForDebugging('Install: Cleaning up npm installations after successful install');
