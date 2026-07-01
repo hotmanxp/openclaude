@@ -31,8 +31,8 @@ import init from './commands/init.js'
 import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import lsp from './commands/lsp/index.js'
-import login from './commands/login/index.js'
-import logout from './commands/logout/index.js'
+// import login from './commands/login/index.js'
+// import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
 // import knowledge from './commands/knowledge/index.js'
@@ -393,7 +393,7 @@ const COMMANDS = memoize((): Command[] => [
   hooks,
   exportCommand,
   sandboxToggle,
-  ...(!isUsing3PServices() ? [logout, login()].filter(Boolean) : []),
+  ...(!isUsing3PServices() ? [].filter(Boolean) : []),
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
