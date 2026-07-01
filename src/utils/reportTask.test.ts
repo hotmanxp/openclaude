@@ -1740,8 +1740,8 @@ describe('task report generation', () => {
   })
 
   test('formats markdown for changed files and branch metadata', async () => {
-    const reportCwd = join(tmpdir(), 'openclaude')
-    const worktreePath = join(tmpdir(), 'openclaude-report')
+    const reportCwd = join(tmpdir(), 'opencc')
+    const worktreePath = join(tmpdir(), 'opencc-report')
     const reportFilePath = join(reportCwd, 'src', 'report.ts')
     const reportSourcePath = posix.join('src', 'report.ts')
     const reportTestPath = posix.join('src', 'report.test.ts')
@@ -1759,7 +1759,7 @@ describe('task report generation', () => {
           worktreeSession: {
             originalCwd: reportCwd,
             worktreePath,
-            worktreeName: 'openclaude-report',
+            worktreeName: 'opencc-report',
             worktreeBranch: 'feat/session-task-report-json',
             originalBranch: 'main',
             originalHeadCommit: '13cf30af',
@@ -1871,7 +1871,7 @@ describe('task report generation', () => {
   })
 
   test('formats markdown with redacted secrets and truncated command output', async () => {
-    const secret = 'sk-openclaude-test-secret'
+    const secret = 'sk-opencc-test-secret'
     const longOutput = `${secret}\n${'passed '.repeat(40)}`
 
     await withTempTranscript(
@@ -1994,7 +1994,7 @@ describe('task report generation', () => {
     })
 
     await program.parseAsync(
-      ['node', 'openclaude', 'report', '--markdown', '--transcript', 'session.jsonl'],
+      ['node', 'opencc', 'report', '--markdown', '--transcript', 'session.jsonl'],
       { from: 'node' },
     )
 
@@ -2029,7 +2029,7 @@ describe('task report generation', () => {
     })
 
     await program.parseAsync(
-      ['node', 'openclaude', 'report', '--json', '--session', sessionId, '--out', 'task-report.json'],
+      ['node', 'opencc', 'report', '--json', '--session', sessionId, '--out', 'task-report.json'],
       { from: 'node' },
     )
 
@@ -2062,7 +2062,7 @@ describe('task report generation', () => {
       },
     })
 
-    await missingProgram.parseAsync(['node', 'openclaude', 'report'], {
+    await missingProgram.parseAsync(['node', 'opencc', 'report'], {
       from: 'node',
     })
 
@@ -2078,7 +2078,7 @@ describe('task report generation', () => {
 
     await expect(
       conflictingProgram.parseAsync(
-        ['node', 'openclaude', 'report', '--json', '--markdown'],
+        ['node', 'opencc', 'report', '--json', '--markdown'],
         { from: 'node' },
       ),
     ).rejects.toThrow("option '--json' cannot be used with option '--markdown'")
@@ -2107,7 +2107,7 @@ describe('task report generation', () => {
   })
 
   test('omits dirty status when git status cannot be collected', async () => {
-    const repoDir = join(homedir(), 'openclaude-task-report-git-repo')
+    const repoDir = join(homedir(), 'opencc-task-report-git-repo')
     const calls: string[] = []
 
     const metadata = await collectTaskReportGitMetadata(
@@ -2146,7 +2146,7 @@ describe('task report generation', () => {
     )
     expect(metadata).toEqual({
       status: 'available',
-      cwd: join('~', 'openclaude-task-report-git-repo'),
+      cwd: join('~', 'opencc-task-report-git-repo'),
       branch: 'feat/report',
       head: '13cf30afa469',
       changedFiles: [],
