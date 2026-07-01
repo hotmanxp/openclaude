@@ -1795,6 +1795,7 @@ async function* queryLoop(
           stopHookActive: stopHookResult.stopHookActive,
           turnCount,
           continuationNudgeCount: state.continuationNudgeCount,
+          agentStepLimit,
           transition: { reason: 'stop_hook_blocking' },
         }
         state = next
@@ -1833,6 +1834,7 @@ async function* queryLoop(
             stopHookActive: undefined,
             turnCount,
             continuationNudgeCount: state.continuationNudgeCount,
+            agentStepLimit,
             transition: { reason: 'token_budget_continuation' },
           }
           continue
@@ -1860,6 +1862,7 @@ async function* queryLoop(
       // when the model keeps matching signals without ever calling tools.
       if (
         assistantMessages.length > 0 &&
+        !agentStepLimit?.summaryRequested &&
         turnCount < (maxTurns ?? Infinity) &&
         state.continuationNudgeCount < MAX_CONTINUATION_NUDGES
       ) {
@@ -1896,11 +1899,21 @@ async function* queryLoop(
               stopHookActive: undefined,
               turnCount,
               continuationNudgeCount: state.continuationNudgeCount + 1,
+              agentStepLimit,
               transition: { reason: 'continuation_nudge' },
             }
             state = next
             continue
           }
+        }
+      }
+
+      if (agentStepLimit?.summaryRequested) {
+        return {
+          reason: 'agent_step_limit',
+          turnCount,
+          stepsUsed: agentStepLimit.stepsUsed,
+          maxSteps: agentStepLimit.maxSteps,
         }
       }
 
