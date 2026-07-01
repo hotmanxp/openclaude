@@ -296,6 +296,9 @@ beforeEach(async () => {
   fixturesRoot = mkdtempSync(join(tmpdir(), 'claude-watchdog-vcr-'))
   process.env.ANTHROPIC_API_KEY = 'sk-test-watchdog'
   process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT = fixturesRoot
+  // Production stream watchdog is opt-in (see claude.ts:1902 `isEnvTruthy(process.env.CLAUDE_ENABLE_STREAM_WATCHDOG)`).
+  // Without this env, the watchdog never arms and the wedged-stream fallback tests time out.
+  process.env.CLAUDE_ENABLE_STREAM_WATCHDOG = '1'
   process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '25'
   process.env.OPENCLAUDE_MAX_RETRIES = '0'
   process.env.VCR_RECORD = '1'
