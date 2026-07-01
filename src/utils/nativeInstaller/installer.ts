@@ -1589,7 +1589,7 @@ async function manualRemoveNpmPackage(
     }
 
     const binName =
-      packageName === '@anthropic-ai/claude-code' ? 'claude' : 'openclaude'
+      packageName === '@anthropic-ai/claude-code' ? 'claude' : 'opencc'
 
     if (getPlatform().startsWith('win32')) {
       // Windows - only remove executables, not the package directory
