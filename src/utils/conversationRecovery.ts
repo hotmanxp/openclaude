@@ -36,6 +36,8 @@ import {
   NO_RESPONSE_REQUESTED,
   normalizeMessages,
 } from './messages.js'
+import { resolveOpenAIShimRuntimeContext } from '../integrations/runtimeMetadata.js'
+import type { GoalState } from '../services/goal/types.js'
 import { copyPlanForResume } from './plans.js'
 import { processSessionStartHooks } from './sessionStart.js'
 import {
@@ -279,11 +281,23 @@ export function deserializeMessagesWithInterruptDetection(
     // Strip thinking/redacted_thinking content blocks from assistant messages
     // when resuming against a 3P provider. These Anthropic-specific blocks cause
     // 400 errors or context corruption on OpenAI-compatible providers (issue #248 finding 5).
+    // EXCEPTION: providers configured with `preserveReasoningContent: true` need
+    // thinking blocks kept (DeepSeek #957, Moonshot/Kimi, mimo-v2, GitHub native
+    // Claude, etc.) so the shim can echo `reasoning_content` back on resume.
     const provider = getAPIProvider()
     const isThirdPartyProvider = provider !== 'firstParty' && provider !== 'bedrock' && provider !== 'vertex' && provider !== 'foundry'
-    const thinkingStripped = isThirdPartyProvider
-      ? stripThinkingBlocks(filteredThinking)
-      : filteredThinking
+    const runtimeShimConfig = isThirdPartyProvider
+      ? resolveOpenAIShimRuntimeContext({
+          processEnv: process.env,
+          baseUrl: process.env.OPENAI_BASE_URL,
+          model: process.env.OPENAI_MODEL,
+        }).openaiShimConfig
+      : undefined
+    const preserveReasoningContent = runtimeShimConfig?.preserveReasoningContent === true
+    const thinkingStripped =
+      isThirdPartyProvider && !preserveReasoningContent
+        ? stripThinkingBlocks(filteredThinking)
+        : filteredThinking
 
     // Filter out assistant messages with only whitespace text content.
     // This can happen when model outputs "\n\n" before thinking, user cancels mid-stream.
@@ -514,14 +528,19 @@ export function restoreSkillStateFromMessages(messages: Message[]): void {
  * other message's parentUuid points at" — the chain tips.  There can
  * be several (sidechains, orphans); newest non-sidechain is the main
  * conversation's end.
+ *
+ * Returns the last goal-state entry's goal alongside the message chain,
+ * so resume can carry the session's active goal forward.
  */
 export async function loadMessagesFromJsonlPath(path: string): Promise<{
   messages: SerializedMessage[]
   sessionId: UUID | undefined
+  goal?: GoalState | null
 }> {
   const {
     messages: byUuid,
     leafUuids,
+    goalStates,
   } = await loadTranscriptFile(path)
   let tip: (typeof byUuid extends Map<UUID, infer T> ? T : never) | null = null
   let tipTs = 0
@@ -536,14 +555,156 @@ export async function loadMessagesFromJsonlPath(path: string): Promise<{
   if (!tip) return { messages: [], sessionId: undefined }
   const chain = buildConversationChain(byUuid, tip)
   const sessionId = tip.sessionId as UUID | undefined
+  const sessionGoal = sessionId ? goalStates.get(sessionId) : undefined
   return {
     messages: removeExtraFields(chain),
     // Leaf's sessionId — forked sessions copy chain[0] from the source
     // transcript, so the root retains the source session's ID. Matches
     // loadFullLog's mostRecentLeaf.sessionId.
     sessionId,
+    // Last goal-state entry's goal for this session, if any (null = explicitly
+    // cleared). Undefined when the session has never recorded a goal-state.
+    goal: sessionGoal,
   }
 }
+
+/**
+ * Pick the first non-sidechain log that matches a PR selector.
+ *
+ * Selector forms:
+ *   - `true` — any non-sidechain log that has a linked PR (number OR URL set)
+ *   - string — either:
+ *       * the PR number as a string ("1642"), matched against `prNumber`
+ *       * the full PR URL, matched against `prUrl` (and also as a number suffix)
+ *       * any other string → returns null (no log can match)
+ *
+ * Returns null when no log satisfies the selector. Sidechain logs are
+ * always skipped, even when their PR would otherwise match — agents
+ * never want to resume a sidechain sub-session through this surface.
+ *
+ * @internal Exported for testing — used by --resume PR selector wiring.
+ */
+export function findResumeLogByPrSelector(
+  logs: LogOption[],
+  selector: boolean | string,
+): LogOption | null {
+  const matchNumber = (log: LogOption, n: number): boolean =>
+    log.prNumber === n
+
+  const matchUrl = (log: LogOption, url: string): boolean => {
+    if (log.prUrl === url) return true
+    // Tolerate selectors like "https://github.com/foo/bar/pull/1642" when
+    // the persisted URL differs only in host/path casing — match the
+    // numeric tail against `prNumber`.
+    const tail = url.match(/\/pull\/(\d+)(?:\D|$)/)?.[1]
+    if (tail !== undefined) {
+      const n = Number.parseInt(tail, 10)
+      if (!Number.isNaN(n) && matchNumber(log, n)) return true
+    }
+    return false
+  }
+
+  for (const log of logs) {
+    if (log.isSidechain) continue
+    if (typeof selector === 'boolean') {
+      if (selector && (log.prNumber !== undefined || log.prUrl !== undefined)) {
+        return log
+      }
+      continue
+    }
+    // string selector
+    if (log.prNumber !== undefined && matchNumber(log, log.prNumber) &&
+        selector === String(log.prNumber)) {
+      return log
+    }
+    if (log.prUrl !== undefined && matchUrl(log, selector)) {
+      return log
+    }
+  }
+  return null
+}
+
+/**
+ * Deps bag for {@link collectLiveBackgroundSessionIds}. Each call site passes
+ * its own implementation so the function stays environment-agnostic and
+ * trivially unit-testable.
+ */
+export type CollectLiveBackgroundSessionIdsDeps = {
+  listAllLiveSessions: () => Promise<Array<{
+    sessionId?: string
+    kind?: string
+  }>>
+  refreshBackgroundSessionStatuses: () => Promise<
+    Array<{
+      sessionId: string
+      status: string
+    }>
+  >
+  isTerminalBackgroundSession: (session: {
+    sessionId: string
+    status: string
+  }) => boolean
+}
+
+/**
+ * Collect the set of session IDs whose background tasks are still running.
+ *
+ * Two sources are merged defensively:
+ *   1. UDS inbox: any session with `kind === 'background'` is live until it
+ *      closes its socket.
+ *   2. Local registry refresh: a session whose `status !== terminal` is
+ *      treated as still running even if UDS can't reach it.
+ *
+ * Either source is allowed to fail; the other is used as a fallback for the
+ * `sessionId` set. A session appears in the result if EITHER source reports
+ * it as still running — the union is intentional, since missing a live task
+ * causes the resume flow to consider the session safely continuable and
+ * potentially rewrite its transcript.
+ */
+export async function collectLiveBackgroundSessionIds(
+  deps: CollectLiveBackgroundSessionIdsDeps,
+): Promise<Set<string>> {
+  const live = new Set<string>()
+
+  // UDS source — adds background sessions whose socket is still alive.
+  let udsSucceeded = false
+  try {
+    const sessions = await deps.listAllLiveSessions()
+    udsSucceeded = true
+    for (const s of sessions) {
+      if (s.kind === 'background' && s.sessionId) {
+        live.add(s.sessionId)
+      }
+    }
+  } catch {
+    // UDS unavailable — fall through to registry source below.
+  }
+
+  // Registry source — adds locally-tracked background tasks not yet terminal.
+  // If UDS already succeeded, we still merge registry sessions so a task
+  // started without a UDS socket (e.g. --bg with no inbox) is still skipped
+  // on resume. If UDS failed, this becomes the sole source of truth.
+  try {
+    const statuses = await deps.refreshBackgroundSessionStatuses()
+    for (const session of statuses) {
+      if (!deps.isTerminalBackgroundSession(session)) {
+        live.add(session.sessionId)
+      }
+    }
+  } catch {
+    if (!udsSucceeded) {
+      // Both sources unavailable — return whatever UDS contributed (likely
+      // empty) rather than throwing; resume flow treats an empty set as
+      // "nothing to skip" which is the safe default when monitoring is down.
+    }
+  }
+
+  return live
+}
+
+/**
+ * Loads a conversation for resume from various sources.
+ * This is the centralized function for loading and deserializing conversations.
 
 /**
  * Loads a conversation for resume from various sources.
@@ -584,11 +745,15 @@ export async function loadConversationForResume(
   prRepository?: string
   // Full path to the session file (for cross-directory resume)
   fullPath?: string
+  // Last goal-state entry's goal for this session, if any (null = explicitly
+  // cleared). Undefined when the session has never recorded a goal-state.
+  goal?: GoalState | null
 } | null> {
   try {
     let log: LogOption | null = null
     let messages: Message[] | null = null
     let sessionId: UUID | undefined
+    let jsonlGoal: GoalState | null | undefined
 
     if (source === undefined) {
       // --continue: most recent session, skipping live --bg/daemon sessions
@@ -621,6 +786,9 @@ export async function loadConversationForResume(
       const loaded = await loadMessagesFromJsonlPath(sourceJsonlFile)
       messages = loaded.messages
       sessionId = loaded.sessionId
+      // Remember goal at point of jsonl load — log is null in this branch,
+      // so we have to surface it directly.
+      jsonlGoal = loaded.goal
     } else if (typeof source === 'string') {
       // Load specific session by ID
       log = await getLastSessionLog(source as UUID)
@@ -698,6 +866,10 @@ export async function loadConversationForResume(
       prRepository: log?.prRepository,
       // Include full path for cross-directory resume
       fullPath: log?.fullPath,
+      // Goal state — prefer the LogOption's goal (covers normal --continue
+      // and explicit session-id resume). Fall back to the goal extracted
+      // from a jsonl transcript (cross-directory resume, no LogOption).
+      goal: log?.goal ?? jsonlGoal,
     }
   } catch (error) {
     logError(error as Error)
