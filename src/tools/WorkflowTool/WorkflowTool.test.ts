@@ -287,7 +287,7 @@ describe('WorkflowTool.scriptPath mode', () => {
 // (pure functions over `process.env`), so this test does not need to
 // invalidate the lodash-memoized `getClaudeConfigHomeDir` cache — the
 // inline call always sees the env value set in `beforeEach` below,
-// regardless of what earlier test files (e.g. openclaudeInstallSurfaces
+// regardless of what earlier test files (e.g. openccInstallSurfaces
 // which `mock.module()`s envUtils with a non-memoized replacement) did.
 describe('WorkflowTool script persistence (Plan4 Task 2)', () => {
   let tmpRoot: string

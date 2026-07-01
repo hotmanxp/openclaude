@@ -38,7 +38,7 @@ const envKeys = [
   'CLAUDE_DISABLE_STREAM_WATCHDOG',
   'CLAUDE_ENABLE_STREAM_WATCHDOG',
   'CLAUDE_STREAM_IDLE_TIMEOUT_MS',
-  'OPENCLAUDE_MAX_RETRIES',
+  'OPENCC_MAX_RETRIES',
   'VCR_RECORD',
 ] as const
 
@@ -300,7 +300,7 @@ beforeEach(async () => {
   // Without this env, the watchdog never arms and the wedged-stream fallback tests time out.
   process.env.CLAUDE_ENABLE_STREAM_WATCHDOG = '1'
   process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '25'
-  process.env.OPENCLAUDE_MAX_RETRIES = '0'
+  process.env.OPENCC_MAX_RETRIES = '0'
   process.env.VCR_RECORD = '1'
 })
 

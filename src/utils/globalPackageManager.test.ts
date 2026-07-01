@@ -62,7 +62,7 @@ describe('selectOwningPackageManager', () => {
     // npm's root is a parent of bun's here; bun must win because its root is
     // the more specific match.
     expect(
-      selectOwningPackageManager('/opt/pm/node_modules/bun/global/openclaude', [
+      selectOwningPackageManager('/opt/pm/node_modules/bun/global/opencc', [
         { pm: 'npm', root: '/opt/pm/node_modules' },
         { pm: 'bun', root: '/opt/pm/node_modules/bun/global' },
       ]),

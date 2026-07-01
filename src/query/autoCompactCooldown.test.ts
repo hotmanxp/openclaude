@@ -38,7 +38,7 @@ const SAVED_ENV = {
     process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE,
   DISABLE_AUTO_COMPACT: process.env.DISABLE_AUTO_COMPACT,
   DISABLE_COMPACT: process.env.DISABLE_COMPACT,
-  OPENCLAUDE_MAX_ACTIVE_MESSAGES: process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES,
+  OPENCC_MAX_ACTIVE_MESSAGES: process.env.OPENCC_MAX_ACTIVE_MESSAGES,
 }
 
 let savedGlobalConfig:
@@ -53,7 +53,7 @@ let tempDir: string | undefined
 
 beforeEach(async () => {
   await acquireSharedMutationLock('query/autoCompactCooldown.test.ts')
-  tempDir = mkdtempSync(join(tmpdir(), 'openclaude-autocompact-test-'))
+  tempDir = mkdtempSync(join(tmpdir(), 'opencc-autocompact-test-'))
   process.env.CLAUDE_CONFIG_DIR = tempDir
   const globalConfig = getGlobalConfig()
   savedGlobalConfig = {
@@ -70,7 +70,7 @@ beforeEach(async () => {
   process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '1'
   delete process.env.DISABLE_AUTO_COMPACT
   delete process.env.DISABLE_COMPACT
-  delete process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES
+  delete process.env.OPENCC_MAX_ACTIVE_MESSAGES
 })
 
 afterEach(() => {

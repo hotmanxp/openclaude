@@ -14,7 +14,7 @@ describe('sessionPersistence', () => {
   const testSessionDir = join(process.env.TEMP_DIR ?? '/tmp', 'opencc-test-sessions')
 
   beforeEach(async () => {
-    process.env.OPENCLAUDE_TEST_SESSIONS_DIR = testSessionDir
+    process.env.OPENCC_TEST_SESSIONS_DIR = testSessionDir
     mkdirSync(testSessionDir, { recursive: true })
     try {
       const sessions = await listSessions()
@@ -27,7 +27,7 @@ describe('sessionPersistence', () => {
   })
 
   afterEach(() => {
-    delete process.env.OPENCLAUDE_TEST_SESSIONS_DIR
+    delete process.env.OPENCC_TEST_SESSIONS_DIR
   })
 
   describe('createSession', () => {

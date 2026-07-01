@@ -134,7 +134,7 @@ test('install command displays opencc.exe path on Windows', async () => {
   )
 })
 
-test('native installer uses openclaude launcher for OpenClaude package', async () => {
+test('native installer uses opencc launcher for OpenCC package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@hotmanxp/opencc',
   }
@@ -157,7 +157,7 @@ test('native installer preserves claude launcher for Anthropic package', async (
   expect(getExecutableName('win32-x64')).toBe('claude.exe')
 })
 
-test('deep-link protocol resolver uses openclaude launcher for OpenClaude package', async () => {
+test('deep-link protocol resolver uses opencc launcher for OpenCC package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@hotmanxp/opencc',
   }
@@ -248,7 +248,7 @@ test('install command repairs launcher after npm cleanup before final check', as
   ])
 })
 
-test('cleanupNpmInstallations removes both openclaude and legacy claude local install dirs', async () => {
+test('cleanupNpmInstallations removes both opencc and legacy claude local install dirs', async () => {
   const removedPaths: string[] = []
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@hotmanxp/opencc',
@@ -276,7 +276,7 @@ test('cleanupNpmInstallations removes both openclaude and legacy claude local in
   expect(removedPaths).toContain(join(homedir(), '.claude', 'local'))
 })
 
-test('cleanupNpmInstallations manual fallback removes openclaude npm shim', async () => {
+test('cleanupNpmInstallations manual fallback removes opencc npm shim', async () => {
   await mockEnvPlatform('darwin')
 
   const testHome = join(process.cwd(), 'work', 'opencc-install-home-test')
