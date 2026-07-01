@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run Commands
 
+
+
 ```bash
 # Build (required before running)
 bun run build
@@ -57,7 +59,6 @@ opencc/
 │   └── grpc/               # gRPC server implementation
 ├── scripts/                # Build, provider bootstrap, system checks
 ├── docs/                   # Setup and contributor documentation
-├── python/                 # Standalone Python helpers
 ├── vscode-extension/       # VS Code extension
 ├── web/                    # Web UI (Vite + React)
 ├── bin/                    # CLI entrypoint
@@ -233,7 +234,7 @@ CLAUDE_CODE_USE_OPENAI=1
 OPENAI_BASE_URL=http://localhost:11434/v1
 
 # Ollama launch (auto-configures everything)
-ollama launch openclaude --model qwen2.5-coder:7b
+ollama launch opencc --model qwen2.5-coder:7b
 ```
 
 Provider selection: `CLAUDE_CODE_USE_OPENAI=1` routes to OpenAI-compatible shim; otherwise uses first-party Anthropic API.
@@ -262,6 +263,12 @@ bun run web:dev              # Development server
 bun run web:build            # Production build
 ```
 
+Web checks, when touching `web/`:
+
+```bash
+bun run web:typecheck
+bun run web:build
+```
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph

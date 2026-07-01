@@ -64,6 +64,50 @@ bun run build
 bun run smoke
 ```
 
+Full test pass (single concurrency, matches CI):
+
+```bash
+bun run test:full
+```
+
+Provider tests:
+
+```bash
+bun run test:provider
+```
+
+Provider recommendation tests:
+
+```bash
+bun run test:provider-recommendation
+```
+
+Typecheck (enforced by the dedicated `typecheck` CI job):
+
+```bash
+bun run typecheck
+bun run typecheck:type-tests
+```
+
+PR intent scan:
+
+```bash
+bun run security:pr-scan
+```
+
+Web (if touching `web/`):
+
+```bash
+bun run web:typecheck
+bun run web:build
+```
+
+PRs that fail CI checks will not be merged.
+
+### Recommended Local Checks
+
+These are not enforced by CI but are worth running locally before submitting.
+
 Focused tests:
 
 ```bash
