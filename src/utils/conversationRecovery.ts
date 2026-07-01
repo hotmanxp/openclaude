@@ -705,10 +705,6 @@ export async function collectLiveBackgroundSessionIds(
 /**
  * Loads a conversation for resume from various sources.
  * This is the centralized function for loading and deserializing conversations.
-
-/**
- * Loads a conversation for resume from various sources.
- * This is the centralized function for loading and deserializing conversations.
  *
  * @param source - The source to load from:
  *   - undefined: load most recent conversation
