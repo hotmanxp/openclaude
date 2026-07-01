@@ -37,9 +37,9 @@ const MACOS_APP_NAME = 'Open CC URL Handler.app'
 
 // Build-time-resolved launcher name. When the upstream Anthropic package
 // URL is in effect, the binary keeps the legacy `claude` name; OpenCC
-// builds expose `openclaude`.
+// builds expose `opencc`.
 const PROTOCOL_BINARY_BASE_NAME =
-  MACRO.PACKAGE_URL === '@anthropic-ai/claude-code' ? 'claude' : 'openclaude'
+  MACRO.PACKAGE_URL === '@anthropic-ai/claude-code' ? 'claude' : 'opencc'
 
 // Shared between register* (writes these paths/values) and
 // isProtocolHandlerCurrent (reads them back). Keep the writer and reader
