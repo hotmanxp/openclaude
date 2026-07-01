@@ -105,6 +105,7 @@ afterEach(() => {
 function userMessage(content: string): Message {
   return {
     type: 'user',
+    content,
     message: { role: 'user', content },
     uuid: `test-${Math.random()}` as Message['uuid'],
     timestamp: new Date().toISOString(),
@@ -353,7 +354,19 @@ test('active auto-compact cooldown blocks before model call with cooldown guidan
       (message as { isApiErrorMessage?: boolean }).isApiErrorMessage === true,
   )
   expect(apiError).toBeDefined()
-  const text = apiError!.message.content[0].text
+  const innerMessage = apiError!.message
+  if (!innerMessage) {
+    throw new Error('expected api error to have nested message')
+  }
+  const content = innerMessage.content
+  const firstBlock = content[0]
+  if (firstBlock === undefined) {
+    throw new Error('expected api error to have a content block')
+  }
+  if (typeof firstBlock !== 'string' && firstBlock.type !== 'text') {
+    throw new Error('expected first content block to be a text block')
+  }
+  const text = typeof firstBlock === 'string' ? firstBlock : firstBlock.text
   expect(text).toContain('automatic compaction is cooling down')
   expect(text).toContain('Retry after')
 })
