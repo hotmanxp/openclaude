@@ -132,7 +132,7 @@ export const workflowInputSchema = z
  */
 const WORKFLOW_DESCRIPTION =
   'Run a dynamic workflow: a JavaScript script that orchestrates subagents at scale. ' +
-  'Workflows run in the background — this tool returns immediately with a task ID, and a ' +
+  'Workflows run in the background — a ' +
   '<task-notification> arrives when the workflow completes. Use /workflows to watch live progress.\n\n' +
   'A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), ' +
   'to be confident (independent perspectives and adversarial checks before committing), or to take on scale ' +
