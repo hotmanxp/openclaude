@@ -4032,7 +4032,7 @@ export function getCompactionReminderAttachment(
  */
 const MIN_SNIP_NUDGE_TOKENS = 10_000
 const MAX_SNIP_NUDGE_REPEAT_TOKENS = 100_000
-const SNIP_NUDGE_START_FRACTION = 0.60
+const SNIP_NUDGE_START_FRACTION = 0.40
 const SNIP_NUDGE_REPEAT_FRACTION = 0.10
 
 function clamp(value: number, min: number, max: number): number {
