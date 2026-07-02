@@ -1,6 +1,8 @@
 import { feature } from 'bun:bundle';
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
-import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
+import { createReadStream, createWriteStream } from 'fs';
+import { copyFile, stat as fsStat, link, unlink } from 'fs/promises';
+import { pipeline } from 'stream/promises';
 import * as React from 'react';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
 import type { AppState } from 'src/state/AppState.js';
@@ -46,6 +48,55 @@ import { renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessag
 
 // Never use os.EOL for terminal output — \r\n on Windows breaks Ink rendering
 const EOL = '\n';
+export const MAX_PERSISTED_POWERSHELL_OUTPUT_SIZE = 64 * 1024 * 1024;
+
+export async function persistPowerShellOutputFile(
+  sourcePath: string,
+  taskId: string,
+  maxSize: number = MAX_PERSISTED_POWERSHELL_OUTPUT_SIZE,
+): Promise<{ path: string; size: number; truncated: boolean } | null> {
+  try {
+    const fileStat = await fsStat(sourcePath);
+    const size = fileStat.size;
+    await ensureToolResultsDir();
+    const dest = getToolResultPath(taskId, false);
+    const truncated = size > maxSize;
+    if (truncated) {
+      try {
+        await pipeline(
+          createReadStream(sourcePath, { start: 0, end: maxSize - 1 }),
+          createWriteStream(dest),
+        );
+      } catch (e) {
+        await unlink(dest).catch(() => {});
+        throw e;
+      }
+    } else {
+      try {
+        await link(sourcePath, dest);
+      } catch {
+        await copyFile(sourcePath, dest);
+      }
+    }
+    return { path: dest, size, truncated };
+  } catch {
+    return null;
+  }
+}
+
+export function appendPersistedPowerShellOutputHint(
+  stdout: string,
+  persistedPath: string,
+  persistedSize: number,
+  truncated: boolean,
+): string {
+  const hint = truncated
+    ? `[output truncated above — first ${MAX_PERSISTED_POWERSHELL_OUTPUT_SIZE} bytes of the ${persistedSize}-byte output saved to ${persistedPath} (capped, tail not saved); read with the Read tool]`
+    : `[output truncated above — full output (${persistedSize} bytes) saved to ${persistedPath}; read with the Read tool]`;
+  if (!stdout) return hint;
+  const trimmed = stdout.endsWith('\n') ? stdout.slice(0, -1) : stdout;
+  return `${trimmed}\n\n${hint}`;
+}
 
 /**
  * PowerShell search commands (grep equivalents) for collapsible display.
@@ -253,10 +304,14 @@ const outputSchema = lazySchema(() => z.object({
   stdout: z.string().describe('The standard output of the command'),
   stderr: z.string().describe('The standard error output of the command'),
   interrupted: z.boolean().describe('Whether the command was interrupted'),
+  isAbort: z.boolean().optional().describe('Whether the command was cancelled through the abort path'),
+  abortReason: z.string().optional().describe('Normalized abort reason when the command was cancelled'),
+  abortMessage: z.string().optional().describe('Safe user-facing abort explanation'),
   returnCodeInterpretation: z.string().optional().describe('Semantic interpretation for non-error exit codes with special meaning'),
   isImage: z.boolean().optional().describe('Flag to indicate if stdout contains image data'),
   persistedOutputPath: z.string().optional().describe('Path to persisted full output when too large for inline'),
   persistedOutputSize: z.number().optional().describe('Total output size in bytes when persisted'),
+  persistedOutputTruncated: z.boolean().optional().describe('Whether the persisted file is capped (only the first portion of the output was saved)'),
   backgroundTaskId: z.string().optional().describe('ID of the background task if command is running in background'),
   backgroundedByUser: z.boolean().optional().describe('True if the user manually backgrounded the command with Ctrl+B'),
   assistantAutoBackgrounded: z.boolean().optional().describe('True if the command was auto-backgrounded by the assistant-mode blocking budget')
@@ -396,9 +451,11 @@ export const PowerShellTool = buildTool({
     isImage,
     persistedOutputPath,
     persistedOutputSize,
+    persistedOutputTruncated,
     backgroundTaskId,
     backgroundedByUser,
-    assistantAutoBackgrounded
+    assistantAutoBackgrounded,
+    abortMessage
   }: Out, toolUseID: string): ToolResultBlockParam {
     // For image data, format as image content block for Claude
     if (isImage) {
@@ -418,7 +475,8 @@ export const PowerShellTool = buildTool({
         originalSize: persistedOutputSize ?? 0,
         isJson: false,
         preview: preview.preview,
-        hasMore: preview.hasMore
+        hasMore: preview.hasMore,
+        truncated: persistedOutputTruncated
       });
     } else if (normalizedStdout) {
       processedStdout = normalizedStdout.replace(/^(\s*\n)+/, '');
@@ -427,7 +485,7 @@ export const PowerShellTool = buildTool({
     let errorMessage = normalizedStderr.trim();
     if (interrupted) {
       if (normalizedStderr) errorMessage += EOL;
-      errorMessage += '<error>Command was aborted before completion</error>';
+      errorMessage += `<error>${abortMessage ?? 'Command was aborted before completion'}</error>`;
     }
     let backgroundInfo = '';
     if (backgroundTaskId) {
@@ -517,11 +575,10 @@ export const PowerShellTool = buildTool({
         trackGitOperations(input.command, result.code, result.stdout);
       }
 
-      // Distinguish user-driven interrupt (new message submitted) from other
-      // interrupted states. Only user-interrupt should suppress ShellError —
-      // timeout-kill or process-kill with isError should still throw.
-      // Matches BashTool's isInterrupt.
-      const isInterrupt = result.interrupted && abortController.signal.reason === 'interrupt';
+      // Suppress ShellError only for commands killed through the abort path.
+      // Tool timeouts and ordinary non-zero exits still surface as failures.
+      // Matches BashTool's abort classification.
+      const isAbort = result.isAbort === true;
 
       // Only the main thread tracks/resets cwd; agents have their own cwd
       // isolation. Matches BashTool's !preventCwdChanges guard.
@@ -551,6 +608,7 @@ export const PowerShellTool = buildTool({
             stdout: bgExtracted.stripped,
             stderr: [result.stderr || '', stderrForShellReset].filter(Boolean).join('\n'),
             interrupted: false,
+            isAbort: false,
             backgroundTaskId: result.backgroundTaskId,
             backgroundedByUser: result.backgroundedByUser,
             assistantAutoBackgrounded: result.assistantAutoBackgrounded
@@ -593,39 +651,44 @@ export const PowerShellTool = buildTool({
       if (result.preSpawnError) {
         throw new Error(result.preSpawnError);
       }
-      if (interpretation.isError && !isInterrupt) {
-        throw new ShellError(stdout, result.stderr || '', result.code, result.interrupted);
+      if (interpretation.isError && !isAbort) {
+        let errorStdout = stdout;
+        if (result.outputFilePath && result.outputTaskId) {
+          const persistedForError = await persistPowerShellOutputFile(
+            result.outputFilePath,
+            result.outputTaskId,
+          );
+          if (persistedForError) {
+            errorStdout = appendPersistedPowerShellOutputHint(
+              errorStdout,
+              persistedForError.path,
+              persistedForError.size,
+              persistedForError.truncated,
+            );
+          }
+        }
+        throw new ShellError(errorStdout, result.stderr || '', result.code, result.interrupted, {
+          abortReason: result.abortReason,
+          abortMessage: result.abortMessage,
+          isAbort: result.isAbort
+        });
       }
 
       // Large output: file on disk has more than getMaxOutputLength() bytes.
       // stdout already contains the first chunk. Copy the output file to the
-      // tool-results dir so the model can read it via FileRead. If > 64 MB,
-      // truncate after copying. Matches BashTool.tsx:983-1005.
-      //
-      // Placed AFTER the preSpawnError/ShellError throws (matches BashTool's
-      // ordering, where persistence is post-try/finally): a failing command
-      // that also produced >maxOutputLength bytes would otherwise do 3-4 disk
-      // syscalls, store to tool-results/, then throw — orphaning the file.
-      const MAX_PERSISTED_SIZE = 64 * 1024 * 1024;
+      // tool-results dir so the model can read it via FileRead.
       let persistedOutputPath: string | undefined;
       let persistedOutputSize: number | undefined;
+      let persistedOutputTruncated: boolean | undefined;
       if (result.outputFilePath && result.outputTaskId) {
-        try {
-          const fileStat = await fsStat(result.outputFilePath);
-          persistedOutputSize = fileStat.size;
-          await ensureToolResultsDir();
-          const dest = getToolResultPath(result.outputTaskId, false);
-          if (fileStat.size > MAX_PERSISTED_SIZE) {
-            await fsTruncate(result.outputFilePath, MAX_PERSISTED_SIZE);
-          }
-          try {
-            await link(result.outputFilePath, dest);
-          } catch {
-            await copyFile(result.outputFilePath, dest);
-          }
-          persistedOutputPath = dest;
-        } catch {
-          // File may already be gone — stdout preview is sufficient
+        const persisted = await persistPowerShellOutputFile(
+          result.outputFilePath,
+          result.outputTaskId,
+        );
+        if (persisted) {
+          persistedOutputPath = persisted.path;
+          persistedOutputSize = persisted.size;
+          persistedOutputTruncated = persisted.truncated;
         }
       }
 
@@ -652,17 +715,28 @@ export const PowerShellTool = buildTool({
         stdout_length: compressedStdout.length,
         stderr_length: finalStderr.length,
         exit_code: result.code,
-        interrupted: result.interrupted
+        interrupted: result.interrupted,
+        duration_ms: result.durationMs,
+        signal: result.signal as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS | undefined,
+        signal_aborted: result.signalAborted,
+        is_abort: result.isAbort,
+        abort_reason: result.abortReason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS | undefined,
+        result_stdout_length: result.stdoutLength,
+        result_stderr_length: result.stderrLength
       });
       return {
         data: {
           stdout: compressedStdout,
           stderr: finalStderr,
           interrupted: result.interrupted,
+          isAbort: result.isAbort,
+          abortReason: result.abortReason,
+          abortMessage: result.abortMessage,
           returnCodeInterpretation: interpretation.message,
           isImage,
           persistedOutputPath,
-          persistedOutputSize
+          persistedOutputSize,
+          persistedOutputTruncated
         }
       };
     } finally {
