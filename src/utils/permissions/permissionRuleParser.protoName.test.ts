@@ -65,4 +65,8 @@ describe('permissionRuleValueFromString — proto-name tool names', () => {
       ruleContent: 'npm install',
     })
   })
+<<<<<<< HEAD
 })
+=======
+})
+>>>>>>> b9b56851 (fix(permissions): make legacy tool-name alias lookup prototype-safe (#1847))
