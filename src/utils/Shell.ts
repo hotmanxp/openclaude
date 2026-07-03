@@ -16,6 +16,7 @@ import { logForDebugging } from './debug.js'
 import { errorMessage, isENOENT } from './errors.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
+import { normalizeAbortReason } from './abortReasons.js'
 import {
   createAbortedCommand,
   createFailedCommand,
@@ -251,7 +252,9 @@ export async function exec(
 
   // If already aborted, don't spawn the process at all
   if (abortSignal.aborted) {
-    return createAbortedCommand()
+    return createAbortedCommand(undefined, {
+      abortReason: normalizeAbortReason(abortSignal.reason),
+    })
   }
 
   const binShell = provider.shellPath
@@ -446,9 +449,16 @@ export async function exec(
 
     logForDebugging(`Shell exec error: ${errorMessage(error)}`)
 
-    return createAbortedCommand(undefined, {
+    if (abortSignal.aborted) {
+      return createAbortedCommand(undefined, {
+        code: 126, // Standard Unix code for execution errors
+        stderr: errorMessage(error),
+        abortReason: normalizeAbortReason(abortSignal.reason),
+      })
+    }
+
+    return createFailedCommand(errorMessage(error), {
       code: 126, // Standard Unix code for execution errors
-      stderr: errorMessage(error),
     })
   }
 }
