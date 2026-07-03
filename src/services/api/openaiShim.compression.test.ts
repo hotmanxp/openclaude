@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { createOpenAIShimClient } from './openaiShim.js'
+import { createOpenAIShimClient } from './openaiShim/index.js'
 
 type FetchType = typeof globalThis.fetch
 const originalFetch = globalThis.fetch
