@@ -45,6 +45,7 @@ import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
 import { isZaiBaseUrl } from '../../utils/zaiProvider.js'
 import { shouldRedactUrlQueryParam } from '../../utils/urlRedaction.js'
+import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 import {
   normalizeToolArguments,
   hasToolFieldMapping,
@@ -160,6 +161,38 @@ class StreamIdleTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`Stream idle timeout - no chunks received for ${timeoutMs}ms`)
     this.name = 'StreamIdleTimeoutError'
+  }
+}
+
+function throwIfStreamAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw createStreamAbortError()
+  }
+}
+
+function createReaderCanceller(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal?: AbortSignal,
+): {
+    cancel: (error?: unknown) => void
+    cleanup: () => void
+  } {
+  let cancelled = false
+  const cancel = (error: unknown = createStreamAbortError()) => {
+    if (cancelled) return
+    cancelled = true
+    void reader.cancel(error).catch(() => {})
+  }
+  const onAbort = () => cancel(createStreamAbortError())
+
+  signal?.addEventListener('abort', onAbort, { once: true })
+  if (signal?.aborted) {
+    onAbort()
+  }
+
+  return {
+    cancel,
+    cleanup: () => signal?.removeEventListener('abort', onAbort),
   }
 }
 
@@ -965,6 +998,7 @@ async function* anthropicSsePassthrough(
   const readerOrNull = response.body?.getReader()
   if (!readerOrNull) throw new Error('Response body is not readable')
   const reader: ReadableStreamDefaultReader<Uint8Array> = readerOrNull
+  const readerCanceller = createReaderCanceller(reader, signal)
   const decoder = new TextDecoder()
   let buffer = ''
   const streamIdleTimeoutMs = getStreamIdleTimeoutMs()
@@ -975,6 +1009,7 @@ async function* anthropicSsePassthrough(
     while (true) {
       const { done, value } = await readWithIdleTimeout(reader, streamIdleTimeoutMs, {
         signal,
+        cancelReader: readerCanceller.cancel,
         onTimeout: () => {
           const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
           logForDebugging(
@@ -989,11 +1024,13 @@ async function* anthropicSsePassthrough(
       }
       if (value) lastDataTime = Date.now()
 
+      throwIfStreamAborted(signal)
       buffer += decoder.decode(value, { stream: true })
       const chunks = buffer.split('\n\n')
       buffer = chunks.pop() ?? ''
 
       for (const chunk of chunks) {
+        throwIfStreamAborted(signal)
         const lines = chunk.split('\n').map(l => l.trim()).filter(Boolean)
         if (lines.length === 0) continue
 
@@ -1001,19 +1038,29 @@ async function* anthropicSsePassthrough(
         if (dataLines.length === 0) continue
 
         const rawData = dataLines.map(l => l.slice(6)).join('\n')
-        if (rawData === '[DONE]') return
+        if (rawData === '[DONE]') {
+          streamComplete = true
+          return
+        }
 
+        let parsed: AnthropicStreamEvent
         try {
-          const parsed = JSON.parse(rawData) as AnthropicStreamEvent
-          if (parsed && typeof parsed === 'object' && 'type' in parsed) {
-            yield parsed
-          }
+          parsed = JSON.parse(rawData) as AnthropicStreamEvent
         } catch {
           // skip malformed frames
+          continue
+        }
+        if (parsed && typeof parsed === 'object' && 'type' in parsed) {
+          throwIfStreamAborted(signal)
+          yield parsed
         }
       }
     }
   } finally {
+    if (!streamComplete || signal?.aborted) {
+      readerCanceller.cancel(createStreamAbortError())
+    }
+    readerCanceller.cleanup()
     reader.releaseLock()
   }
 }
@@ -1029,6 +1076,7 @@ async function* geminiSseToAnthropic(
 ): AsyncGenerator<AnthropicStreamEvent> {
   const reader: ReadableStreamDefaultReader<Uint8Array> | undefined = response.body?.getReader()
   if (!reader) throw new Error('Response body is not readable')
+  const readerCanceller = createReaderCanceller(reader, signal)
   const decoder = new TextDecoder()
   let buffer = ''
   const messageId = makeMessageId()
@@ -1052,6 +1100,7 @@ async function* geminiSseToAnthropic(
     while (true) {
       const { done, value } = await readWithIdleTimeout(reader, streamIdleTimeoutMs, {
         signal,
+        cancelReader: readerCanceller.cancel,
         onTimeout: () => {
           const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
           logForDebugging(
@@ -1066,11 +1115,13 @@ async function* geminiSseToAnthropic(
       }
       if (value) lastDataTime = Date.now()
 
+      throwIfStreamAborted(signal)
       buffer += decoder.decode(value, { stream: true })
       const chunks = buffer.split('\n\n')
       buffer = chunks.pop() ?? ''
 
       for (const chunk of chunks) {
+        throwIfStreamAborted(signal)
         const lines = chunk.split('\n').map(l => l.trim()).filter(Boolean)
         const dataLines = lines.filter(l => l.startsWith('data: '))
         if (dataLines.length === 0) continue
@@ -1078,14 +1129,18 @@ async function* geminiSseToAnthropic(
         const rawData = dataLines.map(l => l.slice(6)).join('\n')
         if (rawData === '[DONE]') {
           if (hasEmittedTextStart || hasEmittedCurrentTool) {
+            throwIfStreamAborted(signal)
             yield { type: 'content_block_stop', index: contentBlockIndex }
           }
+          throwIfStreamAborted(signal)
           yield {
             type: 'message_delta',
             delta: { stop_reason: mapFinishReason(finishReason, hasEmittedCurrentTool) },
             usage: usage ?? {},
           }
+          throwIfStreamAborted(signal)
           yield { type: 'message_stop' }
+          streamComplete = true
           return
         }
 
@@ -1097,6 +1152,7 @@ async function* geminiSseToAnthropic(
         }
 
         if (!hasEmittedStart) {
+          throwIfStreamAborted(signal)
           yield {
             type: 'message_start',
             message: {
@@ -1133,16 +1189,19 @@ async function* geminiSseToAnthropic(
         if (!content || !content.parts) continue
 
         for (const part of content.parts) {
+          throwIfStreamAborted(signal)
           const text = part.text as string | undefined
           const fc = part.functionCall as { name?: string; args?: unknown } | undefined
 
           if (text) {
             if (hasEmittedCurrentTool) {
+              throwIfStreamAborted(signal)
               yield { type: 'content_block_stop', index: contentBlockIndex }
               contentBlockIndex++
               hasEmittedCurrentTool = false
             }
             if (!hasEmittedTextStart) {
+              throwIfStreamAborted(signal)
               yield {
                 type: 'content_block_start',
                 index: contentBlockIndex,
@@ -1150,6 +1209,7 @@ async function* geminiSseToAnthropic(
               }
               hasEmittedTextStart = true
             }
+            throwIfStreamAborted(signal)
             yield {
               type: 'content_block_delta',
               index: contentBlockIndex,
@@ -1157,11 +1217,13 @@ async function* geminiSseToAnthropic(
             }
           } else if (fc?.name) {
             if (hasEmittedTextStart) {
+              throwIfStreamAborted(signal)
               yield { type: 'content_block_stop', index: contentBlockIndex }
               contentBlockIndex++
               hasEmittedTextStart = false
             }
             const toolId = `toolu_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
+            throwIfStreamAborted(signal)
             yield {
               type: 'content_block_start',
               index: contentBlockIndex,
@@ -1173,6 +1235,7 @@ async function* geminiSseToAnthropic(
               },
             }
             hasEmittedCurrentTool = true
+            throwIfStreamAborted(signal)
             yield {
               type: 'content_block_delta',
               index: contentBlockIndex,
@@ -1187,15 +1250,23 @@ async function* geminiSseToAnthropic(
     }
 
     if (hasEmittedTextStart || hasEmittedCurrentTool) {
+      throwIfStreamAborted(signal)
       yield { type: 'content_block_stop', index: contentBlockIndex }
     }
+    throwIfStreamAborted(signal)
     yield {
       type: 'message_delta',
       delta: { stop_reason: mapFinishReason(finishReason, hasEmittedCurrentTool) },
       usage: usage ?? {},
     }
+    throwIfStreamAborted(signal)
     yield { type: 'message_stop' }
+    streamComplete = true
   } finally {
+    if (!streamComplete || signal?.aborted) {
+      readerCanceller.cancel(createStreamAbortError())
+    }
+    readerCanceller.cleanup()
     reader.releaseLock()
   }
 }
@@ -1248,35 +1319,17 @@ async function* openaiStreamToAnthropic(
   // reads must happen AFTER the loop finishes, not before.
   let stats: ReturnType<typeof getStreamStats> | null = null
 
-  // Emit message_start
-  yield {
-    type: 'message_start',
-    message: {
-      id: messageId,
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model,
-      stop_reason: null,
-      stop_sequence: null,
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-    },
-  }
-
   const readerOrNull = response.body?.getReader()
   if (!readerOrNull) throw new Error('Response body is not readable')
   const reader: ReadableStreamDefaultReader<Uint8Array> = readerOrNull
+  const readerCanceller = createReaderCanceller(reader, signal)
 
   const decoder = new TextDecoder()
   let buffer = ''
   const streamIdleTimeoutMs = getStreamIdleTimeoutMs()
   let lastDataTime = Date.now()
   let streamComplete = false
+  // (readWithTimeout local function removed — use module-level readWithIdleTimeout at line 266)
 
   // Queue to bridge eventsource-parser callback to async generator
   const parsedEventQueue: Array<{ data: string; event?: string }> = []
@@ -1323,11 +1376,34 @@ async function* openaiStreamToAnthropic(
 
   try {
     try {
+    throwIfStreamAborted(signal)
+
+    // Emit message_start
+    yield {
+      type: 'message_start',
+      message: {
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model,
+        stop_reason: null,
+        stop_sequence: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    }
+
     while (true) {
       // Feed any pending parsed events first
       while (parsedEventQueue.length > 0) {
         const sseEvent = parsedEventQueue.shift()!
         const data = sseEvent.data
+        throwIfStreamAborted(signal)
 
         // Skip [DONE] sentinel
         if (!data || data === '[DONE]') continue
@@ -1658,6 +1734,7 @@ async function* openaiStreamToAnthropic(
     // Read from stream and feed to eventsource-parser
     const { done, value } = await readWithIdleTimeout(reader, streamIdleTimeoutMs, {
       signal,
+      cancelReader: readerCanceller.cancel,
       onTimeout: () => {
         const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
         logForDebugging(
@@ -1685,6 +1762,10 @@ async function* openaiStreamToAnthropic(
       throw err
     }
   } finally {
+    if (!streamComplete || signal?.aborted) {
+      readerCanceller.cancel(createStreamAbortError())
+    }
+    readerCanceller.cleanup()
     reader.releaseLock()
     // Always log the api_call_end for streaming, regardless of success or
     // error. The non-streaming path logs at the fetch site because the
@@ -1731,16 +1812,84 @@ async function* openaiStreamToAnthropic(
 // ---------------------------------------------------------------------------
 
 class OpenAIShimStream {
-  private generator: AsyncGenerator<AnthropicStreamEvent>
+  private makeGenerator: (signal: AbortSignal) => AsyncGenerator<AnthropicStreamEvent>
+  private parentSignal?: AbortSignal
+  private generator?: AsyncGenerator<AnthropicStreamEvent>
+  private cleanupCombinedSignal?: () => void
+  private cleanupPreIterationAbort?: () => void
   // The controller property is checked by claude.ts to distinguish streams from error messages
   controller = new AbortController()
 
-  constructor(generator: AsyncGenerator<AnthropicStreamEvent>) {
-    this.generator = generator
+  constructor(
+    makeGenerator: (signal: AbortSignal) => AsyncGenerator<AnthropicStreamEvent>,
+    parentSignal?: AbortSignal,
+    cancelBeforeIteration?: () => void,
+  ) {
+    this.makeGenerator = makeGenerator
+    this.parentSignal = parentSignal
+
+    if (cancelBeforeIteration) {
+      let cleaned = false
+      let cancelled = false
+      let onAbort: () => void = () => {}
+      const cleanup = () => {
+        if (cleaned) return
+        cleaned = true
+        this.controller.signal.removeEventListener('abort', onAbort)
+        parentSignal?.removeEventListener('abort', onAbort)
+      }
+      onAbort = () => {
+        if (!this.generator && !cancelled) {
+          cancelled = true
+          cancelBeforeIteration()
+        }
+        cleanup()
+      }
+
+      this.controller.signal.addEventListener('abort', onAbort, { once: true })
+      parentSignal?.addEventListener('abort', onAbort, { once: true })
+      this.cleanupPreIterationAbort = cleanup
+
+      if (this.controller.signal.aborted || parentSignal?.aborted) {
+        onAbort()
+      }
+    }
+  }
+
+  private getGenerator(): AsyncGenerator<AnthropicStreamEvent> {
+    if (this.generator) {
+      return this.generator
+    }
+
+    this.cleanupPreIterationAbort?.()
+    this.cleanupPreIterationAbort = undefined
+
+    const combined = createCombinedAbortSignal(this.parentSignal, {
+      signalB: this.controller.signal,
+    })
+    this.cleanupCombinedSignal = combined.cleanup
+    this.generator = this.makeGenerator(combined.signal)
+    return this.generator
   }
 
   async *[Symbol.asyncIterator]() {
-    yield* this.generator
+    const generator = this.getGenerator()
+    let completed = false
+    try {
+      yield* generator
+      completed = true
+    } finally {
+      if (!completed && !this.controller.signal.aborted) {
+        this.controller.abort()
+      }
+      this.cleanupCombinedSignal?.()
+      this.cleanupCombinedSignal = undefined
+      this.cleanupPreIterationAbort?.()
+      this.cleanupPreIterationAbort = undefined
+      if (!completed) {
+        void generator.return?.(undefined).catch(() => {})
+      }
+    }
   }
 }
 
@@ -1776,14 +1925,20 @@ class OpenAIShimMessages {
       httpResponse = response
 
       if (params.stream) {
+        const cancelBeforeIteration = () => {
+          void response.body?.cancel(createStreamAbortError()).catch(() => {})
+        }
         return new OpenAIShimStream(
-          openaiStreamToAnthropic(
-            response,
-            request.resolvedModel,
-            correlationId,
-            startTime,
-            options?.signal,
-          ),
+          streamSignal =>
+            openaiStreamToAnthropic(
+              response,
+              request.resolvedModel,
+              correlationId,
+              startTime,
+              streamSignal,
+            ),
+          options?.signal,
+          cancelBeforeIteration,
         )
       }
 
