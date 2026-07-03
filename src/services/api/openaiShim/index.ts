@@ -45,7 +45,13 @@ export {
   convertChunkUsage,
   repairPossiblyTruncatedObjectJson,
   readWithTimeout,
+  readWithIdleTimeout,
   STREAM_IDLE_TIMEOUT_MS,
+  DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+  MAX_STREAM_IDLE_TIMEOUT_MS,
+  StreamIdleTimeoutError,
+  getStreamIdleTimeoutMs,
+  __test,
 } from './streaming.js'
 
 export { openaiStreamToAnthropic } from './openaiStreamToAnthropic.js'
