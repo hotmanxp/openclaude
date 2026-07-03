@@ -100,6 +100,7 @@ import {
   extractQuotaStatusFromHeaders,
 } from '../claudeAiLimits.js'
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
+import { getStreamIdleTimeoutMs } from './openaiShim.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = true
@@ -109,7 +110,6 @@ const autoModeStateModule = true
 import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
-  APIConnectionTimeoutError,
   APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk/error'
@@ -1902,8 +1902,7 @@ async function* queryModel(
     const streamWatchdogEnabled = isEnvTruthy(
       process.env.CLAUDE_ENABLE_STREAM_WATCHDOG,
     )
-    const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+    const STREAM_IDLE_TIMEOUT_MS = getStreamIdleTimeoutMs()
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
@@ -2577,8 +2576,8 @@ async function* queryModel(
             `Streaming timeout (SDK abort): ${streamingError.message}`,
             { level: 'error' },
           )
-          // Throw a more specific error for timeout
-          throw new APIConnectionTimeoutError({ message: 'Request timed out' })
+          // Treat provider/SDK stream timeouts like other streaming failures:
+          // fall back below while the parent query signal is still live.
         }
       }
 

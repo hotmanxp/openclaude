@@ -25,6 +25,7 @@ const originalEnv = {
   GEMINI_MODEL: process.env.GEMINI_MODEL,
   GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
   ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
+  CLAUDE_STREAM_IDLE_TIMEOUT_MS: process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
 }
 
 const originalFetch = globalThis.fetch
@@ -97,6 +98,7 @@ beforeEach(() => {
   delete process.env.GEMINI_MODEL
   delete process.env.GOOGLE_CLOUD_PROJECT
   delete process.env.ANTHROPIC_CUSTOM_HEADERS
+  delete process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS
 })
 
 afterEach(() => {
@@ -120,6 +122,7 @@ afterEach(() => {
   restoreEnv('GEMINI_MODEL', originalEnv.GEMINI_MODEL)
   restoreEnv('GOOGLE_CLOUD_PROJECT', originalEnv.GOOGLE_CLOUD_PROJECT)
   restoreEnv('ANTHROPIC_CUSTOM_HEADERS', originalEnv.ANTHROPIC_CUSTOM_HEADERS)
+  restoreEnv('CLAUDE_STREAM_IDLE_TIMEOUT_MS', originalEnv.CLAUDE_STREAM_IDLE_TIMEOUT_MS)
   globalThis.fetch = originalFetch
 })
 
@@ -501,6 +504,107 @@ test('preserves usage from final OpenAI stream chunk with empty choices', async 
   expect(usageEvent).toBeDefined()
   expect(usageEvent?.usage?.input_tokens).toBe(123)
   expect(usageEvent?.usage?.output_tokens).toBe(45)
+})
+
+
+test('stream idle timeout env parser returns default and accepts safe overrides', async () => {
+  const { __test } = await import('./openaiShim.js') as unknown as {
+    __test: {
+      getStreamIdleTimeoutMs: () => number
+    }
+  }
+
+  delete process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS
+  expect(__test.getStreamIdleTimeoutMs()).toBe(90_000)
+
+  process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '25'
+  expect(__test.getStreamIdleTimeoutMs()).toBe(25)
+
+  process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = ' 25 '
+  expect(__test.getStreamIdleTimeoutMs()).toBe(25)
+
+  process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '25ms'
+  expect(__test.getStreamIdleTimeoutMs()).toBe(90_000)
+
+  process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '0'
+  expect(__test.getStreamIdleTimeoutMs()).toBe(90_000)
+
+  process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '-5'
+  expect(__test.getStreamIdleTimeoutMs()).toBe(90_000)
+
+  delete process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS
+})
+
+test('readWithIdleTimeout rejects stalled readers with StreamIdleTimeoutError', async () => {
+  const { __test } = await import('./openaiShim.js') as unknown as {
+    __test: {
+      StreamIdleTimeoutError: new (timeoutMs: number) => Error
+      readWithIdleTimeout: (
+        reader: ReadableStreamDefaultReader<Uint8Array>,
+        timeoutMs: number,
+        options?: { signal?: AbortSignal },
+      ) => Promise<ReadableStreamReadResult<Uint8Array>>
+    }
+  }
+
+  const cancelReasons: unknown[] = []
+  const reader = new ReadableStream<Uint8Array>({
+    cancel(reason) {
+      cancelReasons.push(reason)
+    },
+  }).getReader()
+
+  const startedAt = Date.now()
+  let caught: unknown
+  try {
+    await __test.readWithIdleTimeout(reader, 20)
+  } catch (error) {
+    caught = error
+  }
+
+  expect(Date.now() - startedAt).toBeLessThan(500)
+  expect(caught).toBeInstanceOf(__test.StreamIdleTimeoutError)
+  expect((caught as Error).name).toBe('StreamIdleTimeoutError')
+  expect(cancelReasons).toHaveLength(1)
+  expect(cancelReasons[0]).toBeInstanceOf(__test.StreamIdleTimeoutError)
+})
+
+test('readWithIdleTimeout preserves parent abort instead of reporting idle timeout', async () => {
+  const { __test } = await import('./openaiShim.js') as unknown as {
+    __test: {
+      readWithIdleTimeout: (
+        reader: ReadableStreamDefaultReader<Uint8Array>,
+        timeoutMs: number,
+        options?: { signal?: AbortSignal },
+      ) => Promise<ReadableStreamReadResult<Uint8Array>>
+    }
+  }
+
+  const parent = new AbortController()
+  const cancelReasons: unknown[] = []
+  const reader = new ReadableStream<Uint8Array>({
+    cancel(reason) {
+      cancelReasons.push(reason)
+    },
+  }).getReader()
+
+  const read = __test.readWithIdleTimeout(reader, 1_000, {
+    signal: parent.signal,
+  })
+  parent.abort()
+
+  let caught: unknown
+  try {
+    await read
+  } catch (error) {
+    caught = error
+  }
+
+  expect(caught).toBeInstanceOf(DOMException)
+  expect((caught as DOMException).name).toBe('AbortError')
+  expect(cancelReasons).toHaveLength(1)
+  expect(cancelReasons[0]).toBeInstanceOf(DOMException)
+  expect((cancelReasons[0] as DOMException).name).toBe('AbortError')
 })
 
 
