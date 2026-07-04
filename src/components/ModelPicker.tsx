@@ -266,7 +266,7 @@ export function ModelPicker(t0) {
   } else {
     t15 = $[41];
   }
-  const t16 = headerText ?? "在 Claude 模型之间切换。适用于当前会话和未来的 OpenCC 会话。对于其他/之前的模型名称，请使用 --model 指定。";
+  const t16 = headerText ?? "在 OpenCC 模型之间切换。适用于当前会话和未来的 OpenCC 会话。对于其他/之前的模型名称，请使用 --model 指定。";
   let t17;
   if ($[42] !== t16) {
     t17 = <Text dimColor={true}>{t16}</Text>;
