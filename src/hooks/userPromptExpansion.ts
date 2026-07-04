@@ -1,10 +1,10 @@
 import type { Command } from '../types/command.js';
+import type { PromptHook } from '../schemas/hooks.js';
 
 /**
  * Fallback shape — use if PromptHook doesn't exist in src/hooks/config.js
  * @see src/schemas/hooks.ts:218 for the real PromptHook definition
  */
-type PromptHook = { type: 'prompt'; prompt: string };
 
 /**
  * Upstream v2.1.201 hook event name. OpenCC does not currently register this
