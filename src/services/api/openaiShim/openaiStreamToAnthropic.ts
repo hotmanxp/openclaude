@@ -3,13 +3,16 @@ import { hasToolFieldMapping, normalizeToolArguments } from '../toolArgumentNorm
 import { createStreamState, processStreamChunk, getStreamStats } from '../../../utils/streamingOptimizer.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import type { AnthropicStreamEvent } from '../codexShim.js'
-import { makeMessageId, convertChunkUsage, repairPossiblyTruncatedObjectJson, JSON_REPAIR_SUFFIXES, readWithTimeout } from './streaming.js'
+import {
+  makeMessageId,
+  convertChunkUsage,
+  repairPossiblyTruncatedObjectJson,
+  JSON_REPAIR_SUFFIXES,
+  readWithIdleTimeout,
+  createReaderCanceller,
+  getStreamIdleTimeoutMs,
+} from './streaming.js'
 import type { OpenAIStreamChunk } from './types.js'
-
-// Mutable state object shared between the caller and readWithTimeout
-interface ReadState {
-  lastDataTime: number
-}
 
 async function* openaiStreamToAnthropic(
   response: Response,
@@ -62,7 +65,8 @@ async function* openaiStreamToAnthropic(
 
   const decoder = new TextDecoder()
   let buffer = ''
-  const readState: ReadState = { lastDataTime: Date.now() }
+  const readerCanceller = createReaderCanceller(reader, signal)
+  const streamIdleTimeoutMs = getStreamIdleTimeoutMs()
 
   const closeActiveContentBlock = async function* () {
     if (!hasEmittedContentStart) return
@@ -86,8 +90,14 @@ async function* openaiStreamToAnthropic(
 
   try {
     while (true) {
-      const chunkResult = (await readWithTimeout(reader, signal, readState, 'OpenAI/Gemini')) as { done: boolean; value: Uint8Array }
-      const { done, value } = chunkResult
+      if (signal?.aborted) {
+        readerCanceller.cancel(new DOMException('Aborted', 'AbortError'))
+        return
+      }
+      const { done, value } = await readWithIdleTimeout(reader, streamIdleTimeoutMs, {
+        signal,
+        cancelReader: readerCanceller.cancel,
+      })
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })

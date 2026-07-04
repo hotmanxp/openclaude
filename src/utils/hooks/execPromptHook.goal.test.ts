@@ -221,8 +221,8 @@ describe('execPromptHook — Stop-condition prompt content (gap #1)', () => {
     expect(capturedSystemPrompt).toContain('stop-condition hook')
     expect(capturedSystemPrompt).toContain('insufficient evidence in transcript')
     expect(capturedSystemPrompt).toContain('"impossible": true')
-    // Brand must be "Open CC", not "Claude Code"
-    expect(capturedSystemPrompt).toContain('Open CC')
+    // Brand must be "OpenCC", not "Claude Code"
+    expect(capturedSystemPrompt).toContain('OpenCC')
     expect(capturedSystemPrompt).not.toContain('Claude Code')
   })
 })

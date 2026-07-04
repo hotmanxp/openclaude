@@ -1,5 +1,5 @@
 /**
- * OpenAI-compatible API shim for Claude Code.
+ * OpenAI-compatible API shim for OpenCC.
  *
  * Translates Anthropic SDK calls (anthropic.beta.messages.create) into
  * OpenAI-compatible chat completion requests and streams back events
@@ -547,7 +547,7 @@ function convertMessages(
     const msg = messages[i]
     const isLastInHistory = i === messages.length - 1
 
-    // Claude Code wraps messages in { role, message: { role, content } }
+    // OpenCC wraps messages in { role, message: { role, content } }
     const inner = msg.message ?? msg
     const role = (inner as { role?: string }).role ?? msg.role
     const content = (inner as { content?: unknown }).content
