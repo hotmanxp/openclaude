@@ -251,6 +251,7 @@ function AskUserQuestionPermissionRequestBody(t0: PermissionRequestProps & { hig
     setAnswer,
     setTextInputMode
   } = state;
+  const settings = useSettings();
   const currentQuestion = currentQuestionIndex < (questions?.length || 0) ? questions?.[currentQuestionIndex] : null;
   const isInSubmitView = currentQuestionIndex === (questions?.length || 0);
   let t11;
