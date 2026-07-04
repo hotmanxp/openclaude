@@ -532,7 +532,17 @@ export function parseUserSpecifiedModel(
             ? process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
             : undefined
     if (envOverride !== undefined && envOverride !== '') {
-      return envOverride + (has1mTag ? '[1m]' : '')
+      // Honor `applyOneMTag` semantics here too: strip any baked [1m] suffix
+      // from the env override, then re-attach [1m] only when 1M is active.
+      // "Active" here means either (a) the user input carries a [1m] tag, OR
+      // (b) the env override itself opted in by baking [1m] into the resolved
+      // default. This guarantees CLAUDE_CODE_DISABLE_1M_CONTEXT drops the tag
+      // whether the source is the env default's baked suffix or the user input,
+      // and prevents `[1m][1m]` duplication when both carry it. With 1M enabled
+      // and neither source carrying the tag, no tag is attached.
+      const base = envOverride.replace(/\[1m\]$/i, '').trim()
+      const wantTag = has1mTag || has1mContext(envOverride)
+      return wantTag ? base + '[1m]' : base
     }
 
     // Provider-aware alias override (firstParty / openai) takes precedence over
@@ -547,7 +557,9 @@ export function parseUserSpecifiedModel(
           modelString as AliasOverrideTier,
         )
         if (override !== undefined) {
-          return override + (has1mTag ? '[1m]' : '')
+          const base = override.replace(/\[1m\]$/i, '').trim()
+          const wantTag = has1mTag || has1mContext(override)
+          return wantTag ? base + '[1m]' : base
         }
       }
     }
