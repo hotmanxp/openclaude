@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { c as _c } from "react-compiler-runtime";
 import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
-import React, { Suspense, use, useCallback, useMemo, useRef, useState } from 'react';
+import React, { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
-import { useTheme } from '../../../ink.js';
+import { useTheme, useInput } from '../../../ink.js';
 import { useKeybindings } from '../../../keybindings/useKeybinding.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../../services/analytics/index.js';
 import { useAppState } from '../../../state/AppState.js';
@@ -17,6 +17,7 @@ import type { ImageDimensions } from '../../../utils/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/imageStore.js';
 import { logError } from '../../../utils/log.js';
+import { computeAutoContinueAnswers } from '../../../utils/autoContinueQuestion.js';
 import { applyMarkdown } from '../../../utils/markdown.js';
 import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
 import { getPlanFilePath } from '../../../utils/plans.js';
@@ -480,6 +481,54 @@ Questions asked and answers provided:\n${questionsWithAnswers_0}`;
     t17 = $[65];
   }
   const handleFinalResponse = t17;
+  // --- auto-continue timer (opt-in via questionAutoContinueTimeoutSec) ---
+  const rawAutoSec = settings.questionAutoContinueTimeoutSec;
+  const autoContinueTimeoutSec = Number(rawAutoSec);
+  const autoContinueEnabled =
+    Number.isInteger(autoContinueTimeoutSec) && autoContinueTimeoutSec > 0;
+  const [resetKey, setResetKey] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState(autoContinueTimeoutSec);
+
+  const autoContinueRef = useRef(false);
+  const handleAutoContinue = useCallback(() => {
+    if (autoContinueRef.current) return;
+    autoContinueRef.current = true;
+    const auto = computeAutoContinueAnswers(questions, answers);
+    submitAnswers({ ...answers, ...auto }).catch(logError);
+  }, [questions, answers, submitAnswers]);
+
+  useEffect(() => {
+    if (!autoContinueEnabled) return;
+    if (allQuestionsAnswered) return;
+    if (!questions || questions.length === 0) return;
+    autoContinueRef.current = false;
+    setSecondsLeft(autoContinueTimeoutSec);
+    const id = setInterval(() => {
+      setSecondsLeft(s => {
+        if (s <= 1) {
+          clearInterval(id);
+          queueMicrotask(() => handleAutoContinue());
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [
+    resetKey,
+    autoContinueEnabled,
+    autoContinueTimeoutSec,
+    allQuestionsAnswered,
+    questions,
+    handleAutoContinue,
+  ]);
+
+  useInput(
+    () => {
+      if (autoContinueEnabled) setResetKey(k => k + 1);
+    },
+    { isActive: autoContinueEnabled && !allQuestionsAnswered },
+  );
   const maxIndex = hideSubmitTab ? (questions?.length || 1) - 1 : questions?.length || 0;
   let t18;
   if ($[66] !== currentQuestionIndex || $[67] !== prevQuestion) {
@@ -607,6 +656,15 @@ Questions asked and answers provided:\n${questionsWithAnswers_0}`;
       t23 = $[114];
     }
     return t23;
+  }
+  if (autoContinueEnabled && !allQuestionsAnswered && secondsLeft > 0) {
+    return (
+      <Box marginTop={1}>
+        <Text color={secondsLeft <= 10 ? 'warning' : 'inactive'}>
+          Auto-continue in {secondsLeft}s
+        </Text>
+      </Box>
+    );
   }
   return null;
 }

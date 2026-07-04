@@ -134,6 +134,23 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'Preferred language for Open CC responses and voice dictation (e.g., "japanese", "spanish")',
   },
+  questionAutoContinueTimeoutSec: {
+    source: 'settings',
+    type: 'string',
+    description:
+      'Auto-submit idle AskUserQuestion dialogs with default answers (seconds; 0 to disable)',
+    validateOnWrite: async v => {
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0) {
+        return {
+          valid: false,
+          error: 'Must be a non-negative integer (seconds)',
+        }
+      }
+      return { valid: true }
+    },
+    formatOnRead: v => (v === undefined || v === null ? '0' : String(v)),
+  },
   teammateMode: {
     source: 'global',
     type: 'string',
