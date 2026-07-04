@@ -22,7 +22,7 @@ import { generateProgressiveArgumentHint, parseArguments } from '../utils/argume
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
-import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
+import { applyCommandSuggestion, findMidInputSlashCommand, findStackedMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
 import { getDirectoryCompletions, getPathCompletions, isPathLikeToken } from '../utils/suggestions/directoryCompletion.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
@@ -402,6 +402,18 @@ export function useTypeahead({
   // that occurs when using useState + useEffect (effect runs after render).
   const syncPromptGhostText = useMemo((): InlineGhostText | undefined => {
     if (mode !== 'prompt' || suppressSuggestions) return undefined;
+    // NEW 2026-07-05: stacked-skill ghost (second-token after leading /cmd)
+    const stackedMid = findStackedMidInputSlashCommand(input, cursorOffset);
+    if (stackedMid) {
+      const match = getBestCommandMatch(stackedMid.partialCommand, commands);
+      if (match) {
+        return {
+          text: match.suffix,
+          fullCommand: match.fullCommand,
+          insertPosition: stackedMid.startPos + 1 + stackedMid.partialCommand.length,
+        };
+      }
+    }
     const midInputCommand = findMidInputSlashCommand(input, cursorOffset);
     if (!midInputCommand) return undefined;
     const match = getBestCommandMatch(midInputCommand.partialCommand, commands);
