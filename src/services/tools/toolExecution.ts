@@ -88,6 +88,7 @@ import {
   startSessionActivity,
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
+import { createToolQueryLeaseInput } from './queryActivityLease.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
@@ -1264,6 +1265,16 @@ async function checkPermissionsAndCallTool(
   const startTime = Date.now()
 
   startSessionActivity('tool_exec')
+  const queryActivityLease = toolUseContext.queryActivity?.acquireLease(
+    createToolQueryLeaseInput(tool.name, toolUseID, processedInput) ?? {
+      owner: 'tool',
+      id: toolUseID,
+      description: tool.name,
+    },
+  )
+  toolUseContext.queryActivity?.registerActivity(
+    `tool:${tool.name}:start`,
+  )
   // If processedInput still points at the backfill clone, no hook/permission
   // replaced it — pass the pre-backfill callInput so call() sees the model's
   // original field values. Otherwise converge on the hook-supplied input.
@@ -1305,6 +1316,9 @@ async function checkPermissionsAndCallTool(
           toolUseID: progress.toolUseID,
           data: progress.data,
         })
+        toolUseContext.queryActivity?.registerActivity(
+          `tool:${tool.name}:progress`,
+        )
       },
     )
     const durationMs = Date.now() - startTime
@@ -1833,10 +1847,15 @@ async function checkPermissionsAndCallTool(
       ...hookMessages,
     ]
   } finally {
-    stopSessionActivity('tool_exec')
-    // Clean up decision info after logging
-    if (decisionInfo) {
-      toolUseContext.toolDecisions?.delete(toolUseID)
+    try {
+      queryActivityLease?.release()
+      toolUseContext.queryActivity?.registerActivity(`tool:${tool.name}:end`)
+    } finally {
+      stopSessionActivity('tool_exec')
+      // Clean up decision info after logging
+      if (decisionInfo) {
+        toolUseContext.toolDecisions?.delete(toolUseID)
+      }
     }
   }
 }
