@@ -221,10 +221,10 @@ async function processStackedSkillInvocation(
         /* hooks */ [],
         stacked.trailingArgs,
         /* extra */ [],
-        [],
-        undefined,
-        hookMessages,
-        stacked.trailingArgs,
+        /* allowedTools */ [],
+        /* modelName */ undefined,
+        /* hookMessages */ [],
+        /* metaMessages */ [],
       );
       if (R.messages[0]?.type === "user" && !R.messages[0].isMeta) {
         (R.messages[0] as any).stackedExpansion = true; // debug metadata; OK if UI ignores
@@ -326,15 +326,19 @@ The stub never throws (it returns undefined unconditionally). If future implemen
 
 ### 6.2 Integration tests — touch `processSlashCommand` tests (if any exist)
 
-The codegraph search noted ⚠️ for `processSlashCommand` (no covering tests). We add a minimal integration test:
+The codegraph search noted ⚠️ for `processSlashCommand` (no covering tests). Required integration tests (added under `processSlashCommand.test.tsx`):
 
 ```ts
 test("processSlashCommand: /foo /bar invokes getMessagesForSlashCommand twice", async () => {
-  // mock two known skills 'foo' and 'bar'; ensure each is invoked
+  // mock two known skills 'foo' and 'bar'; assert getMessagesForSlashCommand called twice
+});
+
+test("processSlashCommand: /foo (single skill) is unchanged by splitStackedSkillInvocation", async () => {
+  // assert legacy path is used, getMessagesForSlashCommand called once with same args
 });
 ```
 
-If wiring a real test fixture is heavy, defer to followup and document in commit.
+These tests are REQUIRED for the port to merge. They guarantee the legacy fast-path doesn't regress.
 
 ### 6.3 Hook stub tests — `userPromptExpansion.test.ts`
 
