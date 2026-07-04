@@ -45,8 +45,6 @@ import type {
   QueryTerminalReason,
 } from './queryLifecycle.js'
 
-export type { QueryGuardTimeoutReason } from './queryLifecycle.js'
-
 export const DEFAULT_QUERY_IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 export const DEFAULT_QUERY_HARD_MAX_MS = 30 * 60 * 1000 // 30 minutes
 export const DEFAULT_TOOL_LEASE_GRACE_MS = 5_000
