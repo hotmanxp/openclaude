@@ -11,12 +11,29 @@ export function formatFileSize(sizeInBytes: number): string {
   if (kb < 1) {
     return `${sizeInBytes} bytes`
   }
+  // Promote to the next unit when the rounded value reaches 1024, so
+  // 1023.999...KB → "1MB" instead of the impossible "1024KB". Recursing with
+  // the equivalent byte count keeps the rounding behavior in one place.
   if (kb < 1024) {
-    return `${kb.toFixed(1).replace(/\.0$/, '')}KB`
+    const formatted = kb.toFixed(1).replace(/\.0$/, '')
+    if (Number(formatted) >= 1024) {
+      // Roll over to MB. Compute the MB value directly to avoid recursing
+      // with a byte count (which would loop forever on the same branch).
+      const mbValue = kb / 1024
+      return `${mbValue.toFixed(1).replace(/\.0$/, '')}MB`
+    }
+    return `${formatted}KB`
   }
   const mb = kb / 1024
   if (mb < 1024) {
-    return `${mb.toFixed(1).replace(/\.0$/, '')}MB`
+    const formatted = mb.toFixed(1).replace(/\.0$/, '')
+    if (Number(formatted) >= 1024) {
+      // Roll over to GB. Compute the GB value directly to avoid recursing
+      // with a byte count (which would loop forever on the same branch).
+      const gbValue = mb / 1024
+      return `${gbValue.toFixed(1).replace(/\.0$/, '')}GB`
+    }
+    return `${formatted}MB`
   }
   const gb = mb / 1024
   return `${gb.toFixed(1).replace(/\.0$/, '')}GB`

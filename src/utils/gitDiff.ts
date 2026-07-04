@@ -248,16 +248,21 @@ export function parseGitDiff(
         continue
       }
 
-      // Skip binary file markers and other metadata
+      // Skip diff metadata lines, but ONLY before any hunk has started.
+      // Once we're inside a hunk, a line whose text begins with `---`/`+++`
+      // is a real removed/added line (e.g. `---legacy-peer-deps` /
+      // `+++quiet-flag`), not a file-header marker. Dropping them here would
+      // silently drop user content and under-count changes.
       if (
-        line.startsWith('index ') ||
-        line.startsWith('---') ||
-        line.startsWith('+++') ||
-        line.startsWith('new file') ||
-        line.startsWith('deleted file') ||
-        line.startsWith('old mode') ||
-        line.startsWith('new mode') ||
-        line.startsWith('Binary files')
+        !currentHunk &&
+        (line.startsWith('index ') ||
+          line.startsWith('---') ||
+          line.startsWith('+++') ||
+          line.startsWith('new file') ||
+          line.startsWith('deleted file') ||
+          line.startsWith('old mode') ||
+          line.startsWith('new mode') ||
+          line.startsWith('Binary files'))
       ) {
         continue
       }
