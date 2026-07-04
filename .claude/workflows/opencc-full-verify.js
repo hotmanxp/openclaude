@@ -229,7 +229,7 @@ Real error (FAIL if found):
       },
     ),
 
-  // ===== V4-1: Slash commands basic (/help + /version + /clear) =====
+  // ===== V4-1: Slash commands basic (/help + /status + /clear) =====
   () =>
     agent(
       `OpenCC slash commands 基础组 验证 Agent。
@@ -246,19 +246,18 @@ cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-help.log \\
 EOF
 tail -50 /tmp/opencc-slash-help.log
 \`\`\`
-期望: 显示命令列表 (含 provider/status/model/memory/help/clear/exit/version)
+期望: 显示命令列表 (含 provider/status/model/memory/help/clear/exit/config)
 
-==== STEP 2 (REQUIRED BEFORE STEP 3) - /version (brand regression) ====
+==== STEP 2 (REQUIRED BEFORE STEP 3) - /status (核心状态查询) ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-version.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-status.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/version
+/status
 /exit
 EOF
-tail -10 /tmp/opencc-slash-version.log
+tail -30 /tmp/opencc-slash-status.log
 \`\`\`
-期望: 精确显示 "0.19.0 (Open CC)"
-(memory: opencc-cherry-pick-version-bump-rebrand-regression — 不应是 "OpenClaude" 或 "0.18.0")
+期望: 显示 session/model/CWD/权限状态信息
 
 ==== STEP 3 - /clear ====
 \`\`\`
@@ -273,7 +272,7 @@ tail -10 /tmp/opencc-slash-clear.log
 
 ==== 报告 (PASS/FAIL per step + 关键输出) ====
 - /help: PASS/FAIL
-- /version: PASS/FAIL (特别注意 brand regression)
+- /status: PASS/FAIL
 - /clear: PASS/FAIL
 - Overall: PASS / FAIL
 
@@ -287,41 +286,41 @@ tail -10 /tmp/opencc-slash-clear.log
       },
     ),
 
-  // ===== V4-2: Slash commands stats + permissions (/cost + /permissions) =====
-  // Note: /provider list + /model list 已知坏 (memory: opencc-2026-06-27-slash-provider-model-list-broken)
-  // /usage 命令不存在 — 改用 /permissions 补充 status 组之外的另一维度
+  // ===== V4-2: Slash commands config + provider (/config + /provider) =====
+  // Note: /cost + /permissions 已被 2026-07-01 surface-reduction sweep 移除 (memory: opencc-2026-07-01-cost-command-commented-out)
+  // /config + /provider 替代 stats 组的位置, 都是当前用户可见命令
   () =>
     agent(
-      `OpenCC slash commands 用量+权限组 验证 Agent。
+      `OpenCC slash commands 配置+provider 组 验证 Agent。
 
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - /cost ====
+==== STEP 1 (REQUIRED FIRST) - /config ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-cost.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-config.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/cost
+/config
 /exit
 EOF
-tail -30 /tmp/opencc-slash-cost.log
+tail -30 /tmp/opencc-slash-config.log
 \`\`\`
-期望: 显示 token 用量 + 费用统计 (含当前 session + 累计)
+期望: 显示 Settings 面板 (含 Config / Preferences / Usage 等 Tab)
 
-==== STEP 2 (REQUIRED BEFORE report) - /permissions ====
+==== STEP 2 (REQUIRED BEFORE report) - /provider ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-permissions.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-provider.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/permissions
+/provider
 /exit
 EOF
-tail -30 /tmp/opencc-slash-permissions.log
+tail -30 /tmp/opencc-slash-provider.log
 \`\`\`
-期望: 显示权限配置 (mode: default/acceptEdits/bypassPermissions 等, 以及工具权限规则)
+期望: 显示 provider 列表 (含 anthropic / ollama / openai-compatible 等, 标记当前选中)
 
 ==== 报告 ====
-- /cost: PASS/FAIL + 实际显示的关键数字 (token 数 / 费用)
-- /permissions: PASS/FAIL + 实际显示的权限模式/规则
+- /config: PASS/FAIL + 实际显示的 Tab 列表
+- /provider: PASS/FAIL + 当前 provider 标记
 - Overall: PASS / FAIL
 
 严禁修改任何文件。`,
