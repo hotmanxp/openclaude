@@ -1068,6 +1068,7 @@ async function* queryLoop(
                 c => c.type === 'pending',
               ),
               queryTracking,
+              queryLifecycle: toolUseContext.queryLifecycle,
               effortValue: appState.effortValue,
               advisorModel: appState.advisorModel,
               skipCacheWrite,

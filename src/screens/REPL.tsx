@@ -38,6 +38,7 @@ import { updateLastInteractionTime, getLastInteractionTime, getOriginalCwd, getP
 import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
+import { QueryLifecycleOperationTracker } from '../utils/queryLifecycle.js';
 import { createCombinedAbortSignal } from '../utils/combinedAbortSignal.js';
 import { isEnvTruthy, getWorkflowKeyword } from '../utils/envUtils.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
@@ -953,6 +954,11 @@ export function REPL({
   // error-prone dual-state pattern where isLoading (React state, async
   // batched) and isQueryRunning (ref, sync) could desync. See QueryGuard.ts.
   const queryGuard = React.useRef(new QueryGuard()).current;
+
+  // Per-OperationTracker shared with the lifecycle context. Records active
+  // tool/api/apiCall operations so the lifecycle subscriber can summarize
+  // them in start/end/timeout/abort events.
+  const queryLifecycleTrackerRef = React.useRef(new QueryLifecycleOperationTracker()).current;
 
   // Subscribe to the guard — true during dispatching or running.
   // This is the single source of truth for "is a local query in flight".
@@ -2585,6 +2591,7 @@ export function REPL({
       },
       onChangeAPIKey: reverify,
       readFileState: readFileState.current,
+      queryLifecycle: queryLifecycleTrackerRef,
       setToolJSX,
       addNotification,
       appendSystemMessage: msg => setMessages(prev => [...prev, msg]),
