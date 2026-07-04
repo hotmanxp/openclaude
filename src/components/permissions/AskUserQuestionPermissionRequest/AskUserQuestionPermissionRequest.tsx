@@ -5,7 +5,7 @@ import React, { Suspense, use, useCallback, useEffect, useMemo, useRef, useState
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
-import { useTheme, useInput } from '../../../ink.js';
+import { Box, Text, useTheme, useInput } from '../../../ink.js';
 import { useKeybindings } from '../../../keybindings/useKeybinding.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../../services/analytics/index.js';
 import { useAppState } from '../../../state/AppState.js';
@@ -75,7 +75,7 @@ function AskUserQuestionWithHighlight(props: PermissionRequestProps) {
   return t1;
 }
 function AskUserQuestionPermissionRequestBody(t0: PermissionRequestProps & { highlight: CliHighlight | null }) {
-  const $ = _c(115);
+  const $ = _c(117);
   const {
     toolUseConfirm,
     onDone,
@@ -251,6 +251,7 @@ function AskUserQuestionPermissionRequestBody(t0: PermissionRequestProps & { hig
     setAnswer,
     setTextInputMode
   } = state;
+  const settings = useSettings();
   const currentQuestion = currentQuestionIndex < (questions?.length || 0) ? questions?.[currentQuestionIndex] : null;
   const isInSubmitView = currentQuestionIndex === (questions?.length || 0);
   let t11;
@@ -611,60 +612,78 @@ Questions asked and answers provided:\n${questionsWithAnswers_0}`;
       t25 = $[84];
     }
     let t26;
-    if ($[85] !== answers || $[86] !== currentQuestion || $[87] !== currentQuestionIndex || $[88] !== globalContentHeight || $[89] !== globalContentWidth || $[90] !== handleCancel || $[91] !== handleFinishPlanInterview || $[92] !== handleQuestionAnswer || $[93] !== handleRespondToClaude || $[94] !== handleTabNext || $[95] !== handleTabPrev || $[96] !== hideSubmitTab || $[97] !== nextQuestion || $[98] !== planFilePath || $[99] !== questionStates || $[100] !== questions || $[101] !== setTextInputMode || $[102] !== t23 || $[103] !== t24 || $[104] !== t25 || $[105] !== updateQuestionState) {
-      t26 = <><QuestionView question={currentQuestion} questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} questionStates={questionStates} hideSubmitTab={hideSubmitTab} minContentHeight={globalContentHeight} minContentWidth={globalContentWidth} planFilePath={planFilePath} onUpdateQuestionState={updateQuestionState} onAnswer={handleQuestionAnswer} onTextInputFocus={setTextInputMode} onCancel={handleCancel} onSubmit={nextQuestion} onTabPrev={handleTabPrev} onTabNext={handleTabNext} onRespondToClaude={handleRespondToClaude} onFinishPlanInterview={handleFinishPlanInterview} onImagePaste={t23} pastedContents={t24} onRemoveImage={t25} /></>;
-      $[85] = answers;
-      $[86] = currentQuestion;
-      $[87] = currentQuestionIndex;
-      $[88] = globalContentHeight;
-      $[89] = globalContentWidth;
-      $[90] = handleCancel;
-      $[91] = handleFinishPlanInterview;
-      $[92] = handleQuestionAnswer;
-      $[93] = handleRespondToClaude;
-      $[94] = handleTabNext;
-      $[95] = handleTabPrev;
-      $[96] = hideSubmitTab;
-      $[97] = nextQuestion;
-      $[98] = planFilePath;
-      $[99] = questionStates;
-      $[100] = questions;
-      $[101] = setTextInputMode;
-      $[102] = t23;
-      $[103] = t24;
-      $[104] = t25;
-      $[105] = updateQuestionState;
-      $[106] = t26;
+    if ($[85] !== allQuestionsAnswered || $[86] !== answers || $[87] !== autoContinueEnabled || $[88] !== currentQuestion || $[89] !== currentQuestionIndex || $[90] !== globalContentHeight || $[91] !== globalContentWidth || $[92] !== handleCancel || $[93] !== handleFinishPlanInterview || $[94] !== handleQuestionAnswer || $[95] !== handleRespondToClaude || $[96] !== handleTabNext || $[97] !== handleTabPrev || $[98] !== hideSubmitTab || $[99] !== nextQuestion || $[100] !== planFilePath || $[101] !== questionStates || $[102] !== questions || $[103] !== secondsLeft || $[104] !== setTextInputMode || $[105] !== t23 || $[106] !== t24 || $[107] !== t25 || $[108] !== updateQuestionState) {
+      t26 = (
+        <>
+          <QuestionView question={currentQuestion} questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} questionStates={questionStates} hideSubmitTab={hideSubmitTab} minContentHeight={globalContentHeight} minContentWidth={globalContentWidth} planFilePath={planFilePath} onUpdateQuestionState={updateQuestionState} onAnswer={handleQuestionAnswer} onTextInputFocus={setTextInputMode} onCancel={handleCancel} onSubmit={nextQuestion} onTabPrev={handleTabPrev} onTabNext={handleTabNext} onRespondToClaude={handleRespondToClaude} onFinishPlanInterview={handleFinishPlanInterview} onImagePaste={t23} pastedContents={t24} onRemoveImage={t25} />
+          {autoContinueEnabled && !allQuestionsAnswered && secondsLeft > 0 && (
+            <Box marginTop={1}>
+              <Text color={secondsLeft <= 10 ? 'warning' : 'inactive'}>
+                Auto-continue in {secondsLeft}s
+              </Text>
+            </Box>
+          )}
+        </>
+      );
+      $[85] = allQuestionsAnswered;
+      $[86] = answers;
+      $[87] = autoContinueEnabled;
+      $[88] = currentQuestion;
+      $[89] = currentQuestionIndex;
+      $[90] = globalContentHeight;
+      $[91] = globalContentWidth;
+      $[92] = handleCancel;
+      $[93] = handleFinishPlanInterview;
+      $[94] = handleQuestionAnswer;
+      $[95] = handleRespondToClaude;
+      $[96] = handleTabNext;
+      $[97] = handleTabPrev;
+      $[98] = hideSubmitTab;
+      $[99] = nextQuestion;
+      $[100] = planFilePath;
+      $[101] = questionStates;
+      $[102] = questions;
+      $[103] = secondsLeft;
+      $[104] = setTextInputMode;
+      $[105] = t23;
+      $[106] = t24;
+      $[107] = t25;
+      $[108] = updateQuestionState;
+      $[109] = t26;
     } else {
-      t26 = $[106];
+      t26 = $[109];
     }
     return t26;
   }
   if (isInSubmitView) {
     let t23;
-    if ($[107] !== allQuestionsAnswered || $[108] !== answers || $[109] !== currentQuestionIndex || $[110] !== globalContentHeight || $[111] !== handleFinalResponse || $[112] !== questions || $[113] !== toolUseConfirm.permissionResult) {
-      t23 = <><SubmitQuestionsView questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} allQuestionsAnswered={allQuestionsAnswered} permissionResult={toolUseConfirm.permissionResult} minContentHeight={globalContentHeight} onFinalResponse={handleFinalResponse} /></>;
+    if ($[107] !== allQuestionsAnswered || $[108] !== answers || $[109] !== autoContinueEnabled || $[110] !== currentQuestionIndex || $[111] !== globalContentHeight || $[112] !== handleFinalResponse || $[113] !== questions || $[114] !== secondsLeft || $[115] !== toolUseConfirm.permissionResult) {
+      t23 = (
+        <>
+          <SubmitQuestionsView questions={questions} currentQuestionIndex={currentQuestionIndex} answers={answers} allQuestionsAnswered={allQuestionsAnswered} permissionResult={toolUseConfirm.permissionResult} minContentHeight={globalContentHeight} onFinalResponse={handleFinalResponse} />
+          {autoContinueEnabled && !allQuestionsAnswered && secondsLeft > 0 && (
+            <Box marginTop={1}>
+              <Text color={secondsLeft <= 10 ? 'warning' : 'inactive'}>
+                Auto-continue in {secondsLeft}s
+              </Text>
+            </Box>
+          )}
+        </>
+      );
       $[107] = allQuestionsAnswered;
       $[108] = answers;
-      $[109] = currentQuestionIndex;
-      $[110] = globalContentHeight;
-      $[111] = handleFinalResponse;
-      $[112] = questions;
-      $[113] = toolUseConfirm.permissionResult;
-      $[114] = t23;
+      $[109] = autoContinueEnabled;
+      $[110] = currentQuestionIndex;
+      $[111] = globalContentHeight;
+      $[112] = handleFinalResponse;
+      $[113] = questions;
+      $[114] = secondsLeft;
+      $[115] = toolUseConfirm.permissionResult;
+      $[116] = t23;
     } else {
-      t23 = $[114];
+      t23 = $[116];
     }
     return t23;
-  }
-  if (autoContinueEnabled && !allQuestionsAnswered && secondsLeft > 0) {
-    return (
-      <Box marginTop={1}>
-        <Text color={secondsLeft <= 10 ? 'warning' : 'inactive'}>
-          Auto-continue in {secondsLeft}s
-        </Text>
-      </Box>
-    );
   }
   return null;
 }
