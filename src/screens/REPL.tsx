@@ -2505,7 +2505,7 @@ export function REPL({
       reject
     }]);
   }), []);
-  const getToolUseContext = useCallback((messages: MessageType[], newMessages: MessageType[], abortController: AbortController, mainLoopModel: string): ProcessUserInputContext => {
+  const getToolUseContext = useCallback((messages: MessageType[], newMessages: MessageType[], abortController: AbortController, mainLoopModel: string, thisGeneration: number = 0): ProcessUserInputContext => {
     // Read mutable values fresh from the store rather than closure-capturing
     // useAppState() snapshots. Same values today (closure is refreshed by the
     // render between turns); decouples freshness from React's render cycle for
@@ -2635,6 +2635,13 @@ export function REPL({
       setInProgressToolUseIDs,
       setHasInterruptibleToolInProgress: (v: boolean) => {
         hasInterruptibleToolInProgressRef.current = v;
+      },
+      queryActivity: {
+        registerActivity: (reason: string) => {
+          queryGuard.registerActivity(reason, thisGeneration);
+        },
+        acquireLease: input =>
+          queryGuard.acquireLease(input, thisGeneration),
       },
       resume,
       setConversationId,
@@ -2790,6 +2797,7 @@ export function REPL({
       // spinner animation) and apiMetricsRef (endResponseLength/lastTokenTime
       // for OTPS). No separate metrics update needed here.
       setResponseLength(length => length + newContent.length);
+      queryGuard.registerActivity('api_stream');
     }, setStreamMode, setStreamingToolUses, tombstonedMessage => {
       setMessages(oldMessages => oldMessages.filter(m => m !== tombstonedMessage));
       void removeTranscriptMessage(tombstonedMessage.uuid);
@@ -2805,7 +2813,7 @@ export function REPL({
       });
     }, onStreamingText);
   }, [setMessages, setResponseLength, setStreamMode, setStreamingToolUses, setStreamingThinking, onStreamingText]);
-  const onQueryImpl = useCallback(async (messagesIncludingNewMessages: MessageType[], newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, effort?: EffortValue) => {
+  const onQueryImpl = useCallback(async (messagesIncludingNewMessages: MessageType[], newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, thisGeneration: number, effort?: EffortValue) => {
     // Prepare IDE integration for new prompt. Read mcpClients fresh from
     // store — useManageMCPConnections may have populated it since the
     // render that captured this closure (same pattern as computeTools).
@@ -2890,7 +2898,7 @@ export function REPL({
       setAbortController(null);
       return;
     }
-    const toolUseContext = getToolUseContext(messagesIncludingNewMessages, newMessages, abortController, mainLoopModelParam);
+    const toolUseContext = getToolUseContext(messagesIncludingNewMessages, newMessages, abortController, mainLoopModelParam, thisGeneration);
     // getToolUseContext reads tools/mcpClients fresh from store.getState()
     // (via computeTools/mergeClients). Use those rather than the closure-
     // captured `tools`/`mcpClients` — useManageMCPConnections may have
@@ -3067,7 +3075,7 @@ export function REPL({
           return;
         }
       }
-      await onQueryImpl(latestMessages, newMessages, abortController, shouldQuery, additionalAllowedTools, mainLoopModelParam, effort);
+      await onQueryImpl(latestMessages, newMessages, abortController, shouldQuery, additionalAllowedTools, mainLoopModelParam, thisGeneration, effort);
     } finally {
       // queryGuard.end() atomically checks generation and transitions
       // running→idle. Returns false if a newer query owns the guard
