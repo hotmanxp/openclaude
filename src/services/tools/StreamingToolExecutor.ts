@@ -69,6 +69,17 @@ export class StreamingToolExecutor {
    */
   discard(): void {
     this.discarded = true
+    const activeLifecycleToolUseIds = new Set(
+      this.toolUseContext.queryLifecycle
+        ?.snapshot()
+        .toolUses.map(toolUse => toolUse.toolUseId) ?? [],
+    )
+    for (const tool of this.tools) {
+      if (tool.status === 'yielded') continue
+      if (activeLifecycleToolUseIds.has(tool.id)) {
+        this.toolUseContext.queryLifecycle?.endToolUse(tool.id)
+      }
+    }
   }
 
   /**
