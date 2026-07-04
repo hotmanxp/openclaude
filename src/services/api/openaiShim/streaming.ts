@@ -123,7 +123,7 @@ export class StreamIdleTimeoutError extends Error {
   }
 }
 
-function createStreamAbortError(): DOMException {
+export function createStreamAbortError(): DOMException {
   return new DOMException('Aborted', 'AbortError')
 }
 
@@ -206,7 +206,6 @@ export async function readWithIdleTimeout(
       finishReject(error)
     }
     const onAbort = () => {
-      console.log('[DBG readWithIdleTimeout] onAbort fired, signal.aborted=', signal?.aborted)
       cancelAndReject(createStreamAbortError())
     }
 
