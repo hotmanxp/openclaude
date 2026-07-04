@@ -572,6 +572,24 @@ export function useTypeahead({
           return;
         }
       }
+      // NEW 2026-07-05: stacked mid-input (e.g. "/skill-a /bar<caret>") also
+      // produces a ghost completion via syncPromptGhostText. Without this
+      // block the dropdown would still render /skill-a candidates beneath
+      // the ghost for the second token.
+      const stackedMid = findStackedMidInputSlashCommand(value, effectiveCursorOffset);
+      if (stackedMid) {
+        const match = getBestCommandMatch(stackedMid.partialCommand, commands);
+        if (match) {
+          setSuggestionsState(() => ({
+            commandArgumentHint: undefined,
+            suggestions: [],
+            selectedSuggestion: -1
+          }));
+          setSuggestionType('none');
+          setMaxColumnWidth(undefined);
+          return;
+        }
+      }
     }
 
     // Bash mode: check for history-based ghost text completion
@@ -941,6 +959,21 @@ export function useTypeahead({
         const after = input.slice(midInputCommand.startPos + midInputCommand.token.length);
         const newInput = before + '/' + effectiveGhostText.fullCommand + ' ' + after;
         const newCursorOffset = midInputCommand.startPos + 1 + effectiveGhostText.fullCommand.length + 1;
+        onInputChange(newInput);
+        setCursorOffset(newCursorOffset);
+        return;
+      }
+
+      // NEW 2026-07-05: stacked mid-input (e.g. "/skill-a /bar<caret>") — accept ghost
+      // for the SECOND leading token. Without this branch, Tab falls through to
+      // "select suggestion" instead of accepting the ghost completion.
+      const stackedMid = findStackedMidInputSlashCommand(input, cursorOffset);
+      if (stackedMid) {
+        const before = input.slice(0, stackedMid.startPos);
+        const after = input.slice(stackedMid.startPos + stackedMid.token.length);
+        const replacement = '/' + effectiveGhostText.fullCommand;
+        const newInput = before + replacement + after;
+        const newCursorOffset = stackedMid.startPos + replacement.length;
         onInputChange(newInput);
         setCursorOffset(newCursorOffset);
         return;
