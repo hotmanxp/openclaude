@@ -1058,6 +1058,7 @@ class OpenAIShimMessages {
     }
 
     let omitResponsesTools = false
+    const isMoonshotResponses = isMoonshotBaseUrl(request.baseUrl) || hasCerebrasApiHost(request.baseUrl)
     const buildResponsesBody = (): Record<string, unknown> => {
       const responsesBody: Record<string, unknown> = {
         model: request.resolvedModel,
@@ -1070,6 +1071,11 @@ class OpenAIShimMessages {
         ),
         stream: params.stream ?? false,
         store: false,
+      }
+      // Moonshot/Cerebras reject requests carrying a `store` field on the
+      // responses endpoint too. Mirror the chat-completions strip here.
+      if (isMoonshotResponses) {
+        delete responsesBody.store
       }
 
       if (!Array.isArray(responsesBody.input) || responsesBody.input.length === 0) {
