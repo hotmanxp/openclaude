@@ -5,7 +5,7 @@ import React, { Suspense, use, useCallback, useEffect, useMemo, useRef, useState
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
-import { useTheme, useInput } from '../../../ink.js';
+import { Box, Text, useTheme, useInput } from '../../../ink.js';
 import { useKeybindings } from '../../../keybindings/useKeybinding.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../../services/analytics/index.js';
 import { useAppState } from '../../../state/AppState.js';
