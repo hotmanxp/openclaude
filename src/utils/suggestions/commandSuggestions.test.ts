@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { generateCommandSuggestions } from './commandSuggestions.js'
+import {
+  findStackedMidInputSlashCommand,
+  generateCommandSuggestions,
+} from './commandSuggestions.js'
 import type { Command } from '../../commands.js'
 
 // Helper to create a mock plugin command
@@ -51,5 +54,38 @@ describe('generateCommandSuggestions - plugin name fuzzy search', () => {
     // /superman should appear first due to command name prefix match
     expect(names[0]).toBe('superman')
     expect(names).toContain('brainstorming')
+  })
+})
+
+describe('findStackedMidInputSlashCommand', () => {
+  test('/foo /bar cursor at end returns /bar token', () => {
+    expect(findStackedMidInputSlashCommand('/foo /bar', 9)).toEqual({
+      token: '/bar',
+      startPos: 5,
+      partialCommand: 'bar',
+    })
+  })
+
+  test('/a /b /c cursor at end returns last /c', () => {
+    expect(findStackedMidInputSlashCommand('/a /b /c', 8)).toEqual({
+      token: '/c',
+      startPos: 6,
+      partialCommand: 'c',
+    })
+  })
+
+  test('/foo / cursor right after slash returns empty partial', () => {
+    const r = findStackedMidInputSlashCommand('/foo /', 5)
+    expect(r?.token).toBe('/')
+    expect(r?.partialCommand).toBe('')
+    expect(r?.startPos).toBe(5)
+  })
+
+  test('/foo (no second token) returns null', () => {
+    expect(findStackedMidInputSlashCommand('/foo', 4)).toBeNull()
+  })
+
+  test('/a /b /c /d /e /f (6 stacked, at cap) returns null', () => {
+    expect(findStackedMidInputSlashCommand('/a /b /c /d /e /f', 16)).toBeNull()
   })
 })
