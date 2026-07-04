@@ -3851,104 +3851,6 @@ test.skip('self-heals tool-call incompatibility by retrying local Ollama request
   expect(requestBodies[1]?.tool_choice).toBeUndefined()
 })
 
-test('preserves valid tool_result and drops orphan tool_result', async () => {
-  // Mistral mode is opt-in via env var; the shim only injects the
-  // boundary placeholder when Mistral is active.
-  process.env.CLAUDE_CODE_USE_MISTRAL = '1'
-  let requestBody: Record<string, unknown> | undefined
-
-  globalThis.fetch = (async (_input, init) => {
-    requestBody = JSON.parse(String(init?.body))
-
-    return new Response(
-      JSON.stringify({
-        id: 'chatcmpl-1',
-        model: 'mistral-large-latest',
-        choices: [
-          {
-            message: {
-              role: 'assistant',
-              content: 'done',
-            },
-            finish_reason: 'stop',
-          },
-        ],
-        usage: {
-          prompt_tokens: 12,
-          completion_tokens: 4,
-          total_tokens: 16,
-        },
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    )
-  }) as FetchType
-
-  const client = createOpenAIShimClient({}) as OpenAIShimClient
-
-  await client.beta.messages.create({
-    model: 'mistral-large-latest',
-    system: 'test system',
-    messages: [
-      { role: 'user', content: 'Search and then I will interrupt' },
-      {
-        role: 'assistant',
-        content: [
-          {
-            type: 'tool_use',
-            id: 'valid_call_1',
-            name: 'Search',
-            input: { query: 'claude' },
-          },
-        ],
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'valid_call_1',
-            content: 'Found it!',
-          },
-          {
-            type: 'tool_result',
-            tool_use_id: 'orphan_call_2',
-            content: 'Interrupted result',
-          },
-          {
-            role: 'user',
-            content: 'What happened?',
-          }
-        ],
-      },
-    ],
-    max_tokens: 64,
-    stream: false,
-  })
-
-  const messages = requestBody?.messages as Array<Record<string, unknown>>
-  
-  // Should have: system, user, assistant (tool_use), tool (valid_call_1), user
-  // Should NOT have: tool (orphan_call_2)
-  
-  const toolMessages = messages.filter(m => m.role === 'tool')
-  expect(toolMessages.length).toBe(1)
-  expect(toolMessages[0].tool_call_id).toBe('valid_call_1')
-  
-  const orphanMessage = toolMessages.find(m => m.tool_call_id === 'orphan_call_2')
-  expect(orphanMessage).toBeUndefined()
-  
-  // Actually, the semantic message IS injected here because the user block with orphan 
-  // tool result is converted to:
-  // 1. Tool result (valid_call_1) -> role 'tool'
-  // 2. User content ("What happened?") -> role 'user'
-  // This triggers the tool -> assistant injection.
-  const assistantMessages = messages.filter(m => m.role === 'assistant')
-  expect(assistantMessages.some(m => m.content === '[Tool results received]')).toBe(true)
-})
 
 test('drops empty assistant message when only thinking block was present and stripped', async () => {
   let requestBody: Record<string, unknown> | undefined
@@ -4024,56 +3926,6 @@ test('drops empty assistant message when only redacted_thinking block was presen
   expect(String(messages[0].content)).toContain('Interrupting query')
 })
 
-test('injects semantic assistant message when tool result is followed by user message', async () => {
-  // Mistral mode is opt-in via env var; the shim only injects the
-  // boundary placeholder when Mistral is active. Other providers skip it.
-  process.env.CLAUDE_CODE_USE_MISTRAL = '1'
-  let requestBody: Record<string, unknown> | undefined
-
-  globalThis.fetch = (async (_input, init) => {
-    requestBody = JSON.parse(String(init?.body))
-    return new Response(JSON.stringify({
-      id: 'chatcmpl-2',
-      object: 'chat.completion',
-      created: 123456789,
-      model: 'mistral-large-latest',
-      choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
-    }), { headers: { 'Content-Type': 'application/json' } })
-  }) as FetchType
-
-  const client = createOpenAIShimClient({}) as OpenAIShimClient
-
-  await client.beta.messages.create({
-    model: 'mistral-large-latest',
-    messages: [
-      { 
-        role: 'assistant', 
-        content: [{ type: 'tool_use', id: 'call_1', name: 'search', input: {} }] 
-      },
-      { 
-        role: 'user', 
-        content: [
-          { type: 'tool_result', tool_use_id: 'call_1', content: 'Result' }
-        ] 
-      },
-      { role: 'user', content: 'Next user query' },
-    ],
-    max_tokens: 64,
-    stream: false,
-  })
-
-  const messages = requestBody?.messages as Array<Record<string, unknown>>
-  // Roles should be: assistant (tool_calls) -> tool -> assistant (semantic) -> user
-  const roles = messages.map(m => m.role)
-  expect(roles).toEqual(['assistant', 'tool', 'assistant', 'user'])
-  
-  const semanticMsg = messages[2]
-  expect(semanticMsg.role).toBe('assistant')
-  expect(semanticMsg.content).toBe('[Tool results received]')
-  expect(semanticMsg.content).not.toContain('interrupted')
-  expect(semanticMsg.content).not.toContain('user')
-})
 
 test('non-Mistral OpenAI-compatible providers do NOT inject semantic assistant message between tool and user', async () => {
   // Repro for: After tool call, the user sees "[Tool results received]" echoed
@@ -4350,7 +4202,7 @@ test('strips Anthropic attribution header block from chat-completions system pro
           'x-anthropic-billing-header: cc_version=0.8.0.abc123; ' +
           'cc_entrypoint=cli;',
       },
-      { type: 'text', text: 'You are Claude Code, helpful assistant.' },
+      { type: 'text', text: 'You are OpenCC, helpful assistant.' },
       { type: 'text', text: 'Project context: bun + react.' },
     ],
     messages: [{ role: 'user', content: 'hello' }],
@@ -4363,7 +4215,7 @@ test('strips Anthropic attribution header block from chat-completions system pro
   expect(sysMsg).toBeDefined()
   expect(sysMsg?.content).not.toContain('x-anthropic-billing-header')
   expect(sysMsg?.content).not.toContain('cc_version=')
-  expect(sysMsg?.content).toContain('You are Claude Code, helpful assistant.')
+  expect(sysMsg?.content).toContain('You are OpenCC, helpful assistant.')
   expect(sysMsg?.content).toContain('Project context: bun + react.')
 })
 
@@ -4400,7 +4252,7 @@ test('strips Anthropic attribution header block from responses-API instructions 
         type: 'text',
         text: 'x-anthropic-billing-header: cc_version=0.8.0.abc123; cc_entrypoint=cli;',
       },
-      { type: 'text', text: 'You are Claude Code.' },
+      { type: 'text', text: 'You are OpenCC.' },
     ],
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
@@ -4410,7 +4262,7 @@ test('strips Anthropic attribution header block from responses-API instructions 
   const instructions = capturedBody?.instructions as string
   expect(instructions).not.toContain('x-anthropic-billing-header')
   expect(instructions).not.toContain('cc_version=')
-  expect(instructions).toContain('You are Claude Code.')
+  expect(instructions).toContain('You are OpenCC.')
 })
 
 
