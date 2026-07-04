@@ -55,3 +55,4 @@ export {
 } from './streaming.js'
 
 export { openaiStreamToAnthropic } from './openaiStreamToAnthropic.js'
+export { anthropicSsePassthrough } from './anthropicSsePassthrough.js'

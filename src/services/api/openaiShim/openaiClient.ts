@@ -1,6 +1,6 @@
 
 /**
- * OpenAI-compatible API shim for Claude Code.
+ * OpenAI-compatible API shim for OpenCC.
  *
  * Translates Anthropic SDK calls (anthropic.beta.messages.create) into
  * OpenAI-compatible chat completion requests and streams back events
@@ -21,8 +21,6 @@
  */
 
 import { APIError } from '@anthropic-ai/sdk'
-import { createParser } from 'eventsource-parser'
-import { jsonrepair } from 'jsonrepair'
 import { logForDebugging } from '../../../utils/debug.js'
 import { isEnvTruthy } from '../../../utils/envUtils.js'
 import {
@@ -60,6 +58,8 @@ import { shouldAttemptLocalToollessRetry } from './providerUtils.js'
 import { applyZhiniaoModelPrefix } from './providerUtils.js'
 import { convertToolsToResponsesTools } from '../codexShim.js'
 import { createCombinedAbortSignal } from '../../../utils/combinedAbortSignal.js'
+import { openaiStreamToAnthropic } from './openaiStreamToAnthropic.js'
+import { anthropicSsePassthrough } from './anthropicSsePassthrough.js'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
@@ -375,7 +375,7 @@ function convertMessages(
     const msg = messages[i]
     const isLastInHistory = i === messages.length - 1
 
-    // Claude Code wraps messages in { role, message: { role, content } }
+    // OpenCC wraps messages in { role, message: { role, content } }
     const inner = msg.message ?? msg
     const role = (inner as { role?: string }).role ?? msg.role
     const content = (inner as { content?: unknown }).content
@@ -757,491 +757,10 @@ function convertChunkUsage(
   }
 }
 
-const JSON_REPAIR_SUFFIXES = [
-  '}', '"}', ']}', '"]}', '}}', '"}}', ']}}', '"]}}', '"]}]}', '}]}'
-]
-
-function repairPossiblyTruncatedObjectJson(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw)
-    // Already valid JSON - return as-is
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? raw
-      : null
-  } catch {
-    // Use jsonrepair to fix truncated JSON
-    try {
-      const repaired = jsonrepair(raw)
-      // Verify the repaired result is a structured object, not a primitive
-      // (jsonrepair may turn a plain string like 'pwd' into '"pwd"' - we should
-      // not use this as partial_json, but instead fall through to normalizeToolArguments)
-      const parsed = JSON.parse(repaired)
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? repaired
-        : null
-    } catch {
-      return null
-    }
-  }
-}
-
-/**
- * Async generator that transforms an OpenAI SSE stream into
- * Anthropic-format BetaRawMessageStreamEvent objects.
- */
-async function* openaiStreamToAnthropic(
-  response: Response,
-  model: string,
-  signal?: AbortSignal,
-): AsyncGenerator<AnthropicStreamEvent> {
-  const messageId = makeMessageId()
-  let contentBlockIndex = 0
-  const activeToolCalls = new Map<
-    number,
-    {
-      id: string
-      name: string
-      index: number
-      jsonBuffer: string
-      normalizeAtStop: boolean
-    }
-  >()
-  let hasEmittedContentStart = false
-  let hasEmittedThinkingStart = false
-  let hasClosedThinking = false
-  const thinkFilter = createThinkTagFilter()
-  let lastStopReason: 'tool_use' | 'max_tokens' | 'end_turn' | null = null
-  let hasEmittedFinalUsage = false
-  let hasProcessedFinishReason = false
-  const streamState = createStreamState()
-
-  // Emit message_start
-  yield {
-    type: 'message_start',
-    message: {
-      id: messageId,
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model,
-      stop_reason: null,
-      stop_sequence: null,
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-    },
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) return
-
-  const decoder = new TextDecoder()
-  const STREAM_IDLE_TIMEOUT_MS = 120_000 // 2 minutes without data = connection likely dead
-  let lastDataTime = Date.now()
-
-  /**
-   * Read from the stream with an idle timeout. If no data arrives within
-   * STREAM_IDLE_TIMEOUT_MS, assume the connection is dead and throw so
-   * withRetry can reconnect. This prevents indefinite hangs on stale
-   * SSE connections from OpenAI/Gemini during long-running sessions.
-   * Respects the caller's AbortSignal — clears the idle timer on abort
-   * so the rejection reason is AbortError, not a spurious idle timeout.
-   */
-  async function readWithTimeout(): Promise<ReadableStreamReadResult<Uint8Array>> {
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
-        reject(new Error(
-          `OpenAI/Gemini SSE stream idle for ${elapsed}s (limit: ${STREAM_IDLE_TIMEOUT_MS / 1000}s). Connection likely dropped.`,
-        ))
-      }, STREAM_IDLE_TIMEOUT_MS)
-
-      // If the caller aborts, clear the timer so the AbortError surfaces
-      // cleanly instead of being masked by a spurious idle timeout.
-      let abortCleanup: (() => void) | undefined
-      if (signal) {
-        abortCleanup = () => {
-          clearTimeout(timeoutId)
-        }
-        signal.addEventListener('abort', abortCleanup, { once: true })
-      }
-
-      reader?.read?.().then(
-        result => {
-          clearTimeout(timeoutId)
-          if (signal && abortCleanup) signal.removeEventListener('abort', abortCleanup)
-          if (result.value) lastDataTime = Date.now()
-          resolve(result as ReadableStreamReadResult<Uint8Array>)
-        },
-        err => {
-          clearTimeout(timeoutId)
-          if (signal && abortCleanup) signal.removeEventListener('abort', abortCleanup)
-          reject(err)
-        },
-      )
-    })
-  }
-
-  const closeActiveContentBlock = async function* () {
-    if (!hasEmittedContentStart) return
-
-    const tail = thinkFilter.flush()
-    if (tail) {
-      yield {
-        type: 'content_block_delta',
-        index: contentBlockIndex,
-        delta: { type: 'text_delta', text: tail },
-      }
-    }
-
-    yield {
-      type: 'content_block_stop',
-      index: contentBlockIndex,
-    }
-    contentBlockIndex++
-    hasEmittedContentStart = false
-  }
-
-  // Queue to bridge eventsource-parser callback to async generator
-  const parsedEventQueue: Array<{ data: string; event?: string }> = []
-
-  // Create eventsource-parser for proper SSE parsing
-  // eventsource-parser handles line buffering, multi-line data, and event types correctly
-  const parser = createParser({
-    onEvent: (sseEvent) => {
-      // eventsource-parser emits an event when data is complete (after empty line)
-      // We queue it for processing in the main loop
-      parsedEventQueue.push({ data: sseEvent.data, event: sseEvent.event })
-    },
-    onError: (error) => {
-      // Log parse errors but don't throw - let the main loop handle stream errors
-      console.error('SSE parse error:', error)
-    },
-    onRetry: (retryCount) => {
-      // Handle retry hint if provider sends one
-    },
-    onComment: (comment) => {
-      // Comments start with ':' - we can ignore them
-    },
-  })
-
-  try {
-    while (true) {
-      const { done, value } = await readWithTimeout()
-      if (done) break
-
-      const decoded = decoder.decode(value, { stream: true })
-      parser.feed(decoded)
-
-      // Drain any parsed events the parser emitted from this chunk
-      while (parsedEventQueue.length > 0) {
-        const sseEvent = parsedEventQueue.shift()!
-        const data = sseEvent.data
-
-        // Skip [DONE] sentinel
-        if (!data || data === '[DONE]') continue
-
-        let chunk: OpenAIStreamChunk
-        try {
-          chunk = JSON.parse(data)
-        } catch {
-          continue
-        }
-
-      // Check for API-level errors in the response (e.g., MiniMax's base_resp)
-      // Skip chunks with non-zero status codes to avoid corrupting the stream
-      //@ts-ignore
-      if ((chunk as Record<string, unknown>).base_resp) {
-        //@ts-ignore
-        const baseResp = (chunk as Record<string, { status_code?: number; status_msg?: string }>).base_resp
-        if (baseResp && baseResp.status_code !== 0) {
-          logForDebugging(
-            `Skipping chunk with base_resp error: status_code=${baseResp.status_code}, status_msg=${baseResp.status_msg ?? ''}`,
-          )
-          continue
-        }
-      }
-
-      const chunkUsage = convertChunkUsage(chunk.usage)
-
-      for (const choice of chunk.choices ?? []) {
-        const delta = choice.delta
-
-        // Reasoning models (e.g. GLM-5, DeepSeek) may stream chain-of-thought
-        // in `reasoning_content` before the actual reply appears in `content`.
-        // Emit reasoning as a thinking block and content as a text block.
-        if (delta.reasoning_content != null && delta.reasoning_content !== '') {
-          if (!hasEmittedThinkingStart) {
-            yield {
-              type: 'content_block_start',
-              index: contentBlockIndex,
-              content_block: { type: 'thinking', thinking: '' },
-            }
-            hasEmittedThinkingStart = true
-          }
-          yield {
-            type: 'content_block_delta',
-            index: contentBlockIndex,
-            delta: { type: 'thinking_delta', thinking: delta.reasoning_content },
-          }
-        }
-
-        // Text content — use != null to distinguish absent field from empty string,
-        // some providers send "" as first delta to signal streaming start
-        if (delta.content != null && delta.content !== '') {
-          // Close thinking block if transitioning from reasoning to content
-          if (hasEmittedThinkingStart && !hasClosedThinking) {
-            yield { type: 'content_block_stop', index: contentBlockIndex }
-            contentBlockIndex++
-            hasClosedThinking = true
-          }
-          if (!hasEmittedContentStart) {
-            yield {
-              type: 'content_block_start',
-              index: contentBlockIndex,
-              content_block: { type: 'text', text: '' },
-            }
-            hasEmittedContentStart = true
-          }
-
-          const visible = thinkFilter.feed(delta.content)
-          if (visible) {
-            yield {
-              type: 'content_block_delta',
-              index: contentBlockIndex,
-              delta: { type: 'text_delta', text: visible },
-            }
-          }
-          processStreamChunk(streamState, delta.content)
-        }
-
-        // Tool calls
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            if (tc.id && tc.function?.name) {
-              // New tool call starting — close any open thinking block first
-              if (hasEmittedThinkingStart && !hasClosedThinking) {
-                yield { type: 'content_block_stop', index: contentBlockIndex }
-                contentBlockIndex++
-                hasClosedThinking = true
-              }
-              if (hasEmittedContentStart) {
-                yield* closeActiveContentBlock()
-              }
-
-              const toolBlockIndex = contentBlockIndex
-              const initialArguments = tc.function.arguments ?? ''
-              const normalizeAtStop = hasToolFieldMapping(tc.function.name)
-              processStreamChunk(streamState, tc.function.arguments ?? '')
-              activeToolCalls.set(tc.index, {
-                id: tc.id,
-                name: tc.function.name,
-                index: toolBlockIndex,
-                jsonBuffer: initialArguments,
-                normalizeAtStop,
-              })
-
-              yield {
-                type: 'content_block_start',
-                index: toolBlockIndex,
-                content_block: {
-                  type: 'tool_use',
-                  id: tc.id,
-                  name: tc.function.name,
-                  input: {},
-                  ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
-                },
-              }
-              contentBlockIndex++
-
-              // Emit any initial arguments
-              if (tc.function.arguments && !normalizeAtStop) {
-                yield {
-                  type: 'content_block_delta',
-                  index: toolBlockIndex,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tc.function.arguments,
-                  },
-                }
-              }
-            } else if (tc.function?.arguments) {
-              // Continuation of existing tool call
-              const active = activeToolCalls.get(tc.index)
-              if (active) {
-                if (tc.function.arguments) {
-                  active.jsonBuffer += tc.function.arguments
-                }
-
-                if (active.normalizeAtStop) {
-                  continue
-                }
-
-                yield {
-                  type: 'content_block_delta',
-                  index: active.index,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tc.function.arguments,
-                  },
-                }
-              }
-            }
-          }
-        }
-
-        // Finish — guard ensures we only process finish_reason once even if
-        // multiple chunks arrive with finish_reason set (some providers do this)
-        if (choice.finish_reason && !hasProcessedFinishReason) {
-          hasProcessedFinishReason = true
-
-          // Close any open thinking block that wasn't closed by content transition
-          if (hasEmittedThinkingStart && !hasClosedThinking) {
-            yield { type: 'content_block_stop', index: contentBlockIndex }
-            contentBlockIndex++
-            hasClosedThinking = true
-          }
-          // Close any open content blocks
-          if (hasEmittedContentStart) {
-            yield* closeActiveContentBlock()
-          }
-          // Close active tool calls
-          for (const [, tc] of activeToolCalls) {
-            if (tc.normalizeAtStop) {
-              let partialJson: string
-              if (choice.finish_reason === 'length') {
-                // Truncated by max tokens — preserve raw buffer to avoid
-                // turning an incomplete tool call into an executable command
-                partialJson = tc.jsonBuffer
-              } else {
-                const repairedStructuredJson = repairPossiblyTruncatedObjectJson(
-                  tc.jsonBuffer,
-                )
-                if (repairedStructuredJson) {
-                  partialJson = repairedStructuredJson
-                } else {
-                  partialJson = JSON.stringify(
-                    normalizeToolArguments(tc.name, tc.jsonBuffer),
-                  )
-                }
-              }
-
-              yield {
-                type: 'content_block_delta',
-                index: tc.index,
-                delta: {
-                  type: 'input_json_delta',
-                  partial_json: partialJson,
-                },
-              }
-              yield { type: 'content_block_stop', index: tc.index }
-              continue
-            }
-
-            let suffixToAdd = ''
-            if (tc.jsonBuffer) {
-              try {
-                JSON.parse(tc.jsonBuffer)
-              } catch {
-                const str = tc.jsonBuffer.trimEnd()
-                for (const combo of JSON_REPAIR_SUFFIXES) {
-                  try {
-                    JSON.parse(str + combo)
-                    suffixToAdd = combo
-                    break
-                  } catch {}
-                }
-              }
-            }
-
-            if (suffixToAdd) {
-              yield {
-                type: 'content_block_delta',
-                index: tc.index,
-                delta: {
-                  type: 'input_json_delta',
-                  partial_json: suffixToAdd,
-                },
-              }
-            }
-
-            yield { type: 'content_block_stop', index: tc.index }
-          }
-
-          const stopReason =
-            choice.finish_reason === 'tool_calls'
-              ? 'tool_use'
-              : choice.finish_reason === 'length'
-                ? 'max_tokens'
-                : 'end_turn'
-          if (choice.finish_reason === 'content_filter' || choice.finish_reason === 'safety') {
-            // Gemini/Azure content safety filter blocked the response.
-            // Emit a visible text block so the user knows why output was truncated.
-            if (!hasEmittedContentStart) {
-              yield {
-                type: 'content_block_start',
-                index: contentBlockIndex,
-                content_block: { type: 'text', text: '' },
-              }
-              hasEmittedContentStart = true
-            }
-            yield {
-              type: 'content_block_delta',
-              index: contentBlockIndex,
-              delta: { type: 'text_delta', text: '\n\n[Content blocked by provider safety filter]' },
-            }
-          }
-          lastStopReason = stopReason
-
-          yield {
-            type: 'message_delta',
-            delta: { stop_reason: stopReason, stop_sequence: null },
-            ...(chunkUsage ? { usage: chunkUsage } : {}),
-          }
-          if (chunkUsage) {
-            hasEmittedFinalUsage = true
-          }
-        }
-      }
-
-      if (
-        !hasEmittedFinalUsage &&
-        chunkUsage &&
-        (chunk.choices?.length ?? 0) === 0 &&
-        lastStopReason !== null
-      ) {
-        yield {
-          type: 'message_delta',
-          delta: { stop_reason: lastStopReason, stop_sequence: null },
-          usage: chunkUsage,
-        }
-        hasEmittedFinalUsage = true
-      }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-
-  const stats = getStreamStats(streamState)
-  if (stats.totalChunks > 0) {
-    logForDebugging(
-      JSON.stringify({
-        type: 'stream_stats',
-        model,
-        total_chunks: stats.totalChunks,
-        first_token_ms: stats.firstTokenMs,
-        duration_ms: stats.durationMs,
-      }),
-      { level: 'debug' },
-    )
-  }
-
-  yield { type: 'message_stop' }
-}
+// The OpenAI→Anthropic streaming converter and its helpers live in
+// ./openaiStreamToAnthropic.js (modular split 518969a1). The legacy inline
+// copy in this file was removed when the cherry-pick stream controller abort
+// surface (commit 3a8fbf01) was wired through the runtime path.
 
 // ---------------------------------------------------------------------------
 // The shim client — duck-types as Anthropic SDK
@@ -1367,9 +886,18 @@ class OpenAIShimMessages {
         const cancelBeforeIteration = () => {
           void response.body?.cancel(new DOMException('Aborted', 'AbortError')).catch(() => {})
         }
+        // Base the routing on the actual response URL because some upstream
+        // gateways (and the openaiShim test fixtures) redirect an OpenAI
+        // base URL toward an Anthropic-shaped `/v1/messages` endpoint —
+        // `request.baseUrl` is the configured provider URL, not the
+        // resolved response origin.
+        const isAnthropicPassthrough =
+          (response.url ?? '').includes('anthropic') ||
+          request.baseUrl.includes('anthropic')
         return new OpenAIShimStream(
-          (streamSignal) =>
-            openaiStreamToAnthropic(response, request.resolvedModel, streamSignal),
+          (streamSignal) => isAnthropicPassthrough
+            ? anthropicSsePassthrough(response, streamSignal)
+            : openaiStreamToAnthropic(response, request.resolvedModel, streamSignal),
           options?.signal,
           cancelBeforeIteration,
         )
