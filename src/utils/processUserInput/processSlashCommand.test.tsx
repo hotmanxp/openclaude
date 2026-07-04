@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import * as slashCommandModule from './processSlashCommand.js';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { processSlashCommand } from './processSlashCommand.js';
 import * as stackedSkillModule from './processStackedSkillInvocation.js';
+import type { SplitStackedSkillInvocationInput } from './processStackedSkillInvocation.js';
 import * as userPromptExpansionModule from '../../hooks/userPromptExpansion.js';
 import * as commandsModule from '../../commands.js';
 import type { Command } from '../../types/command.js';
@@ -10,23 +10,6 @@ import type { AttachmentMessage, Message } from '../../types/message.js';
 // ---------- fixtures ----------
 const stubCmd = (name: string): Command =>
   ({ name, type: 'local', description: name } as unknown as Command);
-
-const stubLocalCommandResult = (content: string): Message[] =>
-  [
-    {
-      type: 'user',
-      uuid: '00000000-0000-4000-8000-000000000001',
-      parentUuid: null,
-      timestamp: '2026-07-04T00:00:00.000Z',
-      cwd: '/tmp',
-      userType: 'external',
-      sessionId: '00000000-0000-4000-8000-000000000001',
-      version: 'test',
-      isSidechain: false,
-      isMeta: false,
-      message: { role: 'user', content: `<local-command-stdout>${content}</local-command-stdout>` },
-    },
-  ] as unknown as Message[];
 
 const buildContext = (commands: Command[]) =>
   ({
@@ -72,7 +55,7 @@ describe('processSlashCommand — stacked skill loading (Task 3 wiring)', () => 
   });
 
   test('wires splitStackedSkillInvocation at top of processSlashCommand', async () => {
-    splitSpy.mockImplementation((input) => ({
+    splitSpy.mockImplementation((input: SplitStackedSkillInvocationInput) => ({
       commands: [stubCmd(input.primaryCommandName)],
       trailingArgs: input.primaryArgs,
       capped: false,
@@ -93,7 +76,7 @@ describe('processSlashCommand — stacked skill loading (Task 3 wiring)', () => 
   });
 
   test('single /foo falls through to legacy path (no stacked helper invoked)', async () => {
-    splitSpy.mockImplementation((input) => ({
+    splitSpy.mockImplementation((input: SplitStackedSkillInvocationInput) => ({
       commands: [stubCmd(input.primaryCommandName)],
       trailingArgs: input.primaryArgs,
       capped: false,
