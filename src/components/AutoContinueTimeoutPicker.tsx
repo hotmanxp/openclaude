@@ -73,6 +73,8 @@ export function AutoContinueTimeoutPicker(t0) {
         value={t5}
         onChange={setValue}
         onSubmit={handleSubmit}
+        focus={true}
+        showCursor={true}
         cursorOffset={cursorOffset}
         onChangeCursorOffset={setCursorOffset}
         placeholder="0"
