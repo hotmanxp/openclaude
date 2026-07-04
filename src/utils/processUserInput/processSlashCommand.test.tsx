@@ -5,7 +5,7 @@ import type { SplitStackedSkillInvocationInput } from './processStackedSkillInvo
 import * as userPromptExpansionModule from '../../hooks/userPromptExpansion.js';
 import * as commandsModule from '../../commands.js';
 import type { Command } from '../../types/command.js';
-import type { AttachmentMessage, Message } from '../../types/message.js';
+import type { AttachmentMessage } from '../../types/message.js';
 
 // ---------- fixtures ----------
 const stubCmd = (name: string): Command =>
@@ -119,7 +119,7 @@ describe('processSlashCommand — stacked skill loading (Task 3 wiring)', () => 
 
   test('/foo /bar stack of length 2 dispatches to processStackedSkillInvocation', async () => {
     // Force the scanner to return a 2-length stack + trailing args.
-    splitSpy.mockImplementation((input) => {
+    splitSpy.mockImplementation((input: SplitStackedSkillInvocationInput) => {
       // Scanner is mocked, so we hard-code the stacked result for "/foo /bar baz".
       if (input.primaryCommandName === 'foo' && input.primaryArgs === '/bar baz') {
         return {
