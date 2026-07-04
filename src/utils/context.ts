@@ -329,9 +329,9 @@ export function getModelMaxOutputTokens(model: string): {
   // Model-name keyed fallback (mirrors getContextWindowForModel above).
   // Route-independent so 3P models served via anthropic-proxy (e.g. zn-nova
   // MiniMax-M3) resolve their descriptor limits even when
-  // shouldUseIntegrationRuntimeLimits() returns false. Claude native models
+  // shouldUseIntegrationRuntimeLimits() returns false. OpenCC native models
   // have no entry in OPENAI_MAX_OUTPUT_TOKENS (intentionally omitted per the
-  // bare-Claude-name note in openaiContextWindows.ts) and fall through to
+  // bare-OpenCC-name note in openaiContextWindows.ts) and fall through to
   // the canonical-name if/else chain below.
   const openaiMax = getOpenAIMaxOutputTokens(model)
   if (openaiMax !== undefined) {

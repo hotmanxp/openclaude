@@ -99,7 +99,7 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
   const supportsEffort = modelSupportsEffort(model)
   // For OpenAI/Codex: prefer the user's current selection (max → xhigh for
   // option matching), otherwise the model's alias default, otherwise auto.
-  // For Claude: user's current selection or auto.
+  // For OpenCC: user's current selection or auto.
   const initialFocus = usesOpenAIEffort
     ? (appStateEffort === 'max'
         ? 'xhigh'
@@ -116,7 +116,7 @@ export function EffortPicker({ onSelect, onCancel }: Props) {
             {supportsEffort && usesOpenAIEffort
               ? `OpenAI/Codex 提供商（${provider}）`
               : supportsEffort
-              ? `Claude 模型 · ${provider} 提供商`
+              ? `OpenCC 模型 · ${provider} 提供商`
               : `此模型不支持投入度`
           }
         </Text>

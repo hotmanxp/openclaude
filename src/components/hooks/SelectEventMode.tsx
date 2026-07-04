@@ -7,7 +7,7 @@ import { SETTINGS_PATH, SETTINGS_LOCAL_PATH, USER_SETTINGS_PATH } from '../../co
  *
  * The /hooks menu is read-only: selecting an event lets you browse its
  * configured hooks but not modify them. To add or change hooks, users should
- * edit settings.json directly or ask Claude.
+ * edit settings.json directly or ask OpenCC.
  */
 
 import figures from 'figures';
@@ -55,7 +55,7 @@ export function SelectEventMode(t0) {
   }
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box flexDirection="column"><Text dimColor={true}>{figures.info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude.{" "}<Link url="https://code.claude.com/docs/en/hooks">Learn more</Link></Text></Box>;
+    t3 = <Box flexDirection="column"><Text dimColor={true}>{figures.info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask OpenCC.{" "}<Link url="https://code.claude.com/docs/en/hooks">Learn more</Link></Text></Box>;
     $[4] = t3;
   } else {
     t3 = $[4];

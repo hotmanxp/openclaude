@@ -341,7 +341,7 @@ afterAll(() => {
   mock.module('./client.js', () => actualClientModule)
 })
 
-describe('Claude stream watchdog', () => {
+describe('OpenCC stream watchdog', () => {
   test('falls back when the top-level stream iterator never settles', async () => {
     const wedged = makeWedgedStream()
     const streamModes: unknown[] = []

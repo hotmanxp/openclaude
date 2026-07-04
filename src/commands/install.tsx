@@ -114,7 +114,7 @@ export function Install({
 
         // Check specifically for lock failure
         if (result.lockFailed) {
-          throw new Error('Could not install - another process is currently installing Claude. Please try again in a moment.');
+          throw new Error('Could not install - another process is currently installing OpenCC. Please try again in a moment.');
         }
 
         // If we couldn't get the version, there might be an issue

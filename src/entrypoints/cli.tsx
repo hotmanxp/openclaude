@@ -56,7 +56,7 @@ process.env.COREPACK_ENABLE_AUTO_PIN = '0';
 // tool-heavy loops) do not hit V8's ~2 GB default ceiling. Only raise the cap
 // when the user has not already set NODE_OPTIONS --max-old-space-size so we
 // do not override an intentionally lower or higher personal setting.
-// CCR (Claude Code Remote / container) environments are covered by the same
+// CCR (OpenCC Remote / container) environments are covered by the same
 // unconditional assignment — the previous CLAUDE_CODE_REMOTE guard was too
 // restrictive, preventing local users from benefiting from the raised limit.
 // Closes: hotmanxp/opencc#402 — JavaScript heap OOM during large tasks.
