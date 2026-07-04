@@ -858,7 +858,7 @@ async function processStackedSkillInvocation(
 ): Promise<ProcessUserInputBaseResult> {
   const T: ProcessUserInputBaseResult = {
     messages: [],
-    shouldQuery: false,
+    shouldQuery: true, // stacked skills produced messages — main loop must query the model
     allowedTools: undefined,
     disallowedTools: undefined,
   };
