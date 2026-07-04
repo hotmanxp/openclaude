@@ -1943,7 +1943,7 @@ DESCRIPTION
   directory you want to work in, then connect from the OpenCC app or web.
 ${serverDescription}
 NOTES
-  - You must be logged in with a OpenCC account that has a subscription
+  - You must be logged in with a Claude.ai account that has a subscription
   - Run \`claude\` first in the directory to accept the workspace trust dialog
 ${serverNote}`
   // biome-ignore lint/suspicious/noConsole: intentional help output

@@ -691,7 +691,7 @@ function formatTranscriptForFacets(log: LogOption): string {
   return lines.join('\n')
 }
 
-const SUMMARIZE_CHUNK_PROMPT = `Summarize this portion of a OpenCC session transcript. Focus on:
+const SUMMARIZE_CHUNK_PROMPT = `Summarize this portion of an OpenCC session transcript. Focus on:
 1. What the user asked for
 2. What Open CC did (tools used, files modified)
 3. Any friction or issues
@@ -1178,7 +1178,7 @@ Include 4-5 areas. Skip internal CC operations.`,
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
-  "narrative": "2-3 paragraphs analyzing HOW the user interacts with OpenCC. Use second person 'you'. Describe patterns: iterate quickly vs detailed upfront specs? Interrupt often or let Claude run? Include specific examples. Use **bold** for key insights.",
+  "narrative": "2-3 paragraphs analyzing HOW the user interacts with OpenCC. Use second person 'you'. Describe patterns: iterate quickly vs detailed upfront specs? Interrupt often or let OpenCC run? Include specific examples. Use **bold** for key insights.",
   "key_pattern": "One sentence summary of most distinctive interaction style"
 }`,
     maxTokens: 8192,
@@ -1559,7 +1559,7 @@ async function generateParallelInsights(
       .join('\n') || ''
 
   // Now generate "At a Glance" with access to other sections' outputs
-  const atAGlancePrompt = `You're writing an "At a Glance" summary for a OpenCC usage insights report for OpenCC users. The goal is to help them understand their usage and improve how they can use Claude better, especially as models improve.
+  const atAGlancePrompt = `You're writing an "At a Glance" summary for an OpenCC usage insights report for OpenCC users. The goal is to help them understand their usage and improve how they can use OpenCC better, especially as models improve.
 
 Use this 4-part structure:
 
@@ -1567,7 +1567,7 @@ Use this 4-part structure:
 
 2. **What's hindering you** - Split into (a) ${BRAND_NAME}'s fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
 
-3. **Quick wins to try** - Specific OpenCC features they could try from the examples below, or a workflow technique if you think it's really compelling. (Avoid stuff like "Ask Claude to confirm before taking actions" or "Type out more context up front" which are less compelling.)
+3. **Quick wins to try** - Specific OpenCC features they could try from the examples below, or a workflow technique if you think it's really compelling. (Avoid stuff like "Ask OpenCC to confirm before taking actions" or "Type out more context up front" which are less compelling.)
 
 4. **Ambitious workflows for better models** - As we move to much more capable models over the next 3-6 months, what should they prepare for? What workflows that seem impossible now will become possible? Draw from the appropriate section below.
 
