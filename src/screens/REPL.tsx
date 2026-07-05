@@ -791,7 +791,7 @@ export function REPL({
 
   // eslint-disable-next-line prefer-const
   let trySuggestBgPRIntercept = SUGGEST_BG_PR_NOOP;
-  const mcpClients = useMergedClients(initialMcpClients, mcp.clients);
+  const mcpClients = useMergedClients(initialMcpClients, mcp?.clients);
 
   // IDE integration
   const [ideSelection, setIDESelection] = useState<IDESelection | undefined>(undefined);
@@ -2605,7 +2605,7 @@ export function REPL({
         },
         // Merge fresh from store rather than closing over useMergedClients'
         // memoized output. initialMcpClients is a prop (session-constant).
-        mcpClients: mergeClients(initialMcpClients, s.mcp.clients),
+        mcpClients: mergeClients(initialMcpClients, s.mcp?.clients),
         mcpResources: s.mcp.resources,
         ideInstallationStatus: ideInstallationStatus,
         isNonInteractiveSession: false,
@@ -2887,7 +2887,7 @@ export function REPL({
     // store — useManageMCPConnections may have populated it since the
     // render that captured this closure (same pattern as computeTools).
     if (shouldQuery) {
-      const freshClients = mergeClients(initialMcpClients, store.getState().mcp.clients);
+      const freshClients = mergeClients(initialMcpClients, store.getState().mcp?.clients);
       void diagnosticTracker.handleQueryStart(freshClients);
       const ideClient = getConnectedIdeClient(freshClients);
       if (ideClient) {
