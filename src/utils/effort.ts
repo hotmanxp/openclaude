@@ -104,6 +104,46 @@ export function modelUsesOpenAIEffort(_model: string): boolean {
   return provider === 'openai'
 }
 
+// Strip the optional `?<query>` suffix and lowercase. Used to match upstream's
+// "normalized base model" notion so a leading query string doesn't change the
+// wire-format decision.
+function normalizedBaseModel(model: string | undefined): string {
+  return model?.trim().split('?', 1)[0]?.trim().toLowerCase() ?? ''
+}
+
+// True for any Z.AI-hosted GLM model (openai-compatible chat completions with
+// zai's own `reasoning_effort` vocabulary). Upstream uses this to pick the
+// `zai_compatible` wire format; locally we use it to gate the body-normalization
+// helper below.
+export function modelLooksZaiCompatible(model: string | undefined): boolean {
+  const normalized = normalizedBaseModel(model)
+  return normalized.startsWith('glm-') || normalized.startsWith('zai-org/glm-')
+}
+
+// Whitelist of GLM models that accept Z.AI's reasoning_effort vocabulary
+// (high / max). Z.AI's older GLM models (4.x, 5.0, 5.1) reject the field
+// outright, so we limit the gating to GLM-5.2 and the opencc brand alias
+// `zhiniao-glm-5.1` — both point to the same underlying GLM-5.2 model.
+export function supportsZaiReasoningEffort(model: string | undefined): boolean {
+  const normalized = normalizedBaseModel(model)
+  return normalized === 'glm-5.2'
+      || normalized === 'zai-org/glm-5.2'
+      || normalized === 'zhiniao-glm-5.1'
+}
+
+// Z.AI's wire protocol only accepts `high` or `max` for reasoning_effort.
+// Collapse all non-`max` levels (low / medium / high / xhigh) to `high`,
+// and treat `max` / `ultracode` (the deep-reasoning markers in opencc's
+// anthropic-style vocabulary) as `max`.
+export function normalizeZaiReasoningEffort(
+  effort: EffortLevel | OpenAIEffortLevel,
+): 'high' | 'max' {
+  if (effort === 'max' || effort === 'ultracode' || effort === 'xhigh') {
+    return 'max'
+  }
+  return 'high'
+}
+
 export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
   if (!modelSupportsEffort(model)) {
     return []
