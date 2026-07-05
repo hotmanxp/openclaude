@@ -1,5 +1,5 @@
 type Listener = () => void
-type OnChange<T> = (args: { newState: T; oldState: T }) => void
+export type OnChange<T> = (args: { newState: T; oldState: T }) => void
 
 export type Store<T> = {
   getState: () => T

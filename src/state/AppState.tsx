@@ -21,6 +21,7 @@ const VoiceProvider: (props: {
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { type AppState, type AppStateStore, getDefaultAppState } from './AppStateStore.js';
+import { createAppStateStore } from './createAppStateStore.js';
 
 // TODO: Remove these re-exports once all callers import directly from
 // ./AppStateStore.js. Kept for back-compat during migration so .ts callers
@@ -50,7 +51,19 @@ export function AppStateProvider(t0: Props): React.ReactNode {
   }
   let t1: () => AppStateStore;
   if ($[0] !== initialState || $[1] !== onChangeAppState) {
-    t1 = () => createStore(initialState ?? getDefaultAppState(), onChangeAppState);
+    t1 = () => createAppStateStore(
+      initialState ?? getDefaultAppState(),
+      onChangeAppState,
+      // Cascade-undefined-defence: when a setAppState updater silently
+      // drops a top-level AppState key, repair the missing fields from the
+      // default shape and surface the offender here so the upstream bug
+      // is observable without crashing the React render loop.
+      repairedKeys => {
+        logForDebugging(
+          `setAppState produced an AppState missing top-level keys [${repairedKeys.join(', ')}]; repaired from default shape — track this in followup.`,
+        )
+      },
+    );
     $[0] = initialState;
     $[1] = onChangeAppState;
     $[2] = t1;
