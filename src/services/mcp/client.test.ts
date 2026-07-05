@@ -2,7 +2,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { cleanupFailedConnection } from './client.js'
+import {
+  appendBoundedMcpStderr,
+  cleanupFailedConnection,
+} from './client.js'
 
 test('cleanupFailedConnection awaits transport close before resolving', async () => {
   let closed = false
@@ -46,4 +49,18 @@ test('cleanupFailedConnection closes in-process server and transport', async () 
 
   assert.equal(inProcessClosed, true)
   assert.equal(transportClosed, true)
+})
+
+test('appendBoundedMcpStderr caps retained stderr and marks truncation', () => {
+  const output = appendBoundedMcpStderr('', Buffer.alloc(300 * 1024, 'x'))
+
+  assert.equal(output.length, 256 * 1024)
+  assert.match(output, /\.\.\.\[stderr truncated\]$/)
+})
+
+test('appendBoundedMcpStderr ignores chunks after truncation', () => {
+  const output = appendBoundedMcpStderr('', Buffer.alloc(300 * 1024, 'x'))
+  const after = appendBoundedMcpStderr(output, 'more stderr')
+
+  assert.equal(after, output)
 })
