@@ -97,7 +97,7 @@ export const syncHookResponseSchema = lazySchema(() =>
   z.object({
     continue: z
       .boolean()
-      .describe('Whether Open CC should continue after hook (default: true)')
+      .describe('Whether OpenCC should continue after hook (default: true)')
       .optional(),
     suppressOutput: z
       .boolean()

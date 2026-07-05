@@ -315,22 +315,22 @@ export function getRequestTooLargeErrorMessage(): string {
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
 export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
-  'Your account does not have access to Open CC. Please run /login.'
+  'Your account does not have access to OpenCC. Please run /login.'
 
 export function getTokenRevokedErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'Your account does not have access to Open CC. Please login again or contact your administrator.'
+    ? 'Your account does not have access to OpenCC. Please login again or contact your administrator.'
     : TOKEN_REVOKED_ERROR_MESSAGE
 }
 
 export function getOauthOrgNotAllowedErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'Your organization does not have access to Open CC. Please login again or contact your administrator.'
+    ? 'Your organization does not have access to OpenCC. Please login again or contact your administrator.'
     : OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
 }
 
 /**
- * Check if we're in CCR (Open CC Remote) mode.
+ * Check if we're in CCR (OpenCC Remote) mode.
  * In CCR mode, auth is handled via JWTs provided by the infrastructure,
  * not via /login. Transient auth errors should suggest retrying, not logging in.
  */
@@ -664,7 +664,7 @@ export function getAssistantMessageFromError(
       // If getRateLimitErrorMessage returned null, it means the fallback mechanism
       // will handle this silently (e.g., Opus -> Sonnet fallback for eligible users).
       // Return NO_RESPONSE_REQUESTED so no error is shown to the user, but the
-      // message is still recorded in conversation history for Open CC to see.
+      // message is still recorded in conversation history for OpenCC to see.
       return createAssistantAPIErrorMessage({
         content: NO_RESPONSE_REQUESTED,
         error: 'rate_limit',
@@ -883,12 +883,12 @@ export function getAssistantMessageFromError(
   ) {
     return createAssistantAPIErrorMessage({
       content:
-        'Open CC Opus is not available with the Open CC Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
+        'OpenCC Opus is not available with the OpenCC Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
       error: 'invalid_request',
     })
   }
 
-  // Check for invalid model name error for Ant users. Open CC may be
+  // Check for invalid model name error for Ant users. OpenCC may be
   // defaulting to a custom internal-only model for Ants, and there might be
   // Ants using new or unknown org IDs that haven't been gated in.
   if (
@@ -1338,8 +1338,8 @@ export function getErrorMessageIfRefusal(
       : "your provider's acceptable use policy"
 
   const baseMessage = getIsNonInteractiveSession()
-    ? `${API_ERROR_MESSAGE_PREFIX}: Open CC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Try rephrasing the request or attempting a different approach.`
-    : `${API_ERROR_MESSAGE_PREFIX}: Open CC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Please double press esc to edit your last message or start a new session for Open CC to assist with a different task.`
+    ? `${API_ERROR_MESSAGE_PREFIX}: OpenCC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Try rephrasing the request or attempting a different approach.`
+    : `${API_ERROR_MESSAGE_PREFIX}: OpenCC is unable to respond to this request, which appears to violate our Usage Policy (${usagePolicyUrl}). Please double press esc to edit your last message or start a new session for OpenCC to assist with a different task.`
 
   const defaultModel = getDefaultMainLoopModel()
   const modelSuggestion =

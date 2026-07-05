@@ -307,14 +307,14 @@ function getOpusPlanOption(): ModelOption {
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 
 function getModelOptionsBase(fastMode = false): ModelOption[] {
-  // When using Ollama, show models from the Ollama server instead of Open CC models
+  // When using Ollama, show models from the Ollama server instead of OpenCC models
   if (getAPIProvider() === 'openai' && isOllamaProvider()) {
     const defaultOption = getDefaultOptionForUser(fastMode)
     const ollamaModels = getCachedOllamaModelOptions()
     if (ollamaModels.length > 0) {
       return [defaultOption, ...ollamaModels]
     }
-    // Fallback: if models not yet fetched, show current model instead of Open CC models
+    // Fallback: if models not yet fetched, show current model instead of OpenCC models
     const currentModel = getUserSpecifiedModelSetting() ?? getInitialMainLoopModel()
     if (currentModel != null) {
       return [

@@ -168,7 +168,7 @@ export function sanitizeModelName(shortName: string): string {
 }
 
 /**
- * Attribution state for tracking Open CC's contributions to files.
+ * Attribution state for tracking OpenCC's contributions to files.
  */
 export type AttributionState = {
   // File states keyed by relative path (from cwd)
@@ -192,7 +192,7 @@ export type AttributionState = {
 }
 
 /**
- * Summary of Open CC's contribution for a commit.
+ * Summary of OpenCC's contribution for a commit.
  */
 export type AttributionSummary = {
   claudePercent: number
@@ -332,7 +332,7 @@ function computeFileModificationState(
   const normalizedPath = normalizeFilePath(filePath)
 
   try {
-    // Calculate Open CC's character contribution
+    // Calculate OpenCC's character contribution
     let claudeContribution: number
 
     if (oldContent === '' || newContent === '') {
@@ -396,7 +396,7 @@ export async function getFileMtime(filePath: string): Promise<number> {
 }
 
 /**
- * Track a file modification by Open CC.
+ * Track a file modification by OpenCC.
  * Called after Edit/Write tool completes.
  */
 export function trackFileModification(
@@ -433,8 +433,8 @@ export function trackFileModification(
 }
 
 /**
- * Track a file creation by Open CC (e.g., via bash command).
- * Used when Open CC creates a new file through a non-tracked mechanism.
+ * Track a file creation by OpenCC (e.g., via bash command).
+ * Used when OpenCC creates a new file through a non-tracked mechanism.
  */
 export function trackFileCreation(
   state: AttributionState,
@@ -447,8 +447,8 @@ export function trackFileCreation(
 }
 
 /**
- * Track a file deletion by Open CC (e.g., via bash rm command).
- * Used when Open CC deletes a file through a non-tracked mechanism.
+ * Track a file deletion by OpenCC (e.g., via bash rm command).
+ * Used when OpenCC deletes a file through a non-tracked mechanism.
  */
 export function trackFileDeletion(
   state: AttributionState,
@@ -637,7 +637,7 @@ export async function calculateCommitAttribution(
       if (deleted) {
         // File was deleted
         if (fileState) {
-          // Open CC deleted this file (tracked deletion)
+          // OpenCC deleted this file (tracked deletion)
           claudeChars = fileState.claudeContribution
           humanChars = 0
         } else {
@@ -662,7 +662,7 @@ export async function calculateCommitAttribution(
             const diffSize = await getGitDiffSize(file)
             humanChars = diffSize > 0 ? diffSize : stats.size
           } else {
-            // New file not created by Open CC
+            // New file not created by OpenCC
             humanChars = stats.size
           }
         } catch {

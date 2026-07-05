@@ -35,7 +35,7 @@ export async function sendNotification(
   })
 }
 
-const DEFAULT_TITLE = 'Open CC'
+const DEFAULT_TITLE = 'OpenCC'
 
 async function sendToChannel(
   channel: string,

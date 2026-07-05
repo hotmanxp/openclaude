@@ -242,7 +242,7 @@ export function getDefaultMainLoopModel(): ModelName {
  */
 export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   name = name.toLowerCase()
-  // Special cases for Open CC 4+ models to differentiate versions
+  // Special cases for OpenCC 4+ models to differentiate versions
   // Order matters: check more specific versions first (4-5 before 4)
   if (name.includes('claude-opus-4-6')) {
     return 'claude-opus-4-6'
@@ -268,7 +268,7 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   if (name.includes('claude-haiku-4-5')) {
     return 'claude-haiku-4-5'
   }
-  // Open CC 3.x models use a different naming scheme (claude-3-{family})
+  // OpenCC 3.x models use a different naming scheme (claude-3-{family})
   if (name.includes('claude-3-7-sonnet')) {
     return 'claude-3-7-sonnet'
   }
@@ -373,17 +373,17 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
-  // For OpenAI provider, show the actual model name not a Open CC alias
+  // For OpenAI provider, show the actual model name not a OpenCC alias
   if (getAPIProvider() === 'openai') {
     // Return display names for known models
     const modelNames: Record<string, string> = {
       'gpt-4o': 'GPT-4o',
       'gpt-4.1': 'GPT-4.1',
-      'claude-opus-4.6': 'Open CC Opus 4.6',
-      'claude-opus-4.5': 'Open CC Opus 4.5',
-      'claude-sonnet-4.6': 'Open CC Sonnet 4.6',
-      'claude-sonnet-4.5': 'Open CC Sonnet 4.5',
-      'claude-haiku-4.5': 'Open CC Haiku 4.5',
+      'claude-opus-4.6': 'OpenCC Opus 4.6',
+      'claude-opus-4.5': 'OpenCC Opus 4.5',
+      'claude-sonnet-4.6': 'OpenCC Sonnet 4.6',
+      'claude-sonnet-4.5': 'OpenCC Sonnet 4.5',
+      'claude-haiku-4.5': 'OpenCC Haiku 4.5',
       'grok-code-fast-1': 'Grok Code Fast 1',
     }
     if (modelNames[model]) {
@@ -462,18 +462,18 @@ export function renderModelName(model: ModelName): string {
 
 /**
  * Returns a safe author name for public display (e.g., in git commit trailers).
- * Returns "Open CC {ModelName}" for publicly known models, or "Open CC ({model})"
+ * Returns "OpenCC {ModelName}" for publicly known models, or "OpenCC ({model})"
  * for unknown/internal models so the exact model name is preserved.
  *
  * @param model The full model name
- * @returns "Open CC {ModelName}" for public models, or "Open CC ({model})" for non-public models
+ * @returns "OpenCC {ModelName}" for public models, or "OpenCC ({model})" for non-public models
  */
 export function getPublicModelName(model: ModelName): string {
   const publicName = getPublicModelDisplayName(model)
   if (publicName) {
-    return `Open CC ${publicName}`
+    return `OpenCC ${publicName}`
   }
-  return `Open CC (${model})`
+  return `OpenCC (${model})`
 }
 
 /**
@@ -580,7 +580,7 @@ export function parseUserSpecifiedModel(
   }
 
   // Opus 4/4.1 are no longer available on the first-party API (same as
-  // Open CC.ai) — silently remap to the current Opus default. The 'opus'
+  // OpenCC.ai) — silently remap to the current Opus default. The 'opus'
   // alias already resolves to 4.6, so the only users on these explicit
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
@@ -711,16 +711,16 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
     return has1m ? 'Sonnet 4 (with 1M context)' : 'Sonnet 4'
   }
   if (canonical.includes('claude-3-7-sonnet')) {
-    return 'Open CC 3.7 Sonnet'
+    return 'OpenCC 3.7 Sonnet'
   }
   if (canonical.includes('claude-3-5-sonnet')) {
-    return 'Open CC 3.5 Sonnet'
+    return 'OpenCC 3.5 Sonnet'
   }
   if (canonical.includes('claude-haiku-4-5')) {
     return 'Haiku 4.5'
   }
   if (canonical.includes('claude-3-5-haiku')) {
-    return 'Open CC 3.5 Haiku'
+    return 'OpenCC 3.5 Haiku'
   }
 
   return undefined

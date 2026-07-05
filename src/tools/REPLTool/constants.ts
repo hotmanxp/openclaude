@@ -23,8 +23,8 @@ export function isReplModeEnabled(): boolean {
 
 /**
  * Tools that are only accessible via REPL when REPL mode is enabled.
- * When REPL mode is on, these tools are hidden from Open CC's direct use,
- * forcing Open CC to use REPL for batch operations.
+ * When REPL mode is on, these tools are hidden from OpenCC's direct use,
+ * forcing OpenCC to use REPL for batch operations.
  */
 export const REPL_ONLY_TOOLS = new Set([
   'Read',

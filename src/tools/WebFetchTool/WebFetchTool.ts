@@ -89,9 +89,9 @@ export const WebFetchTool = buildTool({
     const { url } = input as { url: string }
     try {
       const hostname = new URL(url).hostname
-      return `Open CC wants to fetch content from ${hostname}`
+      return `OpenCC wants to fetch content from ${hostname}`
     } catch {
-      return `Open CC wants to fetch content from this URL`
+      return `OpenCC wants to fetch content from this URL`
     }
   },
   userFacingName() {
@@ -170,7 +170,7 @@ export const WebFetchTool = buildTool({
     if (askRule) {
       return {
         behavior: 'ask',
-        message: `Open CC requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
+        message: `OpenCC requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
         decisionReason: {
           type: 'rule',
           rule: askRule,
@@ -197,7 +197,7 @@ export const WebFetchTool = buildTool({
 
     return {
       behavior: 'ask',
-      message: `Open CC requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
+      message: `OpenCC requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
       suggestions: buildSuggestions(ruleContent),
     }
   },
@@ -322,7 +322,7 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
     }
 
     // Binary content (PDFs, etc.) was additionally saved to disk with a
-    // mime-derived extension. Note it so Open CC can inspect the raw file
+    // mime-derived extension. Note it so OpenCC can inspect the raw file
     // if the Haiku summary above isn't enough.
     if (persistedPath) {
       result += `\n\n[Binary content (${contentType}, ${formatFileSize(persistedSize ?? bytes)}) also saved to ${persistedPath}]`

@@ -177,7 +177,7 @@ function getIntensity(
   return 1
 }
 
-// Open CC orange color (hex #da7756)
+// OpenCC orange color (hex #da7756)
 const claudeOrange = chalk.hex('#da7756')
 
 function getHeatmapChar(intensity: number): string {

@@ -9,9 +9,9 @@ import { registerPendingLSPDiagnostic } from './LSPDiagnosticRegistry.js'
 import type { LSPServerManager } from './LSPServerManager.js'
 
 /**
- * Map LSP severity to Open CC diagnostic severity
+ * Map LSP severity to OpenCC diagnostic severity
  *
- * Maps LSP severity numbers to Open CC diagnostic severity strings.
+ * Maps LSP severity numbers to OpenCC diagnostic severity strings.
  * Accepts numeric severity values (1=Error, 2=Warning, 3=Information, 4=Hint)
  * or undefined, defaulting to 'Error' for invalid/missing values.
  */
@@ -35,10 +35,10 @@ function mapLSPSeverity(
 }
 
 /**
- * Convert LSP diagnostics to Open CC diagnostic format
+ * Convert LSP diagnostics to OpenCC diagnostic format
  *
  * Converts LSP PublishDiagnosticsParams to DiagnosticFile[] format
- * used by Open CC's attachment system.
+ * used by OpenCC's attachment system.
  */
 export function formatDiagnosticsForAttachment(
   params: PublishDiagnosticsParams,
@@ -117,7 +117,7 @@ export type HandlerRegistrationResult = {
  * Register LSP notification handlers on all servers
  *
  * Sets up handlers to listen for textDocument/publishDiagnostics notifications
- * from all LSP servers and routes them to Open CC's diagnostic system.
+ * from all LSP servers and routes them to OpenCC's diagnostic system.
  * Uses public getAllServers() API for clean access to server instances.
  *
  * @returns Tracking data for registration status and runtime failures
@@ -181,7 +181,7 @@ export function registerLSPNotificationHandlers(
 
             const diagnosticParams = params as PublishDiagnosticsParams
 
-            // Convert LSP diagnostics to Open CC format (can throw on invalid URIs)
+            // Convert LSP diagnostics to OpenCC format (can throw on invalid URIs)
             const diagnosticFiles =
               formatDiagnosticsForAttachment(diagnosticParams)
 

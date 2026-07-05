@@ -356,7 +356,7 @@ export async function detectAvailableBrowser(): Promise<ChromiumBrowser | null> 
           const stats = await stat(appPath)
           if (stats.isDirectory()) {
             logForDebugging(
-              `[Open CC in Chrome] Detected browser: ${config.name}`,
+              `[OpenCC in Chrome] Detected browser: ${config.name}`,
             )
             return browserId
           }
@@ -372,7 +372,7 @@ export async function detectAvailableBrowser(): Promise<ChromiumBrowser | null> 
         for (const binary of config.linux.binaries) {
           if (await which(binary).catch(() => null)) {
             logForDebugging(
-              `[Open CC in Chrome] Detected browser: ${config.name}`,
+              `[OpenCC in Chrome] Detected browser: ${config.name}`,
             )
             return browserId
           }
@@ -391,7 +391,7 @@ export async function detectAvailableBrowser(): Promise<ChromiumBrowser | null> 
             const stats = await stat(dataPath)
             if (stats.isDirectory()) {
               logForDebugging(
-                `[Open CC in Chrome] Detected browser: ${config.name}`,
+                `[OpenCC in Chrome] Detected browser: ${config.name}`,
               )
               return browserId
             }
@@ -433,7 +433,7 @@ export async function openInChrome(url: string): Promise<boolean> {
   const browser = await detectAvailableBrowser()
 
   if (!browser) {
-    logForDebugging('[Open CC in Chrome] No compatible browser found')
+    logForDebugging('[OpenCC in Chrome] No compatible browser found')
     return false
   }
 
@@ -527,7 +527,7 @@ export function getAllSocketPaths(): string[] {
 }
 
 function getSocketName(): string {
-  // NOTE: This must match the one used in the Open CC in Chrome MCP
+  // NOTE: This must match the one used in the OpenCC in Chrome MCP
   return `claude-mcp-browser-bridge-${getUsername()}`
 }
 

@@ -222,17 +222,17 @@ export type FileHistorySnapshotMessage = {
 }
 
 /**
- * Per-file attribution state tracking Open CC's character contributions.
+ * Per-file attribution state tracking OpenCC's character contributions.
  */
 export type FileAttributionState = {
   contentHash: string // SHA-256 hash of file content
-  claudeContribution: number // Characters written by Open CC
+  claudeContribution: number // Characters written by OpenCC
   mtime: number // File modification time
 }
 
 /**
  * Attribution snapshot message stored in session transcript.
- * Tracks character-level contributions by Open CC for commit attribution.
+ * Tracks character-level contributions by OpenCC for commit attribution.
  */
 export type AttributionSnapshotMessage = {
   type: 'attribution-snapshot'

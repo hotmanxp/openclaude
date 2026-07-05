@@ -232,7 +232,7 @@ export function isRunningOnHomespace(): boolean {
 }
 
 /**
- * Conservative check for whether Open CC is running inside a protected
+ * Conservative check for whether OpenCC is running inside a protected
  * (privileged or ASL3+) COO namespace or cluster.
  *
  * Conservative means: when signals are ambiguous, assume protected. We would
@@ -293,14 +293,14 @@ export function getVertexRegionForModel(
 }
 
 // ---------------------------------------------------------------------------
-// Open CC Dynamic Workflows — env var helpers
+// OpenCC Dynamic Workflows — env var helpers
 // ---------------------------------------------------------------------------
 // Runtime knobs for the WorkflowTool. Mirrored in settings.workflows.* so
 // users can pin them in .claude/settings.json instead of exporting env vars.
 // Either source opts in (truthy env var OR settings.workflows.enabled === true).
 
 /**
- * Whether Open CC dynamic workflows are disabled.
+ * Whether OpenCC dynamic workflows are disabled.
  *
  * Workflows default to DISABLED — users opt in explicitly via either:
  * - OPENCC_ENABLE_WORKFLOWS is a truthy env var (1/true/yes/on)

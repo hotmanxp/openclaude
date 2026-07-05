@@ -65,7 +65,7 @@ export const PermissionsSchema = lazySchema(() =>
             : EXTERNAL_PERMISSION_MODES,
         )
         .optional()
-        .describe('Default permission mode when Open CC needs access'),
+        .describe('Default permission mode when OpenCC needs access'),
       disableBypassPermissionsMode: z
         .enum(['disable'])
         .optional()
@@ -260,7 +260,7 @@ export const SettingsSchema = lazySchema(() =>
       $schema: z
         .literal(CLAUDE_CODE_SETTINGS_SCHEMA_URL)
         .optional()
-        .describe('JSON Schema reference for Open CC settings'),
+        .describe('JSON Schema reference for OpenCC settings'),
       apiKeyHelper: z
         .string()
         .optional()
@@ -293,7 +293,7 @@ export const SettingsSchema = lazySchema(() =>
                   .describe('IdP issuer URL for OIDC discovery'),
                 clientId: z
                   .string()
-                  .describe("Open CC's client_id registered at the IdP"),
+                  .describe("OpenCC's client_id registered at the IdP"),
                 callbackPort: z
                   .number()
                   .int()
@@ -334,7 +334,7 @@ export const SettingsSchema = lazySchema(() =>
         ),
       env: EnvironmentVariablesSchema()
         .optional()
-        .describe('Environment variables to set for Open CC sessions'),
+        .describe('Environment variables to set for OpenCC sessions'),
       // Attribution for commits and PRs
       attribution: z
         .object({
@@ -363,13 +363,13 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Deprecated: Use attribution instead. ' +
-            "Whether to include Open CC's co-authored by attribution in commits and PRs (defaults to false)",
+            "Whether to include OpenCC's co-authored by attribution in commits and PRs (defaults to false)",
         ),
       includeGitInstructions: z
         .boolean()
         .optional()
         .describe(
-          "Include built-in commit and PR workflow instructions in Open CC's system prompt (default: true)",
+          "Include built-in commit and PR workflow instructions in OpenCC's system prompt (default: true)",
         ),
       permissions: PermissionsSchema()
         .optional()
@@ -377,7 +377,7 @@ export const SettingsSchema = lazySchema(() =>
       model: z
         .string()
         .optional()
-        .describe('Override the default model used by Open CC'),
+        .describe('Override the default model used by OpenCC'),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -457,7 +457,7 @@ export const SettingsSchema = lazySchema(() =>
             .boolean()
             .optional()
             .describe(
-              'Enable Open CC dynamic workflows. Equivalent to OPENCC_ENABLE_WORKFLOWS=1. ' +
+              'Enable OpenCC dynamic workflows. Equivalent to OPENCC_ENABLE_WORKFLOWS=1. ' +
                 'Default: false (workflows are opt-in).',
             ),
           keyword: z
@@ -495,7 +495,7 @@ export const SettingsSchema = lazySchema(() =>
             .describe('Permission overrides that apply only inside workflow execution'),
         })
         .optional()
-        .describe('Open CC Dynamic Workflows configuration (opt-in)'),
+        .describe('OpenCC Dynamic Workflows configuration (opt-in)'),
       worktree: z
         .object({
           symlinkDirectories: z
@@ -681,12 +681,12 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for Open CC Pro/Max, 'console' for Console billing
+      // Force a specific login method: 'claudeai' for OpenCC Pro/Max, 'console' for Console billing
       forceLoginMethod: z
         .enum(['claudeai', 'console'])
         .optional()
         .describe(
-          'Force a specific login method: "claudeai" for Open CC Pro/Max, "console" for Console billing',
+          'Force a specific login method: "claudeai" for OpenCC Pro/Max, "console" for Console billing',
         ),
       // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
       forceLoginOrgUUID: z
@@ -705,7 +705,7 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Preferred language for Open CC responses and voice dictation (e.g., "japanese", "spanish")',
+          'Preferred language for OpenCC responses and voice dictation (e.g., "japanese", "spanish")',
         ),
       skipWebFetchPreflight: z
         .boolean()
@@ -1011,7 +1011,7 @@ export const SettingsSchema = lazySchema(() =>
               .boolean()
               .optional()
               .describe(
-                'Start Open CC in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
+                'Start OpenCC in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
               ),
             assistantName: z
               .string()

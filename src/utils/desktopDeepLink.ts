@@ -28,7 +28,7 @@ function isDevMode(): boolean {
 }
 
 /**
- * Builds a deep link URL for Open CC Desktop to resume a CLI session.
+ * Builds a deep link URL for OpenCC Desktop to resume a CLI session.
  * Format: claude://resume?session={sessionId}&cwd={cwd}
  * In dev mode: claude-dev://resume?session={sessionId}&cwd={cwd}
  */
@@ -41,8 +41,8 @@ function buildDesktopDeepLink(sessionId: string): string {
 }
 
 /**
- * Check if Open CC Desktop app is installed.
- * On macOS, checks for /Applications/Open CC.app.
+ * Check if OpenCC Desktop app is installed.
+ * On macOS, checks for /Applications/OpenCC.app.
  * On Linux, checks if xdg-open can handle claude:// protocol.
  * On Windows, checks if the protocol handler exists.
  * In dev mode, always returns true (assumes dev Desktop is running).
@@ -56,8 +56,8 @@ async function isDesktopInstalled(): Promise<boolean> {
   const platform = process.platform
 
   if (platform === 'darwin') {
-    // Check for Open CC.app in /Applications
-    return pathExists('/Applications/Open CC.app')
+    // Check for OpenCC.app in /Applications
+    return pathExists('/Applications/OpenCC.app')
   } else if (platform === 'linux') {
     // Check if xdg-mime can find a handler for claude://
     // Note: xdg-mime returns exit code 0 even with no handler, so check stdout too
@@ -81,7 +81,7 @@ async function isDesktopInstalled(): Promise<boolean> {
 }
 
 /**
- * Detect the installed Open CC Desktop version.
+ * Detect the installed OpenCC Desktop version.
  * On macOS, reads CFBundleShortVersionString from the app plist.
  * On Windows, finds the highest app-X.Y.Z directory in the Squirrel install.
  * Returns null if version cannot be determined.
@@ -92,7 +92,7 @@ async function getDesktopVersion(): Promise<string | null> {
   if (platform === 'darwin') {
     const { code, stdout } = await execFileNoThrow('defaults', [
       'read',
-      '/Applications/Open CC.app/Contents/Info.plist',
+      '/Applications/OpenCC.app/Contents/Info.plist',
       'CFBundleShortVersionString',
     ])
     if (code !== 0) {
@@ -203,7 +203,7 @@ async function openDeepLink(deepLinkUrl: string): Promise<boolean> {
 }
 
 /**
- * Build and open a deep link to resume the current session in Open CC Desktop.
+ * Build and open a deep link to resume the current session in OpenCC Desktop.
  * Returns an object with success status and any error message.
  */
 export async function openCurrentSessionInDesktop(): Promise<{
@@ -219,7 +219,7 @@ export async function openCurrentSessionInDesktop(): Promise<{
     return {
       success: false,
       error:
-        'Open CC Desktop is not installed. Install it from https://claude.ai/download',
+        'OpenCC Desktop is not installed. Install it from https://claude.ai/download',
     }
   }
 

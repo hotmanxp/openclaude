@@ -6,7 +6,7 @@ export const PRODUCT_DISPLAY_NAME = 'OpenCC'
 
 export const PRODUCT_URL = 'https://claude.com/claude-code'
 
-// Open CC Remote session URLs
+// OpenCC Remote session URLs
 export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
 export const CLAUDE_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
 export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
@@ -97,7 +97,7 @@ export function isRemoteSessionLocal(
 }
 
 /**
- * Get the base URL for Open CC AI based on environment.
+ * Get the base URL for OpenCC AI based on environment.
  */
 export function getClaudeAiBaseUrl(
   sessionId?: string,

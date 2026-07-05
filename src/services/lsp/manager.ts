@@ -15,7 +15,7 @@ type InitializationState = 'not-started' | 'pending' | 'success' | 'failed'
 
 /**
  * Global singleton instance of the LSP server manager.
- * Initialized during Open CC startup.
+ * Initialized during OpenCC startup.
  */
 let lspManagerInstance: LSPServerManager | undefined
 
@@ -57,7 +57,7 @@ export function _resetLspManagerForTesting(): void {
  * Returns undefined if not yet initialized, initialization failed, or still pending.
  *
  * Callers should check for undefined and handle gracefully, as initialization happens
- * asynchronously during Open CC startup. Use getInitializationStatus() to
+ * asynchronously during OpenCC startup. Use getInitializationStatus() to
  * distinguish between pending, failed, and not-started states.
  */
 export function getLspServerManager(): LSPServerManager | undefined {
@@ -136,7 +136,7 @@ export async function waitForInitialization(): Promise<void> {
 /**
  * Initialize the LSP server manager singleton.
  *
- * This function is called during Open CC startup. It synchronously creates
+ * This function is called during OpenCC startup. It synchronously creates
  * the manager instance, then starts async initialization (loading LSP configs)
  * in the background without blocking the startup process.
  *
@@ -256,7 +256,7 @@ export function reinitializeLspServerManager(): void {
 /**
  * Shutdown the LSP server manager and clean up resources.
  *
- * This should be called during Open CC shutdown. Stops all running LSP servers
+ * This should be called during OpenCC shutdown. Stops all running LSP servers
  * and clears internal state. Safe to call when not initialized (no-op).
  *
  * NOTE: Errors during shutdown are logged for monitoring but NOT propagated to the caller.

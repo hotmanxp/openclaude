@@ -4,7 +4,7 @@
  */
 
 /**
- * A session ID uniquely identifies a Open CC session.
+ * A session ID uniquely identifies a OpenCC session.
  * Returned by getSessionId().
  */
 export type SessionId = string & { readonly __brand: 'SessionId' }

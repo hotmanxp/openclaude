@@ -59,7 +59,7 @@ const permissionSetupModule = true
 
 /**
  * Schema for prompt-based permission requests.
- * Used by Open CC to request semantic permissions when exiting plan mode.
+ * Used by OpenCC to request semantic permissions when exiting plan mode.
  */
 const allowedPromptSchema = lazySchema(() =>
   z.object({
