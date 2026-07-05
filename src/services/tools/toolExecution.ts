@@ -22,8 +22,11 @@ import {
 import {
   addToToolDuration,
   getCodeEditToolDecisionCounter,
+  getReplayIndexBuilder,
   getStatsStore,
 } from '../../bootstrap/state.js'
+import type { QueryActiveToolUse } from '../../utils/queryLifecycle.js'
+import { shouldSkipSessionPersistence } from '../../utils/sessionPersistencePolicy.js'
 import {
   buildCodeEditToolAttributes,
   isCodeEditingTool,
@@ -71,6 +74,7 @@ import {
   AbortError,
   errorMessage,
   getErrnoCode,
+  isAbortError,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
@@ -755,7 +759,7 @@ export function normalizeToolInputForValidation(
   }
 }
 
-async function checkPermissionsAndCallTool(
+export async function checkPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
   input: { [key: string]: boolean | string | number },
@@ -844,6 +848,33 @@ async function checkPermissionsAndCallTool(
     ]
   }
 
+  // Lifecycle tracking — register this tool use with the queryLifecycle
+  // tracker so abort/cancel/discard can find and end it. Schema validation
+  // has already passed at this point, so we know it's a real tool use.
+  const lifecycleStartTime = Date.now()
+  const queryLifecycle = toolUseContext.queryLifecycle
+  if (queryLifecycle) {
+    const lifecycleBashTimeoutMs =
+      tool.name === BASH_TOOL_NAME &&
+      parsedInput.success &&
+      typeof parsedInput.data === 'object' &&
+      parsedInput.data !== null &&
+      'timeout' in parsedInput.data
+        ? (parsedInput.data as { timeout?: number }).timeout
+        : undefined
+    const lifecycleToolUse: QueryActiveToolUse = {
+      toolUseId: toolUseID,
+      toolName: tool.name,
+      startedAt: lifecycleStartTime,
+      ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+      ...(lifecycleBashTimeoutMs !== undefined && {
+        timeoutMs: lifecycleBashTimeoutMs,
+      }),
+    }
+    queryLifecycle.startToolUse(lifecycleToolUse)
+  }
+
+  try {
   // Validate input values. Each tool has its own validation logic
   const isValidCall = await tool.validateInput?.(
     parsedInput.data,
@@ -1163,6 +1194,28 @@ async function checkPermissionsAndCallTool(
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
 
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        const replayBuilder = getReplayIndexBuilder()
+        replayBuilder.trackToolStart(
+          toolUseID,
+          tool.name,
+          (parsedInput.success ? parsedInput.data : input) as Record<
+            string,
+            unknown
+          >,
+        )
+        replayBuilder.trackToolEnd(
+          toolUseID,
+          tool.name,
+          'permission_denied',
+          permissionDecision.message,
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
+
     logEvent('tengu_tool_use_can_use_tool_rejected', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1377,6 +1430,17 @@ async function checkPermissionsAndCallTool(
   } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
+  if (!shouldSkipSessionPersistence()) {
+    try {
+      getReplayIndexBuilder().trackToolStart(
+        toolUseID,
+        tool.name,
+        callInput as Record<string, unknown>,
+      )
+    } catch {
+      // Ignore errors in replay tracking
+    }
+  }
   try {
     const result = await tool.call(
       callInput,
@@ -1400,6 +1464,8 @@ async function checkPermissionsAndCallTool(
     )
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+    const replayResultPreview =
+      typeof result.data === 'string' ? result.data.slice(0, 200) : undefined
 
     // Log tool content/output as span event if enabled
     if (result.data && typeof result.data === 'object') {
@@ -1763,10 +1829,37 @@ async function checkPermissionsAndCallTool(
     for (const hookResult of hookResults) {
       resultingMessages.push(hookResult)
     }
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        getReplayIndexBuilder().trackToolEnd(
+          toolUseID,
+          tool.name,
+          'success',
+          replayResultPreview,
+          getReplayModifiedFiles(tool.name, callInput),
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
     return resultingMessages
   } catch (error) {
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        const errorMsg = errorMessage(error)
+        getReplayIndexBuilder().trackToolEnd(
+          toolUseID,
+          tool.name,
+          getReplayResultStatusForError(error),
+          errorMsg.slice(0, 200),
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
 
     endToolExecutionSpan({
       success: false,
@@ -1934,5 +2027,8 @@ async function checkPermissionsAndCallTool(
         toolUseContext.toolDecisions?.delete(toolUseID)
       }
     }
+  }
+  } finally {
+    queryLifecycle?.endToolUse(toolUseID)
   }
 }

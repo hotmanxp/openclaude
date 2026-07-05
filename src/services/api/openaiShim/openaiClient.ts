@@ -24,6 +24,10 @@ import { APIError } from '@anthropic-ai/sdk'
 import { logForDebugging } from '../../../utils/debug.js'
 import { isEnvTruthy } from '../../../utils/envUtils.js'
 import {
+  normalizeZaiReasoningEffort,
+  supportsZaiReasoningEffort,
+} from '../../../utils/effort.js'
+import {
   createThinkTagFilter,
   stripThinkTags,
 } from '../thinkTagSanitizer.js'
@@ -983,10 +987,22 @@ class OpenAIShimMessages {
      // request carries a reasoning effort (set via /effort, model alias default,
      // or `?reasoning=<level>` query on the model string). OpenAI, Codex, and
      // most OpenAI-compatible endpoints read it from this top-level field.
+     //
+     // For Z.AI-hosted GLM-5.2 (and the opencc brand alias `zhiniao-glm-5.1`
+     // which routes to the same underlying model), the wire vocabulary is
+     // restricted to `high` / `max`; collapse user-selected levels via
+     // normalizeZaiReasoningEffort so `low` / `medium` / `high` all become
+     // `high` and `xhigh` / `max` / `ultracode` all become `max`.
      //@ts-ignore
     if (request.reasoning) {
       //@ts-ignore
-      body.reasoning_effort = request?.reasoning?.effort
+      const resolvedModelForEffort = request.resolvedModel ?? params.model
+      //@ts-ignore
+      body.reasoning_effort = supportsZaiReasoningEffort(resolvedModelForEffort)
+        //@ts-ignore
+        ? normalizeZaiReasoningEffort(request.reasoning.effort)
+        //@ts-ignore
+        : request.reasoning.effort
     }
     // Convert max_tokens to max_completion_tokens for OpenAI API compatibility.
     // Azure OpenAI requires max_completion_tokens and does not accept max_tokens.

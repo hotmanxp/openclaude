@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import { z } from 'zod/v4'
 
@@ -26,8 +26,12 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.
 import { AbortError } from '../../utils/errors.js'
 import { CANCEL_MESSAGE, createAssistantMessage } from '../../utils/messages.js'
 import {
+  checkPermissionsAndCallTool,
+  getReplayModifiedFiles,
+  getReplayResultStatusForError,
   getSchemaValidationErrorOverride,
   getSchemaValidationToolUseResult,
+  normalizeReplayToolInput,
   normalizeToolInputForValidation,
   runToolUse,
   type MessageUpdateLazy,
