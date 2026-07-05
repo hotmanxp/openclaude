@@ -1719,8 +1719,39 @@ export const getProjectPathForConfig = memoize((): string => {
   return normalizePathForConfigKey(resolve(originalCwd))
 })
 
+/**
+ * Coerce non-array values on declared `?: T[]` fields back to `[]` so the
+ * rest of the codebase can safely do `[...arr]` / `arr.includes(...)`.
+ * Returns true if any field was repaired.
+ *
+ * Background: a .claude.json written by a third party may set
+ * `disabledMcpServers` / `enabledMcpServers` to an object, string, or any
+ * non-array value. v2.1.200 upstream fixed the resulting "xxx is not
+ * iterable" / "includes is not a function" startup crash by coercing these
+ * to [] and writing the cleaned value back to disk.
+ */
+function repairArrayFields(projectConfig: ProjectConfig): boolean {
+  const arrayFields: Array<keyof ProjectConfig> = [
+    'disabledMcpServers',
+    'enabledMcpServers',
+  ]
+  let mutated = false
+  for (const field of arrayFields) {
+    const value = projectConfig[field]
+    if (value !== undefined && !Array.isArray(value)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(projectConfig as any)[field] = []
+      mutated = true
+    }
+  }
+  return mutated
+}
+
 export function getCurrentProjectConfig(): ProjectConfig {
   if (process.env.NODE_ENV === 'test') {
+    if (repairArrayFields(TEST_PROJECT_CONFIG_FOR_TESTING)) {
+      saveCurrentProjectConfig(current => current)
+    }
     return TEST_PROJECT_CONFIG_FOR_TESTING
   }
 
@@ -1737,6 +1768,10 @@ export function getCurrentProjectConfig(): ProjectConfig {
   if (typeof projectConfig.allowedTools === 'string') {
     projectConfig.allowedTools =
       (safeParseJSON(projectConfig.allowedTools) as string[]) ?? []
+  }
+
+  if (repairArrayFields(projectConfig)) {
+    saveCurrentProjectConfig(current => projectConfig)
   }
 
   return projectConfig
