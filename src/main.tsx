@@ -197,6 +197,7 @@ import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/prompt
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
+import { createAppStateStore } from './state/createAppStateStore.js';
 import { asSessionId } from './types/ids.js';
 import { filterAllowedSdkBetas } from './utils/betas.js';
 import { isInBundledMode, isRunningWithBun } from './utils/bundledMode.js';
@@ -2712,7 +2713,17 @@ async function run(): Promise<CommanderCommand> {
       };
 
       // Init app state
-      const headlessStore = createStore(headlessInitialState, onChangeAppState);
+      const headlessStore = createAppStateStore(
+        headlessInitialState,
+        onChangeAppState,
+        // Cascade-undefined-defence — same rationale as in AppState.tsx:
+        // a partial setAppState must not crash the headless print loop.
+        repairedKeys => {
+          logForDebugging(
+            `headless setAppState produced an AppState missing top-level keys [${repairedKeys.join(', ')}]; repaired from default shape.`,
+          )
+        },
+      );
 
       // Check if bypassPermissions should be disabled based on Statsig gate
       // This runs in parallel to the code below, to avoid blocking the main loop.
