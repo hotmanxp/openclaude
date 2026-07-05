@@ -360,7 +360,15 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
           isAlreadyProcessing,
           canUseTool,
           uuid,
-        ),
+        ).then((R) => ({
+          messages: R.messages,
+          allowedTools: R.allowedTools,
+          disallowedTools: R.disallowedTools,
+          // Pass shouldQuery through so stacked skills still trigger the
+          // main model loop when appropriate (e.g., last stacked skill
+          // loads prompt context but the trailing args should query).
+          shouldQuery: R.shouldQuery,
+        })),
       emitWarning: (msg) => logForDebugging(msg),
       logForDebugging,
     });
@@ -882,6 +890,10 @@ async function processStackedSkillInvocation(
       T.messages.push(...R.messages);
       T.allowedTools = [...(T.allowedTools ?? []), ...(R.allowedTools ?? [])];
       T.disallowedTools = [...(T.disallowedTools ?? []), ...(R.disallowedTools ?? [])];
+      // NEW 2026-07-05: OR-accumulate shouldQuery. Without this, stacked
+      // skills produce messages but never query the model — the trailing
+      // user args is silently dropped.
+      if (R.shouldQuery) T.shouldQuery = true;
     } catch (A) {
       deps.logForDebugging(
         `stacked slash command expansion threw for /${cmd.name}: ${String(A)}`,
