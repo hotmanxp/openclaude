@@ -27,6 +27,12 @@ import { createSignal } from 'src/utils/signal.js'
 type RegisteredHookMatcher = HookCallbackMatcher | PluginHookMatcher
 
 import type { SessionId } from 'src/types/ids.js'
+import { ReplayIndexBuilder } from '../utils/replayIndexBuilder.js'
+
+type ReplayIndexBuilderEntry = {
+  builder: ReplayIndexBuilder
+  projectDir: string | null
+}
 
 // DO NOT ADD MORE STATE HERE - BE JUDICIOUS WITH GLOBAL STATE
 
@@ -97,6 +103,7 @@ type State = {
   codeEditToolDecisionCounter: AttributedCounter | null
   activeTimeCounter: AttributedCounter | null
   statsStore: { observe(name: string, value: number): void } | null
+  replayIndexBuilders: Map<SessionId, ReplayIndexBuilderEntry>
   sessionId: SessionId
   // Parent session ID for tracking session lineage (e.g., plan mode -> implementation)
   parentSessionId: SessionId | undefined
@@ -328,6 +335,7 @@ function getInitialState(): State {
     codeEditToolDecisionCounter: null,
     activeTimeCounter: null,
     statsStore: null,
+    replayIndexBuilders: new Map(),
     sessionId: randomUUID() as SessionId,
     parentSessionId: undefined,
     // Logger state
@@ -716,6 +724,58 @@ export function getStatsStore(): {
   observe(name: string, value: number): void
 } | null {
   return STATE.statsStore
+}
+
+// Replay index builder management
+
+/**
+ * Get the replay index builder for the current session.
+ * Creates a new one if none exists.
+ */
+export function getReplayIndexBuilder(): ReplayIndexBuilder {
+  const sessionId = getSessionId()
+  let entry = STATE.replayIndexBuilders.get(sessionId)
+  if (!entry) {
+    entry = {
+      builder: new ReplayIndexBuilder(),
+      projectDir: getSessionProjectDir(),
+    }
+    STATE.replayIndexBuilders.set(sessionId, entry)
+  }
+  return entry.builder
+}
+
+/**
+ * Reset and return the replay index builder.
+ * Used during session cleanup to get the final index.
+ */
+export function resetReplayIndexBuilder(
+  sessionId: SessionId = getSessionId(),
+): ReplayIndexBuilderEntry | null {
+  const entry = STATE.replayIndexBuilders.get(sessionId) ?? null
+  STATE.replayIndexBuilders.delete(sessionId)
+  return entry
+}
+
+/**
+ * Reset and return all replay index builders.
+ * Used during process cleanup so sessions switched in-process do not mix.
+ */
+export function resetAllReplayIndexBuilders(): Array<{
+  sessionId: SessionId
+  builder: ReplayIndexBuilder
+  projectDir: string | null
+}> {
+  const entries = Array.from(
+    STATE.replayIndexBuilders,
+    ([sessionId, entry]) => ({
+      sessionId,
+      builder: entry.builder,
+      projectDir: entry.projectDir,
+    }),
+  )
+  STATE.replayIndexBuilders.clear()
+  return entries
 }
 
 export function setStatsStore(
