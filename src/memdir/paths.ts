@@ -13,8 +13,8 @@ import {
 } from '../utils/envUtils.js'
 import { findCanonicalGitRoot } from '../utils/git.js'
 import { sanitizePath } from '../utils/path.js'
+import { getEnabledSettingSources } from '../utils/settings/constants.js'
 import {
-  getInitialSettings,
   getSettingsForSource,
 } from '../utils/settings/settings.js'
 
@@ -24,7 +24,10 @@ import {
  *   1. CLAUDE_CODE_DISABLE_AUTO_MEMORY env var (1/true → OFF, 0/false → ON)
  *   2. CLAUDE_CODE_SIMPLE (--bare) → OFF
  *   3. CCR without persistent storage → OFF (no CLAUDE_CODE_REMOTE_MEMORY_DIR)
- *   4. autoMemoryEnabled in settings.json (supports project-level opt-out)
+ *   4. Per-source settings (low-to-high priority): `autoMemoryEnabled` (legacy)
+ *      OR `memory.autoWrite` (#1326 alias). Either key opts out; an explicit
+ *      `false` at ANY priority survives source-precedence merging so a
+ *      parent-scope opt-out cannot be silently re-enabled by a narrower scope.
  *   5. Default: enabled
  */
 export function isAutoMemoryEnabled(): boolean {
@@ -47,11 +50,25 @@ export function isAutoMemoryEnabled(): boolean {
   ) {
     return false
   }
-  const settings = getInitialSettings()
-  if (settings.autoMemoryEnabled !== undefined) {
-    return settings.autoMemoryEnabled
+  // Iterate raw per-source settings (low-to-high priority). A `false` in ANY
+  // source wins as an explicit opt-out — merging first would collapse same-key
+  // values and let a higher-priority `true` silently re-enable auto-memory.
+  // Default is ON; if any source explicitly opts in via either key we treat
+  // it as affirmative, and an explicit `false` anywhere always wins.
+  let sawExplicit = false
+  for (const source of getEnabledSettingSources()) {
+    const settings = getSettingsForSource(source)
+    const legacy = settings?.autoMemoryEnabled
+    const alias = settings?.memory?.autoWrite
+    if (legacy === false || alias === false) {
+      return false
+    }
+    if (legacy === true || alias === true) {
+      sawExplicit = true
+    }
   }
-  return true
+  // No `false` encountered. Default is enabled; any explicit `true` is fine.
+  return sawExplicit || true
 }
 
 /**

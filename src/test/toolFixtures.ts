@@ -13,6 +13,7 @@ export interface ToolFixtureOverrides<I extends z.ZodTypeAny> {
   isReadOnly?: () => boolean
   isConcurrencySafe?: () => boolean
   isEnabled?: () => boolean
+  getPath?: (input: z.infer<I>) => string
 }
 
 export function createToolFixture<I extends z.ZodTypeAny>(
@@ -42,5 +43,6 @@ export function createToolFixture<I extends z.ZodTypeAny>(
     renderToolResultMessage: () => null,
     getToolPermissionContext: () => getEmptyToolPermissionContext(),
     toAPISchema: () => ({ name, description: '', input_schema: { type: 'object', properties: {} } }),
+    ...(overrides.getPath ? { getPath: overrides.getPath } : {}),
   } as unknown as Tool<AnyObject, unknown>
 }

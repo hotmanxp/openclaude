@@ -1,6 +1,9 @@
 // Brand name
 export const BRAND_NAME = 'OpenCC'
 
+// Display name shown in user-facing permission messages
+export const PRODUCT_DISPLAY_NAME = 'OpenCC'
+
 export const PRODUCT_URL = 'https://claude.com/claude-code'
 
 // Open CC Remote session URLs

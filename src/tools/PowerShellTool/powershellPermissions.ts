@@ -4,6 +4,7 @@
  */
 
 import { resolve } from 'path'
+import { getOriginalCwd } from '../../bootstrap/state.js'
 import type { ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import type {
   PermissionDecisionReason,
@@ -11,6 +12,7 @@ import type {
 } from '../../types/permissions.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isCurrentDirectoryBareGitRepo } from '../../utils/git.js'
+import { isOpenClaudeCommitMessagePath } from '../../utils/permissions/filesystem.js'
 import type { PermissionRule } from '../../utils/permissions/PermissionRule.js'
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js'
 import {
@@ -123,6 +125,27 @@ async function extractCommandName(command: string): Promise<string> {
   const parsed = await parsePowerShellCommand(trimmed)
   const names = getAllCommandNames(parsed)
   return names[0] ?? ''
+}
+
+export function isUnsafeDotGitWritePathForPowerShell(
+  path: string,
+  toolPermissionContext: ToolPermissionContext,
+): boolean {
+  if (!isDotGitPathPS(path)) {
+    return false
+  }
+
+  if (
+    (toolPermissionContext.mode === 'bypassPermissions' ||
+      toolPermissionContext.mode === 'auto') &&
+    // Keep this aligned with the shared filesystem permission exception:
+    // /commit's temp file is scoped to the project root .git directory.
+    isOpenClaudeCommitMessagePath(resolve(getOriginalCwd(), path))
+  ) {
+    return false
+  }
+
+  return true
 }
 
 /**
