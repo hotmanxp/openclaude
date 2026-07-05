@@ -1521,6 +1521,25 @@ function isDefaultDisabledBuiltin(name: string): boolean {
 }
 
 /**
+ * Defensive array coercion for fields declared `?: T[]` in the project config.
+ *
+ * v2.1.200 upstream fixed a startup crash where `disabledMcpServers` /
+ * `enabledMcpServers` in `.claude.json` could be written as a non-array
+ * (object, string, etc.). The data-source layer (`getCurrentProjectConfig`)
+ * repairs these to `[]` and writes them back to disk on first read, so by
+ * the time we reach this read site the in-memory value should already be a
+ * real array. This helper is a belt-and-suspenders fallback: if a write
+ * slips through (concurrent process, partial JSON, etc.) we never call
+ * `includes()` / spread on a non-array and the next launch will repair it.
+ *
+ * Deliberately does NOT write back — writeback is owned by
+ * `getCurrentProjectConfig` so the policy lives in one place.
+ */
+function safeArray<T>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value) ? value : []
+}
+
+/**
  * Check if an MCP server is disabled
  * @param name The name of the server
  * @returns true if the server is disabled
@@ -1528,10 +1547,10 @@ function isDefaultDisabledBuiltin(name: string): boolean {
 export function isMcpServerDisabled(name: string): boolean {
   const projectConfig = getCurrentProjectConfig()
   if (isDefaultDisabledBuiltin(name)) {
-    const enabledServers = projectConfig.enabledMcpServers || []
+    const enabledServers = safeArray(projectConfig.enabledMcpServers)
     return !enabledServers.includes(name)
   }
-  const disabledServers = projectConfig.disabledMcpServers || []
+  const disabledServers = safeArray(projectConfig.disabledMcpServers)
   return disabledServers.includes(name)
 }
 
@@ -1556,13 +1575,13 @@ export function setMcpServerEnabled(name: string, enabled: boolean): void {
 
   saveCurrentProjectConfig(current => {
     if (isDefaultDisabledBuiltin(name)) {
-      const prev = current.enabledMcpServers || []
+      const prev = safeArray(current.enabledMcpServers)
       const next = toggleMembership(prev, name, enabled)
       if (next === prev) return current
       return { ...current, enabledMcpServers: next }
     }
 
-    const prev = current.disabledMcpServers || []
+    const prev = safeArray(current.disabledMcpServers)
     const next = toggleMembership(prev, name, !enabled)
     if (next === prev) return current
     return { ...current, disabledMcpServers: next }

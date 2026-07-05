@@ -82,7 +82,7 @@ describe('BashTool error output (#1231)', () => {
     expect(formatError(err)).toBe('Exit code 1')
   })
 
-  test('query-timeout abort returns cancellation metadata and specific message', async () => {
+test('query-timeout abort returns cancellation metadata and specific message', async () => {
     const ctx = makeCtx() as {
       abortController: AbortController
     }

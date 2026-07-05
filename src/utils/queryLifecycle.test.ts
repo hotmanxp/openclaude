@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   formatQueryLifecycleAbortSignalReason,
   formatQueryLifecycleLogMessage,
-  QueryLifecycleOperationTracker,
+  getQueryTerminalReason,
   type QueryLifecycleContext,
 } from './queryLifecycle.js'
 
@@ -30,83 +30,67 @@ describe('query lifecycle log formatting', () => {
   })
 })
 
-describe('QueryLifecycleOperationTracker', () => {
-  test('tracks api calls and tool uses with allowlisted snapshots', () => {
-    const tracker = new QueryLifecycleOperationTracker()
-
-    const key = tracker.startApiCall({
-      clientRequestId: 'req-1',
-      model: 'claude-opus-4-7',
-      querySource: 'repl_main_thread',
-      startedAt: 100,
-    })
-    tracker.updateApiCall(key, { requestId: 'srv-1' })
-    tracker.startToolUse({
-      toolUseId: 'tool-1',
-      toolName: 'Bash',
-      startedAt: 110,
-      isBash: true,
-    })
-
-    const snap = tracker.snapshot()
-    expect(snap.apiCalls).toHaveLength(1)
-    expect(snap.apiCalls[0]).toMatchObject({
-      clientRequestId: 'req-1',
-      requestId: 'srv-1',
-      model: 'claude-opus-4-7',
-      querySource: 'repl_main_thread',
-      startedAt: 100,
-    })
-    expect(snap.toolUses).toHaveLength(1)
-    expect(snap.toolUses[0]).toMatchObject({
-      toolUseId: 'tool-1',
-      toolName: 'Bash',
-      startedAt: 110,
-      isBash: true,
-    })
+describe('query terminal reason classification', () => {
+  test('classifies non-aborted completion from throw state', () => {
+    expect(
+      getQueryTerminalReason({ aborted: false, reason: undefined }, false),
+    ).toBe('ok')
+    expect(
+      getQueryTerminalReason({ aborted: false, reason: undefined }, true),
+    ).toBe('unknown')
   })
 
-  test('endApiCall and endToolUse remove entries; clear empties both', () => {
-    const tracker = new QueryLifecycleOperationTracker()
-    const key = tracker.startApiCall({
-      clientRequestId: 'req-1',
-      startedAt: 100,
-    })
-    tracker.startToolUse({
-      toolUseId: 'tool-1',
-      toolName: 'Read',
-      startedAt: 110,
-    })
-
-    tracker.endApiCall(key)
-    tracker.endToolUse('tool-1')
-    expect(tracker.snapshot()).toEqual({ apiCalls: [], toolUses: [] })
-
-    const key2 = tracker.startApiCall({
-      clientRequestId: 'req-2',
-      startedAt: 200,
-    })
-    tracker.startToolUse({
-      toolUseId: 'tool-2',
-      toolName: 'Bash',
-      startedAt: 210,
-    })
-    tracker.clear()
-    expect(tracker.snapshot()).toEqual({ apiCalls: [], toolUses: [] })
-    expect(key2).toBe('req-2')
+  test('passes timeout aborts through as terminal reasons', () => {
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'query-timeout' }, false),
+    ).toBe('query-timeout')
+    expect(
+      getQueryTerminalReason(
+        { aborted: true, reason: 'hard-max-query-timeout' },
+        false,
+      ),
+    ).toBe('hard-max-query-timeout')
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'hard_max' }, false),
+    ).toBe('hard-max-query-timeout')
   })
 
-  test('snapshot drops runtime extras not in the allowlist', () => {
-    const tracker = new QueryLifecycleOperationTracker()
-    // Cast to bypass type check for runtime-extras leak simulation.
-    tracker.startApiCall({
-      clientRequestId: 'req-1',
-      startedAt: 100,
-      // @ts-expect-error - runtime extras not in allowlist
-      secret: 'leak-me',
-    })
+  test('groups user-style aborts as user aborts', () => {
+    const defaultAbort = new AbortController()
+    defaultAbort.abort()
 
-    const snap = tracker.snapshot()
-    expect(snap.apiCalls[0]).not.toHaveProperty('secret')
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'user-cancel' }, false),
+    ).toBe('user-abort')
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'interrupt' }, false),
+    ).toBe('user-abort')
+    expect(
+      getQueryTerminalReason(
+        { aborted: true, reason: defaultAbort.signal.reason },
+        false,
+      ),
+    ).toBe('user-abort')
+  })
+
+  test('groups background and side-task aborts under parent-ended', () => {
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'background' }, false),
+    ).toBe('parent-ended')
+    expect(
+      getQueryTerminalReason({ aborted: true, reason: 'parent-ended' }, false),
+    ).toBe('parent-ended')
+    expect(
+      getQueryTerminalReason(
+        { aborted: true, reason: 'side-task-cancelled' },
+        false,
+      ),
+    ).toBe('parent-ended')
+    expect(
+      getQueryTerminalReason(
+        { aborted: true, reason: 'streaming_fallback' },
+        false,
+      ),
+    ).toBe('parent-ended')
   })
 })

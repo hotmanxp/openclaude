@@ -62,6 +62,10 @@ import type {
 } from '../../types/message.js'
 import { count } from '../../utils/array.js'
 import { createAttachmentMessage } from '../../utils/attachments.js'
+import {
+  getMissingToolResultAbortMessage,
+  shouldCreateUserInterruptionMessage,
+} from '../../utils/abortReasons.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   AbortError,
@@ -139,6 +143,76 @@ export const HOOK_TIMING_DISPLAY_THRESHOLD_MS = 500
 /** Log a debug warning when hooks/permission-decision block for this long. Matches
  * BashTool's PROGRESS_THRESHOLD_MS — the collapsed view feels stuck past this. */
 const SLOW_PHASE_LOG_THRESHOLD_MS = 2000
+
+function getAlreadyAbortedToolResultMessage(reason: unknown): string {
+  if (reason === 'interrupt' || shouldCreateUserInterruptionMessage(reason)) {
+    return CANCEL_MESSAGE
+  }
+  return getMissingToolResultAbortMessage(reason)
+}
+
+export function getReplayModifiedFiles(
+  toolName: string,
+  input: unknown,
+): string[] | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+
+  const record = input as Record<string, unknown>
+  const path =
+    toolName === NOTEBOOK_EDIT_TOOL_NAME
+      ? record.notebook_path
+      : toolName === BASH_TOOL_NAME
+        ? getReplayBashModifiedFile(record)
+      : toolName === FILE_EDIT_TOOL_NAME || toolName === FILE_WRITE_TOOL_NAME
+        ? record.file_path
+        : undefined
+
+  return typeof path === 'string' && path.length > 0 ? [path] : undefined
+}
+
+export function getReplayResultStatusForError(
+  error: unknown,
+): 'error' | 'cancelled' {
+  return isAbortError(error) ? 'cancelled' : 'error'
+}
+
+export function normalizeReplayToolInput<T>(
+  processedInput: T,
+  originalInput: T,
+  backfilledClone: T | null,
+): T {
+  if (
+    backfilledClone &&
+    processedInput !== originalInput &&
+    typeof processedInput === 'object' &&
+    processedInput !== null &&
+    'file_path' in processedInput &&
+    typeof originalInput === 'object' &&
+    originalInput !== null &&
+    'file_path' in originalInput &&
+    (processedInput as Record<string, unknown>).file_path ===
+      (backfilledClone as Record<string, unknown>).file_path
+  ) {
+    return {
+      ...processedInput,
+      file_path: (originalInput as Record<string, unknown>).file_path,
+    } as T
+  }
+
+  return processedInput !== backfilledClone ? processedInput : originalInput
+}
+
+function getReplayBashModifiedFile(
+  input: Record<string, unknown>,
+): unknown {
+  const simulatedSedEdit = input._simulatedSedEdit
+  if (!simulatedSedEdit || typeof simulatedSedEdit !== 'object') {
+    return undefined
+  }
+  return (simulatedSedEdit as Record<string, unknown>).filePath
+}
 
 /**
  * Classify a tool execution error into a telemetry-safe string.
@@ -417,6 +491,9 @@ export async function* runToolUse(
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
+      const abortMessage = getAlreadyAbortedToolResultMessage(
+        toolUseContext.abortController.signal.reason,
+      )
       logEvent('tengu_tool_use_cancelled', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         toolUseID:
@@ -445,11 +522,11 @@ export async function* runToolUse(
         ),
       })
       const content = createToolResultStopMessage(toolUse.id)
-      content.content = withMemoryCorrectionHint(CANCEL_MESSAGE)
+      content.content = withMemoryCorrectionHint(abortMessage)
       yield {
         message: createUserMessage({
           content: [content],
-          toolUseResult: CANCEL_MESSAGE,
+          toolUseResult: abortMessage,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       }
