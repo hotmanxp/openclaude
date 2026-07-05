@@ -86,8 +86,18 @@ export class StreamingToolExecutor {
       if (tool.status === 'yielded') continue
       if (activeLifecycleToolUseIds.has(tool.id)) {
         this.toolUseContext.queryLifecycle?.endToolUse(tool.id)
+        this.toolUseContext.setInProgressToolUseIDs(prev => {
+          const next = new Set(prev)
+          next.delete(tool.id)
+          return next
+        })
       }
     }
+    // Propagate abort so in-flight tool calls receive their cancellation signal.
+    if (!this.siblingAbortController.signal.aborted) {
+      this.siblingAbortController.abort('streaming_fallback')
+    }
+    this.updateInterruptibleState()
   }
 
   /**
@@ -148,10 +158,14 @@ export class StreamingToolExecutor {
    */
   private canExecuteTool(isConcurrencySafe: boolean): boolean {
     const executingTools = this.tools.filter(t => t.status === 'executing')
-    return (
-      executingTools.length === 0 ||
-      (isConcurrencySafe && executingTools.every(t => t.isConcurrencySafe))
-    )
+    if (executingTools.length === 0) return true
+    // Don't start new tools while a cancel-interrupt tool is executing.
+    // The cancel must propagate to all in-flight tools cleanly without
+    // racing against newly-started tools that would also need to be cancelled.
+    if (executingTools.some(t => this.getToolInterruptBehavior(t) === 'cancel')) {
+      return false
+    }
+    return isConcurrencySafe && executingTools.every(t => t.isConcurrencySafe)
   }
 
   /**
@@ -298,6 +312,10 @@ export class StreamingToolExecutor {
   }
 
   private updateInterruptibleState(): void {
+    if (this.discarded) {
+      this.toolUseContext.setHasInterruptibleToolInProgress?.(false)
+      return
+    }
     const executing = this.tools.filter(t => t.status === 'executing')
     this.toolUseContext.setHasInterruptibleToolInProgress?.(
       executing.length > 0 &&
@@ -313,6 +331,11 @@ export class StreamingToolExecutor {
     this.toolUseContext.setInProgressToolUseIDs(prev =>
       new Set(prev).add(tool.id),
     )
+    this.toolUseContext.queryLifecycle?.startToolUse({
+      toolUseId: tool.id,
+      toolName: tool.block.name,
+      startedAt: Date.now(),
+    })
     this.updateInterruptibleState()
 
     const messages: Message[] = []
@@ -573,4 +596,5 @@ function markToolUseAsComplete(
     next.delete(toolUseID)
     return next
   })
+  toolUseContext.queryLifecycle?.endToolUse(toolUseID)
 }
