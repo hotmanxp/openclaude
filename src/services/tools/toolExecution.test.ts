@@ -28,8 +28,10 @@ import { CANCEL_MESSAGE, createAssistantMessage } from '../../utils/messages.js'
 import {
   checkPermissionsAndCallTool,
   getReplayModifiedFiles,
+  getReplayResultStatusForError,
   getSchemaValidationErrorOverride,
   getSchemaValidationToolUseResult,
+  normalizeReplayToolInput,
   normalizeToolInputForValidation,
   runToolUse,
   type MessageUpdateLazy,
