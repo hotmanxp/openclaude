@@ -56,10 +56,39 @@ function sanitizeCoAuthorNamePart(value: string): string {
     .trim()
 }
 
-function formatClaudeCoAuthorName(model: string): string {
-  const publicName = getPublicModelDisplayName(model)
+// First-party dot-form Claude aliases (e.g. "claude-opus-4.6") used for the
+// co-author name dedup path. getPublicModelDisplayName only resolves the
+// dash-form keys from getModelStrings() for the first-party switch branch,
+// so we keep a small parallel map here to avoid "Claude Open CC …" duplicates
+// when the runtime config still points at the legacy dot-form alias.
+const FIRST_PARTY_DOT_FORM_DISPLAY_NAMES: Record<string, string> = {
+  'claude-opus-4.8': 'Opus 4.8',
+  'claude-opus-4.7': 'Opus 4.7',
+  'claude-opus-4.6': 'Opus 4.6',
+  'claude-opus-4.5': 'Opus 4.5',
+  'claude-opus-4.1': 'Opus 4.1',
+  'claude-opus-4-0': 'Opus 4',
+  'claude-sonnet-4.6': 'Sonnet 4.6',
+  'claude-sonnet-4.5': 'Sonnet 4.5',
+  'claude-sonnet-4-0': 'Sonnet 4',
+  'claude-haiku-4.5': 'Haiku 4.5',
+}
+
+function formatClaudeCoAuthorName(
+  model: string,
+  apiProvider: string,
+): string {
+  // First-party providers bypass the OpenAI-styled display-name map (which
+  // prefixes "Open CC …" for every model) so the Claude-prefix dedup only
+  // considers Claude-side names. A small first-party dot-form map fills the
+  // gap for legacy "claude-opus-4.6" aliases that getPublicModelDisplayName
+  // only resolves under the OpenAI provider branch.
+  const publicName =
+    apiProvider === 'firstParty'
+      ? FIRST_PARTY_DOT_FORM_DISPLAY_NAMES[model] ?? null
+      : getPublicModelDisplayName(model)
   if (!publicName) {
-    return sanitizeCoAuthorNamePart(getPublicModelName(model))
+    return sanitizeCoAuthorNamePart(`Claude (${model})`)
   }
   const coAuthorName = publicName.startsWith('Claude ')
     ? publicName
@@ -86,7 +115,7 @@ export function getDefaultCommitCoAuthorName({
     normalizedModel.includes('claude')
 
   if (isClaudeProvider && (isInternalRepo || isKnownPublicModel)) {
-    return formatClaudeCoAuthorName(model)
+    return formatClaudeCoAuthorName(model, apiProvider)
   }
 
   // Unknown first-party models may be unreleased Claude codenames, so keep the
@@ -94,11 +123,10 @@ export function getDefaultCommitCoAuthorName({
   // actual configured model instead of claiming Claude Opus.
   if (apiProvider === 'firstParty') {
     // @[MODEL LAUNCH]: Update this fallback when the default public Claude model changes.
-    return 'Claude Opus 4.6'
+    return 'Claude Opus 4.8'
   }
 
-  const sanitizedModel = sanitizeCoAuthorNamePart(model)
-  return 'OpenCC'
+  return `OpenCC (${sanitizeCoAuthorNamePart(model)})`
 }
 
 export function getDefaultCommitCoAuthorEmail(_apiProvider: string): string {
