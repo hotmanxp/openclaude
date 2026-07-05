@@ -1,21 +1,21 @@
 /**
  * TMUX SOCKET ISOLATION
  * =====================
- * This module manages an isolated tmux socket for Open CC's operations.
+ * This module manages an isolated tmux socket for OpenCC's operations.
  *
  * WHY THIS EXISTS:
- * Without isolation, Open CC could accidentally affect the user's tmux sessions.
+ * Without isolation, OpenCC could accidentally affect the user's tmux sessions.
  * For example, running `tmux kill-session` via the Bash tool would kill the
- * user's current session if they started Open CC from within tmux.
+ * user's current session if they started OpenCC from within tmux.
  *
  * HOW IT WORKS:
- * 1. Open CC creates its own tmux socket: `claude-<PID>` (e.g., `claude-12345`)
+ * 1. OpenCC creates its own tmux socket: `claude-<PID>` (e.g., `claude-12345`)
  * 2. ALL Tmux tool commands use this socket via the `-L` flag
  * 3. ALL Bash tool commands inherit TMUX env var pointing to this socket
  *    (set in Shell.ts via getClaudeTmuxEnv())
  *
- * This means ANY tmux command run through Open CC - whether via the Tmux tool
- * directly or via Bash - will operate on Open CC's isolated socket, NOT the
+ * This means ANY tmux command run through OpenCC - whether via the Tmux tool
+ * directly or via Bash - will operate on OpenCC's isolated socket, NOT the
  * user's tmux session.
  *
  * IMPORTANT: The user's original TMUX env var is NOT used. After socket
@@ -85,7 +85,7 @@ let tmuxAvailable = false
 let tmuxToolUsed = false
 
 /**
- * Gets the socket name for Open CC's isolated tmux session.
+ * Gets the socket name for OpenCC's isolated tmux session.
  * Format: claude-<PID>
  */
 export function getClaudeSocketName(): string {
@@ -120,11 +120,11 @@ export function isSocketInitialized(): boolean {
 }
 
 /**
- * Gets the TMUX environment variable value for Open CC's isolated socket.
+ * Gets the TMUX environment variable value for OpenCC's isolated socket.
  *
  * CRITICAL: This value is used by Shell.ts to override the TMUX env var
  * in ALL child processes. This ensures that any `tmux` command run via
- * the Bash tool will operate on Open CC's socket, NOT the user's session.
+ * the Bash tool will operate on OpenCC's socket, NOT the user's session.
  *
  * Format: "socket_path,server_pid,pane_index" (matches tmux's TMUX env var)
  * Example: "/tmp/tmux-501/claude-12345,54321,0"
@@ -246,7 +246,7 @@ export async function ensureSocketInitialized(): Promise<void> {
 }
 
 /**
- * Kills the tmux server for Open CC's isolated socket.
+ * Kills the tmux server for OpenCC's isolated socket.
  * Called during graceful shutdown to clean up resources.
  */
 async function killTmuxServer(): Promise<void> {
@@ -316,7 +316,7 @@ async function doInitialize(): Promise<void> {
   // Set CLAUDE_CODE_SKIP_PROMPT_HISTORY in the tmux GLOBAL environment (-g).
   // Without -g this would only apply to the 'base' session, and new sessions
   // created by TungstenTool (e.g. 'test', 'verify') would not inherit it.
-  // Any Open CC instance spawned on this socket will inherit this env var,
+  // Any OpenCC instance spawned on this socket will inherit this env var,
   // preventing test/verification sessions from polluting the user's real
   // command history and --resume session list.
   await execTmux([

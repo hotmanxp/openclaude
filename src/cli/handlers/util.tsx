@@ -41,7 +41,7 @@ export async function setupTokenHandler(root: Root): Promise<void> {
               </Box>}
             <ConsoleOAuthFlow onDone={() => {
             void resolve();
-          }} mode="setup-token" startingMessage="This will guide you through long-lived (1-year) auth token setup for your Open CC account. Subscription required." />
+          }} mode="setup-token" startingMessage="This will guide you through long-lived (1-year) auth token setup for your OpenCC account. Subscription required." />
           </Box>
         </KeybindingSetup>
       </AppStateProvider>);

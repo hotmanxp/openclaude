@@ -103,7 +103,7 @@ function extractConversationContext(
   messages: Message[],
   maxChars = 1000,
 ): string {
-  // Get recent assistant messages (they contain Open CC's reasoning)
+  // Get recent assistant messages (they contain OpenCC's reasoning)
   const assistantMessages = messages
     // @ts-ignore - type predicate issue
     .filter((m): m is AssistantMessage => m.type === 'assistant')

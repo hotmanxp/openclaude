@@ -1,5 +1,5 @@
 /**
- * Prevents macOS from sleeping while Open CC is working.
+ * Prevents macOS from sleeping while OpenCC is working.
  *
  * Uses the built-in `caffeinate` command to create a power assertion that
  * prevents idle sleep. This keeps the Mac awake during API requests and

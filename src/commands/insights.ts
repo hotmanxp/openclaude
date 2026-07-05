@@ -201,7 +201,7 @@ const LABEL_MAP: Record<string, string> = {
   wrong_approach: 'Wrong Approach',
   buggy_code: 'Buggy Code',
   user_rejected_action: 'User Rejected Action',
-  claude_got_blocked: 'Open CC Got Blocked',
+  claude_got_blocked: 'OpenCC Got Blocked',
   user_stopped_early: 'User Stopped Early',
   wrong_file_or_location: 'Wrong File/Location',
   excessive_changes: 'Excessive Changes',
@@ -693,7 +693,7 @@ function formatTranscriptForFacets(log: LogOption): string {
 
 const SUMMARIZE_CHUNK_PROMPT = `Summarize this portion of an OpenCC session transcript. Focus on:
 1. What the user asked for
-2. What Open CC did (tools used, files modified)
+2. What OpenCC did (tools used, files modified)
 3. Any friction or issues
 4. The outcome
 
@@ -879,7 +879,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
 }
 
 /**
- * Detects multi-clauding (using multiple Open CC sessions concurrently).
+ * Detects multi-clauding (using multiple OpenCC sessions concurrently).
  * Uses a sliding window to find the pattern: session1 -> session2 -> session1
  * within a 30-minute window.
  */
@@ -1218,7 +1218,7 @@ Include 3 friction categories with 2 examples each.`,
     prompt: `Analyze this OpenCC usage data and suggest improvements.
 
 ## CC FEATURES REFERENCE (pick from these for features_to_try):
-1. **MCP Servers**: Connect Open CC to external tools, databases, and APIs via Model Context Protocol.
+1. **MCP Servers**: Connect OpenCC to external tools, databases, and APIs via Model Context Protocol.
    - How to use: Run \`claude mcp add <server-name> -- <command>\`
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
 
@@ -1230,12 +1230,12 @@ Include 3 friction categories with 2 examples each.`,
    - How to use: Add to \`.claude/settings.json\` under "hooks" key.
    - Good for: auto-formatting code, running type checks, enforcing conventions
 
-4. **Headless Mode**: Run Open CC non-interactively from scripts and CI/CD.
+4. **Headless Mode**: Run OpenCC non-interactively from scripts and CI/CD.
    - How to use: \`claude -p "fix lint errors" --allowedTools "Edit,Read,Bash"\`
    - Good for: CI/CD integration, batch code fixes, automated reviews
 
-5. **Task Agents**: Open CC spawns focused sub-agents for complex exploration or parallel work.
-   - How to use: Open CC auto-invokes when helpful, or ask "use an agent to explore X"
+5. **Task Agents**: OpenCC spawns focused sub-agents for complex exploration or parallel work.
+   - How to use: OpenCC auto-invokes when helpful, or ask "use an agent to explore X"
    - Good for: codebase exploration, understanding complex systems
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
@@ -1251,7 +1251,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
   ]
 }
 
-IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told Open CC the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
+IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told OpenCC the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
 
 IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.`,
     maxTokens: 8192,
@@ -1563,7 +1563,7 @@ async function generateParallelInsights(
 
 Use this 4-part structure:
 
-1. **What's working** - What is the user's unique style of interacting with Open CC and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
+1. **What's working** - What is the user's unique style of interacting with OpenCC and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
 
 2. **What's hindering you** - Split into (a) ${BRAND_NAME}'s fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
 
@@ -2796,7 +2796,7 @@ export async function generateUsageReport(): Promise<{
   const aggregated = aggregateData(substantiveSessions, substantiveFacets)
   aggregated.total_sessions_scanned = totalSessionsScanned
 
-  // Generate parallel insights from Open CC (6 sections)
+  // Generate parallel insights from OpenCC (6 sections)
   const insights = await generateParallelInsights(aggregated, facets)
 
   // Generate HTML report
@@ -2878,7 +2878,7 @@ ${atAGlance.quick_wins ? `**Quick wins to try:** ${atAGlance.quick_wins} See _Fe
 ${atAGlance.ambitious_workflows ? `**Ambitious workflows:** ${atAGlance.ambitious_workflows} See _On the Horizon_.` : ''}`
       : '_No insights generated_'
 
-    const header = `# Open CC Insights
+    const header = `# OpenCC Insights
 
 ${stats}
 ${data.date_range.start} to ${data.date_range.end}
@@ -2888,11 +2888,11 @@ ${data.date_range.start} to ${data.date_range.end}
 
 Your full shareable insights report is ready: ${reportUrl}${uploadHint}`
 
-    // Return prompt for Open CC to respond to
+    // Return prompt for OpenCC to respond to
     return [
       {
         type: 'text',
-        text: `The user just ran /insights to generate a usage report analyzing their Open CC sessions.
+        text: `The user just ran /insights to generate a usage report analyzing their OpenCC sessions.
 
 Here is the full insights data:
 ${jsonStringify(insights, null, 2)}

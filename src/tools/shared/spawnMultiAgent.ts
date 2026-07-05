@@ -302,7 +302,7 @@ export async function generateUniqueTeammateName(
 // ============================================================================
 
 /**
- * Ensures a team file exists on disk. If it doesn't (e.g. when a non-Open CC
+ * Ensures a team file exists on disk. If it doesn't (e.g. when a non-OpenCC
  * model skips the TeamCreate step), auto-creates a minimal team file so
  * the spawn can proceed.
  */
@@ -471,7 +471,7 @@ async function handleSpawnSplitPane(
     await enablePaneBorderStatus()
   }
 
-  // Build the command to spawn Open CC with teammate identity
+  // Build the command to spawn OpenCC with teammate identity
   // Note: We spawn without a prompt - initial instructions are sent via mailbox
   const binaryPath = getTeammateCommand()
 
@@ -673,7 +673,7 @@ async function handleSpawnSeparateWindow(
 
   const paneId = createWindowResult.stdout.trim()
 
-  // Build the command to spawn Open CC with teammate identity
+  // Build the command to spawn OpenCC with teammate identity
   // Note: We spawn without a prompt - initial instructions are sent via mailbox
   const binaryPath = getTeammateCommand()
 
@@ -1096,7 +1096,7 @@ async function handleSpawnInProcess(
 }
 
 /**
- * Handle spawn operation - creates a new Open CC instance.
+ * Handle spawn operation - creates a new OpenCC instance.
  * Uses in-process mode when enabled, otherwise uses tmux/iTerm2 split-pane view.
  * Falls back to in-process if pane backend detection fails (e.g., iTerm2 without
  * it2 CLI or tmux installed).

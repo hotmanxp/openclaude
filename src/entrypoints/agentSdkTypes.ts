@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * Main entrypoint for Open CC Agent SDK types.
+ * Main entrypoint for OpenCC Agent SDK types.
  *
  * This file re-exports the public SDK API from:
  * - sdk/coreTypes.ts - Common serializable types (messages, configs)

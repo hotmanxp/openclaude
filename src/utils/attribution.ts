@@ -59,7 +59,7 @@ function sanitizeCoAuthorNamePart(value: string): string {
 // First-party dot-form Claude aliases (e.g. "claude-opus-4.6") used for the
 // co-author name dedup path. getPublicModelDisplayName only resolves the
 // dash-form keys from getModelStrings() for the first-party switch branch,
-// so we keep a small parallel map here to avoid "Claude Open CC …" duplicates
+// so we keep a small parallel map here to avoid "Claude OpenCC …" duplicates
 // when the runtime config still points at the legacy dot-form alias.
 const FIRST_PARTY_DOT_FORM_DISPLAY_NAMES: Record<string, string> = {
   'claude-opus-4.8': 'Opus 4.8',
@@ -79,7 +79,7 @@ function formatClaudeCoAuthorName(
   apiProvider: string,
 ): string {
   // First-party providers bypass the OpenAI-styled display-name map (which
-  // prefixes "Open CC …" for every model) so the Claude-prefix dedup only
+  // prefixes "OpenCC …" for every model) so the Claude-prefix dedup only
   // considers Claude-side names. A small first-party dot-form map fills the
   // gap for legacy "claude-opus-4.6" aliases that getPublicModelDisplayName
   // only resolves under the OpenAI provider branch.

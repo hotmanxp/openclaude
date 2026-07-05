@@ -415,9 +415,9 @@ export type GlobalConfig = {
   showSpinnerTree?: boolean // Whether to show the teammate spinner tree instead of pills
 
   // First start time tracking
-  firstStartTime?: string // ISO timestamp when Open CC was first started on this machine
+  firstStartTime?: string // ISO timestamp when OpenCC was first started on this machine
 
-  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that Open CC is done generating
+  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that OpenCC is done generating
 
   githubActionSetupCount?: number // Number of times the user has set up the GitHub Action
   slackAppInstallCount?: number // Number of times the user has clicked to install the Slack app
@@ -438,8 +438,8 @@ export type GlobalConfig = {
   inputNeededNotifEnabled?: boolean
   agentPushNotifEnabled?: boolean
 
-  // Open CC usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Open CC OAuth token
+  // OpenCC usage tracking
+  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first OpenCC OAuth token
 
   // Model switch callout tracking (internal-only)
   modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
@@ -541,9 +541,9 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallLastAttemptTime?: number // Timestamp of last attempt
   officialMarketplaceAutoInstallNextRetryTime?: number // Earliest time to retry again
 
-  // Open CC in Chrome settings
-  hasCompletedClaudeInChromeOnboarding?: boolean // Whether Open CC in Chrome onboarding has been shown
-  claudeInChromeDefaultEnabled?: boolean // Whether Open CC in Chrome is enabled by default (undefined means platform default)
+  // OpenCC in Chrome settings
+  hasCompletedClaudeInChromeOnboarding?: boolean // Whether OpenCC in Chrome onboarding has been shown
+  claudeInChromeDefaultEnabled?: boolean // Whether OpenCC in Chrome is enabled by default (undefined means platform default)
   cachedChromeExtensionInstalled?: boolean // Cached result of whether Chrome extension is installed
 
   // Chrome extension pairing state (persisted across sessions)
@@ -557,7 +557,7 @@ export type GlobalConfig = {
   lspRecommendationNeverPlugins?: string[] // Plugin IDs to never suggest
   lspRecommendationIgnoredCount?: number // Track ignored recommendations (stops after 5)
 
-  // Open CC hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
+  // OpenCC hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
   // Nested by hint type so future types (docs, mcp, ...) slot in without new
   // top-level keys.
   claudeCodeHints?: {
@@ -1298,7 +1298,7 @@ function saveConfigWithLock<A extends object>(
     const lockTime = Date.now() - startTime
     if (lockTime > 100) {
       logForDebugging(
-        'Lock acquisition took longer than expected - another Open CC instance may be running',
+        'Lock acquisition took longer than expected - another OpenCC instance may be running',
       )
       logEvent('tengu_config_lock_contention', {
         lock_time_ms: lockTime,

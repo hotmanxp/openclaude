@@ -132,7 +132,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'settings',
     type: 'string',
     description:
-      'Preferred language for Open CC responses and voice dictation (e.g., "japanese", "spanish")',
+      'Preferred language for OpenCC responses and voice dictation (e.g., "japanese", "spanish")',
   },
   questionAutoContinueTimeoutSec: {
     source: 'settings',
@@ -194,7 +194,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'global' as const,
           type: 'boolean' as const,
           description:
-            'Push to your mobile device when idle after Open CC finishes (requires Remote Control)',
+            'Push to your mobile device when idle after OpenCC finishes (requires Remote Control)',
         },
         inputNeededNotifEnabled: {
           source: 'global' as const,
@@ -206,7 +206,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'global' as const,
           type: 'boolean' as const,
           description:
-            'Allow Open CC to push to your mobile device when it deems it appropriate (requires Remote Control)',
+            'Allow OpenCC to push to your mobile device when it deems it appropriate (requires Remote Control)',
         },
       }
     : {}),

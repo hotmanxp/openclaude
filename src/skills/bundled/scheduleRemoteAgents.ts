@@ -173,7 +173,7 @@ Set \`header: "Action"\` and offer the four actions (create/list/update/run) as 
 
   return `# Schedule Remote Agents
 
-You are helping the user schedule, update, list, or run **remote** Open CC agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in Anthropic's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
+You are helping the user schedule, update, list, or run **remote** OpenCC agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in Anthropic's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
 
 ## First Step
 
@@ -317,7 +317,7 @@ Minimum interval is 1 hour. \`*/30 * * * *\` will be rejected.
 - Accept GitHub URLs in any format (https://github.com/org/repo, org/repo, etc.) and normalize to the full HTTPS URL (without .git suffix)
 - The prompt is the most important part — spend time getting it right. The remote agent starts with zero context, so the prompt must be self-contained.
 - To delete a trigger, direct users to https://claude.ai/code/scheduled
-${needsGitHubAccessReminder ? `- If the user's request seems to require GitHub repo access (e.g. cloning a repo, opening PRs, reading code), remind them that ${getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) ? "they should run /web-setup to connect their GitHub account (or install the Open CC GitHub App on the repo as an alternative) — otherwise the remote agent won't be able to access it" : "they need the Open CC GitHub App installed on the repo — otherwise the remote agent won't be able to access it"}.` : ''}
+${needsGitHubAccessReminder ? `- If the user's request seems to require GitHub repo access (e.g. cloning a repo, opening PRs, reading code), remind them that ${getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) ? "they should run /web-setup to connect their GitHub account (or install the OpenCC GitHub App on the repo as an alternative) — otherwise the remote agent won't be able to access it" : "they need the OpenCC GitHub App installed on the repo — otherwise the remote agent won't be able to access it"}.` : ''}
 ${userArgs ? `\n## User Request\n\nThe user said: "${userArgs}"\n\nStart by understanding their intent and working through the appropriate workflow above.` : ''}`
 }
 
@@ -327,7 +327,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
     description:
       'Create, update, list, or run scheduled remote agents (triggers) that execute on a cron schedule.',
     whenToUse:
-      'When the user wants to schedule a recurring remote agent, set up automated tasks, create a cron job for Open CC, or manage their scheduled agents/triggers.',
+      'When the user wants to schedule a recurring remote agent, set up automated tasks, create a cron job for OpenCC, or manage their scheduled agents/triggers.',
     userInvocable: true,
     isEnabled: () =>
       getFeatureValue_CACHED_MAY_BE_STALE('tengu_surreal_dali', false) &&
@@ -402,8 +402,8 @@ export function registerScheduleRemoteAgentsSkill(): void {
             false,
           )
           const msg = webSetupEnabled
-            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the Open CC GitHub App at https://claude.ai/code/onboarding?magic=github-app-setup.`
-            : `Open CC GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://claude.ai/code/onboarding?magic=github-app-setup if your trigger needs this repo.`
+            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the OpenCC GitHub App at https://claude.ai/code/onboarding?magic=github-app-setup.`
+            : `OpenCC GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://claude.ai/code/onboarding?magic=github-app-setup if your trigger needs this repo.`
           setupNotes.push(msg)
         }
       }

@@ -136,7 +136,7 @@ export function getAllBrowserDataPathsPortable(): BrowserPath[] {
 }
 
 /**
- * Detects if the Open CC in Chrome extension is installed by checking the Extensions
+ * Detects if the OpenCC in Chrome extension is installed by checking the Extensions
  * directory across all supported Chromium-based browsers and their profiles.
  *
  * This is a portable version that can be used by both TUI and VS Code extension.
@@ -153,7 +153,7 @@ export async function detectExtensionInstallationPortable(
   browser: ChromiumBrowser | null
 }> {
   if (browserPaths.length === 0) {
-    log?.(`[Open CC in Chrome] No browser paths to check`)
+    log?.(`[OpenCC in Chrome] No browser paths to check`)
     return { isInstalled: false, browser: null }
   }
 
@@ -182,7 +182,7 @@ export async function detectExtensionInstallationPortable(
 
     if (profileDirs.length > 0) {
       log?.(
-        `[Open CC in Chrome] Found ${browser} profiles: ${profileDirs.join(', ')}`,
+        `[OpenCC in Chrome] Found ${browser} profiles: ${profileDirs.join(', ')}`,
       )
     }
 
@@ -199,7 +199,7 @@ export async function detectExtensionInstallationPortable(
         try {
           await readdir(extensionPath)
           log?.(
-            `[Open CC in Chrome] Extension ${extensionId} found in ${browser} ${profile}`,
+            `[OpenCC in Chrome] Extension ${extensionId} found in ${browser} ${profile}`,
           )
           return { isInstalled: true, browser }
         } catch {
@@ -209,7 +209,7 @@ export async function detectExtensionInstallationPortable(
     }
   }
 
-  log?.(`[Open CC in Chrome] Extension not found in any browser`)
+  log?.(`[OpenCC in Chrome] Extension not found in any browser`)
   return { isInstalled: false, browser: null }
 }
 

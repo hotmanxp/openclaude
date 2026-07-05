@@ -26,14 +26,14 @@ export function getSteps(): Step[] {
   return [
     {
       key: 'workspace',
-      text: 'Ask Open CC to create a new app or clone a repository',
+      text: 'Ask OpenCC to create a new app or clone a repository',
       isComplete: false,
       isCompletable: true,
       isEnabled: isWorkspaceDirEmpty,
     },
     {
       key: 'claudemd',
-      text: `Run /init to create a ${AGENT_INSTRUCTIONS_FILE} file with instructions for Open CC`,
+      text: `Run /init to create a ${AGENT_INSTRUCTIONS_FILE} file with instructions for OpenCC`,
       isComplete: hasAgentsMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,

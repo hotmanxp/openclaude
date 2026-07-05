@@ -130,7 +130,7 @@ export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
   '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
 
 // @[MODEL LAUNCH]: Update the latest frontier model.
-const FRONTIER_MODEL_NAME = 'Open CC Opus 4.6'
+const FRONTIER_MODEL_NAME = 'OpenCC Opus 4.6'
 
 // @[MODEL LAUNCH]: Update the model family IDs below to the latest in each tier.
 const CLAUDE_4_5_OR_4_6_MODEL_IDS = {
@@ -716,7 +716,7 @@ export async function computeSimpleEnvInfo(
     knowledgeCutoffMessage,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `The most recent Open CC model family is Open CC 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable Open CC models.`,
+      : `The most recent OpenCC model family is OpenCC 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable OpenCC models.`,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
       : `OpenCC is available as a CLI in the terminal and can be used across local development environments and IDE workflows.`,
@@ -815,7 +815,7 @@ export async function enhanceSystemPromptWithEnvDetails(
 
 /**
  * Returns instructions for using the scratchpad directory if enabled.
- * The scratchpad is a per-session directory where Open CC can write temporary files.
+ * The scratchpad is a per-session directory where OpenCC can write temporary files.
  */
 export function getScratchpadInstructions(): string | null {
   if (!isScratchpadEnabled()) {

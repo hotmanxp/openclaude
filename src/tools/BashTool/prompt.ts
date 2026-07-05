@@ -246,7 +246,7 @@ function getSimpleSandboxSection(): string {
 }
 
 export function getSimplePrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep in Open CC's shell,
+  // Ant-native builds alias find/grep to embedded bfs/ugrep in OpenCC's shell,
   // so we don't steer away from them (and Glob/Grep tools are removed).
   const embedded = hasEmbeddedSearchTools()
 

@@ -11,7 +11,7 @@ export type ReservedShortcut = {
 }
 
 /**
- * Shortcuts that cannot be rebound - they are hardcoded in Open CC.
+ * Shortcuts that cannot be rebound - they are hardcoded in OpenCC.
  */
 export const NON_REBINDABLE: ReservedShortcut[] = [
   {

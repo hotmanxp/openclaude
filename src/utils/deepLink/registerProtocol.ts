@@ -31,9 +31,9 @@ import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
 export const MACOS_BUNDLE_ID = 'com.anthropic.claude-code-url-handler'
-const APP_NAME = 'Open CC URL Handler'
+const APP_NAME = 'OpenCC URL Handler'
 const DESKTOP_FILE_NAME = 'claude-code-url-handler.desktop'
-const MACOS_APP_NAME = 'Open CC URL Handler.app'
+const MACOS_APP_NAME = 'OpenCC URL Handler.app'
 
 // Build-time-resolved launcher name. When the upstream Anthropic package
 // URL is in effect, the binary keeps the legacy `claude` name; OpenCC
@@ -72,7 +72,7 @@ function windowsCommandValue(claudePath: string): string {
  * Creates a .app bundle where the CFBundleExecutable is a symlink to the
  * already-installed (and signed) `claude` binary. When macOS opens a
  * `claude-cli://` URL, it launches `claude` through this app bundle.
- * Open CC then uses the url-handler NAPI module to read the URL from the
+ * OpenCC then uses the url-handler NAPI module to read the URL from the
  * Apple Event and handles it normally.
  *
  * This approach avoids shipping a separate executable (which would need
@@ -114,7 +114,7 @@ async function registerMacos(claudePath: string): Promise<void> {
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>Open CC Deep Link</string>
+      <string>OpenCC Deep Link</string>
       <key>CFBundleURLSchemes</key>
       <array>
         <string>${DEEP_LINK_PROTOCOL}</string>
@@ -152,7 +152,7 @@ async function registerLinux(claudePath: string): Promise<void> {
 
   const desktopEntry = `[Desktop Entry]
 Name=${APP_NAME}
-Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for Open CC
+Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for OpenCC
 ${linuxExecLine(claudePath)}
 Type=Application
 NoDisplay=true

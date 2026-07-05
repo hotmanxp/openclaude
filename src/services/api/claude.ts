@@ -2400,7 +2400,7 @@ async function* queryModel(
                 max_tokens: maxOutputTokens,
               })
               yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: Open CC's response exceeded the ${
+                content: `${API_ERROR_MESSAGE_PREFIX}: OpenCC's response exceeded the ${
                   maxOutputTokens
                 } output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
                 apiError: 'max_output_tokens',
@@ -3439,7 +3439,7 @@ export async function queryHaiku({
 type QueryWithModelOptions = Omit<Options, 'getToolPermissionContext'>
 
 /**
- * Query a specific model through the Open CC infrastructure.
+ * Query a specific model through the OpenCC infrastructure.
  * This goes through the full query pipeline including proper authentication,
  * betas, and headers - unlike direct API calls.
  */

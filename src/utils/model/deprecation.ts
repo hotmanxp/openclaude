@@ -32,7 +32,7 @@ type DeprecationEntry = {
  */
 const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
   'claude-3-opus': {
-    modelName: 'Open CC 3 Opus',
+    modelName: 'OpenCC 3 Opus',
     retirementDates: {
       firstParty: 'January 5, 2026',
       openai: null,
@@ -42,7 +42,7 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
     },
   },
   'claude-3-7-sonnet': {
-    modelName: 'Open CC 3.7 Sonnet',
+    modelName: 'OpenCC 3.7 Sonnet',
     retirementDates: {
       firstParty: 'February 19, 2026',
       openai: null,
@@ -52,7 +52,7 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
     },
   },
   'claude-3-5-haiku': {
-    modelName: 'Open CC 3.5 Haiku',
+    modelName: 'OpenCC 3.5 Haiku',
     retirementDates: {
       firstParty: 'February 19, 2026',
       openai: null,

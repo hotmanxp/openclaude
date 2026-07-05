@@ -7,7 +7,7 @@ export type ModelConfig = {
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible model mappings
-// Maps Open CC model tiers to sensible defaults for popular providers.
+// Maps OpenCC model tiers to sensible defaults for popular providers.
 // Override with OPENAI_MODEL, ANTHROPIC_MODEL, or settings.model
 // ---------------------------------------------------------------------------
 export const OPENAI_MODEL_DEFAULTS = {
