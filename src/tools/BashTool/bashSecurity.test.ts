@@ -25,9 +25,9 @@ async function withProjectSettings(
   try {
     setOriginalCwd(projectDir)
     setAllowedSettingSources([...SETTING_SOURCES])
-    await mkdir(join(projectDir, '.openclaude'), { recursive: true })
+    await mkdir(join(projectDir, '.claude'), { recursive: true })
     await writeFile(
-      join(projectDir, '.openclaude', 'settings.local.json'),
+      join(projectDir, '.claude', 'settings.local.json'),
       JSON.stringify(settings),
     )
     resetSettingsCache()

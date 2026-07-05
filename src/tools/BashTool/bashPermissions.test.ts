@@ -176,9 +176,9 @@ test('git commit governance policy runs through the production Bash permission p
   try {
     setOriginalCwd(projectDir)
     setAllowedSettingSources([...SETTING_SOURCES])
-    await mkdir(join(projectDir, '.openclaude'), { recursive: true })
+    await mkdir(join(projectDir, '.claude'), { recursive: true })
     await writeFile(
-      join(projectDir, '.openclaude', 'settings.local.json'),
+      join(projectDir, '.claude', 'settings.local.json'),
       JSON.stringify({
         git: { forbiddenCommitMessagePatterns: ['Generated with'] },
       }),
