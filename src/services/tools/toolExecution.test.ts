@@ -1,6 +1,23 @@
 // @ts-nocheck
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import { z } from 'zod/v4'
 
+import {
+  getReplayIndexBuilder,
+  resetAllReplayIndexBuilders,
+} from '../../bootstrap/state.js'
+import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
+import { createToolFixture } from '../../test/toolFixtures.js'
+import {
+  getEmptyToolPermissionContext,
+  type Tool,
+  type ToolUseContext,
+} from '../../Tool.js'
+import { QueryLifecycleOperationTracker } from '../../utils/queryLifecycle.js'
+import { ReplayIndexBuilder } from '../../utils/replayIndexBuilder.js'
+import { getDefaultAppState } from '../../state/AppStateStore.js'
+import { SkillTool } from '../../tools/SkillTool/SkillTool.js'
 import { AskUserQuestionTool } from '../../tools/AskUserQuestionTool/AskUserQuestionTool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
@@ -12,6 +29,8 @@ import {
   getSchemaValidationErrorOverride,
   getSchemaValidationToolUseResult,
   normalizeToolInputForValidation,
+  runToolUse,
+  type MessageUpdateLazy,
 } from './toolExecution.js'
 
 function firstToolResultText(message: unknown): string {
