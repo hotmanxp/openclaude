@@ -415,10 +415,18 @@ tail -50 /tmp/opencc-slash-memory.log
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - --version brand regression ====
-\`node dist/cli.mjs --version\`
-期望: 精确匹配 "0.19.0 (Open CC)"
+==== STEP 0 (REQUIRED FIRST) - 动态读取 package.json 版本 + 品牌格式 ====
+\`\`\`
+EXPECTED_VERSION=\$(grep -m1 '"version"' ${cwd}/package.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
+EXPECTED_BRAND="OpenCC"   # 来自 src/entrypoints/cli.tsx:95 \`(OpenCC)\`
+EXPECTED_VERSION_LINE="\${EXPECTED_VERSION} (\${EXPECTED_BRAND})"
+echo "EXPECTED_VERSION_LINE=\${EXPECTED_VERSION_LINE}"
+\`\`\`
 (memory: opencc-cherry-pick-version-bump-rebrand-regression)
+
+==== STEP 1 - --version brand regression ====
+\`node dist/cli.mjs --version\`
+期望: \${EXPECTED_VERSION_LINE}  (即 \`grep -m1 '"version"'\` 取出的 version + 空格 + "(OpenCC)")
 
 ==== STEP 2 - --help ====
 \`node dist/cli.mjs --help\`
@@ -437,7 +445,8 @@ dist/cli.mjs 已构建。
 期望: 清晰错误信息 + exit non-zero, 不 stack trace
 
 ==== 报告 PASS/FAIL per step + 实际输出 ====
-Overall: PASS / FAIL
+- Step 1 比较: 实际 = \`<output>\`, 期望 = \`\${EXPECTED_VERSION_LINE}\`
+- Overall: PASS / FAIL
 严禁修改任何文件。`,
       {
         label: "cli-smoke",
@@ -456,12 +465,19 @@ Overall: PASS / FAIL
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - Read 工具 ====
+==== STEP 0 (REQUIRED FIRST) - 动态读取 package.json ====
+\`\`\`
+EXPECTED_VERSION=\$(grep -m1 '"version"' ${cwd}/package.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
+EXPECTED_NAME=\$(grep -m1 '"name"' ${cwd}/package.json | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
+echo "EXPECTED_NAME=\${EXPECTED_NAME} EXPECTED_VERSION=\${EXPECTED_VERSION}"
+\`\`\`
+
+==== STEP 1 - Read 工具 ====
 \`\`\`
 cd ${cwd} && OPENCC_LOG_FILE=/tmp/opencc-tool-read.log \\
   timeout 90 node dist/cli.mjs -p "Read package.json and tell me its name and version. Reply in one sentence." 2>&1 | tail -40
 \`\`\`
-期望: assistant 提到 "opencc" 和 "0.19.0"
+期望: assistant 提到 \${EXPECTED_NAME} 和 \${EXPECTED_VERSION} (与 Step 0 输出一致)
 
 ==== STEP 2 - Glob 工具 ====
 \`\`\`
@@ -479,7 +495,7 @@ cd ${cwd} && OPENCC_LOG_FILE=/tmp/opencc-tool-grep.log \\
 
 ==== STEP 4 (BEFORE STEP 5) - 多轮对话 ====
 \`timeout 90 node dist/cli.mjs -p "First, say hi. Then read package.json and tell me version." 2>&1 | tail -40\`
-期望: greeting + version 都出现
+期望: greeting + package.json 中的实际 version 都出现 (用 \`grep -m1 '"version"' ${cwd}/package.json\` 取出的字符串)
 
 ==== STEP 5 - 错误恢复 ====
 \`timeout 60 node dist/cli.mjs -p "Read the file /tmp/nonexistent-xyz-12345.txt and tell me what you see." 2>&1 | tail -30\`
