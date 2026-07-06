@@ -312,6 +312,17 @@ function isProjectDirPath(absolutePath: string): boolean {
 }
 
 /**
+ * Check if a path is under the global ~/.claude/projects/ directory.
+ * Used by the auto-memory approval carve-out to skip safetyCheck prompts for
+ * default-path memory (which lives under ~/.claude/projects/{cwd}/memory/).
+ */
+function isUnderGlobalClaudeProjects(absolutePath: string): boolean {
+  const normalizedPath = normalize(expandPath(absolutePath))
+  const globalProjectsDir = join(homedir(), '.claude', 'projects') + sep
+  return normalizedPath.startsWith(globalProjectsDir)
+}
+
+/**
  * Checks if the scratchpad directory feature is enabled.
  * The scratchpad is a per-session directory for Claude to write temporary files.
  * Controlled by the tengu_scratch Statsig gate.
@@ -540,11 +551,18 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
       // git worktrees), not a user-created dangerous directory. Skip the .claude
       // segment when it's followed by 'worktrees'. Any nested .claude directories
       // within the worktree (not followed by 'worktrees') are still blocked.
+      //
+      // .claude/projects/ is the per-project data dir (auto-memory index, todos,
+      // session-scoped settings). User opted-in: bypass safetyCheck for everything
+      // under ~/.claude/projects/, not just memory/. Override-path memory
+      // (CLAUDE_COWORK_MEMORY_PATH_OVERRIDE) remains protected by the explicit
+      // approval check further down.
       if (dir === '.claude') {
         const nextSegment = pathSegments[i + 1]
         if (
           nextSegment &&
-          normalizeCaseForComparison(nextSegment) === 'worktrees'
+          (normalizeCaseForComparison(nextSegment) === 'worktrees' ||
+            normalizeCaseForComparison(nextSegment) === 'projects')
         ) {
           break // Skip this .claude, continue checking other segments
         }
@@ -1656,7 +1674,15 @@ export function checkEditableInternalPath(
   // memory at a caller-designated directory. The silent pre-safety-check
   // carve-out below exists only for the default/settings-backed path because
   // it can live under ~/.claude/, which is in DANGEROUS_DIRECTORIES.
-  if (isAutoMemPath(normalizedPath) && isMemoryWriteApprovalRequired()) {
+  //
+  // User opted-in: skip the approval prompt for default-path memory under
+  // ~/.claude/projects/ (the carve-out above). Override-path memory
+  // (CLAUDE_COWORK_MEMORY_PATH_OVERRIDE) still requires explicit approval.
+  if (
+    isAutoMemPath(normalizedPath) &&
+    isMemoryWriteApprovalRequired() &&
+    !isUnderGlobalClaudeProjects(normalizedPath)
+  ) {
     return {
       behavior: 'ask',
       message: `${PRODUCT_DISPLAY_NAME} wants to save persistent memory. Approve this memory write?`,
