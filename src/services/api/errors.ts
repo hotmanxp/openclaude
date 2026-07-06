@@ -130,7 +130,9 @@ function mapOpenAICompatibilityFailureToAssistantMessage(options: {
     case 'context_overflow':
       return createAssistantAPIErrorMessage({
         content: `The conversation exceeded the provider context limit. ${compactHint}`,
+        apiError: 'context_overflow',
         error: 'invalid_request',
+        errorDetails: stripOpenAICompatibilityMetadata(options.rawMessage),
       })
 
     case 'tool_call_incompatible':
@@ -229,6 +231,91 @@ export function getPromptTooLongTokenGap(
   }
   const gap = actualTokens - limitTokens
   return gap > 0 ? gap : undefined
+}
+
+const PROVIDER_MAX_TOKENS_CAP_NUMBER =
+  '([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)'
+
+const PROVIDER_MAX_TOKENS_CAP_PATTERNS = [
+  new RegExp(
+    `\\bmax_(?:completion_)?tokens\\b.{0,240}?\\bmaximum\\s+(?:output|completion)\\s+tokens?\\b[^0-9]{0,80}${PROVIDER_MAX_TOKENS_CAP_NUMBER}(?![0-9,]|\\.[0-9])`,
+    'is',
+  ),
+]
+
+function parseSafePositiveInteger(raw: string): number | undefined {
+  if (!/^(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)$/.test(raw)) {
+    return undefined
+  }
+
+  const normalized = raw.replace(/,/g, '')
+  if (!/^[0-9]+$/.test(normalized)) {
+    return undefined
+  }
+
+  const value = Number.parseInt(normalized, 10)
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    return undefined
+  }
+
+  return value
+}
+
+/**
+ * Parses provider-returned output token caps from runtime request errors.
+ * These are lower than static model metadata because gateways may account for
+ * prompt size or route-specific output limits at request time.
+ *
+ * OpenRouter-style 402 affordability errors are intentionally excluded here.
+ * Those are adjusted inside withRetry so that path has one recovery owner.
+ */
+export function parseProviderMaxTokensCap(
+  rawMessage: string,
+): number | undefined {
+  for (const pattern of PROVIDER_MAX_TOKENS_CAP_PATTERNS) {
+    const match = rawMessage.match(pattern)
+    const rawCap = match?.slice(1).find(Boolean)
+    if (!rawCap) {
+      continue
+    }
+
+    const cap = parseSafePositiveInteger(rawCap)
+    if (cap !== undefined) {
+      return cap
+    }
+  }
+
+  return undefined
+}
+
+export function getProviderMaxTokensCapFromMessage(
+  msg: AssistantMessage | undefined,
+): number | undefined {
+  if (
+    msg?.type !== 'assistant' ||
+    msg.apiError !== 'max_tokens_too_high'
+  ) {
+    return undefined
+  }
+
+  if (msg.errorDetails) {
+    return parseProviderMaxTokensCap(msg.errorDetails)
+  }
+
+  const content = msg.message?.content
+  if (!Array.isArray(content)) {
+    return undefined
+  }
+
+  const text = content
+    .filter(
+      (block): block is Extract<typeof block, { type: 'text' }> =>
+        block?.type === 'text' && typeof block.text === 'string',
+    )
+    .map(block => block.text)
+    .join('\n')
+
+  return parseProviderMaxTokensCap(text)
 }
 
 /**
@@ -1057,6 +1144,7 @@ export function getAssistantMessageFromError(
       : ' Press esc twice to go up a few messages, or run /compact to reduce context.'
     return createAssistantAPIErrorMessage({
       content: `The conversation has grown too large for the API to process.${rewindInstruction} Alternatively, start a new session with /new.`,
+      apiError: 'context_overflow',
       error: 'invalid_request',
       errorDetails: `Context overflow (500): ${error.message}`,
     })

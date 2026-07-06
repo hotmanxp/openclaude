@@ -47,6 +47,7 @@ import type {
 import { logError } from './utils/log.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
+  getProviderMaxTokensCapFromMessage,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
@@ -76,6 +77,10 @@ import {
   getAttachmentMessages,
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
+import {
+  isAboveMaxActiveMessagesLimit,
+  resolveMaxActiveMessagesLimit,
+} from './utils/maxActiveMessages.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
@@ -309,6 +314,45 @@ function formatAutoCompactRetryDelay(delayMs: number): string {
   return `${totalMinutes} minute${totalMinutes === 1 ? '' : 's'}`
 }
 
+function createAutoCompactDiagnosticMessage(args: {
+  consecutiveFailures?: number
+  nextRetryAtMs?: number
+  circuitBreakerActive?: boolean
+  circuitBreakerTripped?: boolean
+}): Message | undefined {
+  const {
+    consecutiveFailures,
+    nextRetryAtMs,
+    circuitBreakerActive,
+    circuitBreakerTripped,
+  } = args
+
+  if (circuitBreakerActive || circuitBreakerTripped) {
+    const retryDelayMs =
+      nextRetryAtMs !== undefined ? nextRetryAtMs - Date.now() : undefined
+    const retryText =
+      retryDelayMs !== undefined && retryDelayMs > 0
+        ? ` It will retry after ${formatAutoCompactRetryDelay(retryDelayMs)}.`
+        : ''
+    return createSystemMessage(
+      `Automatic compaction is paused after repeated failures.${retryText} OpenCC will stop before sending oversized requests while the guard is active.`,
+      'warning',
+    )
+  }
+
+  if (
+    consecutiveFailures !== undefined &&
+    consecutiveFailures > 0
+  ) {
+    return createSystemMessage(
+      `Automatic compaction failed (${consecutiveFailures}/${MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES}); OpenCC will retry compaction on the next eligible turn.`,
+      'warning',
+    )
+  }
+
+  return undefined
+}
+
 /**
  * Is this a max_output_tokens error message? If so, the streaming loop should
  * withhold it from SDK callers until we know whether the recovery loop can
@@ -322,6 +366,42 @@ function isWithheldMaxOutputTokens(
   msg: Message | StreamEvent | undefined,
 ): msg is AssistantMessage {
   return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
+}
+
+function isWithheldContextOverflow(
+  msg: Message | StreamEvent | undefined,
+): msg is AssistantMessage {
+  return msg?.type === 'assistant' && msg.apiError === 'context_overflow'
+}
+
+function shouldRecoverContextOverflow(
+  msg: Message | StreamEvent | undefined,
+  hasAttemptedContextOverflowRecovery: boolean,
+  querySource: QuerySource,
+): boolean {
+  return (
+    !hasAttemptedContextOverflowRecovery &&
+    querySource !== 'compact' &&
+    querySource !== 'session_memory' &&
+    isWithheldContextOverflow(msg)
+  )
+}
+
+function createContextOverflowRecoveryMessage(): UserMessage {
+  return createUserMessage({
+    content:
+      'The previous provider request exceeded the context window. OpenCC compacted the conversation and is retrying this turn once; continue from the compacted context, avoid repeating the oversized request shape, and use narrower tool reads if more detail is needed.',
+    isMeta: true,
+  })
+}
+
+function isWithheldProviderMaxTokensCap(
+  msg: Message | StreamEvent | undefined,
+): msg is AssistantMessage {
+  return (
+    msg?.type === 'assistant' &&
+    getProviderMaxTokensCapFromMessage(msg) !== undefined
+  )
 }
 
 export type QueryParams = {
@@ -358,6 +438,7 @@ type State = {
   autoCompactTracking: AutoCompactTrackingState | undefined
   maxOutputTokensRecoveryCount: number
   hasAttemptedReactiveCompact: boolean
+  hasAttemptedContextOverflowRecovery: boolean
   maxOutputTokensOverride: number | undefined
   pendingToolUseSummary: Promise<ToolUseSummaryMessage | null> | undefined
   stopHookActive: boolean | undefined
@@ -443,6 +524,7 @@ async function* queryLoop(
     stopHookActive: undefined,
     maxOutputTokensRecoveryCount: 0,
     hasAttemptedReactiveCompact: false,
+    hasAttemptedContextOverflowRecovery: false,
     hasAttemptedProviderFallback: false,
     turnCount: 1,
     continuationNudgeCount: 0,
@@ -494,6 +576,7 @@ async function* queryLoop(
       autoCompactTracking,
       maxOutputTokensRecoveryCount,
       hasAttemptedReactiveCompact,
+      hasAttemptedContextOverflowRecovery,
       hasAttemptedProviderFallback,
       maxOutputTokensOverride,
       pendingToolUseSummary,
@@ -730,32 +813,45 @@ async function* queryLoop(
     // priority order: memory-pressure > message-count.
     const canForceCompact =
       querySource !== 'compact' && querySource !== 'session_memory'
+    const activeMessageLimit = canForceCompact
+      ? resolveMaxActiveMessagesLimit(
+          maxMessagesCompactionThreshold,
+          process.env.OPENCLAUDE_MAX_ACTIVE_MESSAGES,
+        )
+      : 0
     if (canForceCompact) {
-      const MAX_ACTIVE_MESSAGES = Number.parseInt(
-        process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '200',
-        10,
-      )
-      const floorPct = validateBoundedIntEnvVar(
-        'OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT',
-        process.env.OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT,
-        75,
-        100,
-      ).effective
-      const flagWasSet = consumeCompactionRequest()
-      const forceReason = resolveForceReason({
-        messageCount: messagesForQuery.length,
-        tokenCount: tokenCountWithEstimation(messagesForQuery),
-        maxActiveMessages: MAX_ACTIVE_MESSAGES,
-        naturalThreshold: getAutoCompactThreshold(
-          toolUseContext.options.mainLoopModel,
-        ),
-        floorPct,
-        memoryPressureFlag: flagWasSet,
-      })
-      if (forceReason) {
-        tracking = {
-          ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
-          forceReason,
+      if (
+        isAboveMaxActiveMessagesLimit(
+          messagesForQuery.length,
+          activeMessageLimit,
+        )
+      ) {
+        const MAX_ACTIVE_MESSAGES = Number.parseInt(
+          process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '200',
+          10,
+        )
+        const floorPct = validateBoundedIntEnvVar(
+          'OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT',
+          process.env.OPENCC_AUTOCOMPACT_FORCE_FLOOR_PCT,
+          75,
+          100,
+        ).effective
+        const flagWasSet = consumeCompactionRequest()
+        const forceReason = resolveForceReason({
+          messageCount: messagesForQuery.length,
+          tokenCount: tokenCountWithEstimation(messagesForQuery),
+          maxActiveMessages: MAX_ACTIVE_MESSAGES,
+          naturalThreshold: getAutoCompactThreshold(
+            toolUseContext.options.mainLoopModel,
+          ),
+          floorPct,
+          memoryPressureFlag: flagWasSet,
+        })
+        if (forceReason) {
+          tracking = {
+            ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
+            forceReason,
+          }
         }
       }
     }
@@ -844,13 +940,17 @@ async function* queryLoop(
       updateAutoCompactTracking(tracking)
 
       const postCompactMessages = buildPostCompactMessages(compactionResult)
+      const messagesAfterCompact =
+        state.transition?.reason === 'context_overflow_compact_retry'
+          ? [...postCompactMessages, createContextOverflowRecoveryMessage()]
+          : postCompactMessages
 
       for (const message of postCompactMessages) {
         yield message
       }
 
       // Continue on with the current query call using the post compact messages
-      messagesForQuery = postCompactMessages
+      messagesForQuery = messagesAfterCompact
     } else if (
       consecutiveFailures !== undefined ||
       nextRetryAtMs !== undefined ||
@@ -876,6 +976,16 @@ async function* queryLoop(
       }
       tracking = nextTracking
       updateAutoCompactTracking(tracking)
+
+      const diagnosticMessage = createAutoCompactDiagnosticMessage({
+        consecutiveFailures,
+        nextRetryAtMs,
+        circuitBreakerActive,
+        circuitBreakerTripped,
+      })
+      if (diagnosticMessage) {
+        yield diagnosticMessage
+      }
     }
 
     //TODO: no need to set toolUseContext.messages during set-up since it is updated here
@@ -982,10 +1092,23 @@ async function* queryLoop(
       }
     }
 
+    if (
+      state.transition?.reason === 'context_overflow_compact_retry' &&
+      !compactionResult
+    ) {
+      yield createAssistantAPIErrorMessage({
+        content:
+          'The provider reported a context-window overflow, but automatic compaction could not reduce the conversation before retry. Run /compact, undo recent large output, or start a new session with /new.',
+        apiError: 'context_overflow',
+        error: 'invalid_request',
+      })
+      return { reason: 'blocking_limit' }
+    }
+
     // Safety net: when auto-compact's circuit breaker has tripped, the normal
     // blocking check above may be gated on reactiveCompact. If compaction is
-    // cooling down or otherwise exhausted and context is still over the
-    // autocompact threshold, block immediately with a clear message instead
+    // cooling down or otherwise exhausted and context or message count is still
+    // over the safety threshold, block immediately with a clear message instead
     // of burning an oversized API call.
     if (
       tracking?.consecutiveFailures !== undefined &&
@@ -1004,7 +1127,11 @@ async function* queryLoop(
       const isAboveBreakerThreshold =
         isAboveAutoCompactThreshold ||
         ((circuitBreakerActive === true || circuitBreakerTripped === true) &&
-          tokenUsage >= getAutoCompactThreshold(model))
+          tokenUsage >= getAutoCompactThreshold(model)) ||
+        isAboveMaxActiveMessagesLimit(
+          messagesForQuery.length,
+          activeMessageLimit,
+        )
       if (isAboveBreakerThreshold) {
         const nowMs = Date.now()
         const retryDelayMs =
@@ -1013,10 +1140,10 @@ async function* queryLoop(
             : undefined
         const content =
           retryDelayMs !== undefined && retryDelayMs > 0
-            ? 'The conversation is over the auto-compact threshold, but automatic compaction is cooling down after repeated failures. ' +
+? 'The conversation is over the auto-compact safety threshold, but automatic compaction is cooling down after repeated failures. ' +
               'OpenCC stopped before sending another oversized request. ' +
               `Retry after ${formatAutoCompactRetryDelay(retryDelayMs)}, run /compact, or start a new session with /new.`
-            : 'The conversation is over the auto-compact threshold and automatic compaction has failed repeatedly. ' +
+            : 'The conversation is over the auto-compact safety threshold and automatic compaction has failed repeatedly. ' +
               'OpenCC stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.'
         yield createAssistantAPIErrorMessage({
           content,
@@ -1024,6 +1151,17 @@ async function* queryLoop(
         })
         return { reason: 'blocking_limit' }
       }
+    }
+
+    if (
+      isAboveMaxActiveMessagesLimit(messagesForQuery.length, activeMessageLimit)
+    ) {
+      yield createAssistantAPIErrorMessage({
+        content:
+          'The conversation is over the active-message safety limit, but automatic compaction could not reduce it before the next provider request. OpenCC stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.',
+        error: 'invalid_request',
+      })
+      return { reason: 'blocking_limit' }
     }
 
     let attemptWithFallback = true
@@ -1205,6 +1343,18 @@ async function* queryLoop(
               withheld = true
             }
             if (isWithheldMaxOutputTokens(message)) {
+              withheld = true
+            }
+if (
+              shouldRecoverContextOverflow(
+                message,
+                hasAttemptedContextOverflowRecovery,
+                querySource,
+              )
+            ) {
+              withheld = true
+            }
+            if (isWithheldProviderMaxTokensCap(message)) {
               withheld = true
             }
             // Withhold rate-limit errors when a providerFallbackChain entry is
@@ -1509,6 +1659,7 @@ async function* queryLoop(
               autoCompactTracking: tracking,
               maxOutputTokensRecoveryCount,
               hasAttemptedReactiveCompact,
+              hasAttemptedContextOverflowRecovery,
               hasAttemptedProviderFallback,
               maxOutputTokensOverride: undefined,
               pendingToolUseSummary: undefined,
@@ -1566,6 +1717,7 @@ async function* queryLoop(
             autoCompactTracking: undefined,
             maxOutputTokensRecoveryCount,
             hasAttemptedReactiveCompact: true,
+            hasAttemptedContextOverflowRecovery,
             hasAttemptedProviderFallback,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1596,6 +1748,94 @@ async function* queryLoop(
         return { reason: 'prompt_too_long' }
       }
 
+      if (
+        shouldRecoverContextOverflow(
+          lastMessage,
+          hasAttemptedContextOverflowRecovery,
+          querySource,
+        )
+      ) {
+        yield createSystemMessage(
+          'Provider context limit reached; compacting conversation and retrying turn.',
+          'warning',
+        )
+        const nextTracking: AutoCompactTrackingState = {
+          ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
+          forceReason: 'memory-pressure',
+        }
+        const next: State = {
+          messages: messagesForQuery,
+          toolUseContext,
+          autoCompactTracking: nextTracking,
+          maxOutputTokensRecoveryCount,
+          hasAttemptedReactiveCompact,
+          hasAttemptedContextOverflowRecovery: true,
+          hasAttemptedProviderFallback,
+          maxOutputTokensOverride: undefined,
+          providerMaxOutputTokensCap,
+          pendingToolUseSummary: undefined,
+          stopHookActive: undefined,
+          turnCount,
+          continuationNudgeCount: state.continuationNudgeCount,
+          agentStepLimit,
+          transition: { reason: 'context_overflow_compact_retry' },
+        }
+        state = next
+        continue
+      }
+
+      if (isWithheldProviderMaxTokensCap(lastMessage)) {
+        const providerMaxTokensCap =
+          getProviderMaxTokensCapFromMessage(lastMessage)
+        const shouldRetryWithProviderCap =
+          providerMaxTokensCap !== undefined &&
+          state.transition?.reason !== 'provider_max_tokens_retry' &&
+          (effectiveMaxOutputTokensOverride === undefined ||
+            providerMaxTokensCap < effectiveMaxOutputTokensOverride)
+
+        if (shouldRetryWithProviderCap) {
+          const nextProviderMaxOutputTokensCap =
+            providerMaxOutputTokensCap === undefined
+              ? providerMaxTokensCap
+              : Math.min(providerMaxOutputTokensCap, providerMaxTokensCap)
+          logEvent('tengu_provider_max_tokens_cap_retry', {
+            cap: providerMaxTokensCap,
+            ...(effectiveMaxOutputTokensOverride !== undefined && {
+              previousMaxOutputTokensOverride:
+                effectiveMaxOutputTokensOverride,
+            }),
+          })
+          yield createSystemMessage(
+            `Provider maximum output tokens limit is ${providerMaxTokensCap.toLocaleString('en-US')}; retrying with that cap.`,
+            'warning',
+          )
+          const next: State = {
+            messages: messagesForQuery,
+            toolUseContext,
+            autoCompactTracking: tracking,
+            maxOutputTokensRecoveryCount,
+            hasAttemptedReactiveCompact,
+            hasAttemptedContextOverflowRecovery,
+            hasAttemptedProviderFallback,
+            maxOutputTokensOverride,
+            providerMaxOutputTokensCap: nextProviderMaxOutputTokensCap,
+            pendingToolUseSummary: undefined,
+            stopHookActive: undefined,
+            turnCount,
+            continuationNudgeCount: state.continuationNudgeCount,
+            agentStepLimit,
+            transition: {
+              reason: 'provider_max_tokens_retry',
+              cap: providerMaxTokensCap,
+            },
+          }
+          state = next
+          continue
+        }
+
+        yield lastMessage
+      }
+
       // Check for max_output_tokens and inject recovery message. The error
       // was withheld from the stream above; only surface it if recovery
       // exhausts.
@@ -1624,6 +1864,7 @@ async function* queryLoop(
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount,
             hasAttemptedReactiveCompact,
+            hasAttemptedContextOverflowRecovery,
             hasAttemptedProviderFallback,
             maxOutputTokensOverride: ESCALATED_MAX_TOKENS,
             pendingToolUseSummary: undefined,
@@ -1655,6 +1896,7 @@ async function* queryLoop(
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: maxOutputTokensRecoveryCount + 1,
             hasAttemptedReactiveCompact,
+            hasAttemptedContextOverflowRecovery,
             hasAttemptedProviderFallback,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1734,6 +1976,7 @@ async function* queryLoop(
               autoCompactTracking: tracking,
               maxOutputTokensRecoveryCount,
               hasAttemptedReactiveCompact,
+              hasAttemptedContextOverflowRecovery,
               hasAttemptedProviderFallback: true,
               maxOutputTokensOverride: undefined,
               pendingToolUseSummary: undefined,
@@ -1796,6 +2039,7 @@ async function* queryLoop(
           // here caused an infinite loop: compact → still too long → error →
           // stop hook blocking → compact → … burning thousands of API calls.
           hasAttemptedReactiveCompact,
+          hasAttemptedContextOverflowRecovery,
           // Same logic for the provider-fallback guard — a stop-hook blocking
           // error after a fallback switch is unrelated to which provider is
           // active, so preserve rather than re-fall-back.
@@ -1838,6 +2082,7 @@ async function* queryLoop(
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: 0,
             hasAttemptedReactiveCompact: false,
+            hasAttemptedContextOverflowRecovery: false,
             hasAttemptedProviderFallback: false,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1903,6 +2148,7 @@ async function* queryLoop(
               autoCompactTracking: tracking,
               maxOutputTokensRecoveryCount: 0,
               hasAttemptedReactiveCompact: false,
+              hasAttemptedContextOverflowRecovery: false,
               hasAttemptedProviderFallback: false,
               maxOutputTokensOverride: undefined,
               pendingToolUseSummary: undefined,
@@ -2426,6 +2672,7 @@ async function* queryLoop(
       turnCount: nextTurnCount,
       maxOutputTokensRecoveryCount: 0,
       hasAttemptedReactiveCompact: false,
+      hasAttemptedContextOverflowRecovery: false,
       hasAttemptedProviderFallback: false,
       continuationNudgeCount: 0,
       pendingToolUseSummary: nextPendingToolUseSummary,
