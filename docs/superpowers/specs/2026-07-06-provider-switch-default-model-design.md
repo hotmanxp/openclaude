@@ -18,12 +18,13 @@
 
 | 当前 mainLoopModel | 新 profile.model | 行为 |
 |---|---|---|
-| 未设置 | `glm-5.2` | 重置为 `glm-5.2` |
+| `undefined` / `null` | `glm-5.2` | 重置为 `glm-5.2` |
+| `""`（空字符串） | `glm-5.2` | 重置为 `glm-5.2` |
 | `glm-5.2` | `glm-5.2` | 跳过（同一 model，无需 setAppState） |
-| `opus` | `glm-5.2` | 保留 `opus`（别名优先） |
+| `opus` / `sonnet` / `haiku` 等别名 | `glm-5.2` | 保留别名（别名优先） |
 | `zhiniao-MiniMax-M2.7` | `glm-5.2` | 重置为 `glm-5.2` |
-| `glm-4.5, glm-4.7` (profile.model 字段多选) | 取第一个 `glm-4.5` | 重置为 `glm-4.5` |
-| profile.model 为空字符串/未设 | n/a | 跳过重置 |
+| `glm-4.5, glm-4.7`（profile.model 多选） | 取第一个 `glm-4.5` | 重置为 `glm-4.5` |
+| profile.model 为 `""` / `undefined`（空） | n/a | 跳过重置 |
 
 **别名定义：** 复用 `src/utils/model/aliases.ts:12` 的 `isModelAlias()` — 覆盖 `sonnet / opus / haiku / best / sonnet[1m] / opus[1m] / opusplan`。
 
@@ -39,8 +40,10 @@
 |---|---|---|
 | `src/utils/providerProfiles.ts` | 修改 | 新增 `getDefaultModelForProfile(profile)` 纯函数 |
 | `src/utils/providerProfiles.ts` | 新增 | `maybeResetMainLoopModel(activeProfile, currentModel)` 纯函数，返回 `{ reset, previousModel?, newModel? }` |
-| `src/utils/providerProfiles.test.ts` | 新增 | helper 单元测试 |
+| `src/utils/providerProfiles.test.ts` | 修改 | 在已有测试文件追加 helper 单元测试（`getDefaultModelForProfile` + `maybeResetMainLoopModel` 两个 describe 块） |
 | `src/components/ProviderManager.tsx` | 修改 | `select-active` onSelect 拿到 setActiveProviderProfile 返回值后，根据 decision 决定是否调 setAppState + 拼 statusMessage |
+
+**单一调用点说明：** helper 只在 `ProviderManager.tsx` 的 `select-active` onSelect 内调用。`setActiveProviderProfile` 不持有 React state 入口（`AppState.mainLoopModel`），无法在不引入跨层耦合的情况下调用 helper；其他调用路径（冷启动 / 编辑 / 删除）按"不触发"列表处理。
 
 ### 数据流
 
@@ -75,7 +78,7 @@ ProviderManager select-active onSelect
 
 ## 测试
 
-### 单元测试（`src/utils/providerProfiles.test.ts`）
+### 单元测试（在 `src/utils/providerProfiles.test.ts` 已有用例后追加）
 
 `getDefaultModelForProfile`:
 - 单 model: `"glm-5.2"` → `"glm-5.2"`
@@ -84,11 +87,14 @@ ProviderManager select-active onSelect
 - 仅空白: `"   "` → `null`
 
 `maybeResetMainLoopModel`:
-- currentModel 未设 + defaultModel 有 → reset to defaultModel
-- currentModel === defaultModel → skip
-- currentModel 是别名（opus） → skip
-- currentModel 是具体名 + ≠ defaultModel → reset, 返回 previousModel 和 newModel
-- profile.model 为空 → skip
+- currentModel `undefined` + defaultModel 有 → reset to defaultModel（无 previousModel）
+- currentModel `null` + defaultModel 有 → reset to defaultModel
+- currentModel `""` + defaultModel 有 → reset to defaultModel
+- currentModel `""` 且 defaultModel 为 null → skip（profile 没设 model，currentModel 也没意义）
+- currentModel `"glm-5.2"` 且 defaultModel `"glm-5.2"` → skip
+- currentModel `"opus"` / `"sonnet"` / `"haiku"` 等别名 → skip
+- currentModel `"zhiniao-MiniMax-M2.7"` + defaultModel `"glm-5.2"` → reset, previousModel=`"zhiniao-MiniMax-M2.7"`, newModel=`"glm-5.2"`
+- profile.model 为 `""` → skip
 
 ### 集成测试（`src/components/ProviderManager.test.tsx`）
 
