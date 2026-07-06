@@ -115,6 +115,10 @@ function handlePromptSubmitProfilerScript(
     }))
     mock.module('src/services/analytics/index.js', () => ({
       logEvent: () => {},
+      // stripProtoFields is needed because handlePromptSubmit → startupProfiler → firstPartyEventLoggingExporter
+      // imports it from '../services/analytics/index.js'. Without this, the isolated Bun spawnSync sub-process
+      // crashes with the named-export SyntaxError for stripProtoFields.
+      stripProtoFields: (m: Record<string, unknown>) => m,
     }))
 
     const { handlePromptSubmit } = await import('./src/utils/handlePromptSubmit.js')
