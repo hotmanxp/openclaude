@@ -170,6 +170,10 @@ export class QueryLifecycleOperationTracker {
     this.toolUses.set(toolUse.toolUseId, toSafeToolUseSnapshot(toolUse))
   }
 
+  isActiveToolUse(toolUseId: string): boolean {
+    return this.toolUses.has(toolUseId)
+  }
+
   endToolUse(toolUseId: string): void {
     this.toolUses.delete(toolUseId)
   }
