@@ -52,6 +52,7 @@ import { WorkerPendingPermission } from '../components/permissions/WorkerPending
 import { injectUserMessageToTeammate, getAllInProcessTeammateTasks } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js';
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
+import type { AutoCompactTrackingState } from '../services/compact/autoCompact.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
 import { useReplBridge } from '../hooks/useReplBridge.js';
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
@@ -675,6 +676,29 @@ export function REPL({
   const ultraplanLaunchPending = useAppState(s => s.ultraplanLaunchPending);
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId);
   const setAppState = useSetAppState();
+  const autoCompactTrackingBySessionRef = useRef(new Map<ReturnType<typeof getSessionId>, AutoCompactTrackingState>());
+  const getAutoCompactTrackingForSession = useCallback((sessionId: ReturnType<typeof getSessionId>) => autoCompactTrackingBySessionRef.current.get(sessionId), []);
+  const setAutoCompactTrackingForSession = useCallback((sessionId: ReturnType<typeof getSessionId>, tracking: AutoCompactTrackingState | undefined) => {
+    if (tracking) {
+      autoCompactTrackingBySessionRef.current.set(sessionId, tracking);
+    } else {
+      autoCompactTrackingBySessionRef.current.delete(sessionId);
+    }
+  }, []);
+  const setAutoCompactTrackingForSessionIfUnchanged = useCallback((sessionId: ReturnType<typeof getSessionId>, expected: AutoCompactTrackingState | undefined, tracking: AutoCompactTrackingState | undefined) => {
+    if (autoCompactTrackingBySessionRef.current.get(sessionId) !== expected) {
+      return false;
+    }
+    if (tracking) {
+      autoCompactTrackingBySessionRef.current.set(sessionId, tracking);
+    } else {
+      autoCompactTrackingBySessionRef.current.delete(sessionId);
+    }
+    return true;
+  }, []);
+  const resetAutoCompactTracking = useCallback(() => {
+    autoCompactTrackingBySessionRef.current.clear();
+  }, []);
 
   // Bootstrap: retained local_agent that hasn't loaded disk yet → read
   // sidechain JSONL and UUID-merge with whatever stream has appended so far.
