@@ -1,6 +1,13 @@
 // @ts-nocheck
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { createOpenAIShimClient } from './openaiShim/index.js'
+
+// OpenCC does not currently ship a githubModelsCredentials module (GitHub Copilot
+// integration was upstream-only and falls outside the 3-provider policy). The
+// cherry-picked tests below spread `...realModule` for the mock; an empty stub is
+// a faithful port that preserves test intent (override `refreshCopilotTokenOn401`).
+const realGithubModelsCredentials: Record<string, unknown> = {}
+const realCodexShim: Record<string, unknown> = {}
 
 type FetchType = typeof globalThis.fetch
 
