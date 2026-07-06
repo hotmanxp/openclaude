@@ -16,6 +16,11 @@ function installOscMocks(): void {
   mock.module('../../utils/execFileNoThrow.js', () => ({
     execFileNoThrow: execFileNoThrowMock,
     execFileNoThrowWithCwd: execFileNoThrowMock,
+    // Provide the deprecated re-export so downstream test files (e.g.
+    // bashSecurity.test.ts) that load the module after osc mocks have been
+    // installed do not crash with "Export named ... not found". Pass-through
+    // is safe because osc tests never invoke the sync path.
+    execSyncWithDefaults_DEPRECATED: () => '',
   }))
 
   mock.module('../../utils/tempfile.js', () => ({
