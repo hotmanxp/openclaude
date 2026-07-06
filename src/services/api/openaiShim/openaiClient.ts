@@ -346,9 +346,13 @@ function convertMessages(
     content?: unknown
   }>,
   system: unknown,
-  options?: { preserveReasoningContent?: boolean },
+  options?: {
+    preserveReasoningContent?: boolean
+    reasoningContentFallback?: '' | 'omit'
+  },
 ): OpenAIMessage[] {
   const preserveReasoningContent = options?.preserveReasoningContent === true
+  const reasoningContentFallback = options?.reasoningContentFallback
   const result: OpenAIMessage[] = []
   const knownToolCallIds = new Set<string>()
 
@@ -433,10 +437,14 @@ function convertMessages(
           (b: { type?: string }) => b.type === 'tool_use',
         )
         const thinkingBlock = content.find(
-          (b: { type?: string }) => b.type === 'thinking',
+          (b: { type?: string }) =>
+            b.type === 'thinking' || b.type === 'redacted_thinking',
         )
         const textContent = content.filter(
-          (b: { type?: string }) => b.type !== 'tool_use' && b.type !== 'thinking',
+          (b: { type?: string }) =>
+            b.type !== 'tool_use' &&
+            b.type !== 'thinking' &&
+            b.type !== 'redacted_thinking',
         )
 
         const assistantMsg: OpenAIMessage = {
@@ -460,9 +468,24 @@ function convertMessages(
         // Gated per-provider because other endpoints either ignore the field
         // (harmless) or strict-reject unknown fields (harmful).
         if (preserveReasoningContent) {
-          const thinkingText = (thinkingBlock as { thinking?: string } | undefined)?.thinking
+          const tb = thinkingBlock as
+            | { thinking?: string; data?: string }
+            | undefined
+          // `thinking` blocks carry their content in `.thinking`;
+          // `redacted_thinking` blocks carry it in `.data`.
+          const thinkingText =
+            typeof tb?.thinking === 'string'
+              ? tb.thinking
+              : typeof tb?.data === 'string'
+                ? tb.data
+                : undefined
           if (typeof thinkingText === 'string' && thinkingText.trim().length > 0) {
             assistantMsg.reasoning_content = thinkingText
+          } else if (
+            toolUses.length > 0 &&
+            reasoningContentFallback === ''
+          ) {
+            assistantMsg.reasoning_content = ''
           }
         }
 
@@ -974,7 +997,16 @@ class OpenAIShimMessages {
       // Moonshot requires every assistant tool-call message to carry
       // reasoning_content when its thinking feature is active. Echo it back
       // from the thinking block we captured on the inbound response.
-      preserveReasoningContent: isMoonshotBaseUrl(request.baseUrl),
+      preserveReasoningContent:
+        isMoonshotBaseUrl(request.baseUrl) ||
+        (request.baseUrl?.includes('deepseek.com') ?? false),
+      // DeepSeek requires assistant tool-call messages to carry
+      // reasoning_content (even when empty) so reasoning continuity is
+      // preserved across turns; otherwise DeepSeek 400s with
+      // "thinking is enabled but reasoning_content is missing".
+      reasoningContentFallback: request.baseUrl?.includes('deepseek.com')
+        ? ''
+        : undefined,
     })
 
     const body: Record<string, unknown> = {
