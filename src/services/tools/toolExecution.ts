@@ -1194,6 +1194,19 @@ export async function checkPermissionsAndCallTool(
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
 
+    // Record the deny decision on the active queryLifecycle entry so observers
+    // (abort/cancel/discard telemetry) see the final decision outcome, not the
+    // pre-permission snapshot. The endToolUse in the finally block will clear
+    // the entry shortly after.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      queryLifecycle.updateToolUse({
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        startedAt: lifecycleStartTime,
+        ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+      })
+    }
+
     if (!shouldSkipSessionPersistence()) {
       try {
         const replayBuilder = getReplayIndexBuilder()
@@ -1346,6 +1359,30 @@ export async function checkPermissionsAndCallTool(
   // (Don't overwrite if undefined - processedInput may have been modified by passthrough hooks)
   if (permissionDecision.updatedInput !== undefined) {
     processedInput = permissionDecision.updatedInput
+
+    // Reflect permission-updated metadata (e.g. bash timeoutMs) in the
+    // active queryLifecycle entry so abort/cancel/discard observe the
+    // post-permission state, not the pre-permission snapshot captured at
+    // startToolUse time. Skip when the tool has already been ended (e.g.
+    // by an earlier discard/abort path) so we don't resurrect its entry.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      const updatedBashTimeoutMs =
+        tool.name === BASH_TOOL_NAME &&
+        typeof processedInput === 'object' &&
+        processedInput !== null &&
+        'timeout' in processedInput
+          ? (processedInput as { timeout?: number }).timeout
+          : undefined
+      queryLifecycle.updateToolUse({
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        startedAt: lifecycleStartTime,
+        ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+        ...(updatedBashTimeoutMs !== undefined && {
+          timeoutMs: updatedBashTimeoutMs,
+        }),
+      })
+    }
   }
 
   // Prepare tool parameters for logging in tool_result event.
@@ -2029,6 +2066,11 @@ export async function checkPermissionsAndCallTool(
     }
   }
   } finally {
-    queryLifecycle?.endToolUse(toolUseID)
+    // Guard with isActiveToolUse so an endToolUse that already happened
+    // earlier (e.g. via discard/abort or a permission callback) doesn't
+    // get re-fired here and double-count in observers.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      queryLifecycle.endToolUse(toolUseID)
+    }
   }
 }

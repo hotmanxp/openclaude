@@ -756,3 +756,104 @@ describe('setActiveProviderProfile model cache', () => {
     expect(cacheValues).toContain('gpt-3.5-turbo')
   })
 })
+
+describe('getDefaultModelForProfile', () => {
+  test('returns single model as-is', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: 'glm-5.2' }))).toBe('glm-5.2')
+  })
+
+  test('returns first model from comma-separated list', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(
+      getDefaultModelForProfile(buildProfile({ model: 'glm-4.5, glm-4.7' })),
+    ).toBe('glm-4.5')
+  })
+
+  test('returns first model from semicolon-separated list', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(
+      getDefaultModelForProfile(buildProfile({ model: 'glm-4.5; glm-4.7' })),
+    ).toBe('glm-4.5')
+  })
+
+  test('returns null for empty string', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: '' }))).toBeNull()
+  })
+
+  test('returns null for whitespace-only string', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: '   ' }))).toBeNull()
+  })
+})
+
+describe('maybeResetMainLoopModel', () => {
+  test('resets when currentModel is undefined', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), undefined))
+      .toEqual({ reset: true, newModel: 'glm-5.2' })
+  })
+
+  test('resets when currentModel is null', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), null))
+      .toEqual({ reset: true, newModel: 'glm-5.2' })
+  })
+
+  test('resets when currentModel is empty string', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), ''))
+      .toEqual({ reset: true, newModel: 'glm-5.2' })
+  })
+
+  test('skips when currentModel equals defaultModel', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'glm-5.2'))
+      .toEqual({ reset: false })
+  })
+
+  test('skips when currentModel is the alias "opus"', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'opus'))
+      .toEqual({ reset: false })
+  })
+
+  test('skips when currentModel is the alias "sonnet"', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'sonnet'))
+      .toEqual({ reset: false })
+  })
+
+  test('skips when currentModel is the alias "haiku"', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'haiku'))
+      .toEqual({ reset: false })
+  })
+
+  test('skips when currentModel is the alias "opus[1m]"', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'opus[1m]'))
+      .toEqual({ reset: false })
+  })
+
+  test('resets when currentModel is concrete and different from default', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(
+      maybeResetMainLoopModel(buildProfile({ model: 'glm-5.2' }), 'zhiniao-MiniMax-M2.7'),
+    ).toEqual({ reset: true, previousModel: 'zhiniao-MiniMax-M2.7', newModel: 'glm-5.2' })
+  })
+
+  test('uses first model from comma-separated profile.model', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(
+      maybeResetMainLoopModel(buildProfile({ model: 'glm-4.5, glm-4.7' }), 'opus'),
+    ).toEqual({ reset: false })
+  })
+
+  test('skips when profile.model is empty (no default to reset to)', async () => {
+    const { maybeResetMainLoopModel } = await importFreshProviderProfileModules()
+    expect(maybeResetMainLoopModel(buildProfile({ model: '' }), 'whatever'))
+      .toEqual({ reset: false })
+  })
+})

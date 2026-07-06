@@ -4,6 +4,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { BashTool } from './BashTool.js'
 import { PowerShellTool } from '../PowerShellTool/PowerShellTool.js'
+import type { BashCommandAnalysis } from './bashCommandAnalysis.js'
 import { shouldUseSandbox } from './shouldUseSandbox.js'
 
 const originalSandboxMethods = {
@@ -71,5 +72,30 @@ test('trusted internal approval cannot disable sandbox when policy forbids it', 
       dangerouslyDisableSandbox: true,
       _dangerouslyDisableSandboxApproved: true,
     }),
+  ).toBe(true)
+})
+
+test('parser limitations keep Bash sandbox enabled when analysis is passed', () => {
+  SandboxManager.isSandboxingEnabled = () => true
+  SandboxManager.areUnsandboxedCommandsAllowed = () => true
+
+  const failedAnalysis = {
+    command: 'echo ${value + 1}',
+    injectionCheckDisabled: true,
+    shadowEnabled: false,
+    astRoot: null,
+    astResult: { kind: 'parse-unavailable' },
+    astSubcommands: null,
+    legacyParse: {
+      kind: 'failed',
+      error: 'Bad substitution: value',
+      failureKind: 'expected-limitation',
+      reasonCode: 'bad-substitution',
+    },
+  } satisfies BashCommandAnalysis
+  expect(
+    shouldUseSandbox({
+      command: failedAnalysis.command,
+    }, failedAnalysis),
   ).toBe(true)
 })

@@ -84,6 +84,8 @@ export function getQueryTerminalReason(
     case 'background':
     case 'parent-ended':
     case 'side-task-cancelled':
+    case 'agent-summary-superseded':
+    case 'memory-extraction-superseded':
       return 'parent-ended'
     default:
       return 'unknown'
@@ -166,6 +168,10 @@ export class QueryLifecycleOperationTracker {
   updateToolUse(toolUse: QueryActiveToolUse): void {
     if (!this.toolUses.has(toolUse.toolUseId)) return
     this.toolUses.set(toolUse.toolUseId, toSafeToolUseSnapshot(toolUse))
+  }
+
+  isActiveToolUse(toolUseId: string): boolean {
+    return this.toolUses.has(toolUseId)
   }
 
   endToolUse(toolUseId: string): void {

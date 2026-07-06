@@ -1,11 +1,48 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
+  buildMemoryGuardChecks,
   buildSandboxRuntimeCheck,
   formatReachabilityFailureDetail,
   isCliSandboxRuntimeStubbed,
 } from './system-check.ts'
+import { DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP } from '../src/utils/maxActiveMessages.ts'
 
+const ENV_KEYS = [
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_SIMPLE',
+  'OPENAI_MODEL',
+  'OPENAI_BASE_URL',
+  'OPENAI_API_KEYS',
+  'OPENAI_API_KEY',
+  'CODEX_API_KEY',
+  'CODEX_AUTH_JSON_PATH',
+  'CODEX_HOME',
+  'DISABLE_COMPACT',
+  'DISABLE_AUTO_COMPACT',
+  'OPENCLAUDE_MAX_ACTIVE_MESSAGES',
+  'OPENCLAUDE_MAX_ACTIVE_MESSAGES_HARD_CAP',
+  'OPENCLAUDE_MAX_MEMORY_MB',
+] as const
+
+const originalEnv: Record<string, string | undefined> = {}
+
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    originalEnv[key] = process.env[key]
+    delete process.env[key]
+  }
+})
+
+afterEach(() => {
+  for (const key of ENV_KEYS) {
+    if (originalEnv[key] === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = originalEnv[key]
+    }
+  }
+})
 describe('formatReachabilityFailureDetail', () => {
   test('returns generic failure detail for non-codex transport', () => {
     const detail = formatReachabilityFailureDetail(
@@ -61,6 +98,281 @@ describe('formatReachabilityFailureDetail', () => {
     )
   })
 })
+
+// Upstream cherry-pick: references checkOpenAIEnv / serializeSafeEnvSummary
+// which OpenCC's system-check.ts does not yet export. Skipped until the
+// upstream provider-diagnostics port lands in OpenCC (3-provider scope only).
+describe.skip('system-check provider diagnostics', () => {
+  test('redacts descriptor-declared provider secret values in displayed model fields', () => {
+    const providerSecret = 'ogw-provider-secret'
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://opengateway.gitlawb.com/v1'
+    process.env.OPENAI_MODEL = providerSecret
+    process.env.OPENGATEWAY_API_KEY = providerSecret
+
+    const results = checkOpenAIEnv()
+    const serialized = JSON.stringify(results)
+
+    expect(serialized).toContain('ogw...ret')
+    expect(serialized).not.toContain(providerSecret)
+  })
+
+  test('summarizes descriptor-declared provider credentials without exposing values', () => {
+    const providerSecret = 'ogw-provider-secret'
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://opengateway.gitlawb.com/v1'
+    process.env.OPENAI_MODEL = providerSecret
+    process.env.OPENGATEWAY_API_KEY = providerSecret
+
+    const summary = serializeSafeEnvSummary()
+
+    expect(summary.OPENAI_MODEL).toBe('ogw...ret')
+    expect(summary.PROVIDER_API_KEY_SET).toBe(true)
+    expect(JSON.stringify(summary)).not.toContain(providerSecret)
+  })
+
+  test('does not use active GitHub credentials for a default OpenAI base URL', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.CLAUDE_CODE_USE_GITHUB = '1'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+    process.env.GITHUB_TOKEN = 'ghp_FAKEgithubToken0123456789'
+    delete process.env.OPENAI_API_KEY
+
+    const results = checkOpenAIEnv()
+    const summary = serializeSafeEnvSummary()
+    const credentialResult = results.find(
+      result => result.label === 'OPENAI_API_KEYS or OPENAI_API_KEY',
+    )
+
+    expect(credentialResult).toEqual({
+      ok: false,
+      label: 'OPENAI_API_KEYS or OPENAI_API_KEY',
+      detail:
+        'Missing key for non-local provider URL. Set OPENAI_API_KEYS or OPENAI_API_KEY.',
+    })
+    expect(summary.PROVIDER_API_KEY_SET).toBe(false)
+  })
+
+  test('falls back to OPENAI_API_KEY when OPENAI_API_KEYS is delimiter-only', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+    process.env.OPENAI_MODEL = 'gpt-4o'
+    process.env.OPENAI_API_KEYS = ', ,'
+    process.env.OPENAI_API_KEY = 'sk-openai-single'
+
+    const results = checkOpenAIEnv()
+    const summary = serializeSafeEnvSummary()
+    const credentialResult = results.find(
+      result => result.label === 'OPENAI_API_KEYS or OPENAI_API_KEY',
+    )
+
+    expect(credentialResult).toEqual({
+      ok: true,
+      label: 'OPENAI_API_KEYS or OPENAI_API_KEY',
+      detail: 'Configured.',
+    })
+    expect(summary.PROVIDER_API_KEY_SET).toBe(true)
+  })
+
+  test('accepts valid OPENAI_API_KEYS before placeholder OPENAI_API_KEY fallback', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+    process.env.OPENAI_MODEL = 'gpt-4o'
+    process.env.OPENAI_API_KEYS = 'sk-openai-a,sk-openai-b'
+    process.env.OPENAI_API_KEY = 'SUA_CHAVE'
+
+    const results = checkOpenAIEnv()
+    const summary = serializeSafeEnvSummary()
+    const credentialResult = results.find(
+      result => result.label === 'OPENAI_API_KEYS or OPENAI_API_KEY',
+    )
+
+    expect(credentialResult).toEqual({
+      ok: true,
+      label: 'OPENAI_API_KEYS or OPENAI_API_KEY',
+      detail: 'Configured.',
+    })
+    expect(summary.PROVIDER_API_KEY_SET).toBe(true)
+  })
+
+  test('rejects placeholder values inside OPENAI_API_KEYS pools', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+    process.env.OPENAI_MODEL = 'gpt-4o'
+    process.env.OPENAI_API_KEYS = 'sk-openai-a,SUA_CHAVE'
+    delete process.env.OPENAI_API_KEY
+
+    const results = checkOpenAIEnv()
+    const credentialResult = results.find(
+      result => result.label === 'OPENAI_API_KEYS or OPENAI_API_KEY',
+    )
+
+    expect(credentialResult).toEqual({
+      ok: false,
+      label: 'OPENAI_API_KEYS or OPENAI_API_KEY',
+      detail: 'Placeholder value detected: SUA_CHAVE.',
+    })
+  })
+})
+
+describe('system-check memory guard diagnostics', () => {
+  test('reports safe default auto-compact and hard-cap guards', () => {
+    const results = buildMemoryGuardChecks({
+      autoCompactEnabled: true,
+      maxMessagesCompactionThreshold: undefined,
+      env: {},
+    })
+
+    expect(results).toContainEqual({
+      ok: true,
+      label: 'Auto-compact guard',
+      detail: `Enabled; message-count threshold off; hard cap ${DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP}.`,
+    })
+    expect(results).toContainEqual({
+      ok: true,
+      label: 'Active-message hard cap',
+      detail: `Active at ${DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP} messages (default; malformed overrides fall back to ${DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP}).`,
+    })
+    expect(results.find(result => result.label === 'Memory pressure guard'))
+      .toMatchObject({ ok: true })
+  })
+
+  test('falls back to the default hard cap when the override is malformed', () => {
+    const results = buildMemoryGuardChecks({
+      autoCompactEnabled: true,
+      maxMessagesCompactionThreshold: undefined,
+      env: {
+        OPENCLAUDE_MAX_ACTIVE_MESSAGES_HARD_CAP: 'not-a-number',
+      },
+    })
+
+    expect(results).toContainEqual({
+      ok: true,
+      label: 'Active-message hard cap',
+      detail: `Active at ${DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP} messages; malformed override fell back to ${DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP}.`,
+    })
+  })
+
+  test('reports valid custom hard-cap overrides without fallback wording', () => {
+    const results = buildMemoryGuardChecks({
+      autoCompactEnabled: true,
+      maxMessagesCompactionThreshold: undefined,
+      env: {
+        OPENCLAUDE_MAX_ACTIVE_MESSAGES_HARD_CAP: '500',
+      },
+    })
+
+    expect(results).toContainEqual({
+      ok: true,
+      label: 'Active-message hard cap',
+      detail: 'Active at 500 messages.',
+    })
+  })
+
+  test('fails when auto-compact is disabled by settings or env flags', () => {
+    const results = buildMemoryGuardChecks({
+      autoCompactEnabled: false,
+      maxMessagesCompactionThreshold: '500',
+      env: {
+        DISABLE_COMPACT: '1',
+        DISABLE_AUTO_COMPACT: 'true',
+      },
+    })
+
+    expect(results[0]).toEqual({
+      ok: false,
+      label: 'Auto-compact guard',
+      detail:
+        'settings disabled; DISABLE_COMPACT is set; DISABLE_AUTO_COMPACT is set',
+    })
+  })
+
+  test('fails when active-message hard cap is explicitly disabled', () => {
+    const results = buildMemoryGuardChecks({
+      autoCompactEnabled: true,
+      maxMessagesCompactionThreshold: '100',
+      env: {
+        OPENCLAUDE_MAX_ACTIVE_MESSAGES_HARD_CAP: '0',
+        OPENCLAUDE_MAX_MEMORY_MB: '4096',
+      },
+    })
+
+    expect(results).toContainEqual({
+      ok: false,
+      label: 'Active-message hard cap',
+      detail:
+        'Disabled by OPENCLAUDE_MAX_ACTIVE_MESSAGES_HARD_CAP=0; long sessions can grow without the active-message safety cap.',
+    })
+    expect(results).toContainEqual({
+      ok: true,
+      label: 'Memory pressure guard',
+      detail:
+        'Per-session budget 4096MB; elevated/critical compaction thresholds are derived from this budget at runtime.',
+    })
+  })
+})
+
+// Upstream cherry-pick: references readNodeExecutableVersion + checkNodeVersion
+// overloads that OpenCC's system-check.ts does not yet expose. Skipped until
+// the upstream doctor refactor lands in OpenCC.
+describe.skip('checkNodeVersion', () => {
+  test('reads the Node.js version from the node executable output', () => {
+    const probe = readNodeExecutableVersion(() => ({
+      status: 0,
+      stdout: 'v22.0.0\n',
+      stderr: '',
+      error: undefined,
+    }))
+
+    expect(probe).toEqual({
+      ok: true,
+      version: 'v22.0.0',
+    })
+  })
+
+  test('checks the probed node executable version', () => {
+    expect(checkNodeVersion({ ok: true, version: 'v20.11.1' })).toEqual({
+      ok: false,
+      label: 'Node.js version',
+      detail:
+        'Detected 20.11.1. OpenClaude requires Node.js >=22.0.0. Install Node 22 LTS or newer, then reinstall/re-run OpenClaude.',
+    })
+  })
+
+  test('reports a missing node executable as a Node.js version failure', () => {
+    const probe = readNodeExecutableVersion(() => ({
+      status: null,
+      stdout: '',
+      stderr: '',
+      error: new Error('spawn node ENOENT'),
+    }))
+
+    expect(checkNodeVersion(probe)).toEqual({
+      ok: false,
+      label: 'Node.js version',
+      detail:
+        'Unable to run `node --version`: spawn node ENOENT. OpenClaude requires Node.js >=22.0.0 on PATH.',
+    })
+  })
+
+  test('uses the shared Node.js minimum in doctor failures', () => {
+    expect(checkNodeVersion('20.11.1')).toEqual({
+      ok: false,
+      label: 'Node.js version',
+      detail:
+        'Detected 20.11.1. OpenClaude requires Node.js >=22.0.0. Install Node 22 LTS or newer, then reinstall/re-run OpenClaude.',
+    })
+  })
+
+  test('passes supported Node.js versions', () => {
+    expect(checkNodeVersion('22.0.0')).toEqual({
+      ok: true,
+      label: 'Node.js version',
+      detail: '22.0.0',
+    })
+  })
+})
+
 describe('sandbox runtime diagnostics', () => {
   test('fails when sandbox runtime inspection throws an Error', () => {
     const result = buildSandboxRuntimeCheck({

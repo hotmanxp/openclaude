@@ -40,7 +40,7 @@ import type {
   SystemLocalCommandMessage,
   SystemMessage,
 } from '../../types/message.js'
-import { createAbortController } from '../../utils/abortController.js'
+import { isExpectedSideTaskAbortReason } from '../../utils/abortReasons.js'
 import { count, uniq } from '../../utils/array.js'
 import { isMemoryWriteApprovalRequired } from '../../utils/governancePolicy.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -48,6 +48,7 @@ import {
   createCacheSafeParams,
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
+import { isAbortError } from '../../utils/errors.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import {
   createMemorySavedMessage,
@@ -63,6 +64,8 @@ import {
 import * as teamMemPaths from '../../memdir/teamMemPaths.js'
 import { isTeamMemoryEnabled } from '../../memdir/teamMemPaths.js'
 
+const MEMORY_EXTRACTION_SUPERSEDED_ABORT_REASON =
+  'memory-extraction-superseded'
 
 // ============================================================================
 // Helpers
@@ -309,6 +312,9 @@ export function initExtractMemories(): void {
   /** True while runExtraction is executing — prevents overlapping runs. */
   let inProgress = false
 
+  /** Abort controller for the currently running forked memory extraction. */
+  let activeExtractionAbortController: AbortController | undefined
+
   /** Counts eligible turns since the last extraction run. Resets to 0 after each run. */
   let turnsSinceLastExtraction = 0
 
@@ -382,6 +388,9 @@ export function initExtractMemories(): void {
 
     inProgress = true
     const startTime = Date.now()
+    const extractionAbortController = new AbortController()
+    activeExtractionAbortController = extractionAbortController
+
     try {
       logForDebugging(
         `[extractMemories] starting — ${newMessageCount} new messages, memoryDir=${memoryDir}`,
@@ -391,7 +400,7 @@ export function initExtractMemories(): void {
       // a turn on `ls`. Reuses findRelevantMemories' frontmatter scan.
       // Placed after the throttle gate so skipped turns don't pay the scan cost.
       const existingMemories = formatMemoryManifest(
-        await scanMemoryFiles(memoryDir, createAbortController().signal),
+        await scanMemoryFiles(memoryDir, extractionAbortController.signal),
       )
 
       const userPrompt =
@@ -420,7 +429,27 @@ export function initExtractMemories(): void {
         // Well-behaved extractions complete in 2-4 turns (read → write).
         // A hard cap prevents verification rabbit-holes from burning turns.
         maxTurns: 5,
+        overrides: { abortController: extractionAbortController },
       })
+
+      if (extractionAbortController.signal.aborted) {
+        if (
+          isExpectedSideTaskAbortReason(extractionAbortController.signal.reason)
+        ) {
+          logForDebugging(
+            `[extractMemories] expected cancellation: ${extractionAbortController.signal.reason}`,
+          )
+          return
+        }
+
+        logForDebugging(
+          `[extractMemories] error: aborted after fork returned: ${extractionAbortController.signal.reason}`,
+        )
+        logEvent('tengu_extract_memories_error', {
+          duration_ms: Date.now() - startTime,
+        })
+        return
+      }
 
       // Advance the cursor only after a successful run. If the agent errors
       // out (caught below), the cursor stays put so those messages are
@@ -493,12 +522,27 @@ export function initExtractMemories(): void {
         appendSystemMessage?.(msg)
       }
     } catch (error) {
+      if (
+        extractionAbortController.signal.aborted &&
+        isExpectedSideTaskAbortReason(
+          extractionAbortController.signal.reason,
+        ) &&
+        isAbortError(error)
+      ) {
+        logForDebugging(
+          `[extractMemories] expected cancellation: ${extractionAbortController.signal.reason}`,
+        )
+        return
+      }
       // Extraction is best-effort — log but don't notify on error
       logForDebugging(`[extractMemories] error: ${error}`)
       logEvent('tengu_extract_memories_error', {
         duration_ms: Date.now() - startTime,
       })
     } finally {
+      if (activeExtractionAbortController === extractionAbortController) {
+        activeExtractionAbortController = undefined
+      }
       inProgress = false
 
       // If a call arrived while we were running, run a trailing extraction
@@ -562,6 +606,9 @@ export function initExtractMemories(): void {
       )
       logEvent('tengu_extract_memories_coalesced', {})
       pendingContext = { context, appendSystemMessage }
+      activeExtractionAbortController?.abort(
+        MEMORY_EXTRACTION_SUPERSEDED_ABORT_REASON,
+      )
       return
     }
 

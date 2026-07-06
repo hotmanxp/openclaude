@@ -13,7 +13,7 @@ import { BashTool } from '../../../tools/BashTool/BashTool.js';
 import { getFirstWordPrefix, getSimpleCommandPrefix } from '../../../tools/BashTool/bashPermissions.js';
 import { getDestructiveCommandWarning } from '../../../tools/BashTool/destructiveCommandWarning.js';
 import { parseSedEditCommand } from '../../../tools/BashTool/sedEditParser.js';
-import { shouldUseSandbox } from '../../../tools/BashTool/shouldUseSandbox.js';
+import { shouldUseSandboxForPresentation } from '../../../tools/BashTool/shouldUseSandbox.js';
 import { getCompoundCommandPrefixesStatic } from '../../../utils/bash/prefix.js';
 import { createPromptRuleContent, generateGenericDescription, getBashPromptAllowDescriptions, isClassifierPermissionsEnabled } from '../../../utils/permissions/bashClassifier.js';
 import { extractRules } from '../../../utils/permissions/PermissionUpdate.js';
@@ -274,7 +274,7 @@ function BashPermissionRequestInner({
   } = useMemo(() => {
     const destructiveWarning = getFeatureValue_CACHED_MAY_BE_STALE('tengu_destructive_command_warning', false) ? getDestructiveCommandWarning(command) : null;
     const sandboxingEnabled = SandboxManager.isSandboxingEnabled();
-    const isSandboxed = sandboxingEnabled && shouldUseSandbox(toolUseConfirm.input);
+    const isSandboxed = sandboxingEnabled && shouldUseSandboxForPresentation(toolUseConfirm.input);
     return {
       destructiveWarning,
       sandboxingEnabled,
