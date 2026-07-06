@@ -1020,6 +1020,14 @@ class OpenAIShimMessages {
       body.max_completion_tokens = maxCompletionTokensValue
     }
 
+    // Emit reasoning_effort when explicitly overridden via /effort, model
+    // option, or `?reasoning=<level>` query — i.e. when caller passes a
+    // reasoningEffort option. request.reasoning is filled by the provider
+    // resolution layer in that case.
+    if (this.reasoningEffort !== undefined && !body.reasoning_effort) {
+      body.reasoning_effort = this.reasoningEffort
+    }
+
     if (params.stream && !isLocalProviderUrl(request.baseUrl)) {
       body.stream_options = { include_usage: true }
     }
@@ -1102,6 +1110,10 @@ class OpenAIShimMessages {
             content: [{ type: 'input_text', text: '' }],
           },
         ]
+      }
+
+      if (this.reasoningEffort !== undefined && !responsesBody.reasoning_effort) {
+        responsesBody.reasoning_effort = this.reasoningEffort
       }
 
       const systemText = convertSystemPrompt(params.system)
