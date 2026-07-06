@@ -44,18 +44,24 @@ describe('auto-memory write permissions', () => {
     await rm(projectDir, { recursive: true, force: true })
   })
 
-  test('requires approval for default auto-memory writes', () => {
+  test('allows default auto-memory writes under ~/.claude/projects/ (carve-out)', () => {
+    // User opted in (2026-07-06): ~/.claude/projects/{cwd}/memory/** is exempt
+    // from the .claude DANGEROUS_DIRECTORIES safetyCheck AND the explicit
+    // isMemoryWriteApprovalRequired() prompt. Override-path memory (below)
+    // still requires explicit approval.
     const result = checkWritePermissionForTool(
       writeTool,
       { file_path: join(getAutoMemPath(), 'user_role.md') },
       permissionContext('bypassPermissions'),
     )
 
-    expect(result.behavior).toBe('ask')
-    expect(result.decisionReason).toMatchObject({
-      type: 'safetyCheck',
-      reason: 'Persistent memory writes require explicit approval',
-    })
+    expect(result.behavior).not.toBe('ask')
+    if (result.behavior === 'allow') {
+      expect(result.decisionReason).toMatchObject({
+        type: 'other',
+        reason: 'auto memory files are allowed for writing',
+      })
+    }
   })
 
   test('requires approval for overridden auto-memory writes', async () => {
