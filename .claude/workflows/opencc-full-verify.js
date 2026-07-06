@@ -8,9 +8,9 @@
 //   - feedback/team/opencc-parallel-multi-agent-full-verify-recipe-2026-06-27
 //   - .claude/workflows/opencc-verfiy-fix.js (Phase 1+2 reference)
 //
-// 结构 (3 phases, 1 serial + 9 parallel agents):
-//   Phase 1: Build (serial, 1 agent — gating)
-//   Phase 2: Static checks (parallel, 2 agents — typecheck/doctor)
+// 结构 (3 phases, 1 serial + 10 parallel agents):
+//   Phase 1: Build (serial, 1 agent — gating, 仅 bun run build)
+//   Phase 2: Static checks (parallel, 3 agents — typecheck/doctor/test；test 失败不阻塞 Phase 3)
 //   Phase 3: TUI verification (parallel, 7 agents — 见下)
 //
 // Phase 3 7 agents:
@@ -26,10 +26,10 @@
 export const meta = {
   name: "opencc-full-verify",
   description:
-    "OpenCC 完整功能验证: Phase 1 build (serial) → Phase 2 静态检查 (2 agents parallel: typecheck/doctor) → Phase 3 TUI 验证 (7 agents parallel)。严禁修改任何源文件。",
+    "OpenCC 完整功能验证: Phase 1 build (serial, 仅 bun run build) → Phase 2 静态检查 (3 agents parallel: typecheck/doctor/test，test 失败不阻塞) → Phase 3 TUI 验证 (7 agents parallel)。严禁修改任何源文件。",
   phases: [
     { title: "Phase 1: Build (serial)" },
-    { title: "Phase 2: Static checks (2 parallel)" },
+    { title: "Phase 2: Static checks (3 parallel)" },
     { title: "Phase 3: TUI verification (7 parallel)" },
   ],
 };
@@ -97,11 +97,11 @@ if (!checkPassed(buildR)) {
 
 log("✓ Phase 1 build 成功 → 开始 Phase 2");
 
-// ===== PHASE 2: STATIC CHECKS (2 agents parallel) =====
-phase("Phase 2: Static checks (2 parallel)");
-log("Step 2/3: 并行 typecheck + doctor:runtime");
+// ===== PHASE 2: STATIC CHECKS (3 agents parallel) =====
+phase("Phase 2: Static checks (3 parallel)");
+log("Step 2/3: 并行 typecheck + doctor:runtime + test (test 失败不阻塞 Phase 3)");
 
-const [typeR, docR] = await parallel([
+const [typeR, docR, testR] = await parallel([
   () =>
     agent(
       `cd ${cwd} && bun run typecheck 2>&1 | tail -40
@@ -120,7 +120,7 @@ const [typeR, docR] = await parallel([
 严禁修改任何文件。`,
       {
         label: "typecheck",
-        phase: "Phase 2: Static checks (2 parallel)",
+        phase: "Phase 2: Static checks (3 parallel)",
         schema: CHECK_SCHEMA,
         agentType: "tui-func-verifier",
         model: "MiniMax-M2.7-highspeed",
@@ -139,7 +139,30 @@ const [typeR, docR] = await parallel([
 严禁修改任何文件。`,
       {
         label: "doctor",
-        phase: "Phase 2: Static checks (2 parallel)",
+        phase: "Phase 2: Static checks (3 parallel)",
+        schema: CHECK_SCHEMA,
+        agentType: "tui-func-verifier",
+        model: "MiniMax-M2.7-highspeed",
+      },
+    ),
+  () =>
+    agent(
+      `cd ${cwd} && bun test 2>&1 | tail -60
+
+报告:
+- exit code (0 = 全部通过)
+- 通过 / 失败 / 跳过 数量 (格式如 "83 pass / 0 fail / 2 skip")
+- 前 10 个失败的测试名 + 失败原因 (文件:测试名: 断言消息)
+- PASS / FAIL 总结
+
+注意 (已知基线, 非新回归):
+- rebrand/localization 相关的 pre-existing 失败 (memory: opencc-cherry-pick-test-localization-not-shipped)
+- 已 silence 的 statusNoticeDefinitions.safety / codexOAuth 测试 (见 AGENTS.md)
+
+严禁修改任何文件。`,
+      {
+        label: "test",
+        phase: "Phase 2: Static checks (3 parallel)",
         schema: CHECK_SCHEMA,
         agentType: "tui-func-verifier",
         model: "MiniMax-M2.7-highspeed",
@@ -149,13 +172,18 @@ const [typeR, docR] = await parallel([
 
 const typeOk = checkPassed(typeR);
 const docOk = checkPassed(docR);
+const testOk = checkPassed(testR);
 
 log(
-  `Phase 2 summary: typecheck=${typeOk ? "PASS" : "FAIL"} doctor=${docOk ? "PASS" : "FAIL"}`,
+  `Phase 2 summary: typecheck=${typeOk ? "PASS" : "FAIL"} doctor=${docOk ? "PASS" : "FAIL"} test=${testOk ? "PASS" : "FAIL"}`,
 );
 
 if (!typeOk) {
   log("⚠ typecheck FAILED — 通常是 real regression, 强烈建议修复后重跑");
+}
+
+if (!testOk) {
+  log("⚠ test FAILED — 记录但不阻塞 Phase 3 (可能含已知基线失败, 建议人工复核)");
 }
 
 log("✓ Phase 2 完成 → 开始 Phase 3");
@@ -555,7 +583,7 @@ log(`Overall: ${status}`);
 return {
   status,
   build: buildR,
-  phase2_static: { typecheck: typeR, doctor: docR },
+  phase2_static: { typecheck: typeR, doctor: docR, test: testR },
   phase3_tui: {
     tuiStartup: tuiR,
     slashBasic: slash1R,
