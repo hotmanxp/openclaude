@@ -10,6 +10,7 @@ import {
   getActiveProviderProfile,
   getProviderPresetDefaults,
   getProviderProfiles,
+  maybeResetMainLoopModel,
   setActiveProviderProfile,
   type ProviderPreset,
   type ProviderProfileInput,
@@ -20,6 +21,7 @@ import {
   recommendOllamaModel,
 } from '../utils/providerRecommendation.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
+import { useAppState, useSetAppState } from '../state/AppState.js'
 import { type OptionWithDescription, Select } from './CustomSelect/index.js'
 import { Pane } from './design-system/Pane.js'
 import TextInput from './TextInput.js'
@@ -156,6 +158,8 @@ function profileSummary(profile: ProviderProfile, isActive: boolean): string {
 }
 
 export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
+  const mainLoopModel = useAppState(s => s.mainLoopModel)
+  const setAppState = useSetAppState()
   const [profiles, setProfiles] = React.useState(() => getProviderProfiles())
   const [activeProfileId, setActiveProfileId] = React.useState(
     () => getActiveProviderProfile()?.id,
@@ -809,11 +813,26 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
           const settingsOverrideError =
             clearStartupProviderOverrideFromUserSettings()
           refreshProfiles()
-          setStatusMessage(
+
+          const decision = maybeResetMainLoopModel(active, mainLoopModel)
+          const nextModel = decision.newModel
+          if (decision.reset && nextModel) {
+            setAppState(prev => ({
+              ...prev,
+              mainLoopModel: nextModel,
+              mainLoopModelForSession: null,
+            }))
+          }
+
+          const providerMessage =
             settingsOverrideError
               ? `激活提供商：${active.name}。警告：无法清除启动提供商覆盖（${settingsOverrideError}）。`
-              : `激活提供商：${active.name}`,
-          )
+              : `激活提供商：${active.name}`
+          const modelSuffix =
+            decision.reset && nextModel
+              ? ` · Model reset to ${nextModel}`
+              : ''
+          setStatusMessage(`${providerMessage}${modelSuffix}`)
           setScreen('menu')
         },
       )

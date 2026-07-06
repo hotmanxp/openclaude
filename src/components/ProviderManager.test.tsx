@@ -187,6 +187,25 @@ function mockProviderProfilesModule(options?: {
     applyActiveProviderProfileFromConfig: () => {},
     deleteProviderProfile: () => ({ removed: false, activeProfileId: null }),
     getActiveProviderProfile: options?.getActiveProviderProfile ?? (() => null),
+    getDefaultModelForProfile: (profile: { model: string }) => {
+      const first = profile.model.split(/[;,]/).map(s => s.trim()).find(s => s.length > 0)
+      return first ?? null
+    },
+    maybeResetMainLoopModel: (
+      profile: { model: string },
+      currentModel: string | undefined | null,
+    ) => {
+      const defaultModel = profile.model.split(/[;,]/).map(s => s.trim()).find(s => s.length > 0) ?? null
+      if (defaultModel === null) return { reset: false }
+      if (currentModel === undefined || currentModel === null || currentModel === '') {
+        return { reset: true, newModel: defaultModel }
+      }
+      if (currentModel === defaultModel) return { reset: false }
+      if (['sonnet', 'opus', 'haiku', 'best', 'sonnet[1m]', 'opus[1m]', 'opusplan'].includes(currentModel)) {
+        return { reset: false }
+      }
+      return { reset: true, previousModel: currentModel, newModel: defaultModel }
+    },
     getProviderPresetDefaults: (preset: string) => {
       if (preset === 'ollama') {
         return {
@@ -460,6 +479,7 @@ async function mountProviderManager(
       newState: unknown
       oldState: unknown
     }) => void
+    initialAppState?: Record<string, unknown>
   },
 ): Promise<{
   stdin: PassThrough
@@ -474,7 +494,10 @@ async function mountProviderManager(
   })
 
   root.render(
-    <AppStateProvider onChangeAppState={options?.onChangeAppState}>
+    <AppStateProvider
+      initialState={options?.initialAppState as any}
+      onChangeAppState={options?.onChangeAppState}
+    >
       <KeybindingSetup>
         <ProviderManager
           mode={options?.mode ?? 'manage'}
@@ -2204,4 +2227,225 @@ test('ProviderManager hides Codex OAuth setup in bare mode', async () => {
 
   expect(output).toContain('Set up provider')
   expect(output).not.toContain('Codex OAuth')
+})
+
+test('ProviderManager select-active resets mainLoopModel when current model is a concrete name and differs', async () => {
+  delete process.env.CLAUDE_CODE_SIMPLE
+  delete process.env.CLAUDE_CODE_USE_GITHUB
+  delete process.env.GITHUB_TOKEN
+  delete process.env.GH_TOKEN
+
+  const targetProfile = {
+    id: 'provider_target',
+    provider: 'openai',
+    name: 'Target Provider',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5.4',
+    apiKey: 'sk-test',
+  }
+
+  const setActiveProviderProfile = mock(() => targetProfile)
+  const appStateChanges: Array<{ newState: any; oldState: any }> = []
+
+  mockProviderManagerDependencies(
+    () => undefined,
+    async () => undefined,
+    {
+      getProviderProfiles: () => [targetProfile],
+      setActiveProviderProfile,
+    },
+  )
+
+  const nonce = `${Date.now()}-${Math.random()}`
+  const { ProviderManager } = await import(`./ProviderManager.js?ts=${nonce}`)
+  const mounted = await mountProviderManager(ProviderManager, {
+    initialAppState: { mainLoopModel: 'old-concrete-model' },
+    onChangeAppState: args => {
+      appStateChanges.push(args as { newState: any; oldState: any })
+    },
+  })
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Provider manager') &&
+      frame.includes('Set active provider'),
+  )
+
+  mounted.stdin.write('j')
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Set active provider') &&
+      frame.includes('Target Provider'),
+  )
+
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForCondition(() => setActiveProviderProfile.mock.calls.length > 0)
+  await waitForCondition(() =>
+    appStateChanges.some(
+      ({ newState }) => newState.mainLoopModel === 'gpt-5.4',
+    ),
+  )
+
+  expect(setActiveProviderProfile).toHaveBeenCalledWith('provider_target')
+  expect(
+    appStateChanges.some(
+      ({ newState }) =>
+        newState.mainLoopModel === 'gpt-5.4' &&
+        newState.mainLoopModelForSession === null,
+    ),
+  ).toBe(true)
+
+  await mounted.dispose()
+})
+
+test('ProviderManager select-active preserves alias selection and does not reset', async () => {
+  delete process.env.CLAUDE_CODE_SIMPLE
+  delete process.env.CLAUDE_CODE_USE_GITHUB
+  delete process.env.GITHUB_TOKEN
+  delete process.env.GH_TOKEN
+
+  const targetProfile = {
+    id: 'provider_target',
+    provider: 'openai',
+    name: 'Target Provider',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5.4',
+    apiKey: 'sk-test',
+  }
+
+  const setActiveProviderProfile = mock(() => targetProfile)
+  const appStateChanges: Array<{ newState: any; oldState: any }> = []
+
+  mockProviderManagerDependencies(
+    () => undefined,
+    async () => undefined,
+    {
+      getProviderProfiles: () => [targetProfile],
+      setActiveProviderProfile,
+    },
+  )
+
+  const nonce = `${Date.now()}-${Math.random()}`
+  const { ProviderManager } = await import(`./ProviderManager.js?ts=${nonce}`)
+  const mounted = await mountProviderManager(ProviderManager, {
+    initialAppState: { mainLoopModel: 'opus' },
+    onChangeAppState: args => {
+      appStateChanges.push(args as { newState: any; oldState: any })
+    },
+  })
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Provider manager') &&
+      frame.includes('Set active provider'),
+  )
+
+  mounted.stdin.write('j')
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Set active provider') &&
+      frame.includes('Target Provider'),
+  )
+
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForCondition(() => setActiveProviderProfile.mock.calls.length > 0)
+  await Bun.sleep(100)
+
+  expect(setActiveProviderProfile).toHaveBeenCalledWith('provider_target')
+  expect(
+    appStateChanges.some(
+      ({ newState }) => newState.mainLoopModel === 'gpt-5.4',
+    ),
+  ).toBe(false)
+  const output = stripAnsi(extractLastFrame(mounted.getOutput()))
+  expect(output).not.toContain('Model reset to')
+
+  await mounted.dispose()
+})
+
+test('ProviderManager select-active skips reset when current model already equals profile default', async () => {
+  delete process.env.CLAUDE_CODE_SIMPLE
+  delete process.env.CLAUDE_CODE_USE_GITHUB
+  delete process.env.GITHUB_TOKEN
+  delete process.env.GH_TOKEN
+
+  const targetProfile = {
+    id: 'provider_target',
+    provider: 'openai',
+    name: 'Target Provider',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5.4',
+    apiKey: 'sk-test',
+  }
+
+  const setActiveProviderProfile = mock(() => targetProfile)
+  const appStateChanges: Array<{ newState: any; oldState: any }> = []
+
+  mockProviderManagerDependencies(
+    () => undefined,
+    async () => undefined,
+    {
+      getProviderProfiles: () => [targetProfile],
+      setActiveProviderProfile,
+    },
+  )
+
+  const nonce = `${Date.now()}-${Math.random()}`
+  const { ProviderManager } = await import(`./ProviderManager.js?ts=${nonce}`)
+  const mounted = await mountProviderManager(ProviderManager, {
+    initialAppState: { mainLoopModel: 'gpt-5.4' },
+    onChangeAppState: args => {
+      appStateChanges.push(args as { newState: any; oldState: any })
+    },
+  })
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Provider manager') &&
+      frame.includes('Set active provider'),
+  )
+
+  mounted.stdin.write('j')
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForFrameOutput(
+    mounted.getOutput,
+    frame =>
+      frame.includes('Set active provider') &&
+      frame.includes('Target Provider'),
+  )
+
+  await Bun.sleep(25)
+  mounted.stdin.write('\r')
+
+  await waitForCondition(() => setActiveProviderProfile.mock.calls.length > 0)
+  await Bun.sleep(100)
+
+  expect(setActiveProviderProfile).toHaveBeenCalledWith('provider_target')
+  expect(
+    appStateChanges.some(
+      ({ newState, oldState }) =>
+        newState.mainLoopModel !== oldState.mainLoopModel,
+    ),
+  ).toBe(false)
+  const output = stripAnsi(extractLastFrame(mounted.getOutput()))
+  expect(output).not.toContain('Model reset to')
+
+  await mounted.dispose()
 })
