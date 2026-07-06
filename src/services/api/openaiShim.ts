@@ -403,6 +403,15 @@ function convertToolResultContent(
       continue
     }
 
+    if (block?.type === 'tool_reference' && typeof block.tool_name === 'string') {
+      // tool_reference blocks (ToolSearch results) carry the discovered tool
+      // name in `.tool_name`. Render as plain text so OpenAI-compatible
+      // providers see a string-typed tool message instead of an unknown
+      // structured block.
+      parts.push({ type: 'text', text: block.tool_name })
+      continue
+    }
+
     if (typeof block?.text === 'string') {
       parts.push({ type: 'text', text: block.text })
     }
@@ -2092,8 +2101,8 @@ class OpenAIShimMessages {
       // Mistral/Devstral require tool → assistant alternation. Other
       // OpenAI-compatible providers (OpenAI, MiniMax, vLLM, etc.) accept
       // tool → user directly — and crucially, the injected "[Tool results
-      // received]" placeholder would be echoed back as the assistant's
-      // actual response, ending the conversation turn with no real answer.
+      // received]" placeholder would be echoed back by the model as its own
+      // prior reply, ending the conversation turn with no real answer.
       injectSemanticBoundary: isMistralMode(),
     })
 
@@ -2821,4 +2830,5 @@ export const __test = {
   getStreamIdleTimeoutMs,
   readWithIdleTimeout,
   StreamIdleTimeoutError,
+  convertMessages,
 }
