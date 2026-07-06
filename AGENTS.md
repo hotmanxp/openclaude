@@ -84,6 +84,16 @@ Whenever you touch `main-opencc`, skim the sync doc first so you
 don't duplicate or undo work the cron has already inventoried.
 The legacy `origin/main-openccv2` ref is deprecated and NOT a sync target.
 
+### fsync worktree setup (parallel functional sync)
+
+When `git worktree add --detach` creates a detached worktree for parallel
+fsync cherry-picks, immediately symlink the whole `node_modules` from
+the main worktree (`ln -s $(git rev-parse --show-toplevel)/node_modules <wt>/node_modules`)
+and skip `bun install` inside the worktree — fresh installs in detached
+worktrees yield only a partial package set (~460/1678) and produce
+false-positive typecheck and test-stub failures. Agents MUST NOT run
+`bun add` (would mutate the symlinked target).
+
 ## Architecture
 
 ### Provider System
