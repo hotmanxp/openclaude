@@ -199,6 +199,19 @@ export function getProviderPresetDefaults(
   }
 }
 
+/**
+ * Return the default (first) model from a profile's model field.
+ * The model field can be a single model name or a comma/semicolon-separated
+ * list. Returns null when the field is empty or whitespace-only.
+ *
+ * Used by maybeResetMainLoopModel to decide what mainLoopModel should be
+ * reset to when this profile is activated mid-session.
+ */
+export function getDefaultModelForProfile(profile: ProviderProfile): string | null {
+  const models = parseModelList(profile.model)
+  return models.length > 0 ? models[0] : null
+}
+
 export function getProviderProfiles(
   config = getGlobalConfig(),
 ): ProviderProfile[] {

@@ -756,3 +756,34 @@ describe('setActiveProviderProfile model cache', () => {
     expect(cacheValues).toContain('gpt-3.5-turbo')
   })
 })
+
+describe('getDefaultModelForProfile', () => {
+  test('returns single model as-is', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: 'glm-5.2' }))).toBe('glm-5.2')
+  })
+
+  test('returns first model from comma-separated list', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(
+      getDefaultModelForProfile(buildProfile({ model: 'glm-4.5, glm-4.7' })),
+    ).toBe('glm-4.5')
+  })
+
+  test('returns first model from semicolon-separated list', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(
+      getDefaultModelForProfile(buildProfile({ model: 'glm-4.5; glm-4.7' })),
+    ).toBe('glm-4.5')
+  })
+
+  test('returns null for empty string', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: '' }))).toBeNull()
+  })
+
+  test('returns null for whitespace-only string', async () => {
+    const { getDefaultModelForProfile } = await importFreshProviderProfileModules()
+    expect(getDefaultModelForProfile(buildProfile({ model: '   ' }))).toBeNull()
+  })
+})
