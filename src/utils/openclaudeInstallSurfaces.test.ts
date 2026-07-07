@@ -10,6 +10,8 @@ import {
 } from '../test/sharedMutationLock.js'
 import * as realEnv from './env.js'
 import * as realEnvUtils from './envUtils.js'
+import { getClaudeConfigHomeDir } from './envUtils.js'
+import { getAutoMemPath } from '../../memdir/paths.js'
 import * as realExecFileNoThrow from './execFileNoThrow.js'
 
 const originalEnv = { ...process.env }
@@ -73,6 +75,13 @@ mock.module('./execFileNoThrow.js', () => ({
 
 beforeEach(async () => {
   await acquireSharedMutationLock('utils/openccInstallSurfaces.test.ts')
+  // Several tests in this file flip CLAUDE_CONFIG_DIR to ~/.opencc; the
+  // memoized getClaudeConfigHomeDir() would otherwise pin to that path
+  // for the rest of the bun test process and break sibling tests that
+  // rely on the default ~/.claude home (e.g. filesystem.test.ts
+  // auto-memory carve-out). Clear before each test so any value cached
+  // by an earlier test in this process is wiped.
+  getClaudeConfigHomeDir.cache.clear?.()
 })
 
 afterEach(() => {
@@ -89,6 +98,15 @@ afterEach(() => {
     mock.restore()
     mock.module('../utils/env.js', () => realEnv)
     mock.module('./envUtils.js', () => realEnvUtils)
+    // Several tests in this file flip CLAUDE_CONFIG_DIR to ~/.opencc; the
+    // memoized getClaudeConfigHomeDir() would otherwise pin to that path
+    // for the rest of the bun test process and break sibling tests that
+    // rely on the default ~/.claude home (e.g. filesystem.test.ts
+    // auto-memory carve-out).
+    ;(
+      realEnvUtils as unknown as { getClaudeConfigHomeDir: { cache?: { clear?: () => void } } }
+    ).getClaudeConfigHomeDir.cache?.clear?.()
+    getAutoMemPath.cache.clear?.()
   } finally {
     releaseSharedMutationLock()
   }
