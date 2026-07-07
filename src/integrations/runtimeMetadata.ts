@@ -41,13 +41,6 @@ function getBaseModelApiName(value: string | undefined): string | null {
   return baseModel || null
 }
 
-function normalizeModelApiName(
-  value: string | undefined,
-): string | null {
-  const baseModel = getBaseModelApiName(value)
-  return baseModel ? baseModel.toLowerCase() : null
-}
-
 function matchesCatalogEntryModel(
   routeId: string,
   entry: ModelCatalogEntry,
@@ -235,6 +228,7 @@ export function resolveOpenAIShimRuntimeContext(options?: {
   model?: string
   activeProfileProvider?: string
   treatAsLocal?: boolean
+  preferBaseUrlRoute?: boolean
 }): OpenAIShimRuntimeContext {
   const processEnv = options?.processEnv ?? process.env
   const runtimeEnv: NodeJS.ProcessEnv = {

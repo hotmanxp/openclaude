@@ -39,6 +39,7 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
       anthropic: null,
       mistral: null,
       gemini: null,
+      hicap: null,
     },
   },
   'claude-3-7-sonnet': {
@@ -49,6 +50,7 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
       anthropic: null,
       mistral: null,
       gemini: null,
+      hicap: null,
     },
   },
   'claude-3-5-haiku': {
@@ -59,6 +61,7 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
       anthropic: null,
       mistral: null,
       gemini: null,
+      hicap: null,
     },
   },
 }
