@@ -44,7 +44,7 @@ import {
 import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
 import { isZaiBaseUrl } from '../../utils/zaiProvider.js'
-import { shouldRedactUrlQueryParam } from '../../utils/urlRedaction.js'
+import { shouldRedactUrlQueryParam } from '../../utils/redaction.js'
 import { createCombinedAbortSignal } from '../../utils/combinedAbortSignal.js'
 import {
   normalizeToolArguments,

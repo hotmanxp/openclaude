@@ -411,5 +411,7 @@ async function main(): Promise<void> {
   profileCheckpoint('cli_after_main_complete');
 }
 
-// eslint-disable-next-line custom-rules/no-top-level-side-effects
-void main();
+// eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level
+if (process.env.OPENCC_DISABLE_CLI_ENTRYPOINT_AUTO_RUN !== '1') {
+  await main();
+}

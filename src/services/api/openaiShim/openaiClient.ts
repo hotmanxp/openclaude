@@ -46,7 +46,7 @@ import {
 import { sanitizeSchemaForOpenAICompat } from '../../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../../utils/providerProfile.js'
 
-import { shouldRedactUrlQueryParam } from '../../../utils/urlRedaction.js'
+import { shouldRedactUrlQueryParam } from '../../../utils/redaction.js'
 import {
   normalizeToolArguments,
   hasToolFieldMapping,

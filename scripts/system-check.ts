@@ -10,7 +10,7 @@ import {
   getLocalOpenAICompatibleProviderLabel,
   probeOllamaGenerationReadiness,
 } from '../src/utils/providerDiscovery.js'
-import { redactUrlForDisplay } from '../src/utils/urlRedaction.js'
+import { redactUrlForDisplay } from '../src/utils/redaction.js'
 import {
   MIN_NODE_ENGINE_RANGE,
   checkSupportedNodeVersion,
