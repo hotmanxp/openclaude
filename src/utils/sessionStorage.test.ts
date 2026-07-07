@@ -16,6 +16,7 @@ import {
   getProjectDir,
   loadSameRepoMessageLogsProgressive,
   loadTranscriptFile,
+  loadTranscriptFromFile,
   recordGoalState,
   flushSessionStorage,
   resetProjectForTesting,
@@ -723,4 +724,15 @@ test('loadSameRepoMessageLogsProgressive ignores branch metadata outside lite re
     setClaudeConfigHomeDirForTesting(undefined)
     getClaudeConfigHomeDir.cache?.clear?.()
   }
+})
+
+test('convertToLogOption throws for empty transcript', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'openclaude-session-storage-'))
+  tempDirs.push(dir)
+  const filePath = join(dir, 'session.json')
+  await writeFile(filePath, '[]')
+
+  await expect(loadTranscriptFromFile(filePath)).rejects.toThrow(
+    'convertToLogOption: cannot convert empty transcript',
+  )
 })
