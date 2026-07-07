@@ -1,4 +1,5 @@
 import { defineGateway } from '../define.js'
+import { ZAI_GLM_OPENAI_SHIM } from '../transport/zaiGlmShim.js'
 
 export default defineGateway({
   id: 'gitlawb-opengateway',

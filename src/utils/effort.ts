@@ -129,6 +129,7 @@ export function supportsZaiReasoningEffort(model: string | undefined): boolean {
   return normalized === 'glm-5.2'
       || normalized === 'zai-org/glm-5.2'
       || normalized === 'zhiniao-glm-5.1'
+      || normalized.endsWith('/glm-5.2')
 }
 
 // Z.AI's wire protocol only accepts `high` or `max` for reasoning_effort.
