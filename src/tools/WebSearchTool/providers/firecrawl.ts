@@ -1,5 +1,7 @@
 import type { SearchInput, SearchProvider } from './types.js'
 import { applyDomainFilters, type ProviderOutput } from './types.js'
+import { firecrawlSearch } from '../../firecrawl/client.js'
+import { withWebSearchTimeout } from './timeout.js'
 
 export const firecrawlProvider: SearchProvider = {
   name: 'firecrawl',
@@ -24,7 +26,16 @@ export const firecrawlProvider: SearchProvider = {
       query = `${query} ${exclusions}`
     }
 
-    const data = await app.search(query, { limit: 15 })
+    const data = await withWebSearchTimeout(
+      combinedSignal => firecrawlSearch(query, {
+        apiKey: process.env.FIRECRAWL_API_KEY,
+        apiUrl: process.env.FIRECRAWL_API_URL,
+        limit: 15,
+        signal: combinedSignal,
+      }),
+      signal,
+      { providerName: 'Firecrawl' },
+    )
 
     const hits = applyDomainFilters(
       // @ts-ignore - type mismatch in map callback
