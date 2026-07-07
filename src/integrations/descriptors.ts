@@ -37,9 +37,10 @@ export interface OpenAIShimTransportConfig {
   preserveReasoningContent?: boolean
   requireReasoningContentOnAssistantMessages?: boolean
   reasoningContentFallback?: '' | 'omit'
-  thinkingRequestFormat?: 'none' | 'deepseek-compatible'
+  thinkingRequestFormat?: 'none' | 'deepseek-compatible' | 'zai-compatible'
   maxTokensField?: OpenAIShimTokenField
   removeBodyFields?: string[]
+  enableToolStreaming?: true
 }
 
 export interface CapabilityFlags {

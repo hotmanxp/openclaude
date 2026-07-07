@@ -4,7 +4,7 @@ import { isEnvTruthy } from '../envUtils.js'
 import { getGlobalConfig } from '../config.js'
 import { getActiveProviderProfile } from '../providerProfiles.js'
 
-export type APIProvider = 'firstParty' | Providers
+export type APIProvider = 'firstParty' | Providers | 'hicap'
 
 /**
  * Legacy / fork-removed provider env vars that route to a non-Anthropic
