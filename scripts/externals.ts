@@ -15,15 +15,8 @@
 export const COMMON_EXTERNALS: string[] = [
   // Native image processing
   'sharp',
-  // Cloud provider SDKs
-  '@aws-sdk/client-bedrock',
-  '@aws-sdk/client-bedrock-runtime',
-  '@aws-sdk/client-sts',
-  '@aws-sdk/credential-provider-node',
-  '@aws-sdk/credential-providers',
-  '@smithy/core',
-  '@smithy/node-http-handler',
-  '@azure/identity',
+  // Cloud provider SDKs (Bedrock/Vertex/Foundry runtime indirection — kept as
+  // dev deps for typecheck resolution but externalized from bundle)
   'google-auth-library',
   // @vscode/ripgrep ships a platform-specific binary alongside its
   // index.js and resolves the path via __dirname at runtime. Bundling
@@ -61,15 +54,6 @@ export const SDK_ONLY_EXTERNALS: string[] = [
 //     opposite: loaded purely via the runtime importer, so esbuild never sees a
 //     static reference and they must stay OUT of the externals lists.
 export const OPTIONAL_RUNTIME_EXTERNALS: string[] = [
-  // Cloud provider SDKs (dynamically imported per-provider)
-  '@aws-sdk/client-bedrock',
-  '@aws-sdk/client-bedrock-runtime',
-  '@aws-sdk/client-sts',
-  '@aws-sdk/credential-provider-node',
-  '@aws-sdk/credential-providers',
-  '@smithy/core',
-  '@smithy/node-http-handler',
-  '@azure/identity',
   // Anthropic Bedrock client — loaded via the runtime importer in
   // services/api/client.ts. Not bundled (it statically imports @aws-sdk) and
   // not shipped; Bedrock users install it on demand (it pulls @aws-sdk itself).
@@ -193,9 +177,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'vscode-languageserver-protocol',
   // File watching
   'chokidar',
-  // Graph algorithms (repo map PageRank)
-  'graphology',
-  'graphology-metrics',
-  // Tokenizer for repo map token budgeting
-  'js-tiktoken',
+  // Graph algorithms and tokenizer reserved for future upstream #1867 repo-map
+  // feature port (currently out of OpenCC scope; entries removed to satisfy
+  // externals validation).
 ]
