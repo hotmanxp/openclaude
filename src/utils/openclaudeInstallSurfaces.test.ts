@@ -10,8 +10,7 @@ import {
 } from '../test/sharedMutationLock.js'
 import * as realEnv from './env.js'
 import * as realEnvUtils from './envUtils.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
-import { getAutoMemPath } from '../../memdir/paths.js'
+import * as realMemdirPaths from '../memdir/paths.js'
 import * as realExecFileNoThrow from './execFileNoThrow.js'
 
 const originalEnv = { ...process.env }
@@ -81,7 +80,9 @@ beforeEach(async () => {
   // rely on the default ~/.claude home (e.g. filesystem.test.ts
   // auto-memory carve-out). Clear before each test so any value cached
   // by an earlier test in this process is wiped.
-  getClaudeConfigHomeDir.cache.clear?.()
+  ;(
+    realEnvUtils as unknown as { getClaudeConfigHomeDir: { cache?: { clear?: () => void } } }
+  ).getClaudeConfigHomeDir.cache?.clear?.()
 })
 
 afterEach(() => {
@@ -106,7 +107,9 @@ afterEach(() => {
     ;(
       realEnvUtils as unknown as { getClaudeConfigHomeDir: { cache?: { clear?: () => void } } }
     ).getClaudeConfigHomeDir.cache?.clear?.()
-    getAutoMemPath.cache.clear?.()
+    ;(
+      realMemdirPaths as unknown as { getAutoMemPath: { cache?: { clear?: () => void } } }
+    ).getAutoMemPath.cache?.clear?.()
   } finally {
     releaseSharedMutationLock()
   }
