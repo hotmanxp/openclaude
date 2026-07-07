@@ -1074,7 +1074,9 @@ export function createHeadlessHeartbeatStructuredEmitter(
 ): (message: HeadlessHeartbeatEvent) => void | Promise<void> {
   return message => {
     if (!hasDrainStarted()) {
-      return
+      // Before drain starts, write directly so startup signals in
+      // stream-json mode are not silently dropped.
+      return structuredIO.write(message)
     }
     structuredIO.outbound.enqueue(message)
   }
@@ -4946,7 +4948,7 @@ function reregisterChannelHandlerAfterReconnect(
   )
   if (gate.action !== 'register') return
 
-  const entry = findChannelEntry(connection.name, getAllowedChannels())
+  const entry = findChannelEntry(connection.name, getAllowedChannels(), connection.config.pluginSource)
   const pluginId =
     entry?.kind === 'plugin'
       ? (`${entry.name}@${entry.marketplace}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)

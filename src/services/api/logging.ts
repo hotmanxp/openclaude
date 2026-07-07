@@ -22,6 +22,7 @@ import type { EffortLevel } from 'src/utils/effort.js'
 import { logError } from 'src/utils/log.js'
 import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
+import { redactSensitiveInfo, redactUrlForDisplay } from 'src/utils/redaction.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { logOTelEvent } from 'src/utils/telemetry/events.js'
 import {
@@ -143,8 +144,10 @@ function getAnthropicEnvMetadata() {
   return {
     ...(process.env.ANTHROPIC_BASE_URL
       ? {
-          baseUrl: process.env
-            .ANTHROPIC_BASE_URL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          baseUrl: redactUrlForDisplay(
+            process.env
+              .ANTHROPIC_BASE_URL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
     ...(process.env.ANTHROPIC_MODEL
@@ -278,7 +281,7 @@ export function logAPIError({
     baseUrl: process.env.ANTHROPIC_BASE_URL,
   })
 
-  const errStr = getErrorMessage(error)
+  const errStr = redactSensitiveInfo(getErrorMessage(error))
   const status = error instanceof APIError ? String(error.status) : undefined
   const errorType = classifyAPIError(error)
 
