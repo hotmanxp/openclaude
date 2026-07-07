@@ -1532,7 +1532,7 @@ async function run(): Promise<CommanderCommand> {
         }
         if (reservedNameError) {
           // stderr+exit(1) — a throw here becomes a silent unhandled
-          // rejection in stream-json mode (void main() in cli.tsx).
+          // rejection in stream-json mode (await main() in cli.tsx).
           process.stderr.write(`Error: ${reservedNameError}\n`);
           process.exit(1);
         }
