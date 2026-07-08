@@ -1,12 +1,13 @@
 import type { DiagnosticInfo, InstallationType } from './doctorDiagnostic.js'
 import { getDoctorDiagnostic } from './doctorDiagnostic.js'
 import { localInstallationExists } from './localInstaller.js'
-import { type APIProvider, getAPIProvider } from './model/providers.js'
+import { type LegacyAPIProvider, getAPIProvider } from './model/providers.js'
+import { hasNativeDistribution } from './nativeDistribution.js'
 import type { PackageManager } from './nativeInstaller/packageManagers.js'
 import { getPackageManager } from './nativeInstaller/packageManagers.js'
 
 /**
- * How the *currently running* OpenCC installation should be updated.
+ * How the *currently running* OpenClaude installation should be updated.
  *
  *  - `blocked`         — must not self-update (third-party upstream build, or a
  *                        development build); the caller should show guidance.
@@ -25,10 +26,10 @@ export type UpdateStrategy =
  * True when this build must NOT self-update: a third-party provider session
  * running on the upstream `@anthropic-ai/claude-code` package. Self-updating
  * there pulls from the first-party distribution and would silently replace the
- * build the user is running. Custom-PACKAGE_URL builds (OpenCC's
- * `@zn-ai/opencc`) are safe to self-update.
+ * build the user is running. Custom-PACKAGE_URL builds (OpenClaude's
+ * `@gitlawb/openclaude`) are safe to self-update.
  *
- * Shared by the `opencc update` CLI and the `/update` slash command so both
+ * Shared by the `openclaude update` CLI and the `/update` slash command so both
  * honour the same guard.
  */
 export function isThirdPartyBuildBlocked(): boolean {
@@ -41,7 +42,7 @@ export function isThirdPartyBuildBlocked(): boolean {
  * `getAPIProvider()` / the build-time `MACRO` global.
  */
 export function isThirdPartyBuildBlockedFor(
-  apiProvider: APIProvider,
+  apiProvider: LegacyAPIProvider,
   packageUrl: string,
 ): boolean {
   return apiProvider !== 'firstParty' && packageUrl === '@anthropic-ai/claude-code'
@@ -56,6 +57,7 @@ export type UpdateStrategyDeps = {
   getDiagnostic: () => Promise<DiagnosticInfo>
   getPackageManager: () => Promise<PackageManager>
   localInstallationExists: () => Promise<boolean>
+  hasNativeDistribution: () => boolean
 }
 
 const defaultDeps: UpdateStrategyDeps = {
@@ -63,6 +65,7 @@ const defaultDeps: UpdateStrategyDeps = {
   getDiagnostic: getDoctorDiagnostic,
   getPackageManager,
   localInstallationExists,
+  hasNativeDistribution,
 }
 
 /**
@@ -76,6 +79,7 @@ export function planUpdate(input: {
   installationType: InstallationType
   packageManager: PackageManager
   localInstallExists: boolean
+  nativeDistributionAvailable: boolean
 }): UpdateStrategy {
   if (input.thirdPartyBlocked) {
     return { action: 'blocked', reason: 'third-party-build' }
@@ -86,7 +90,11 @@ export function planUpdate(input: {
     case 'package-manager':
       return { action: 'package-manager', manager: input.packageManager }
     case 'native':
-      return { action: 'native' }
+      // npm-only builds must never route to the native installer — it would
+      // download the first-party binary this build does not ship.
+      return input.nativeDistributionAvailable
+        ? { action: 'native' }
+        : { action: 'npm', method: 'global' }
     case 'npm-local':
       return { action: 'npm', method: 'local' }
     case 'npm-global':
@@ -95,7 +103,6 @@ export function planUpdate(input: {
       // Fall back to file detection, matching cli/update.ts's unknown branch.
       return { action: 'npm', method: input.localInstallExists ? 'local' : 'global' }
   }
-  throw new Error(`unreachable InstallationType: ${input.installationType as string}`)
 }
 
 /**
@@ -118,6 +125,7 @@ export async function resolveUpdateStrategy(
   return planUpdate({
     thirdPartyBlocked: false,
     installationType,
+    nativeDistributionAvailable: deps.hasNativeDistribution(),
     packageManager:
       installationType === 'package-manager'
         ? await deps.getPackageManager()
