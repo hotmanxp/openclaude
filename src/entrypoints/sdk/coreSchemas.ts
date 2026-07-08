@@ -87,7 +87,7 @@ export const ThinkingAdaptiveSchema = lazySchema(() =>
     .object({
       type: z.literal('adaptive'),
     })
-    .describe('OpenCC decides when and how much to think (Opus 4.6+).'),
+    .describe('Claude decides when and how much to think (Opus 4.6+).'),
 )
 
 export const ThinkingEnabledSchema = lazySchema(() =>
@@ -115,7 +115,7 @@ export const ThinkingConfigSchema = lazySchema(() =>
       ThinkingDisabledSchema(),
     ])
     .describe(
-      "Controls OpenCC's thinking/reasoning behavior. When set, takes precedence over the deprecated maxThinkingTokens.",
+      "Controls Claude's thinking/reasoning behavior. When set, takes precedence over the deprecated maxThinkingTokens.",
     ),
 )
 
@@ -352,12 +352,20 @@ export const PermissionResultSchema = lazySchema(() =>
 
 export const PermissionModeSchema = lazySchema(() =>
   z
-    .enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk'])
+    .enum([
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+      'fullAccess',
+      'plan',
+      'dontAsk',
+    ])
     .describe(
       'Permission mode for controlling how tool executions are handled. ' +
         "'default' - Standard behavior, prompts for dangerous operations. " +
         "'acceptEdits' - Auto-accept file edit operations. " +
-        "'bypassPermissions' - Bypass all permission checks (requires allowDangerouslySkipPermissions). " +
+        "'bypassPermissions' - Bypass normal permission prompts while preserving hard safety checks (requires allowDangerouslySkipPermissions). " +
+        "'fullAccess' - Bypass normal permission prompts and hard safety-check prompts (requires allowDangerouslySkipPermissions). " +
         "'plan' - Planning mode, no actual tool execution. " +
         "'dontAsk' - Don't prompt for permissions, deny if not pre-approved.",
     ),
@@ -1073,14 +1081,14 @@ export const ModelInfoSchema = lazySchema(() =>
         .optional()
         .describe('Whether this model supports effort levels'),
       supportedEffortLevels: z
-        .array(z.enum(['low', 'medium', 'high', 'max']))
+        .array(z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']))
         .optional()
         .describe('Available effort levels for this model'),
       supportsAdaptiveThinking: z
         .boolean()
         .optional()
         .describe(
-          'Whether this model supports adaptive thinking (OpenCC decides when and how much to think)',
+          'Whether this model supports adaptive thinking (Claude decides when and how much to think)',
         ),
       supportsFastMode: z
         .boolean()
@@ -1133,12 +1141,14 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Array of allowed tool names. If omitted, inherits all tools from parent',
+          'Array of allowed tool names. If omitted or set to ["*"], inherits all tools from parent before disallowedTools is applied',
         ),
       disallowedTools: z
         .array(z.string())
         .optional()
-        .describe('Array of tool names to explicitly disallow for this agent'),
+        .describe(
+          'Array of tool names to explicitly disallow for this agent. Deny entries always override tools entries',
+        ),
       prompt: z.string().describe("The agent's system prompt"),
       model: z
         .string()
@@ -1169,6 +1179,14 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .describe(
           'Maximum number of agentic turns (API round-trips) before stopping',
         ),
+      maxSteps: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Maximum number of subagent tool-use steps before forcing a concise final summary',
+        ),
       background: z
         .boolean()
         .optional()
@@ -1179,10 +1197,10 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .enum(['user', 'project', 'local'])
         .optional()
         .describe(
-          "Scope for auto-loading agent memory files. 'user' - ~/.claude/agent-memory/<agentType>/, 'project' - .claude/agent-memory/<agentType>/, 'local' - .claude/agent-memory-local/<agentType>/",
+          "Scope for auto-loading agent memory files. 'user' - ~/.openclaude/agent-memory/<agentType>/, 'project' - .openclaude/agent-memory/<agentType>/, 'local' - .openclaude/agent-memory-local/<agentType>/",
         ),
       effort: z
-        .union([z.enum(['low', 'medium', 'high', 'max']), z.number().int()])
+        .union([z.enum(['low', 'medium', 'high', 'xhigh', 'max']), z.number().int()])
         .optional()
         .describe(
           'Reasoning effort level for this agent. Either a named level or an integer',
@@ -1207,9 +1225,9 @@ export const SettingSourceSchema = lazySchema(() =>
     .enum(['user', 'project', 'local'])
     .describe(
       'Source for loading filesystem-based settings. ' +
-        "'user' - Global user settings (~/.claude/settings.json). " +
-        "'project' - Project settings (.claude/settings.json). " +
-        "'local' - Local settings (.claude/settings.local.json).",
+        "'user' - Global user settings (~/.openclaude/settings.json). " +
+        "'project' - Project settings (.openclaude/settings.json). " +
+        "'local' - Local settings (.openclaude/settings.local.json).",
     ),
 )
 

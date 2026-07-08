@@ -1,15 +1,31 @@
 // @ts-nocheck
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import {
+  resolveCodexApiCredentials,
   resolveProviderRequest,
   isLocalProviderUrl as isProviderLocalUrl,
 } from '../src/services/api/providerConfig.js'
 import {
+  getRouteCredentialEnvVars,
+  getRouteCredentialValue,
+  resolveActiveRouteIdFromEnv,
+  resolveRouteIdFromBaseUrl,
+} from '../src/integrations/routeMetadata.js'
+import {
   getLocalOpenAICompatibleProviderLabel,
   probeOllamaGenerationReadiness,
 } from '../src/utils/providerDiscovery.js'
+import {
+  DEFAULT_GEMINI_MODEL,
+  resolveOpenAICredentialEnvState,
+} from '../src/utils/providerProfile.js'
+import {
+  redactSecretValueForDisplay,
+  redactSecretSubstringsForDisplay,
+  type SecretValueSource,
+} from '../src/utils/providerSecrets.js'
 import { redactUrlForDisplay } from '../src/utils/redaction.js'
 import {
   MIN_NODE_ENGINE_RANGE,
@@ -20,6 +36,16 @@ import {
   DEFAULT_MAX_ACTIVE_MESSAGES_HARD_CAP,
   getMaxActiveMessagesHardCap,
 } from '../src/utils/maxActiveMessages.js'
+import {
+  getAvailableProviders,
+  getProviderChain,
+  getProviderMode,
+  type ProviderMode,
+} from '../src/tools/WebSearchTool/providers/index.js'
+import { getWebSearchTimeoutMs } from '../src/tools/WebSearchTool/providers/timeout.js'
+import { isFirecrawlCloudApiUrl } from '../src/tools/firecrawl/client.js'
+import { getAPIProvider } from '../src/utils/model/providers.js'
+import { getMainLoopModel } from '../src/utils/model/model.js'
 
 type CheckResult = {
   ok: boolean
@@ -141,6 +167,388 @@ export function buildMemoryGuardChecks(
   return results
 }
 
+const WEB_SEARCH_API_PROVIDER_NAMES = new Set([
+  'firecrawl',
+  'tavily',
+  'exa',
+  'you',
+  'jina',
+  'brave',
+  'bing',
+  'mojeek',
+  'linkup',
+])
+
+const WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT =
+  'FIRECRAWL_API_KEY, TAVILY_API_KEY, EXA_API_KEY, YOU_API_KEY, JINA_API_KEY, BRAVE_API_KEY, BING_API_KEY, MOJEEK_API_KEY, or LINKUP_API_KEY'
+
+const WEB_SEARCH_PROVIDER_ENV_VARS: Record<
+  Exclude<ProviderMode, 'auto' | 'native'>,
+  string[]
+> = {
+  custom: ['WEB_SEARCH_API', 'WEB_PROVIDER', 'WEB_URL_TEMPLATE'],
+  firecrawl: ['FIRECRAWL_API_KEY', 'FIRECRAWL_API_URL'],
+  ddg: [],
+  tavily: ['TAVILY_API_KEY'],
+  exa: ['EXA_API_KEY'],
+  you: ['YOU_API_KEY'],
+  jina: ['JINA_API_KEY'],
+  brave: ['BRAVE_API_KEY'],
+  bing: ['BING_API_KEY'],
+  mojeek: ['MOJEEK_API_KEY'],
+  linkup: ['LINKUP_API_KEY'],
+}
+
+const WEB_SEARCH_CUSTOM_PRESET_REQUIRED_ENV_VARS: Record<string, string[]> = {
+  google: ['WEB_KEY', 'GOOGLE_CSE_ID'],
+  brave: ['WEB_KEY'],
+  serpapi: ['WEB_KEY'],
+  searxng: [],
+}
+
+function formatEnvVarList(envVars: string[]): string {
+  if (envVars.length <= 1) return envVars[0] ?? ''
+  if (envVars.length === 2) return `${envVars[0]} or ${envVars[1]}`
+  return `${envVars.slice(0, -1).join(', ')}, or ${envVars[envVars.length - 1]}`
+}
+
+function formatAndList(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? ''
+  if (values.length === 2) return `${values[0]} and ${values[1]}`
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`
+}
+
+function formatDuckDuckGoReliabilityDetail(providerMode: string): string {
+  return `${providerMode}; DuckDuckGo selected. DuckDuckGo scraping can be rate-limited from datacenter/VPN/repeated-request networks. Configure ${WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT} for reliable search.`
+}
+
+function vertexModelSupportsNativeWebSearch(model: string): boolean {
+  return (
+    model.includes('claude-opus-4') ||
+    model.includes('claude-sonnet-4') ||
+    model.includes('claude-haiku-4')
+  )
+}
+
+function isCodexResponsesWebSearchEnabledForDoctor(): boolean {
+  const request = resolveProviderRequest({
+    model: getMainLoopModel(),
+    baseUrl: process.env.OPENAI_BASE_URL,
+  })
+  return request.transport === 'codex_responses'
+}
+
+function buildNativeWebSearchCheck(): CheckResult {
+  const provider = getAPIProvider()
+
+  if (provider === 'openai' && isCodexResponsesWebSearchEnabledForDoctor()) {
+    return pass(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=native selected; Codex responses provider supports web search.',
+    )
+  }
+
+  if (provider === 'firstParty' || provider === 'foundry') {
+    return pass(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=native selected; ${provider} provider supports native web search.`,
+    )
+  }
+
+  if (provider === 'vertex') {
+    const model = getMainLoopModel()
+    if (vertexModelSupportsNativeWebSearch(model)) {
+      return pass(
+        'Web search backend',
+        `WEB_SEARCH_PROVIDER=native selected; vertex provider supports native web search for ${safeDisplayValue(model, 'the active model')}.`,
+      )
+    }
+    return fail(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=native selected, but vertex model ${safeDisplayValue(model, 'the active model')} does not support native web search. Use a Claude 4 Vertex model or configure ${WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT}.`,
+    )
+  }
+
+  return fail(
+    'Web search backend',
+    `WEB_SEARCH_PROVIDER=native selected, but ${provider} provider does not support native web search. Configure ${WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT}, or switch to an Anthropic, Vertex, Foundry, or Codex responses provider.`,
+  )
+}
+
+function buildAutoNativeWebSearchCheck(): CheckResult | undefined {
+  const provider = getAPIProvider()
+
+  if (provider === 'openai' && isCodexResponsesWebSearchEnabledForDoctor()) {
+    return pass(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=auto; Codex responses web search will be used before adapter providers.',
+    )
+  }
+
+  if (provider === 'firstParty' || provider === 'foundry') {
+    return pass(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=auto; ${provider} native web search will be used before adapter providers.`,
+    )
+  }
+
+  if (provider === 'vertex') {
+    const model = getMainLoopModel()
+    if (vertexModelSupportsNativeWebSearch(model)) {
+      return pass(
+        'Web search backend',
+        `WEB_SEARCH_PROVIDER=auto; vertex native web search will be used before adapter providers for ${safeDisplayValue(model, 'the active model')}.`,
+      )
+    }
+    return fail(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=auto selected, but vertex model ${safeDisplayValue(model, 'the active model')} does not support native web search and runtime will not use adapter providers in auto mode. Use a Claude 4 Vertex model or set an explicit WEB_SEARCH_PROVIDER adapter mode with ${WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT}.`,
+    )
+  }
+
+  return undefined
+}
+
+function getConfiguredWebSearchApiProviderNames(): string[] {
+  return getAvailableProviders()
+    .map(provider => provider.name)
+    .filter(providerName => WEB_SEARCH_API_PROVIDER_NAMES.has(providerName))
+    .filter(isWebSearchApiProviderConfiguredForDoctor)
+}
+
+function appendConfiguredWebSearchApiProviderDetail(result: CheckResult): CheckResult {
+  const configuredProviders = getConfiguredWebSearchApiProviderNames()
+  if (configuredProviders.length === 0) return result
+
+  const providerDetail = `Configured API-backed providers: ${configuredProviders.join(', ')}.`
+  return {
+    ...result,
+    detail: result.detail ? `${result.detail} ${providerDetail}` : providerDetail,
+  }
+}
+
+function hasFirecrawlRunnableConfig(): boolean {
+  return Boolean(process.env.FIRECRAWL_API_KEY) ||
+    Boolean(process.env.FIRECRAWL_API_URL && !isFirecrawlCloudApiUrl(process.env.FIRECRAWL_API_URL))
+}
+
+function buildFirecrawlWebSearchCheck(): CheckResult {
+  const apiKey = process.env.FIRECRAWL_API_KEY
+  const apiUrl = process.env.FIRECRAWL_API_URL
+
+  if (!apiKey && isFirecrawlCloudApiUrl(apiUrl)) {
+    return fail(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=firecrawl but FIRECRAWL_API_KEY is missing for the Firecrawl cloud API.',
+    )
+  }
+
+  if (apiKey) {
+    return pass(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=firecrawl; FIRECRAWL_API_KEY configured.',
+    )
+  }
+
+  if (apiUrl) {
+    return pass(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=firecrawl; FIRECRAWL_API_URL configured.',
+    )
+  }
+
+  return fail(
+    'Web search backend',
+    'WEB_SEARCH_PROVIDER=firecrawl but FIRECRAWL_API_KEY is missing.',
+  )
+}
+
+function getAutoFirecrawlMissingCredentialDetail(): string | undefined {
+  const firecrawlSelectedByAutoChain = getAvailableProviders()
+    .some(provider => provider.name === 'firecrawl')
+  if (!firecrawlSelectedByAutoChain || hasFirecrawlRunnableConfig()) return undefined
+
+  return 'FIRECRAWL_API_URL points to the Firecrawl cloud API but FIRECRAWL_API_KEY is missing; runtime will try firecrawl first and then fall through to the next provider in auto mode.'
+}
+
+function appendAutoFirecrawlMissingCredentialDetail(result: CheckResult): CheckResult {
+  const firecrawlDetail = getAutoFirecrawlMissingCredentialDetail()
+  if (!firecrawlDetail) return result
+
+  return {
+    ...result,
+    detail: result.detail ? `${result.detail} ${firecrawlDetail}` : firecrawlDetail,
+  }
+}
+
+function isWebSearchApiProviderConfiguredForDoctor(providerName: string): boolean {
+  return providerName !== 'firecrawl' || hasFirecrawlRunnableConfig()
+}
+
+function buildCustomWebSearchCheck(providerConfigured: boolean): CheckResult {
+  const providerPreset = process.env.WEB_PROVIDER
+  const trimmedProviderPreset = providerPreset?.trim()
+  const customUrlEnv = process.env.WEB_URL_TEMPLATE
+    ? 'WEB_URL_TEMPLATE'
+    : process.env.WEB_SEARCH_API
+      ? 'WEB_SEARCH_API'
+      : undefined
+
+  if (!providerConfigured) {
+    return fail(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=custom but WEB_SEARCH_API, WEB_PROVIDER, or WEB_URL_TEMPLATE is missing.',
+    )
+  }
+
+  if (!providerPreset) {
+    return pass(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=custom; ${customUrlEnv ?? formatEnvVarList(WEB_SEARCH_PROVIDER_ENV_VARS.custom)} configured.`,
+    )
+  }
+
+  const requiredEnvVars = WEB_SEARCH_CUSTOM_PRESET_REQUIRED_ENV_VARS[providerPreset]
+  if (!requiredEnvVars) {
+    if (!customUrlEnv) {
+      if (
+        trimmedProviderPreset &&
+        trimmedProviderPreset !== providerPreset &&
+        WEB_SEARCH_CUSTOM_PRESET_REQUIRED_ENV_VARS[trimmedProviderPreset]
+      ) {
+        return fail(
+          'Web search backend',
+          `WEB_SEARCH_PROVIDER=custom with WEB_PROVIDER=${trimmedProviderPreset} but the raw WEB_PROVIDER value has surrounding whitespace and does not match a runtime custom preset. Remove the whitespace or configure WEB_SEARCH_API or WEB_URL_TEMPLATE.`,
+        )
+      }
+
+      return fail(
+        'Web search backend',
+        `WEB_SEARCH_PROVIDER=custom with WEB_PROVIDER=${providerPreset} but WEB_SEARCH_API or WEB_URL_TEMPLATE is missing for an unknown custom preset.`,
+      )
+    }
+    return pass(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=custom; WEB_PROVIDER and ${customUrlEnv} configured.`,
+    )
+  }
+
+  if (providerPreset === 'searxng' && !customUrlEnv) {
+    return fail(
+      'Web search backend',
+      'WEB_SEARCH_PROVIDER=custom with WEB_PROVIDER=searxng but WEB_SEARCH_API or WEB_URL_TEMPLATE is missing for the SearXNG endpoint.',
+    )
+  }
+
+  const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar])
+  if (missingEnvVars.length > 0) {
+    return fail(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=custom with WEB_PROVIDER=${providerPreset} but ${formatAndList(missingEnvVars)} ${missingEnvVars.length === 1 ? 'is' : 'are'} missing.`,
+    )
+  }
+
+  return pass(
+    'Web search backend',
+    `WEB_SEARCH_PROVIDER=custom; ${formatAndList(['WEB_PROVIDER', ...requiredEnvVars])} configured.`,
+  )
+}
+
+function formatWebSearchTimeoutSeconds(): string {
+  return String(getWebSearchTimeoutMs() / 1000)
+}
+
+function appendWebSearchTimeoutDetail(result: CheckResult): CheckResult {
+  const timeoutDetail = `Built-in provider timeout: ${formatWebSearchTimeoutSeconds()}s.`
+  return {
+    ...result,
+    detail: result.detail ? `${result.detail} ${timeoutDetail}` : timeoutDetail,
+  }
+}
+
+function appendWebSearchTimeoutDetails(results: CheckResult[]): CheckResult[] {
+  return results.map(appendWebSearchTimeoutDetail)
+}
+
+function buildWebSearchEnvChecks(): CheckResult[] {
+  const mode = getProviderMode()
+
+  if (mode === 'native') {
+    return [appendConfiguredWebSearchApiProviderDetail(buildNativeWebSearchCheck())]
+  }
+
+  if (mode === 'auto') {
+    const nativeCheck = buildAutoNativeWebSearchCheck()
+    if (nativeCheck) {
+      return [appendConfiguredWebSearchApiProviderDetail(nativeCheck)]
+    }
+
+    const configuredProviders = getConfiguredWebSearchApiProviderNames()
+
+    if (configuredProviders.length > 0) {
+      return appendWebSearchTimeoutDetails([
+        appendAutoFirecrawlMissingCredentialDetail(
+          pass(
+            'Web search backend',
+            `WEB_SEARCH_PROVIDER=auto; configured providers: ${configuredProviders.join(', ')}; fallback includes duckduckgo.`,
+          ),
+        ),
+      ])
+    }
+
+    return appendWebSearchTimeoutDetails([
+      appendAutoFirecrawlMissingCredentialDetail(
+        pass(
+          'Web search backend',
+          `WEB_SEARCH_PROVIDER=auto; only DuckDuckGo fallback is available. DuckDuckGo scraping can be rate-limited from datacenter/VPN/repeated-request networks. Configure ${WEB_SEARCH_RELIABLE_BACKEND_ENV_HINT} for reliable search.`,
+        ),
+      ),
+    ])
+  }
+
+  if (mode === 'ddg') {
+    return appendWebSearchTimeoutDetails([
+      pass(
+        'Web search backend',
+        formatDuckDuckGoReliabilityDetail('WEB_SEARCH_PROVIDER=ddg'),
+      ),
+    ])
+  }
+
+  const provider = getProviderChain(mode)[0]
+  const envVars = WEB_SEARCH_PROVIDER_ENV_VARS[mode] ?? []
+  const envVarLabel = formatEnvVarList(envVars)
+  const providerConfigured = Boolean(provider?.isConfigured())
+
+  if (mode === 'firecrawl') {
+    return appendWebSearchTimeoutDetails([buildFirecrawlWebSearchCheck()])
+  }
+
+  if (mode === 'custom') {
+    return [buildCustomWebSearchCheck(providerConfigured)]
+  }
+
+  if (!providerConfigured) {
+    return appendWebSearchTimeoutDetails([
+      fail(
+        'Web search backend',
+        `WEB_SEARCH_PROVIDER=${mode} but ${envVarLabel} is missing.`,
+      ),
+    ])
+  }
+
+  return appendWebSearchTimeoutDetails([
+    pass(
+      'Web search backend',
+      `WEB_SEARCH_PROVIDER=${mode}; ${envVarLabel} configured.`,
+    ),
+  ])
+}
+
+export function checkWebSearchEnv(): CheckResult[] {
+  return buildWebSearchEnvChecks()
+}
+
 function parseOptions(argv: string[]): CliOptions {
   const options: CliOptions = {
     json: false,
@@ -176,7 +584,10 @@ export function formatReachabilityFailureDetail(
     resolvedModel: string
   },
 ): string {
-  const compactBody = responseBody.trim().replace(/\s+/g, ' ').slice(0, 240)
+  const compactBody = safeDiagnosticText(
+    responseBody.trim().replace(/\s+/g, ' ').slice(0, 240),
+    '',
+  )
   const base = `Unexpected status ${status} from ${redactUrlForDisplay(endpoint)}.`
   const bodySuffix = compactBody ? ` Body: ${compactBody}` : ''
 
@@ -188,21 +599,63 @@ export function formatReachabilityFailureDetail(
     return `${base}${bodySuffix}`
   }
 
-  return `${base}${bodySuffix} Hint: model alias "${request.requestedModel}" resolved to "${request.resolvedModel}", which this ChatGPT account does not currently allow. Try "codexplan" or another entitled Codex model.`
+  const requestedModel = safeDisplayValue(request.requestedModel, 'the requested model')
+  const resolvedModel = safeDisplayValue(request.resolvedModel, 'the resolved model')
+  return `${base}${bodySuffix} Hint: model alias "${requestedModel}" resolved to "${resolvedModel}", which this ChatGPT account does not currently allow. Try "codexplan" or another entitled Codex model.`
 }
 
-function checkNodeVersion(): CheckResult {
-  const raw = process.versions.node
-  const major = Number(raw.split('.')[0] ?? '0')
-  if (Number.isNaN(major)) {
-    return fail('Node.js version', `Could not parse version: ${raw}`)
+export function readNodeExecutableVersion(
+  spawn = spawnSync,
+): NodeExecutableVersionProbe {
+  const result = spawn('node', ['--version'], {
+    encoding: 'utf8',
+  })
+
+  if (result.error) {
+    return {
+      ok: false,
+      detail: `Unable to run \`node --version\`: ${result.error.message}. OpenClaude requires Node.js ${MIN_NODE_ENGINE_RANGE} on PATH.`,
+    }
   }
 
-  if (major < 20) {
-    return fail('Node.js version', `Detected ${raw}. Require >= 20.`)
+  if (result.status !== 0) {
+    const output = (result.stderr || result.stdout || '').trim()
+    const suffix = output ? `: ${output}` : `: exit code ${result.status ?? 'unknown'}`
+    return {
+      ok: false,
+      detail: `Unable to run \`node --version\`${suffix}. OpenClaude requires Node.js ${MIN_NODE_ENGINE_RANGE} on PATH.`,
+    }
   }
 
-  return pass('Node.js version', raw)
+  const version = (result.stdout || result.stderr || '').trim()
+  if (!version) {
+    return {
+      ok: false,
+      detail: `Unable to read Node.js version from \`node --version\`. OpenClaude requires Node.js ${MIN_NODE_ENGINE_RANGE} on PATH.`,
+    }
+  }
+
+  return {
+    ok: true,
+    version,
+  }
+}
+
+export function checkNodeVersion(
+  raw: string | NodeExecutableVersionProbe = readNodeExecutableVersion(),
+): CheckResult {
+  if (typeof raw !== 'string' && !raw.ok) {
+    return fail('Node.js version', raw.detail)
+  }
+
+  const versionCheck = checkSupportedNodeVersion(
+    typeof raw === 'string' ? raw : raw.version,
+  )
+  if (!versionCheck.ok) {
+    return fail('Node.js version', versionCheck.message)
+  }
+
+  return pass('Node.js version', versionCheck.version)
 }
 
 function checkBunRuntime(): CheckResult {
@@ -315,6 +768,57 @@ const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1bet
 const MISTRAL_DEFAULT_BASE_URL = 'https://api.mistral.ai/v1'
 const GITHUB_COPILOT_BASE = 'https://api.githubcopilot.com'
 
+function currentSecretSource(): SecretValueSource {
+  return process.env as SecretValueSource
+}
+
+function safeDisplayValue(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  return redactSecretValueForDisplay(value, currentSecretSource()) ?? fallback
+}
+
+function safeDiagnosticText(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  return redactSecretSubstringsForDisplay(value, currentSecretSource()) ?? fallback
+}
+
+function safeBaseUrlDisplay(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  if (!value) return fallback
+  return safeDisplayValue(redactUrlForDisplay(value), fallback)
+}
+
+function getOpenAICompatibleRouteId(baseUrl: string): string {
+  return (
+    resolveRouteIdFromBaseUrl(baseUrl) ??
+    resolveActiveRouteIdFromEnv(process.env) ??
+    'custom'
+  )
+}
+
+function getOpenAICompatibleCredentialContext(baseUrl: string): {
+  routeId: string
+  envVars: string[]
+  value: string | undefined
+} {
+  const routeId = getOpenAICompatibleRouteId(baseUrl)
+  return {
+    routeId,
+    envVars: getRouteCredentialEnvVars(routeId),
+    value: getRouteCredentialValue(routeId, process.env),
+  }
+}
+
+function hasPlaceholderCredential(value: string | undefined): boolean {
+  return (value ?? '').split(',').some(part => part.trim() === 'SUA_CHAVE')
+}
+
 function currentBaseUrl(): string {
   if (isTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
     return process.env.GEMINI_BASE_URL ?? GEMINI_DEFAULT_BASE_URL
@@ -337,12 +841,12 @@ function checkGeminiEnv(): CheckResult[] {
   results.push(pass('Provider mode', 'Google Gemini provider enabled.'))
 
   if (!model) {
-    results.push(pass('GEMINI_MODEL', 'Not set. Default gemini-2.0-flash will be used.'))
+    results.push(pass('GEMINI_MODEL', `Not set. Default ${DEFAULT_GEMINI_MODEL} will be used.`))
   } else {
-    results.push(pass('GEMINI_MODEL', model))
+    results.push(pass('GEMINI_MODEL', safeDisplayValue(model, '')))
   }
 
-  results.push(pass('GEMINI_BASE_URL', baseUrl))
+  results.push(pass('GEMINI_BASE_URL', safeBaseUrlDisplay(baseUrl, '')))
 
   if (!key) {
     results.push(fail('GEMINI_API_KEY', 'Missing. Set GEMINI_API_KEY or GOOGLE_API_KEY.'))
@@ -364,10 +868,10 @@ function checkMistralEnv(): CheckResult[] {
   if (!model) {
     results.push(pass('MISTRAL_MODEL', 'Not set. Default will be used at runtime.'))
   } else {
-    results.push(pass('MISTRAL_MODEL', model))
+    results.push(pass('MISTRAL_MODEL', safeDisplayValue(model, '')))
   }
 
-  results.push(pass('MISTRAL_BASE_URL', baseUrl))
+  results.push(pass('MISTRAL_BASE_URL', safeBaseUrlDisplay(baseUrl, '')))
 
   if (!key) {
     results.push(fail('MISTRAL_API_KEY', 'Missing. Set MISTRAL_API_KEY.'))
@@ -398,14 +902,14 @@ function checkGithubEnv(): CheckResult[] {
       ),
     )
   } else {
-    results.push(pass('OPENAI_MODEL', process.env.OPENAI_MODEL))
+    results.push(pass('OPENAI_MODEL', safeDisplayValue(process.env.OPENAI_MODEL, '')))
   }
 
-  results.push(pass('OPENAI_BASE_URL', baseUrl))
+  results.push(pass('OPENAI_BASE_URL', safeBaseUrlDisplay(baseUrl, '')))
   return results
 }
 
-function checkOpenAIEnv(): CheckResult[] {
+export function checkOpenAIEnv(): CheckResult[] {
   const results: CheckResult[] = []
   const useGemini = isTruthy(process.env.CLAUDE_CODE_USE_GEMINI)
   const useGithub = isTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
@@ -446,10 +950,10 @@ function checkOpenAIEnv(): CheckResult[] {
   if (!process.env.OPENAI_MODEL) {
     results.push(pass('OPENAI_MODEL', 'Not set. Runtime fallback model will be used.'))
   } else {
-    results.push(pass('OPENAI_MODEL', process.env.OPENAI_MODEL))
+    results.push(pass('OPENAI_MODEL', safeDisplayValue(process.env.OPENAI_MODEL, '')))
   }
 
-  results.push(pass('OPENAI_BASE_URL', redactUrlForDisplay(request.baseUrl)))
+  results.push(pass('OPENAI_BASE_URL', safeBaseUrlDisplay(request.baseUrl, '')))
 
   if (request.transport === 'codex_responses') {
     const credentials = resolveCodexApiCredentials(process.env)
@@ -469,24 +973,47 @@ function checkOpenAIEnv(): CheckResult[] {
     return results
   }
 
-  const key = process.env.OPENAI_API_KEY
+  const credentialContext = getOpenAICompatibleCredentialContext(request.baseUrl)
+  const providerCredential = credentialContext.value
+  const credentialLabel =
+    credentialContext.envVars.length > 0
+      ? credentialContext.envVars.join(' or ')
+      : 'OPENAI_API_KEY'
   const githubToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN
-  if (key === 'SUA_CHAVE') {
-    results.push(fail('OPENAI_API_KEY', 'Placeholder value detected: SUA_CHAVE.'))
-  } else if (
-    !key &&
-    !isLocalBaseUrl(request.baseUrl) &&
-    !(useGithub && githubToken?.trim())
+  const hasGithubRouteCredential =
+    credentialContext.routeId === 'github' && Boolean(githubToken?.trim())
+  const openAIState = resolveOpenAICredentialEnvState(process.env)
+  const hasOpenAIFallback =
+    credentialContext.envVars.includes('OPENAI_API_KEYS') ||
+    credentialContext.envVars.includes('OPENAI_API_KEY')
+  const hasPlaceholderProviderCredential = credentialContext.envVars.some(envVar => {
+    if (
+      hasOpenAIFallback &&
+      (envVar === 'OPENAI_API_KEYS' || envVar === 'OPENAI_API_KEY')
+    ) {
+      return openAIState.invalid && openAIState.envVar === envVar
+    }
+    return hasPlaceholderCredential(process.env[envVar])
+  })
+  if (
+    hasPlaceholderCredential(providerCredential) ||
+    hasPlaceholderProviderCredential
   ) {
-    results.push(fail('OPENAI_API_KEY', 'Missing key for non-local provider URL.'))
-  } else if (!key && useGithub && githubToken?.trim()) {
+    results.push(fail(credentialLabel, 'Placeholder value detected: SUA_CHAVE.'))
+  } else if (
+    !providerCredential &&
+    !isLocalBaseUrl(request.baseUrl) &&
+    !hasGithubRouteCredential
+  ) {
+    results.push(fail(credentialLabel, `Missing key for non-local provider URL. Set ${credentialLabel}.`))
+  } else if (!providerCredential && hasGithubRouteCredential) {
     results.push(
       pass('OPENAI_API_KEY', 'Not set; GITHUB_TOKEN/GH_TOKEN will be used for GitHub Models.'),
     )
-  } else if (!key) {
-    results.push(pass('OPENAI_API_KEY', 'Not set (allowed for local providers like Atomic Chat/Ollama/LM Studio).'))
+  } else if (!providerCredential) {
+    results.push(pass(credentialLabel, 'Not set (allowed for local providers like Atomic Chat/Ollama/LM Studio).'))
   } else {
-    results.push(pass('OPENAI_API_KEY', 'Configured.'))
+    results.push(pass(credentialLabel, 'Configured.'))
   }
 
   return results
@@ -539,7 +1066,7 @@ async function checkBaseUrlReachability(): Promise<CheckResult> {
         headers['chatgpt-account-id'] = credentials.accountId
       }
       headers['Content-Type'] = 'application/json'
-      headers.originator = 'opencc'
+      headers.originator = 'openclaude'
       method = 'POST'
       body = JSON.stringify({
         model: request.resolvedModel,
@@ -558,8 +1085,11 @@ async function checkBaseUrlReachability(): Promise<CheckResult> {
       headers.Authorization = `Bearer ${process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY}`
     } else if (useMistral && process.env.MISTRAL_API_KEY) {
       headers.Authorization = `Bearer ${process.env.MISTRAL_API_KEY}`
-    } else if (process.env.OPENAI_API_KEY) {
-      headers.Authorization = `Bearer ${process.env.OPENAI_API_KEY}`
+    } else {
+      const credential = getOpenAICompatibleCredentialContext(request.baseUrl).value
+      if (credential) {
+        headers.Authorization = `Bearer ${credential}`
+      }
     }
 
     const response = await fetch(endpoint, {
@@ -658,7 +1188,7 @@ async function checkProviderGenerationReadiness(): Promise<CheckResult> {
   if (readiness.state === 'ready') {
     return pass(
       'Provider generation readiness',
-      `Generated a test response with ${readiness.probeModel ?? request.requestedModel}.`,
+      `Generated a test response with ${safeDisplayValue(readiness.probeModel ?? request.requestedModel, 'the requested model')}.`,
     )
   }
 
@@ -676,10 +1206,11 @@ async function checkProviderGenerationReadiness(): Promise<CheckResult> {
     )
   }
 
-  const detailSuffix = readiness.detail ? ` Detail: ${readiness.detail}.` : ''
+  const detail = safeDiagnosticText(readiness.detail, '')
+  const detailSuffix = detail ? ` Detail: ${detail}.` : ''
   return fail(
     'Provider generation readiness',
-    `Ollama is reachable, but generation failed for ${readiness.probeModel ?? request.requestedModel}.${detailSuffix}`,
+    `Ollama is reachable, but generation failed for ${safeDisplayValue(readiness.probeModel ?? request.requestedModel, 'the requested model')}.${detailSuffix}`,
   )
 }
 
@@ -740,20 +1271,20 @@ function checkOllamaProcessorMode(): CheckResult {
   return pass('Ollama processor mode', `Detected non-CPU mode: ${modelLine}`)
 }
 
-function serializeSafeEnvSummary(): Record<string, string | boolean> {
+export function serializeSafeEnvSummary(): Record<string, string | boolean> {
   if (isTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
     return {
       CLAUDE_CODE_USE_GEMINI: true,
-      GEMINI_MODEL: process.env.GEMINI_MODEL ?? '(unset, default: gemini-2.0-flash)',
-      GEMINI_BASE_URL: process.env.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta/openai',
+      GEMINI_MODEL: safeDisplayValue(process.env.GEMINI_MODEL, `(unset, default: ${DEFAULT_GEMINI_MODEL})`),
+      GEMINI_BASE_URL: safeBaseUrlDisplay(process.env.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta/openai', ''),
       GEMINI_API_KEY_SET: Boolean(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
     }
   }
   if (isTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)) {
     return {
       CLAUDE_CODE_USE_MISTRAL: true,
-      MISTRAL_MODEL: process.env.MISTRAL_MODEL ?? '(unset, default: devstral-latest)',
-      MISTRAL_BASE_URL: process.env.MISTRAL_BASE_URL ?? 'https://api.mistral.ai/v1',
+      MISTRAL_MODEL: safeDisplayValue(process.env.MISTRAL_MODEL, '(unset, default: devstral-latest)'),
+      MISTRAL_BASE_URL: safeBaseUrlDisplay(process.env.MISTRAL_BASE_URL ?? 'https://api.mistral.ai/v1', ''),
       MISTRAL_API_KEY_SET: Boolean(process.env.MISTRAL_API_KEY),
     }
   }
@@ -764,10 +1295,12 @@ function serializeSafeEnvSummary(): Record<string, string | boolean> {
     return {
       CLAUDE_CODE_USE_GITHUB: true,
       OPENAI_MODEL:
-        process.env.OPENAI_MODEL ??
-        '(unset, default: github:copilot → openai/gpt-4.1)',
+        safeDisplayValue(
+          process.env.OPENAI_MODEL,
+          '(unset, default: github:copilot → openai/gpt-4.1)',
+        ),
       OPENAI_BASE_URL:
-        process.env.OPENAI_BASE_URL ?? GITHUB_COPILOT_BASE,
+        safeBaseUrlDisplay(process.env.OPENAI_BASE_URL ?? GITHUB_COPILOT_BASE, ''),
       GITHUB_TOKEN_SET: Boolean(
         process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN,
       ),
@@ -777,11 +1310,14 @@ function serializeSafeEnvSummary(): Record<string, string | boolean> {
     model: process.env.OPENAI_MODEL,
     baseUrl: process.env.OPENAI_BASE_URL,
   })
+  const credentialContext = getOpenAICompatibleCredentialContext(request.baseUrl)
   return {
     CLAUDE_CODE_USE_OPENAI: isTruthy(process.env.CLAUDE_CODE_USE_OPENAI),
-    OPENAI_MODEL: process.env.OPENAI_MODEL ?? '(unset)',
-    OPENAI_BASE_URL: request.baseUrl,
+    OPENAI_MODEL: safeDisplayValue(process.env.OPENAI_MODEL, '(unset)'),
+    OPENAI_BASE_URL: safeBaseUrlDisplay(request.baseUrl, ''),
     OPENAI_API_KEY_SET: Boolean(process.env.OPENAI_API_KEY),
+    PROVIDER_API_KEY_SET: Boolean(credentialContext.value),
+    CODEX_API_KEY_SET: Boolean(resolveCodexApiCredentials(process.env).apiKey),
   }
 }
 
@@ -844,6 +1380,8 @@ async function main(): Promise<void> {
   configModule.enableConfigs()
   const { applySafeConfigEnvironmentVariables } = await import('../src/utils/managedEnv.js')
   applySafeConfigEnvironmentVariables()
+  const { hydrateGithubModelsTokenFromSecureStorage } = await import('../src/utils/githubModelsCredentials.js')
+  hydrateGithubModelsTokenFromSecureStorage()
 
   results.push(checkNodeVersion())
   results.push(checkBunRuntime())
@@ -857,6 +1395,7 @@ async function main(): Promise<void> {
         globalConfig.maxMessagesCompactionThreshold,
     }),
   )
+  results.push(...checkWebSearchEnv())
   results.push(...checkOpenAIEnv())
   results.push(await checkBaseUrlReachability())
   results.push(await checkProviderGenerationReadiness())
