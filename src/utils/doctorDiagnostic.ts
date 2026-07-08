@@ -2,6 +2,7 @@ import { execa } from 'execa'
 import { readFile, realpath } from 'fs/promises'
 import { homedir } from 'os'
 import { delimiter, join, posix, win32 } from 'path'
+import { checkGlobalInstallPermissions } from './autoUpdater.js'
 import { isInBundledMode } from './bundledMode.js'
 import {
   formatAutoUpdaterDisabledReason,
@@ -10,8 +11,7 @@ import {
   type InstallMethod,
 } from './config.js'
 import { getCwd } from './cwd.js'
-import { isEnvTruthy } from './envUtils.js'
-import { getLocalInstallDir } from './localInstaller.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import {
@@ -31,6 +31,7 @@ import {
   detectWinget,
   getPackageManager,
 } from './nativeInstaller/packageManagers.js'
+import { hasNativeDistribution } from './nativeDistribution.js'
 import { getPlatform } from './platform.js'
 import { getRipgrepStatus } from './ripgrep.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
@@ -47,16 +48,50 @@ import { which } from './which.js'
 function getCliBinaryName(): string {
   return MACRO.PACKAGE_URL === '@anthropic-ai/claude-code'
     ? 'claude'
-    : 'opencc'
+    : 'openclaude'
 }
 
 function getNativeDataDirName(): string {
   return getCliBinaryName()
 }
 
+function getNpmUpdateCommand(): string {
+  return `npm install -g ${MACRO.PACKAGE_URL}@latest`
+}
+
+export function getNativeInstallUnavailableFix(
+  fallback:
+    | 'local-config'
+    | 'local-overlap'
+    | 'global-permissions'
+    | 'native-config',
+  nativeDistributionAvailable: boolean = hasNativeDistribution(),
+): string {
+  if (nativeDistributionAvailable) {
+    switch (fallback) {
+      case 'native-config':
+        return `Run ${getCliBinaryName()} install to update configuration`
+      case 'global-permissions':
+        return `Do one of: (1) Re-install node without sudo, or (2) Use \`${getCliBinaryName()} install\` for native installation`
+      default:
+        return `Consider using native installation: ${getCliBinaryName()} install`
+    }
+  }
+
+  switch (fallback) {
+    case 'local-config':
+      return `Run ${getCliBinaryName()} update to refresh the install method, or update manually with: ${getNpmUpdateCommand()}`
+    case 'local-overlap':
+      return `Use the local install at ~/.openclaude/local/${getCliBinaryName()}, remove it, or update the global npm package with: ${getNpmUpdateCommand()}`
+    case 'global-permissions':
+      return `Do one of: (1) Re-install node without sudo, or (2) Update manually with: ${getNpmUpdateCommand()}`
+    case 'native-config':
+      return `This build has no native binary; set installMethod to 'global' or reinstall with: ${getNpmUpdateCommand()}`
+  }
+}
+
 export type InstallationType =
   | 'npm-global'
-  | 'pnpm-global'
   | 'npm-local'
   | 'native'
   | 'package-manager'
@@ -96,10 +131,6 @@ function getNormalizedPaths(): [invokedPath: string, execPath: string] {
 }
 
 export async function getCurrentInstallationType(): Promise<InstallationType> {
-  if (MACRO.IS_DEVELOPMENT_BUILD === 'true') {
-    return 'development'
-  }
-
   const [invokedPath] = getNormalizedPaths()
 
   // Check if running in bundled mode first
@@ -144,22 +175,6 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
     return 'npm-global'
   }
 
-  // Check for pnpm global installation
-  // Only detect as pnpm-global if invokedPath is actually under pnpmHome,
-  // not just because PNPM_HOME env var happens to be set for other tools
-  const pnpmHome = process.env.PPNM_HOME || process.env.PNPM_HOME
-  const pnpmPaths = [
-    '.pnpm',
-    '.local/share/pnpm',
-  ]
-
-  const isPnpmPath = pnpmPaths.some(path => invokedPath.includes(path)) || invokedPath.includes('/pnpm/')
-  const isUnderPnpmHome = pnpmHome && invokedPath.startsWith(pnpmHome)
-
-  if (isUnderPnpmHome || isPnpmPath) {
-    return 'pnpm-global'
-  }
-
   const npmConfigResult = await execa('npm config get prefix', {
     shell: true,
     reject: false,
@@ -185,7 +200,7 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
 }
 
 async function getInstallationPath(): Promise<string> {
-  if (MACRO.IS_DEVELOPMENT_BUILD) {
+  if (process.env.NODE_ENV === 'development') {
     return getCwd()
   }
 
@@ -258,10 +273,7 @@ async function detectMultipleInstallations(): Promise<
   }
 
   // Check for global npm installation
-  const packagesToCheck = ['@anthropic-ai/claude-code']
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
-    packagesToCheck.push(MACRO.PACKAGE_URL)
-  }
+  const packagesToCheck = [MACRO.PACKAGE_URL || '@gitlawb/openclaude']
   const npmResult = await execFileNoThrow('npm', [
     '-g',
     'config',
@@ -362,10 +374,31 @@ async function detectMultipleInstallations(): Promise<
   return installations
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await getFsImplementation().stat(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function detectStaleProjectSettingsPaths(
+  cwd?: string,
+): Promise<{ issue: string; fix: string } | null> {
+  void cwd
+  return null
+}
+
 async function detectConfigurationIssues(
   type: InstallationType,
 ): Promise<Array<{ issue: string; fix: string }>> {
   const warnings: Array<{ issue: string; fix: string }> = []
+
+  const staleProjectSettingsWarning = await detectStaleProjectSettingsPaths()
+  if (staleProjectSettingsWarning) {
+    warnings.push(staleProjectSettingsWarning)
+  }
 
   // Managed-settings forwards-compat: the schema preprocess silently drops
   // unknown strictPluginOnlyCustomization surface names so one future enum
@@ -483,14 +516,14 @@ async function detectConfigurationIssues(
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
         issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: `Consider using native installation: ${getCliBinaryName()} install`,
+        fix: getNativeInstallUnavailableFix('local-config'),
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
         issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: `Run ${getCliBinaryName()} install to update configuration`,
+        fix: getNativeInstallUnavailableFix('native-config'),
       })
     }
   }
@@ -498,7 +531,7 @@ async function detectConfigurationIssues(
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: `Consider using native installation: ${getCliBinaryName()} install`,
+      fix: getNativeInstallUnavailableFix('local-overlap'),
     })
   }
 
@@ -517,13 +550,13 @@ async function detectConfigurationIssues(
         // Alias exists but points to invalid target
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias ${getCliBinaryName()}="${getLocalInstallDir()}/${getCliBinaryName()}"`,
+          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias ${getCliBinaryName()}="~/.openclaude/local/${getCliBinaryName()}"`,
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
           issue: 'Local installation not accessible',
-          fix: `Create alias: alias ${getCliBinaryName()}="${getLocalInstallDir()}/${getCliBinaryName()}"`,
+          fix: `Create alias: alias ${getCliBinaryName()}="~/.openclaude/local/${getCliBinaryName()}"`,
         })
       }
     }
@@ -561,8 +594,8 @@ export function detectLinuxGlobPatternWarnings(): Array<{
 
 export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const installationType = await getCurrentInstallationType()
-  // MACRO.VERSION is replaced at build time with the actual version
-  const version = MACRO.VERSION || 'unknown'
+  const version =
+    typeof MACRO !== 'undefined' && MACRO.VERSION ? MACRO.VERSION : 'unknown'
   const installationPath = await getInstallationPath()
   const invokedBinary = getInvokedBinary()
   const multipleInstallations = await detectMultipleInstallations()
@@ -584,13 +617,8 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
     for (const install of npmInstalls) {
       if (install.type === 'npm-global') {
-        let uninstallCmd = 'npm -g uninstall @anthropic-ai/claude-code'
-        if (
-          MACRO.PACKAGE_URL &&
-          MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code'
-        ) {
-          uninstallCmd += ` && npm -g uninstall ${MACRO.PACKAGE_URL}`
-        }
+        const uninstallPackageName = MACRO.PACKAGE_URL || '@gitlawb/openclaude'
+        const uninstallCmd = `npm -g uninstall ${uninstallPackageName}`
         warnings.push({
           issue: `Leftover npm global installation at ${install.path}`,
           fix: `Run: ${uninstallCmd}`,
@@ -621,10 +649,16 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   // Check permissions for global installations
   let hasUpdatePermissions: boolean | null = null
   if (installationType === 'npm-global') {
-    // Note: Permission check is now handled differently by handleAutoUpdate
-    // which spawns a detached process with user permissions, so we skip
-    // the old permission warning here.
-    hasUpdatePermissions = null // Unknown with new auto-updater
+    const permCheck = await checkGlobalInstallPermissions()
+    hasUpdatePermissions = permCheck.hasPermissions
+
+    // Add warning if no permissions
+    if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
+      warnings.push({
+        issue: 'Insufficient permissions for auto-updates',
+        fix: getNativeInstallUnavailableFix('global-permissions'),
+      })
+    }
   }
 
   // Get ripgrep status and configuration
