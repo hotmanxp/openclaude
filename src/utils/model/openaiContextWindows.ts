@@ -692,12 +692,14 @@ export function getOpenAIContextWindow(
   model: string | undefined,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): number | undefined {
-return (
+  return (
     lookupExternalLimit(
       'CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS',
       model,
       processEnv,
-    ) ?? lookupSettingsLimit('contextWindow', model, processEnv)
+    ) ??
+    lookupSettingsLimit('contextWindow', model, processEnv) ??
+    (model ? lookupByKey(OPENAI_CONTEXT_WINDOWS, model) : undefined)
   )
 }
 
@@ -726,12 +728,14 @@ export function getOpenAIMaxOutputTokens(
   model: string | undefined,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): number | undefined {
-return (
+  return (
     lookupExternalLimit(
       'CLAUDE_CODE_OPENAI_MAX_OUTPUT_TOKENS',
       model,
       processEnv,
-    ) ?? lookupSettingsLimit('maxOutputTokens', model, processEnv)
+    ) ??
+    lookupSettingsLimit('maxOutputTokens', model, processEnv) ??
+    (model ? lookupByKey(OPENAI_MAX_OUTPUT_TOKENS, model) : undefined)
   )
 }
 
