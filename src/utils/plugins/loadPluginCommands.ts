@@ -8,7 +8,7 @@ import {
   substituteArguments,
 } from '../argumentSubstitution.js'
 import { logForDebugging } from '../debug.js'
-import { EFFORT_LEVELS, parseFrontmatterEffortValue } from '../effort.js'
+import { EFFORT_LEVELS, parseEffortValue } from '../effort.js'
 import { isBareMode } from '../envUtils.js'
 import { isENOENT } from '../errors.js'
 import {
@@ -281,12 +281,10 @@ function createPluginCommand(
 
     const effortRaw = frontmatter['effort']
     const effort =
-      effortRaw !== undefined ? parseFrontmatterEffortValue(effortRaw) : undefined
+      effortRaw !== undefined ? parseEffortValue(effortRaw) : undefined
     if (effortRaw !== undefined && effort === undefined) {
       logForDebugging(
-        String(effortRaw).toLowerCase() === 'ultracode'
-          ? `Plugin command ${commandName} requested effort 'ultracode', a session-only mode not supported in frontmatter; ignoring.`
-          : `Plugin command ${commandName} has invalid effort '${effortRaw}'. Valid options: ${EFFORT_LEVELS.filter(l => l !== 'ultracode').join(', ')} or an integer`,
+        `Plugin command ${commandName} has invalid effort '${effortRaw}'. Valid options: ${EFFORT_LEVELS.join(', ')} or an integer`,
       )
     }
 

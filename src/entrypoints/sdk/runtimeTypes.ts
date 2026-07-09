@@ -1,69 +1,93 @@
-/**
- * SDK runtime types — non-serializable types (callbacks, interfaces with
- * methods) re-exported as the `runtimeTypes` surface of the public SDK API.
- *
- * Most of these live in the SDK implementation modules (shared.ts, query.ts,
- * v2.ts); this module aggregates them for agentSdkTypes.ts. It must stay
- * runtime-inert: type-only exports, no value exports.
- */
+// Runtime types for SDK - stub definitions
+// This file should contain non-serializable types (callbacks, interfaces with methods)
 
-import type { z } from 'zod/v4'
-import type { Query, QueryOptions } from './query.js'
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'ultracode'
 
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'xhigh' | 'ultracode'
+// Types needed for agentSdkTypes.ts
+export type AnyZodRawShape = Record<string, unknown>
 
-// ============================================================================
-// Zod helpers for tool() input schemas
-// ============================================================================
+export type InferShape<T extends AnyZodRawShape> = {
+  [K in keyof T]: T[K] extends { parse: (input: unknown) => infer R } ? R : never
+}
 
-/** A Zod raw shape (`{ field: z.string(), ... }`) accepted by tool(). */
-export type AnyZodRawShape = z.ZodRawShape
+export type InternalOptions = {
+  model?: string
+  maxTokens?: number
+}
 
-/** Infer the parsed args type for a tool() input shape. */
-export type InferShape<Shape extends AnyZodRawShape> = z.infer<z.ZodObject<Shape>>
+export type InternalQuery = {
+  promise: Promise<unknown>
+}
 
-// ============================================================================
-// Re-exports from the SDK implementation modules
-// ============================================================================
+export type Options = {
+  model?: string
+}
 
-// Session management option/result types
-export type {
-  ForkSessionOptions,
-  ForkSessionResult,
-  GetSessionInfoOptions,
-  GetSessionMessagesOptions,
-  ListSessionsOptions,
-  SessionMessage,
-  SessionMutationOptions,
-} from './shared.js'
+export type Query = {
+  promise: Promise<unknown>
+}
 
-// V2 persistent session API
-export type {
-  SDKSession,
-  SDKSessionOptions,
-  SdkMcpToolDefinition,
-} from './v2.js'
+export type SDKSession = {
+  id: string
+}
 
-// query() API
-export type { Query, QueryOptions } from './query.js'
+export type SDKSessionOptions = {
+  dir?: string
+  model?: string
+}
 
-/** Options accepted by query(). Public alias for QueryOptions. */
-export type Options = QueryOptions
+export type ListSessionsOptions = {
+  dir?: string
+  limit?: number
+  offset?: number
+}
 
-// ============================================================================
-// Internal variants
-// ============================================================================
+export type GetSessionInfoOptions = {
+  dir?: string
+}
 
-/**
- * Options superset used internally — public Options plus internal-only
- * knobs not part of the stable surface.
- * @internal
- */
-export type InternalOptions = Options & { [key: string]: unknown }
+export type GetSessionMessagesOptions = {
+  dir?: string
+  limit?: number
+  offset?: number
+  includeSystemMessages?: boolean
+}
 
-/**
- * Query handle superset used internally — public Query plus internal-only
- * members not part of the stable surface.
- * @internal
- */
-export type InternalQuery = Query & { [key: string]: unknown }
+export type SessionMutationOptions = {
+  dir?: string
+}
+
+export type ForkSessionOptions = {
+  dir?: string
+  upToMessageId?: string
+  title?: string
+}
+
+export type ForkSessionResult = {
+  sessionId: string
+}
+
+export type SDKSessionInfo = {
+  sessionId: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+}
+
+export type SessionMessage = {
+  type: string
+  uuid: string
+  content: string
+}
+
+export type McpSdkServerConfigWithInstance = {
+  name: string
+  version?: string
+}
+
+// Tool definition type
+export type SdkMcpToolDefinition<Schema extends AnyZodRawShape = Record<string, unknown>> = {
+  name: string
+  description: string
+  inputSchema: Schema
+}

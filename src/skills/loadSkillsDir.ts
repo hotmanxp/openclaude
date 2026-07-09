@@ -25,7 +25,7 @@ import { logForDebugging } from '../utils/debug.js'
 import {
   EFFORT_LEVELS,
   type EffortValue,
-  parseFrontmatterEffortValue,
+  parseEffortValue,
 } from '../utils/effort.js'
 import {
   getClaudeConfigHomeDir,
@@ -226,12 +226,10 @@ export function parseSkillFrontmatterFields(
 
   const effortRaw = frontmatter['effort']
   const effort =
-    effortRaw !== undefined ? parseFrontmatterEffortValue(effortRaw) : undefined
+    effortRaw !== undefined ? parseEffortValue(effortRaw) : undefined
   if (effortRaw !== undefined && effort === undefined) {
     logForDebugging(
-      String(effortRaw).toLowerCase() === 'ultracode'
-        ? `Skill ${resolvedName} requested effort 'ultracode', a session-only mode not supported in frontmatter; ignoring.`
-        : `Skill ${resolvedName} has invalid effort '${effortRaw}'. Valid options: ${EFFORT_LEVELS.filter(l => l !== 'ultracode').join(', ')} or an integer`,
+      `Skill ${resolvedName} has invalid effort '${effortRaw}'. Valid options: ${EFFORT_LEVELS.join(', ')} or an integer`,
     )
   }
 

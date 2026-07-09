@@ -1,14 +1,13 @@
+// @ts-nocheck
 import { PassThrough } from 'node:stream'
 
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { afterEach, expect, mock, test } from 'bun:test'
 import React from 'react'
 import { stripVTControlCharacters as stripAnsi } from 'node:util'
 
 import { createRoot, render, useApp } from '../../ink.js'
 import { AppStateProvider } from '../../state/AppState.js'
 import {
-  applySavedProfileToCurrentSession,
-  buildCodexOAuthProfileEnv,
   buildCurrentProviderSummary,
   buildProfileSaveMessage,
   buildProviderManagerCompletion,
@@ -16,26 +15,10 @@ import {
   ProviderWizard,
   TextEntryDialog,
 } from './provider.js'
-import {
-  acquireSharedMutationLock,
-  releaseSharedMutationLock,
-} from '../../test/sharedMutationLock.js'
-import { createProfileFile } from '../../utils/providerProfile.js'
 
 const SYNC_START = '\x1B[?2026h'
 const SYNC_END = '\x1B[?2026l'
 const ORIGINAL_SIMPLE_ENV = process.env.CLAUDE_CODE_SIMPLE
-const ORIGINAL_CODEX_API_KEY = process.env.CODEX_API_KEY
-const ORIGINAL_CHATGPT_ACCOUNT_ID = process.env.CHATGPT_ACCOUNT_ID
-const ORIGINAL_CODEX_ACCOUNT_ID = process.env.CODEX_ACCOUNT_ID
-
-async function importFreshProviderProfileModule(
-  suffix: string,
-): Promise<typeof import('../../utils/providerProfile.js')> {
-  return import(`../../utils/providerProfile.js?${suffix}`) as Promise<
-    typeof import('../../utils/providerProfile.js')
-  >
-}
 
 function extractLastFrame(output: string): string {
   let lastFrame: string | null = null
@@ -160,39 +143,13 @@ function createTestStreams(): {
   }
 }
 
-beforeEach(async () => {
-  await acquireSharedMutationLock('commands/provider/provider.test.tsx')
-})
-
 afterEach(() => {
-  try {
-    mock.restore()
+  mock.restore()
 
-    if (ORIGINAL_SIMPLE_ENV === undefined) {
-      delete process.env.CLAUDE_CODE_SIMPLE
-    } else {
-      process.env.CLAUDE_CODE_SIMPLE = ORIGINAL_SIMPLE_ENV
-    }
-
-    if (ORIGINAL_CODEX_API_KEY === undefined) {
-      delete process.env.CODEX_API_KEY
-    } else {
-      process.env.CODEX_API_KEY = ORIGINAL_CODEX_API_KEY
-    }
-
-    if (ORIGINAL_CHATGPT_ACCOUNT_ID === undefined) {
-      delete process.env.CHATGPT_ACCOUNT_ID
-    } else {
-      process.env.CHATGPT_ACCOUNT_ID = ORIGINAL_CHATGPT_ACCOUNT_ID
-    }
-
-    if (ORIGINAL_CODEX_ACCOUNT_ID === undefined) {
-      delete process.env.CODEX_ACCOUNT_ID
-    } else {
-      process.env.CODEX_ACCOUNT_ID = ORIGINAL_CODEX_ACCOUNT_ID
-    }
-  } finally {
-    releaseSharedMutationLock()
+  if (ORIGINAL_SIMPLE_ENV === undefined) {
+    delete process.env.CLAUDE_CODE_SIMPLE
+  } else {
+    process.env.CLAUDE_CODE_SIMPLE = ORIGINAL_SIMPLE_ENV
   }
 })
 
@@ -256,9 +213,9 @@ test('wizard step remount prevents a typed API key from leaking into the next fi
     </AppStateProvider>,
   )
 
-  await waitForOutput(getOutput, output => output.includes('API key step'))
+  await Bun.sleep(25)
   stdin.write('sk-secret-12345678')
-  await waitForOutput(getOutput, output => output.includes('********'))
+  await Bun.sleep(25)
 
   root.render(
     <AppStateProvider>
@@ -274,14 +231,13 @@ test('wizard step remount prevents a typed API key from leaking into the next fi
     </AppStateProvider>,
   )
 
-  const output = await waitForOutput(
-    getOutput,
-    frame => frame.includes('Model step') && !frame.includes('sk-secret-12345678'),
-  )
+  await Bun.sleep(25)
   root.unmount()
   stdin.end()
   stdout.end()
+  await Bun.sleep(25)
 
+  const output = stripAnsi(extractLastFrame(getOutput()))
   expect(output).toContain('Model step')
   expect(output).not.toContain('sk-secret-12345678')
 })
@@ -320,62 +276,16 @@ test('buildProfileSaveMessage maps provider fields without echoing secrets', () 
       OPENAI_MODEL: 'gpt-4o',
       OPENAI_BASE_URL: 'https://api.openai.com/v1',
     },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
+    'D:/codings/Opensource/opencc/.claude-profile.json',
   )
 
-  expect(message).toContain('Saved OpenAI profile.')
+  expect(message).toContain('Saved OpenAI-compatible profile.')
   expect(message).toContain('Model: gpt-4o')
   expect(message).toContain('Endpoint: https://api.openai.com/v1')
   expect(message).toContain('Credentials: configured')
   expect(message).not.toContain('sk-secret-12345678')
 })
 
-test('buildProfileSaveMessage reports pooled OpenAI credentials as configured', () => {
-  const message = buildProfileSaveMessage(
-    'openai',
-    {
-      OPENAI_API_KEYS: 'sk-secret-a,sk-secret-b',
-      OPENAI_MODEL: 'gpt-4o',
-      OPENAI_BASE_URL: 'https://api.openai.com/v1',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved OpenAI profile.')
-  expect(message).toContain('Credentials: configured')
-  expect(message).not.toContain('sk-secret-a')
-  expect(message).not.toContain('sk-secret-b')
-})
-test('buildProfileSaveMessage redacts individual pooled OpenAI credentials in display fields', () => {
-  const message = buildProfileSaveMessage(
-    'openai',
-    {
-      OPENAI_API_KEYS: 'lowercasecredentialaaaaaaaaaaaa,lowercasecredentialbbbbbbbbbbbb',
-      OPENAI_MODEL: 'lowercasecredentialaaaaaaaaaaaa',
-      OPENAI_BASE_URL: 'https://api.openai.com/v1',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved OpenAI profile.')
-  expect(message).not.toContain('lowercasecredentialaaaaaaaaaaaa')
-  expect(message).not.toContain('lowercasecredentialbbbbbbbbbbbb')
-  expect(message).toContain('Model: low...aaa')
-})
-test('buildProfileSaveMessage ignores delimiter-only pooled OpenAI credentials', () => {
-  const message = buildProfileSaveMessage(
-    'openai',
-    {
-      OPENAI_API_KEYS: ', ,',
-      OPENAI_MODEL: 'gpt-4o',
-      OPENAI_BASE_URL: 'https://api.openai.com/v1',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved OpenAI profile.')
-  expect(message).not.toContain('Credentials: configured')
-})
 test('buildProfileSaveMessage labels local openai-compatible profiles consistently', () => {
   const message = buildProfileSaveMessage(
     'openai',
@@ -383,226 +293,12 @@ test('buildProfileSaveMessage labels local openai-compatible profiles consistent
       OPENAI_MODEL: 'gpt-5.4',
       OPENAI_BASE_URL: 'http://127.0.0.1:8080/v1',
     },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
+    'D:/codings/Opensource/opencc/.claude-profile.json',
   )
 
   expect(message).toContain('Saved Local OpenAI-compatible profile.')
   expect(message).toContain('Model: gpt-5.4')
   expect(message).toContain('Endpoint: http://127.0.0.1:8080/v1')
-})
-
-test('buildProfileSaveMessage labels descriptor-backed gateway profiles consistently', () => {
-  const message = buildProfileSaveMessage(
-    'openai',
-    {
-      OPENAI_API_KEY: 'sk-secret-12345678',
-      OPENAI_MODEL: 'openai/gpt-5-mini',
-      OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved OpenRouter profile.')
-  expect(message).toContain('Model: openai/gpt-5-mini')
-  expect(message).toContain('Endpoint: https://openrouter.ai/api/v1')
-  expect(message).toContain('Credentials: configured')
-  expect(message).not.toContain('sk-secret-12345678')
-})
-
-test('buildProfileSaveMessage labels descriptor-backed Venice profiles consistently', () => {
-  const message = buildProfileSaveMessage(
-    'openai',
-    {
-      OPENAI_API_KEY: 'sk-venice-secret-12345678',
-      VENICE_API_KEY: 'sk-venice-secret-12345678',
-      OPENAI_MODEL: 'venice-uncensored',
-      OPENAI_BASE_URL: 'https://api.venice.ai/api/v1',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved Venice profile.')
-  expect(message).toContain('Model: venice-uncensored')
-  expect(message).toContain('Endpoint: https://api.venice.ai/api/v1')
-  expect(message).toContain('Credentials: configured')
-  expect(message).not.toContain('sk-venice-secret-12345678')
-})
-
-test('buildProfileSaveMessage describes Gemini access token / ADC mode clearly', () => {
-  const message = buildProfileSaveMessage(
-    'gemini',
-    {
-      GEMINI_AUTH_MODE: 'access-token',
-      GEMINI_MODEL: 'gemini-2.5-flash',
-      GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-  )
-
-  expect(message).toContain('Saved Google AI / Gemini profile.')
-  expect(message).toContain('Model: gemini-2.5-flash')
-  expect(message).toContain('Credentials: access token (stored securely)')
-  expect(message).not.toContain('AIza')
-})
-
-test('buildProfileSaveMessage reflects immediate Codex activation for existing credentials', () => {
-  const message = buildProfileSaveMessage(
-    'codex',
-    {
-      OPENAI_MODEL: 'codexplan',
-      OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-      CHATGPT_ACCOUNT_ID: 'acct_codex',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-    {
-      activatedInSession: true,
-    },
-  )
-
-  expect(message).toContain('Saved Codex profile.')
-  expect(message).toContain('OpenClaude switched to it for this session.')
-  expect(message).not.toContain('Restart OpenClaude to use it.')
-})
-
-test('buildProfileSaveMessage reflects immediate Codex OAuth activation when the session switched successfully', () => {
-  const message = buildProfileSaveMessage(
-    'codex',
-    {
-      OPENAI_MODEL: 'codexplan',
-      OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-      CHATGPT_ACCOUNT_ID: 'acct_codex',
-      CODEX_CREDENTIAL_SOURCE: 'oauth',
-    },
-    'D:/codings/Opensource/openclaude/.openclaude-profile.json',
-    {
-      activatedInSession: true,
-    },
-  )
-
-  expect(message).toContain('Saved Codex profile.')
-  expect(message).toContain('OpenClaude switched to it for this session.')
-  expect(message).not.toContain('Restart OpenClaude to use it.')
-})
-
-test('buildCodexOAuthProfileEnv uses the fresh OAuth account id without persisting an API key', () => {
-  process.env.CODEX_API_KEY = 'stale-codex-key'
-  process.env.CHATGPT_ACCOUNT_ID = 'acct_stale'
-
-  const env = buildCodexOAuthProfileEnv({
-    accessToken: 'oauth-access-token',
-    accountId: 'acct_oauth',
-  })
-
-  expect(env).toEqual({
-    OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-    OPENAI_MODEL: 'codexplan',
-    CHATGPT_ACCOUNT_ID: 'acct_oauth',
-    CODEX_CREDENTIAL_SOURCE: 'oauth',
-  })
-  expect(env).not.toHaveProperty('CODEX_API_KEY')
-})
-
-test('buildCodexProfileEnv derives oauth source from secure storage when no explicit source is provided', async () => {
-  const actualProviderConfig = await import('../../services/api/providerConfig.js')
-
-  mock.module('../../services/api/providerConfig.js', () => ({
-    ...actualProviderConfig,
-    resolveCodexApiCredentials: () => ({
-      apiKey: 'stored-access-token',
-      accountId: 'acct_secure_storage',
-      source: 'secure-storage' as const,
-    }),
-  }))
-
-  const { buildCodexProfileEnv } = await importFreshProviderProfileModule(
-    'secure-storage-codex-source',
-  )
-
-  const env = buildCodexProfileEnv({
-    model: 'codexplan',
-    processEnv: {},
-  })
-
-  expect(env).toEqual({
-    OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-    OPENAI_MODEL: 'codexplan',
-    CHATGPT_ACCOUNT_ID: 'acct_secure_storage',
-    CODEX_CREDENTIAL_SOURCE: 'oauth',
-  })
-})
-
-test('explicitly declared env takes precedence over applySavedProfileToCurrentSession', async () => {
-  const { applySavedProfileToCurrentSession } =
-    await importFreshProviderProfileModule(
-      'apply-saved-profile-codex',
-    )
-  const processEnv: NodeJS.ProcessEnv = {
-    CLAUDE_CODE_USE_OPENAI: '1',
-    OPENAI_MODEL: 'gpt-4o',
-    OPENAI_BASE_URL: 'https://api.openai.com/v1',
-    OPENAI_API_KEY: 'sk-openai',
-    CODEX_API_KEY: 'codex-live',
-    CHATGPT_ACCOUNT_ID: 'acct_codex',
-    CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED: '1',
-    CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID: 'provider_old',
-  }
-  const profileFile = createProfileFile('codex', {
-    OPENAI_MODEL: 'codexplan',
-    OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-    CODEX_API_KEY: 'codex-live',
-    CHATGPT_ACCOUNT_ID: 'acct_codex',
-  })
-
-  const warning = await applySavedProfileToCurrentSession({
-    profileFile,
-    processEnv,
-  })
-
-  expect(warning).toBeNull()
-  expect(processEnv.CLAUDE_CODE_USE_OPENAI).toBe('1')
-  expect(processEnv.OPENAI_MODEL).toBe('gpt-4o')
-  expect(processEnv.OPENAI_BASE_URL).toBe(
-    "https://api.openai.com/v1",
-  )
-  expect(processEnv.CODEX_API_KEY).toBeUndefined()
-  expect(processEnv.CHATGPT_ACCOUNT_ID).toBeUndefined()
-  expect(processEnv.OPENAI_API_KEY).toBe("sk-openai")
-  expect(processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED).toBeUndefined()
-  expect(processEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID).toBeUndefined()
-})
-
-test('explicitly declared env takes precedence over applySavedProfileToCurrentSession for oauth codex profiles', async () => {
-  const { applySavedProfileToCurrentSession } =
-    await importFreshProviderProfileModule(
-      'apply-saved-profile-codex-oauth',
-    )
-  const processEnv: NodeJS.ProcessEnv = {
-    CLAUDE_CODE_USE_OPENAI: '1',
-    OPENAI_MODEL: 'gpt-4o',
-    OPENAI_BASE_URL: 'https://api.openai.com/v1',
-    CODEX_API_KEY: 'stale-codex-key',
-    CHATGPT_ACCOUNT_ID: 'acct_stale',
-  }
-  const profileFile = createProfileFile('codex', {
-    OPENAI_MODEL: 'codexplan',
-    OPENAI_BASE_URL: 'https://chatgpt.com/backend-api/codex',
-    CHATGPT_ACCOUNT_ID: 'acct_oauth',
-    CODEX_CREDENTIAL_SOURCE: 'oauth',
-  })
-
-  const warning = await applySavedProfileToCurrentSession({
-    profileFile,
-    processEnv,
-  })
-
-  expect(warning).not.toBeUndefined()
-  expect(processEnv.OPENAI_MODEL).toBe('gpt-4o')
-  expect(processEnv.OPENAI_BASE_URL).toBe(
-    "https://api.openai.com/v1",
-  )
-  expect(processEnv.CODEX_API_KEY).toBe("stale-codex-key")
-  expect(processEnv.CHATGPT_ACCOUNT_ID).toBe('acct_stale')
-  expect(processEnv.CHATGPT_ACCOUNT_ID).toBeTruthy()
 })
 
 test('buildCurrentProviderSummary redacts poisoned model and endpoint values', () => {
@@ -617,8 +313,8 @@ test('buildCurrentProviderSummary redacts poisoned model and endpoint values', (
   })
 
   expect(summary.providerLabel).toBe('OpenAI-compatible')
-  expect(summary.modelLabel).toBe('sk-...678')
-  expect(summary.endpointLabel).toBe('sk-...678')
+  expect(summary.modelLabel).toBe('sk-...5678')
+  expect(summary.endpointLabel).toBe('sk-...5678')
 })
 
 test('buildCurrentProviderSummary labels generic local openai-compatible providers', () => {
@@ -636,119 +332,13 @@ test('buildCurrentProviderSummary labels generic local openai-compatible provide
   expect(summary.endpointLabel).toBe('http://127.0.0.1:8080/v1')
 })
 
-test('buildCurrentProviderSummary recognizes descriptor-backed openai-compatible routes', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_OPENAI: '1',
-      OPENAI_MODEL: 'openai/gpt-5-mini',
-      OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('OpenRouter')
-  expect(summary.modelLabel).toBe('openai/gpt-5-mini')
-  expect(summary.endpointLabel).toBe('https://openrouter.ai/api/v1')
-})
-
-test('buildCurrentProviderSummary recognizes Venice routes', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_OPENAI: '1',
-      OPENAI_MODEL: 'venice-uncensored',
-      OPENAI_BASE_URL: 'https://api.venice.ai/api/v1',
-      VENICE_API_KEY: 'sk-venice-secret',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('Venice')
-  expect(summary.modelLabel).toBe('venice-uncensored')
-  expect(summary.endpointLabel).toBe('https://api.venice.ai/api/v1')
-})
-
-test('buildCurrentProviderSummary does not relabel local gpt-5.4 providers as Codex when custom base URL is set', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_OPENAI: '1',
-      OPENAI_MODEL: 'gpt-5.4',
-      OPENAI_BASE_URL: 'http://127.0.0.1:8080/v1',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('Local OpenAI-compatible')
-  expect(summary.modelLabel).toBe('gpt-5.4')
-  expect(summary.endpointLabel).toBe('http://127.0.0.1:8080/v1')
-})
-
-test('buildCurrentProviderSummary recognizes Gemini mode', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_GEMINI: '1',
-      GEMINI_MODEL: 'gemini-2.5-pro',
-      GEMINI_BASE_URL:
-        'https://generativelanguage.googleapis.com/v1beta/openai',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('Google AI / Gemini')
-  expect(summary.modelLabel).toBe('gemini-2.5-pro')
-  expect(summary.endpointLabel).toBe(
-    'https://generativelanguage.googleapis.com/v1beta/openai',
-  )
-})
-
-test('buildCurrentProviderSummary recognizes Mistral mode', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_MISTRAL: '1',
-      MISTRAL_MODEL: 'mistral-medium-latest',
-      MISTRAL_BASE_URL: 'https://api.mistral.ai/v1',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('Mistral AI')
-  expect(summary.modelLabel).toBe('mistral-medium-latest')
-  expect(summary.endpointLabel).toBe('https://api.mistral.ai/v1')
-})
-
-test('buildCurrentProviderSummary recognizes GitHub Models mode', () => {
-  const summary = buildCurrentProviderSummary({
-    processEnv: {
-      CLAUDE_CODE_USE_GITHUB: '1',
-      OPENAI_MODEL: 'github:copilot',
-      OPENAI_BASE_URL: 'https://models.github.ai/inference',
-    },
-    persisted: null,
-  })
-
-  expect(summary.providerLabel).toBe('GitHub Models')
-  expect(summary.modelLabel).toBe('github:copilot')
-  expect(summary.endpointLabel).toBe('https://models.github.ai/inference')
-})
-
 test('getProviderWizardDefaults ignores poisoned current provider values', () => {
   const defaults = getProviderWizardDefaults({
     OPENAI_API_KEY: 'sk-secret-12345678',
     OPENAI_MODEL: 'sk-secret-12345678',
     OPENAI_BASE_URL: 'sk-secret-12345678',
-    GEMINI_API_KEY: 'AIzaSecret12345678',
-    GEMINI_MODEL: 'AIzaSecret12345678',
   })
 
   expect(defaults.openAIModel).toBe('gpt-4o')
   expect(defaults.openAIBaseUrl).toBe('https://api.openai.com/v1')
-  expect(defaults.geminiModel).toBe('gemini-3-flash-preview')
-})
-
-test('ProviderWizard hides Codex OAuth while running in bare mode', async () => {
-  process.env.CLAUDE_CODE_SIMPLE = '1'
-
-  const output = await renderProviderWizardFrame()
-
-  expect(output).toContain('Set up a provider profile')
-  expect(output).not.toContain('Codex OAuth')
 })

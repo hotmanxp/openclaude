@@ -1574,28 +1574,7 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
 }
 
-/**
- * Read subscriptionType only from user settings source.
- * Project, local, flag, and policy settings are excluded.
- * See jatmn's P1 on #1731.
- */
-function getTrustedSubscriptionType(): SubscriptionType | null {
-  const candidate = getSettingsForSource('userSettings')?.subscriptionType
-  if (candidate) {
-    return candidate as SubscriptionType
-  }
-  return null
-}
-
 export function isClaudeAISubscriber(): boolean {
-  const override = getTrustedSubscriptionType()
-  if (override === 'free') {
-    return false
-  }
-  if (override) {
-    return true
-  }
-
   if (!isAnthropicAuthEnabled()) {
     return false
   }
@@ -1686,11 +1665,6 @@ export function getSubscriptionType(): SubscriptionType | null {
   // Check for mock subscription type first (ANT-only testing)
   if (shouldUseMockSubscription()) {
     return getMockSubscriptionType()
-  }
-
-  const override = getTrustedSubscriptionType()
-  if (override) {
-    return override
   }
 
   if (!isAnthropicAuthEnabled()) {

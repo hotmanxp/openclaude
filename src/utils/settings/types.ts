@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { lazySchema } from '../lazySchema.js'
@@ -59,23 +60,17 @@ export const PermissionsSchema = lazySchema(() =>
         ),
       defaultMode: z
         .enum(
-          feature('TRANSCRIPT_CLASSIFIER')
+          true
             ? PERMISSION_MODES
             : EXTERNAL_PERMISSION_MODES,
         )
         .optional()
-        .describe('Default permission mode when Claude Code needs access'),
+        .describe('Default permission mode when OpenCC needs access'),
       disableBypassPermissionsMode: z
         .enum(['disable'])
         .optional()
         .describe('Disable the ability to bypass permission prompts'),
-      allowBypassPermissionsMode: z
-        .boolean()
-        .optional()
-        .describe(
-          'Allow bypass permissions mode to appear in the mode list without requiring the CLI flag',
-        ),
-      ...(feature('TRANSCRIPT_CLASSIFIER')
+      ...(true
         ? {
             disableAutoMode: z
               .enum(['disable'])
@@ -218,7 +213,7 @@ export const DeniedMcpServerEntrySchema = lazySchema(() =>
  *
  * ⚠️ BACKWARD COMPATIBILITY NOTICE ⚠️
  *
- * This schema defines the structure of user settings files (~/.openclaude/settings.json).
+ * This schema defines the structure of user settings files (.claude/settings.json).
  * We support backward-compatible changes! Here's how:
  *
  * ✅ ALLOWED CHANGES:
@@ -265,13 +260,7 @@ export const SettingsSchema = lazySchema(() =>
       $schema: z
         .literal(CLAUDE_CODE_SETTINGS_SCHEMA_URL)
         .optional()
-        .describe('JSON Schema reference for Claude Code settings'),
-      subscriptionType: z
-        .enum(['free', 'pro', 'max', 'team', 'enterprise'])
-        .optional()
-        .describe(
-          'Override the active subscription type from user settings only. Project, repository, local, flag, and policy settings are ignored to prevent spoofing. Allowed values: free, pro, max, team, enterprise. The "free" value is authoritative and takes precedence over OAuth fallback detection.',
-        ),
+        .describe('JSON Schema reference for OpenCC settings'),
       apiKeyHelper: z
         .string()
         .optional()
@@ -304,7 +293,7 @@ export const SettingsSchema = lazySchema(() =>
                   .describe('IdP issuer URL for OIDC discovery'),
                 clientId: z
                   .string()
-                  .describe("Claude Code's client_id registered at the IdP"),
+                  .describe("OpenCC's client_id registered at the IdP"),
                 callbackPort: z
                   .number()
                   .int()
@@ -345,7 +334,7 @@ export const SettingsSchema = lazySchema(() =>
         ),
       env: EnvironmentVariablesSchema()
         .optional()
-        .describe('Environment variables to set for Claude Code sessions'),
+        .describe('Environment variables to set for OpenCC sessions'),
       // Attribution for commits and PRs
       attribution: z
         .object({
@@ -374,13 +363,13 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Deprecated: Use attribution instead. ' +
-            "Whether to include Claude's co-authored by attribution in commits and PRs (defaults to false)",
+            "Whether to include OpenCC's co-authored by attribution in commits and PRs (defaults to false)",
         ),
       includeGitInstructions: z
         .boolean()
         .optional()
         .describe(
-          "Include built-in commit and PR workflow instructions in Claude's system prompt (default: true)",
+          "Include built-in commit and PR workflow instructions in OpenCC's system prompt (default: true)",
         ),
       permissions: PermissionsSchema()
         .optional()
@@ -388,7 +377,7 @@ export const SettingsSchema = lazySchema(() =>
       model: z
         .string()
         .optional()
-        .describe('Override the default model used by Claude Code'),
+        .describe('Override the default model used by OpenCC'),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -400,16 +389,6 @@ export const SettingsSchema = lazySchema(() =>
             'and full model IDs. ' +
             'If undefined, all models are available. If empty array, only the default model is available. ' +
             'Typically set in managed settings by enterprise administrators.',
-        ),
-      providerProfileModelPickerMode: z
-        .enum(['auto', 'profile', 'provider'])
-        .optional()
-        .catch(undefined)
-        .describe(
-          'Controls /model options when an active provider profile is applied. ' +
-            '"profile" shows only explicitly configured profile models; ' +
-            '"provider" shows the provider catalog/discovery list plus explicit profile-only custom models; ' +
-            '"auto" uses profile mode when the profile has multiple explicitly configured models, otherwise provider mode.',
         ),
       modelOverrides: z
         .record(z.string(), z.string())
@@ -464,17 +443,61 @@ export const SettingsSchema = lazySchema(() =>
           'Auto-fix configuration: automatically run lint/test after AI file edits ' +
           'and feed errors back for self-repair.',
         ),
+      // OpenCC Dynamic Workflows — multi-agent orchestration tool.
+      // See src/tools/WorkflowTool/ for runtime. Env-var equivalents
+      // (OPENCC_ENABLE_WORKFLOWS, OPENCC_WORKFLOW_TIMEOUT_MS,
+      // OPENCC_WORKFLOW_MAX_AGENTS, OPENCC_WORKFLOW_KEYWORD) live in
+      // src/utils/envUtils.ts.
+      //
+      // Workflows are opt-in: default is disabled. Set this to true OR set
+      // OPENCC_ENABLE_WORKFLOWS=1 to enable.
+      workflows: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Enable OpenCC dynamic workflows. Equivalent to OPENCC_ENABLE_WORKFLOWS=1. ' +
+                'Default: false (workflows are opt-in).',
+            ),
+          keyword: z
+            .string()
+            .optional()
+            .describe(
+              'Custom trigger word that activates a workflow from the user prompt. ' +
+                'Defaults to "ultracode". Equivalent to OPENCC_WORKFLOW_KEYWORD.',
+            ),
+          permissions: z
+            .object({
+              allow: z
+                .array(
+                  z.object({
+                    name: z
+                      .string()
+                      .describe(
+                        'Tool name this permission rule applies to (e.g. "Bash", "FileRead").',
+                      ),
+                    pathPattern: z
+                      .string()
+                      .describe(
+                        'Glob pattern matched against the tool argument (e.g. file path). ' +
+                          'Use "*" to match all paths.',
+                      ),
+                  }),
+                )
+                .optional()
+                .describe(
+                  'Per-workflow permission allow rules. Combined with the global ' +
+                    "permission system when a workflow spawns tools on the user's behalf.",
+                ),
+            })
+            .optional()
+            .describe('Permission overrides that apply only inside workflow execution'),
+        })
+        .optional()
+        .describe('OpenCC Dynamic Workflows configuration (opt-in)'),
       worktree: z
-        .preprocess((val: any) => {
-          if (val && typeof val === 'object') {
-            const copy = { ...val }
-            if ('enableGitLongPaths' in val && !('autoConfigureLongPaths' in val)) {
-              copy.autoConfigureLongPaths = val.enableGitLongPaths
-            }
-            return copy
-          }
-          return val
-        }, z.object({
+        .object({
           symlinkDirectories: z
             .array(z.string())
             .optional()
@@ -490,18 +513,7 @@ export const SettingsSchema = lazySchema(() =>
               'Directories to include when creating worktrees, via git sparse-checkout (cone mode). ' +
                 'Dramatically faster in large monorepos — only the listed paths are written to disk.',
             ),
-          autoConfigureLongPaths: z
-            .boolean()
-            .optional()
-            .describe(
-              'On Windows, enable Git long-path support (core.longpaths=true) before ' +
-                'creating worktrees. Defaults to true when unset.',
-            ),
-          enableGitLongPaths: z
-            .boolean()
-            .optional()
-            .describe('Deprecated alias for autoConfigureLongPaths.'),
-        }))
+        })
         .optional()
         .describe('Git worktree configuration for --worktree flag.'),
       // Whether to disable all hooks and statusLine
@@ -645,7 +657,7 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe(
-          'Additional marketplaces to make available for this repository. Typically used in repository .openclaude/settings.json to ensure team members have required plugin sources.',
+          'Additional marketplaces to make available for this repository. Typically used in repository .claude/settings.json to ensure team members have required plugin sources.',
         ),
       // Enterprise strict list of allowed marketplace sources (policy settings only)
       // When set, ONLY these exact sources can be added. Check happens BEFORE download.
@@ -669,12 +681,12 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for Claude Pro/Max, 'console' for Console billing
+      // Force a specific login method: 'claudeai' for OpenCC Pro/Max, 'console' for Console billing
       forceLoginMethod: z
         .enum(['claudeai', 'console'])
         .optional()
         .describe(
-          'Force a specific login method: "claudeai" for Claude Pro/Max, "console" for Console billing',
+          'Force a specific login method: "claudeai" for OpenCC Pro/Max, "console" for Console billing',
         ),
       // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
       forceLoginOrgUUID: z
@@ -693,7 +705,7 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Preferred language for Claude responses and voice dictation (e.g., "japanese", "spanish")',
+          'Preferred language for OpenCC responses and voice dictation (e.g., "japanese", "spanish")',
         ),
       skipWebFetchPreflight: z
         .boolean()
@@ -714,20 +726,6 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Whether to show tips in the spinner'),
-      sponsoredTipsEnabled: z
-        .boolean()
-        .optional()
-        .describe(
-          'Whether to show sponsored partner tips alongside regular tips (default: true). Disabling does not affect regular tips.',
-        ),
-      sponsoredTipsFrequency: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe(
-          'Show at most 1 sponsored tip per N spinner picks. Default 10. Set 0 to disable sponsored tips.',
-        ),
       spinnerVerbs: z
         .object({
           mode: z.enum(['append', 'replace']),
@@ -764,10 +762,40 @@ export const SettingsSchema = lazySchema(() =>
             'enabled automatically for supported models.',
         ),
       effortLevel: z
-        .enum(['low', 'medium', 'high', 'xhigh', 'max'])
+        .enum(['low', 'medium', 'high', 'max'])
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),
+      // Session-level ultracode toggle. When true, the runtime reads this
+      // via isUltracodeActive() (src/utils/ultracode.ts) and applies xhigh
+      // effort + dynamic-workflow orchestration for this session.
+      // Per-session — same shape as upstream 2.1.170 `ultracode: boolean`.
+      // The user-facing trigger word for activating a workflow in the
+      // prompt lives at `workflows.keyword` (env: OPENCC_WORKFLOW_KEYWORD,
+      // default "ultracode") — this boolean is the session-level gate.
+      ultracode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Whether ultracode (xhigh effort + standing dynamic-workflow ' +
+            'orchestration) is active for this session. ' +
+            'Set per session via the `ultracode` settings key ' +
+            '(--settings or apply_flag_settings).',
+        ),
+      // Per-session toggle for the prompt keyword trigger that activates
+      // the Workflow tool. When false, detectUltracodeTrigger() in REPL.tsx
+      // does not strip the keyword from the input — the prefix is left
+      // intact and the model sees a literal "ultracode ..." prompt. Mirrors
+      // upstream claude-code v2.1.170 `workflowKeywordTriggerEnabled`
+      // (default true).
+      workflowKeywordTriggerEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable the "ultracode" keyword trigger: including the keyword ' +
+            'in a prompt opts that turn into the Workflow tool. Set to false ' +
+            'to disable the trigger. Default: true.',
+        ),
       advisorModel: z
         .string()
         .optional()
@@ -806,38 +834,12 @@ export const SettingsSchema = lazySchema(() =>
             'Use "default" key as fallback. Model name must exist in agentModels. ' +
             'Example: { "Explore": "deepseek-chat", "general-purpose": "gpt-4o", "default": "gpt-4o" }',
         ),
-      smartRouting: z
-        .object({
-          enabled: z.boolean().optional().describe('Opt in to per-turn simple-vs-strong model routing. Off by default.'),
-          simpleModel: z
-            .string()
-            .optional()
-            .describe('agentModels key (or bare model id) used for turns classified "simple".'),
-          strongModel: z
-            .string()
-            .optional()
-            .describe('agentModels key (or bare model id) used for "strong" turns and whenever routing is unsure.'),
-          simpleMaxChars: z
-            .number()
-            .optional()
-            .describe('Max characters in user input to qualify as "simple". Passed to routeModel.'),
-          simpleMaxWords: z
-            .number()
-            .optional()
-            .describe('Max whitespace-separated words to qualify as "simple". Passed to routeModel.'),
-        })
-        .optional()
-        .describe(
-          'Opt-in smart routing: classify each user turn and route simple turns to the configured simple model. ' +
-            'simpleModel/strongModel are agentModels keys (or bare model ids). ' +
-            'Example: { "enabled": true, "simpleModel": "mini", "strongModel": "main" }',
-        ),
       providerFallbackChain: z
         .array(z.string())
         .optional()
         .describe(
           'Ordered list of providerProfile ids. When the active provider returns a rate-limit ' +
-            'or quota error, OpenClaude advances to the next profile in this list (starting after ' +
+            'or quota error, OpenCC advances to the next profile in this list (starting after ' +
             'the currently-active id) and retries the turn. ' +
             'Example: ["provider_anthropic", "provider_openai", "provider_ollama"]',
         ),
@@ -846,6 +848,12 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'When true, fast mode is enabled. When absent or false, fast mode is off.',
+        ),
+      coordinatorMode: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable coordinator mode for orchestrating multi-worker tasks.',
         ),
       fastModePerSessionOptIn: z
         .boolean()
@@ -954,7 +962,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Custom directory for plan files, relative to project root. ' +
-            'If not set, defaults to ~/.openclaude/plans/',
+            'If not set, defaults to ~/.claude/plans/',
         ),
       ...(process.env.USER_TYPE === 'ant'
         ? {
@@ -1003,7 +1011,7 @@ export const SettingsSchema = lazySchema(() =>
               .boolean()
               .optional()
               .describe(
-                'Start Claude in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
+                'Start OpenCC in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
               ),
             assistantName: z
               .string()
@@ -1067,7 +1075,7 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe(
-          'Enable auto-memory for this project. When false, Claude will not read from or write to the auto-memory directory. Equivalent to `memory.autoWrite` — see that setting for the governance-focused shape requested in #1326.',
+          'Enable auto-memory for this project. When false, OpenCC will not read from or write to the auto-memory directory. Equivalent to `memory.autoWrite` — see that setting for the governance-focused shape requested in #1326.',
         ),
       memory: z
         .object({
@@ -1100,7 +1108,7 @@ export const SettingsSchema = lazySchema(() =>
             .boolean()
             .optional()
             .describe(
-              'When true, opt in to the generated OpenClaude footer for PR descriptions. When false in any settings source, generated PR attribution is blocked.',
+              'When true, opt in to the generated OpenCC footer for PR descriptions. When false in any settings source, generated PR attribution is blocked.',
             ),
           forbiddenCommitMessagePatterns: z
             .array(z.string())
@@ -1117,7 +1125,7 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Custom directory path for auto-memory storage. Supports ~/ prefix for home directory expansion. Ignored if set in projectSettings (checked-in .openclaude/settings.json) for security. When unset, defaults to ~/.openclaude/projects/<sanitized-cwd>/memory/.',
+          'Custom directory path for auto-memory storage. Supports ~/ prefix for home directory expansion. Ignored if set in projectSettings (checked-in .claude/settings.json) for security. When unset, defaults to ~/.claude/projects/<sanitized-cwd>/memory/.',
         ),
       autoDreamEnabled: z
         .boolean()
@@ -1136,12 +1144,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Whether the user has accepted the bypass permissions mode dialog',
-        ),
-      skipFullAccessModePermissionPrompt: z
-        .boolean()
-        .optional()
-        .describe(
-          'Whether the user has accepted the full access mode dialog',
         ),
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
@@ -1232,10 +1234,10 @@ export const SettingsSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Glob patterns or absolute paths of AGENTS.md/CLAUDE.md files to exclude from loading. ' +
+          `Glob patterns or absolute paths of ${AGENT_INSTRUCTIONS_FILE} files to exclude from loading. ` +
             'Patterns are matched against absolute file paths using picomatch. ' +
-            'Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ' +
-            'Examples: "/home/user/monorepo/AGENTS.md", "**/code/CLAUDE.md", "**/some-dir/.claude/rules/**"',
+            `Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ` +
+            `Examples: "/home/user/monorepo/${AGENT_INSTRUCTIONS_FILE}", "**/code/${AGENT_INSTRUCTIONS_FILE}", "**/some-dir/.claude/rules/**"`,
         ),
       pluginTrustMessage: z
         .string()

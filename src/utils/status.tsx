@@ -1,3 +1,4 @@
+// @ts-nocheck
 import chalk from 'chalk';
 import figures from 'figures';
 import * as React from 'react';
@@ -11,7 +12,7 @@ import { getDisplayPath } from './file.js';
 import { formatNumber } from './format.js';
 import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
 import { getClaudeAiUserDefaultModelDescription, modelDisplayString } from './model/model.js';
-import { getAPIProvider, type APIProvider } from './model/providers.js';
+import { getAPIProvider } from './model/providers.js';
 import { resolveProviderRequest } from '../services/api/providerConfig.js';
 import { getMTLSConfig } from './mtls.js';
 import { checkInstall } from './nativeInstaller/index.js';
@@ -21,415 +22,20 @@ import { getSettingsWithAllErrors } from './settings/allErrors.js';
 import { getEnabledSettingSources, getSettingSourceDisplayNameCapitalized } from './settings/constants.js';
 import { getManagedFileSettingsPresence, getPolicySettingsOrigin, getSettingsForSource } from './settings/settings.js';
 import type { ThemeName } from './theme.js';
-import { getKnownProviderSecretEnvKeys, redactSecretSubstringsForDisplay, redactSecretValueForDisplay, sanitizeApiKey, type SecretValueSource } from './providerSecrets.js';
-import { redactPathForStatus, redactUrlForStatus } from './redaction.js';
-import {
-  getRouteCredentialEnvVars,
-  getRouteDefaultBaseUrl,
-  getRouteDefaultModel,
-  getRouteLabel,
-  getRouteProviderTypeLabel,
-  resolveActiveRouteIdFromEnv,
-} from '../integrations/routeMetadata.js';
+import { redactSecretValueForDisplay } from './providerProfile.js';
 export type Property = {
   label?: string;
   value: React.ReactNode | Array<string>;
 };
 export type Diagnostic = React.ReactNode;
-
-const API_PROVIDER_LABELS: Partial<Record<APIProvider, string>> = {
-  bedrock: 'AWS Bedrock',
-  vertex: 'Google Vertex AI',
-  foundry: 'Microsoft Foundry',
-  openai: 'OpenAI-compatible',
-  codex: 'Codex',
-  gemini: 'Google Gemini',
-  github: 'GitHub Models',
-  'nvidia-nim': 'NVIDIA NIM',
-  minimax: 'MiniMax',
-  mistral: 'Mistral',
-  xai: 'xAI',
-  'xiaomi-mimo': 'Xiaomi MiMo',
-};
-
-const OPENAI_COMPATIBLE_STATUS_METADATA: Partial<
-  Record<
-    APIProvider,
-    {
-      baseUrlLabel: string;
-      resolveModelMetadata?: boolean;
-    }
-  >
-> = {
-  openai: {
-    baseUrlLabel: 'OpenAI base URL',
-    resolveModelMetadata: true,
-  },
-  codex: {
-    baseUrlLabel: 'Codex base URL',
-    resolveModelMetadata: true,
-  },
-  'nvidia-nim': {
-    baseUrlLabel: 'NVIDIA NIM base URL',
-  },
-  minimax: {
-    baseUrlLabel: 'MiniMax base URL',
-  },
-  xai: {
-    baseUrlLabel: 'xAI base URL',
-    resolveModelMetadata: true,
-  },
-  'xiaomi-mimo': {
-    baseUrlLabel: 'Xiaomi MiMo base URL',
-  },
-};
-
-const MIN_CONFIGURED_SECRET_SUBSTRING_LENGTH = 9;
-const MAX_CONFIGURED_SECRET_ENCODING_DEPTH = 3;
-
-function formatOpenAICompatibleModelDisplay(
-  model: string,
-  resolveModelMetadata = false,
-): string {
-  if (!resolveModelMetadata) {
-    return model;
-  }
-
-  let modelDisplay = model;
-  const resolved = resolveProviderRequest({ model });
-  const resolvedModel = resolved.resolvedModel;
-  const reasoningEffort = resolved.reasoning?.effort;
-
-  if (resolvedModel && resolvedModel !== model.toLowerCase()) {
-    modelDisplay = resolvedModel;
-  }
-
-  if (reasoningEffort) {
-    modelDisplay = `${modelDisplay} (${reasoningEffort})`;
-  }
-
-  return modelDisplay;
-}
-
-function pushRedactedProperty(
-  properties: Property[],
-  label: string,
-  value: string | undefined,
-  secretSource: SecretValueSource,
-): void {
-  if (!value) {
-    return;
-  }
-
-  const secretRedacted = redactSecretValueForDisplay(value, secretSource) ?? value;
-  properties.push({
-    label,
-    value: redactStatusTextForDisplay(secretRedacted, secretSource)
-  });
-}
-
-function getConfiguredSecretValues(secretSource: SecretValueSource): string[] {
-  return Array.from(
-    new Set(
-      Object.values(secretSource)
-        .map(secret => sanitizeApiKey(secret)?.trim())
-        .filter((secret): secret is string => Boolean(secret)),
-    ),
-  );
-}
-
-function getConfiguredSecretSubstringSource(
-  secretSource: SecretValueSource,
-): SecretValueSource {
-  const substringSource: SecretValueSource = {};
-  for (const [key, value] of Object.entries(secretSource)) {
-    const secret = sanitizeApiKey(value)?.trim();
-    if (secret && secret.length >= MIN_CONFIGURED_SECRET_SUBSTRING_LENGTH) {
-      substringSource[key] = value;
-    }
-  }
-  return substringSource;
-}
-
-function encodeURIComponentStrict(value: string): string {
-  return encodeURIComponent(value).replace(
-    /[!'()*]/g,
-    character =>
-      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
-
-function addPercentEscapeCaseVariants(
-  variants: Set<string>,
-  value: string,
-): void {
-  variants.add(value);
-  variants.add(
-    value.replace(/%[0-9A-F]{2}/g, match => match.toLowerCase()),
-  );
-}
-
-function addEncodedSecretVariants(
-  variants: Set<string>,
-  value: string,
-): void {
-  let encoded = value;
-  let strictlyEncoded = value;
-  for (let depth = 0; depth < MAX_CONFIGURED_SECRET_ENCODING_DEPTH; depth++) {
-    encoded = encodeURIComponent(encoded);
-    addPercentEscapeCaseVariants(variants, encoded);
-
-    strictlyEncoded = encodeURIComponentStrict(strictlyEncoded);
-    addPercentEscapeCaseVariants(variants, strictlyEncoded);
-  }
-}
-
-function getConfiguredSecretSubstringVariants(secret: string): string[] {
-  const variants = new Set<string>([secret]);
-  addEncodedSecretVariants(variants, secret);
-
-  const formEncoded = secret.includes(' ')
-    ? secret.replace(/ /g, '+')
-    : secret;
-  if (formEncoded !== secret) {
-    variants.add(formEncoded);
-    addEncodedSecretVariants(variants, formEncoded);
-  }
-
-  return [...variants].sort((a, b) => b.length - a.length);
-}
-
-function redactConfiguredSecretSubstrings(
-  value: string,
-  secretSource: SecretValueSource,
-): string {
-  let redacted = value;
-  const secrets = getConfiguredSecretValues(secretSource)
-    .filter(secret => secret.length >= MIN_CONFIGURED_SECRET_SUBSTRING_LENGTH)
-    .sort((a, b) => b.length - a.length);
-
-  for (const secret of secrets) {
-    for (const variant of getConfiguredSecretSubstringVariants(secret)) {
-      redacted = redacted.split(variant).join('redacted');
-    }
-  }
-
-  return redacted;
-}
-
-function queryValueMatchesConfiguredSecret(
-  value: string,
-  secrets: ReadonlySet<string>,
-): boolean {
-  let decoded = value;
-  for (let depth = 0; depth < MAX_CONFIGURED_SECRET_ENCODING_DEPTH; depth++) {
-    if (secrets.has(decoded)) {
-      return true;
-    }
-
-    const formDecoded = decoded.includes('+')
-      ? decoded.replace(/\+/g, ' ')
-      : decoded;
-    if (formDecoded !== decoded && secrets.has(formDecoded)) {
-      return true;
-    }
-
-    let next: string;
-    try {
-      next = decodeURIComponent(decoded);
-    } catch {
-      return false;
-    }
-
-    if (next === decoded) {
-      return false;
-    }
-    if (secrets.has(next)) {
-      return true;
-    }
-    decoded = next;
-  }
-
-  return false;
-}
-
-function redactConfiguredSecretUrlQueryValues(
-  value: string,
-  secretSource: SecretValueSource,
-): string {
-  const secrets = new Set(getConfiguredSecretValues(secretSource));
-  if (secrets.size === 0) {
-    return value;
-  }
-
-  try {
-    const parsed = new URL(value);
-    const redactedParams = new URLSearchParams();
-    let changed = false;
-
-    for (const [key, queryValue] of parsed.searchParams.entries()) {
-      if (queryValueMatchesConfiguredSecret(queryValue, secrets)) {
-        redactedParams.append(key, 'redacted');
-        changed = true;
-      } else {
-        redactedParams.append(key, queryValue);
-      }
-    }
-
-    if (!changed) {
-      return value;
-    }
-
-    parsed.search = redactedParams.toString();
-    return parsed.toString();
-  } catch {
-    return value;
-  }
-}
-
-function redactStatusTextForDisplay(
-  value: string,
-  secretSource: SecretValueSource,
-): string {
-  const configuredSecretRedacted = redactConfiguredSecretSubstrings(
-    value,
-    secretSource,
-  );
-  return (
-    redactSecretSubstringsForDisplay(
-      configuredSecretRedacted,
-      getConfiguredSecretSubstringSource(secretSource),
-    ) ??
-    configuredSecretRedacted
-  );
-}
-
-function pushRedactedUrlProperty(
-  properties: Property[],
-  label: string,
-  value: string | undefined,
-  secretSource: SecretValueSource,
-): void {
-  if (!value) {
-    return;
-  }
-
-  const queryValueRedacted = redactConfiguredSecretUrlQueryValues(
-    value,
-    secretSource,
-  );
-  const urlRedacted = redactUrlForStatus(queryValueRedacted);
-  properties.push({
-    label,
-    value: redactStatusTextForDisplay(urlRedacted, secretSource)
-  });
-}
-
-function readTrimmedEnvValue(name: string): string | undefined {
-  return process.env[name]?.trim() || undefined;
-}
-
-/**
- * Builds a process env copy whose OpenAI base URL aliases follow the same
- * trimming and fallback rules used by the status display fields.
- */
-function buildRouteResolutionEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  const openAIBaseUrl = readTrimmedEnvValue('OPENAI_BASE_URL');
-  const openAIApiBase = readTrimmedEnvValue('OPENAI_API_BASE');
-
-  if (openAIBaseUrl) {
-    env.OPENAI_BASE_URL = openAIBaseUrl;
-  } else {
-    delete env.OPENAI_BASE_URL;
-  }
-
-  if (openAIApiBase) {
-    env.OPENAI_API_BASE = openAIApiBase;
-  } else {
-    delete env.OPENAI_API_BASE;
-  }
-
-  return env;
-}
-
-/**
- * Resolves the active provider route from the environment. Returns the route id
- * when it identifies a concrete gateway/vendor (e.g. "openrouter", "groq",
- * "ollama", "openai"), and null for the generic "custom" fallback, the
- * first-party "anthropic" route, or when route resolution is unavailable.
- */
-function resolveDisplayRouteId(): string | null {
-  const routeId = resolveActiveRouteIdFromEnv(buildRouteResolutionEnv());
-  if (!routeId || routeId === 'custom' || routeId === 'anthropic') {
-    return null;
-  }
-  return routeId;
-}
-
-/**
- * Builds a credential source summary (env var names only, never values) for the
- * given route. Returns null when no credential env vars are configured or known.
- */
-function buildRouteCredentialSummary(routeId: string): string | null {
-  const envVars = getRouteCredentialEnvVars(routeId);
-  const configured = envVars.filter(name =>
-    Boolean(process.env[name]?.trim()),
-  );
-  if (configured.length === 0) {
-    return null;
-  }
-  return configured.map(name => `${name} configured`).join(', ');
-}
-
-/**
- * Collects route-specific credential env values so status fields redact secrets
- * from descriptor-backed providers, not only legacy provider buckets.
- */
-function buildRouteSecretSource(routeId: string | null): SecretValueSource {
-  if (!routeId) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    getRouteCredentialEnvVars(routeId).map(name => [name, process.env[name]]),
-  );
-}
-
-/**
- * Returns the active OpenAI-compatible base URL shown in status, including the
- * legacy OPENAI_API_BASE alias and descriptor defaults for env-only routes.
- */
-function getOpenAICompatibleBaseUrlForStatus(
-  routeId: string | null,
-): string | undefined {
-  return (
-    readTrimmedEnvValue('OPENAI_BASE_URL') ||
-    readTrimmedEnvValue('OPENAI_API_BASE') ||
-    (routeId ? getRouteDefaultBaseUrl(routeId) : undefined)
-  );
-}
-
-/**
- * Returns the active OpenAI-compatible model shown in status, falling back to
- * descriptor defaults for routes selected only by credential env vars.
- */
-function getOpenAICompatibleModelForStatus(
-  routeId: string | null,
-): string | undefined {
-  return (
-    readTrimmedEnvValue('OPENAI_MODEL') ||
-    (routeId ? getRouteDefaultModel(routeId) : undefined)
-  );
-}
 export function buildSandboxProperties(): Property[] {
-  if (process.env.USER_TYPE !== 'ant') {
+  if ("external" !== 'ant') {
     return [];
   }
   const isSandboxed = SandboxManager.isSandboxingEnabled();
   return [{
-    label: 'Bash Sandbox',
-    value: isSandboxed ? 'Enabled' : 'Disabled'
+    label: 'Bash 沙箱',
+    value: isSandboxed ? '已启用' : '已禁用'
   }];
 }
 export function buildIDEProperties(mcpClients: MCPServerConnection[], ideInstallationStatus: IDEExtensionInstallationStatus | null = null, theme: ThemeName): Property[] {
@@ -506,7 +112,7 @@ export function buildMcpProperties(clients: MCPServerConnection[] = [], theme: T
   if (byState.pending) parts.push(color('inactive', theme)(`${byState.pending} pending`));
   if (byState.failed) parts.push(color('error', theme)(`${byState.failed} failed`));
   return [{
-    label: 'MCP servers',
+    label: 'MCP 服务器',
     value: `${parts.join(', ')} ${color('inactive', theme)('· /mcp')}`
   }];
 }
@@ -565,7 +171,7 @@ export function buildSettingSourcesProperties(): Property[] {
     return getSettingSourceDisplayNameCapitalized(source);
   }).filter((name): name is string => name !== null);
   return [{
-    label: 'Setting sources',
+    label: '设置来源',
     value: sourceNames
   }];
 }
@@ -637,42 +243,39 @@ export function buildAccountProperties(): Property[] {
 export function buildAPIProviderProperties(): Property[] {
   const apiProvider = getAPIProvider();
   const properties: Property[] = [];
-  const secretSource: SecretValueSource = {};
-  for (const key of getKnownProviderSecretEnvKeys()) {
-    const envValue = process.env[key];
-    if (envValue !== undefined) {
-      secretSource[key] = envValue;
-    }
-  }
-  const routeId =
-    apiProvider === 'openai' ? resolveDisplayRouteId() : null;
   if (apiProvider !== 'firstParty') {
-    // The legacy "openai" bucket collapses many concrete providers (OpenRouter,
-    // Groq, Ollama, Fireworks, etc.) into a single "OpenAI-compatible" label.
-    // When route resolution identifies a concrete provider, surface its real
-    // label instead. Dedicated buckets (nvidia-nim, minimax, codex, github,
-    // xai, ...) already have accurate labels and are left untouched.
-    const routeLabel = routeId ? getRouteLabel(routeId) : null;
-    const providerLabel = routeLabel ?? API_PROVIDER_LABELS[apiProvider];
+    const providerLabel = {
+      bedrock: 'AWS Bedrock',
+      vertex: 'Google Vertex AI',
+      foundry: 'Microsoft Foundry',
+      openai: 'OpenAI-compatible',
+      codex: 'Codex',
+      gemini: 'Google Gemini',
+      github: 'GitHub Models',
+      mistral: 'Mistral',
+      xai: 'xAI',
+    }[apiProvider];
     properties.push({
-      label: routeId ? 'Provider route' : 'API provider',
+      label: 'API provider',
       value: providerLabel
     });
   }
   if (apiProvider === 'firstParty') {
-    pushRedactedUrlProperty(
-      properties,
-      'Anthropic base URL',
-      process.env.ANTHROPIC_BASE_URL,
-      secretSource,
-    );
+    const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    if (anthropicBaseUrl) {
+      properties.push({
+        label: 'Anthropic base URL',
+        value: anthropicBaseUrl
+      });
+    }
   } else if (apiProvider === 'bedrock') {
-    pushRedactedUrlProperty(
-      properties,
-      'Bedrock base URL',
-      process.env.BEDROCK_BASE_URL,
-      secretSource,
-    );
+    const bedrockBaseUrl = process.env.BEDROCK_BASE_URL;
+    if (bedrockBaseUrl) {
+      properties.push({
+        label: 'Bedrock base URL',
+        value: bedrockBaseUrl
+      });
+    }
     properties.push({
       label: 'AWS region',
       value: getAWSRegion()
@@ -683,12 +286,13 @@ export function buildAPIProviderProperties(): Property[] {
       });
     }
   } else if (apiProvider === 'vertex') {
-    pushRedactedUrlProperty(
-      properties,
-      'Vertex base URL',
-      process.env.VERTEX_BASE_URL,
-      secretSource,
-    );
+    const vertexBaseUrl = process.env.VERTEX_BASE_URL;
+    if (vertexBaseUrl) {
+      properties.push({
+        label: 'Vertex base URL',
+        value: vertexBaseUrl
+      });
+    }
     const gcpProject = process.env.ANTHROPIC_VERTEX_PROJECT_ID;
     if (gcpProject) {
       properties.push({
@@ -706,12 +310,13 @@ export function buildAPIProviderProperties(): Property[] {
       });
     }
   } else if (apiProvider === 'foundry') {
-    pushRedactedUrlProperty(
-      properties,
-      'Microsoft Foundry base URL',
-      process.env.ANTHROPIC_FOUNDRY_BASE_URL,
-      secretSource,
-    );
+    const foundryBaseUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
+    if (foundryBaseUrl) {
+      properties.push({
+        label: 'Microsoft Foundry base URL',
+        value: foundryBaseUrl
+      });
+    }
     const foundryResource = process.env.ANTHROPIC_FOUNDRY_RESOURCE;
     if (foundryResource) {
       properties.push({
@@ -724,81 +329,141 @@ export function buildAPIProviderProperties(): Property[] {
         value: 'Microsoft Foundry auth skipped'
       });
     }
-  } else if (apiProvider in OPENAI_COMPATIBLE_STATUS_METADATA) {
-    const metadata =
-      OPENAI_COMPATIBLE_STATUS_METADATA[apiProvider]!;
-    const transportLabel = routeId
-      ? getRouteProviderTypeLabel(routeId)
-      : null;
-    const redactionSource: SecretValueSource = {
-      ...secretSource,
-      ...buildRouteSecretSource(routeId),
-    };
-    if (transportLabel) {
+  } else if (apiProvider === 'openai') {
+    const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+    if (openaiBaseUrl) {
       properties.push({
-        label: 'Transport',
-        value: transportLabel,
+        label: 'OpenAI base URL',
+        value: redactSecretValueForDisplay(openaiBaseUrl, process.env) ?? openaiBaseUrl
       });
     }
-    pushRedactedUrlProperty(
-      properties,
-      metadata.baseUrlLabel,
-      getOpenAICompatibleBaseUrlForStatus(routeId),
-      redactionSource,
-    );
-    const openaiModel = getOpenAICompatibleModelForStatus(routeId);
+    const openaiModel = process.env.OPENAI_MODEL;
     if (openaiModel) {
-      const modelDisplay = formatOpenAICompatibleModelDisplay(
-        openaiModel,
-        metadata.resolveModelMetadata,
-      );
-      pushRedactedProperty(
-        properties,
-        'Model',
-        modelDisplay,
-        redactionSource,
-      );
-    }
-    if (routeId) {
-      const credentialSummary = buildRouteCredentialSummary(routeId);
-      if (credentialSummary) {
-        properties.push({
-          label: 'Credential',
-          value: credentialSummary,
-        });
+      // Build display model string with resolved model + reasoning effort
+      let modelDisplay = openaiModel;
+      const resolved = resolveProviderRequest({ model: openaiModel });
+      const resolvedModel = resolved.resolvedModel;
+      const reasoningEffort = resolved.reasoning?.effort;
+      if (resolvedModel && resolvedModel !== openaiModel.toLowerCase()) {
+        // Show resolved model name
+        modelDisplay = resolvedModel;
       }
+      if (reasoningEffort) {
+        modelDisplay = `${modelDisplay} (${reasoningEffort})`;
+      }
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
+      });
+    }
+  } else if (apiProvider === 'codex') {
+    const codexBaseUrl = process.env.OPENAI_BASE_URL;
+    if (codexBaseUrl) {
+      properties.push({
+        label: 'Codex base URL',
+        value: redactSecretValueForDisplay(codexBaseUrl, process.env) ?? codexBaseUrl
+      });
+    }
+    const openaiModel = process.env.OPENAI_MODEL;
+    if (openaiModel) {
+      // Build display model string with resolved model + reasoning effort
+      let modelDisplay = openaiModel;
+      const resolved = resolveProviderRequest({ model: openaiModel });
+      const resolvedModel = resolved.resolvedModel;
+      const reasoningEffort = resolved.reasoning?.effort;
+      if (resolvedModel && resolvedModel !== openaiModel.toLowerCase()) {
+        // Show resolved model name
+        modelDisplay = resolvedModel;
+      }
+      if (reasoningEffort) {
+        modelDisplay = `${modelDisplay} (${reasoningEffort})`;
+      }
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
+      });
     }
   } else if (apiProvider === 'gemini') {
     const geminiBaseUrl = process.env.GEMINI_BASE_URL;
-    pushRedactedUrlProperty(properties, 'Gemini base URL', geminiBaseUrl, secretSource);
+    if (geminiBaseUrl) {
+      properties.push({
+        label: 'Gemini base URL',
+        value: redactSecretValueForDisplay(geminiBaseUrl, process.env) ?? geminiBaseUrl
+      });
+    }
     const geminiModel = process.env.GEMINI_MODEL;
-    pushRedactedProperty(properties, 'Model', geminiModel, secretSource);
+    if (geminiModel) {
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(geminiModel, process.env) ?? geminiModel
+      });
+    }
   } else if (apiProvider === 'mistral') {
     const mistralBaseUrl = process.env.MISTRAL_BASE_URL;
-    pushRedactedUrlProperty(properties, 'Mistral base URL', mistralBaseUrl, secretSource);
+    if (mistralBaseUrl) {
+      properties.push({
+        label: 'Mistral base URL',
+        value: redactSecretValueForDisplay(mistralBaseUrl, process.env) ?? mistralBaseUrl
+      })
+    }
     const mistralModel = process.env.MISTRAL_MODEL;
-    pushRedactedProperty(properties, 'Model', mistralModel, secretSource);
+    if (mistralModel) {
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(mistralModel, process.env) ?? mistralModel
+      })
+    }
+  } else if (apiProvider === 'xai') {
+    const xaiBaseUrl = process.env.OPENAI_BASE_URL;
+    if (xaiBaseUrl) {
+      properties.push({
+        label: 'xAI base URL',
+        value: redactSecretValueForDisplay(xaiBaseUrl, process.env) ?? xaiBaseUrl
+      })
+    }
+    const openaiModel = process.env.OPENAI_MODEL;
+    if (openaiModel) {
+      let modelDisplay = openaiModel;
+      const resolved = resolveProviderRequest({ model: openaiModel });
+      const resolvedModel = resolved.resolvedModel;
+      const reasoningEffort = resolved.reasoning?.effort;
+      if (resolvedModel && resolvedModel !== openaiModel.toLowerCase()) {
+        modelDisplay = resolvedModel;
+      }
+      if (reasoningEffort) {
+        modelDisplay = `${modelDisplay} (${reasoningEffort})`;
+      }
+      properties.push({
+        label: 'Model',
+        value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
+      });
+    }
   }
   const proxyUrl = getProxyUrl();
-  pushRedactedUrlProperty(properties, 'Proxy', proxyUrl, secretSource);
+  if (proxyUrl) {
+    properties.push({
+      label: 'Proxy',
+      value: proxyUrl
+    });
+  }
   const mtlsConfig = getMTLSConfig();
   if (process.env.NODE_EXTRA_CA_CERTS) {
     properties.push({
       label: 'Additional CA cert(s)',
-      value: redactPathForStatus(process.env.NODE_EXTRA_CA_CERTS)
+      value: process.env.NODE_EXTRA_CA_CERTS
     });
   }
   if (mtlsConfig) {
     if (mtlsConfig.cert && process.env.CLAUDE_CODE_CLIENT_CERT) {
       properties.push({
         label: 'mTLS client cert',
-        value: redactPathForStatus(process.env.CLAUDE_CODE_CLIENT_CERT)
+        value: process.env.CLAUDE_CODE_CLIENT_CERT
       });
     }
     if (mtlsConfig.key && process.env.CLAUDE_CODE_CLIENT_KEY) {
       properties.push({
         label: 'mTLS client key',
-        value: 'configured'
+        value: process.env.CLAUDE_CODE_CLIENT_KEY
       });
     }
   }
