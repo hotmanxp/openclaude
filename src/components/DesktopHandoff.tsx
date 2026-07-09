@@ -73,12 +73,12 @@ export function DesktopHandoff(t0) {
         setState("checking");
         const installStatus = await getDesktopInstallStatus();
         if (installStatus.status === "not-installed") {
-          setDownloadMessage("Claude Desktop is not installed.");
+          setDownloadMessage("OpenCC Desktop is not installed.");
           setState("prompt-download");
           return;
         }
         if (installStatus.status === "version-too-old") {
-          setDownloadMessage(`Claude Desktop needs to be updated (found v${installStatus.version}, need v1.1.2396+).`);
+          setDownloadMessage(`OpenCC Desktop needs to be updated (found v${installStatus.version}, need v1.1.2396+).`);
           setState("prompt-download");
           return;
         }
@@ -87,7 +87,7 @@ export function DesktopHandoff(t0) {
         setState("opening");
         const result = await openCurrentSessionInDesktop();
         if (!result.success) {
-          setError(result.error ?? "Failed to open Claude Desktop");
+          setError(result.error ?? "Failed to open OpenCC Desktop");
           setState("error");
           return;
         }
@@ -163,10 +163,10 @@ export function DesktopHandoff(t0) {
   let t4;
   if ($[17] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = {
-      checking: "Checking for Claude Desktop\u2026",
+      checking: "Checking for OpenCC Desktop\u2026",
       flushing: "Saving session\u2026",
-      opening: "Opening Claude Desktop\u2026",
-      success: "Opening in Claude Desktop\u2026"
+      opening: "Opening OpenCC Desktop\u2026",
+      success: "Opening in OpenCC Desktop\u2026"
     };
     $[17] = t4;
   } else {
@@ -185,7 +185,7 @@ export function DesktopHandoff(t0) {
   return t6;
 }
 async function _temp2(onDone_0) {
-  onDone_0("Session transferred to Claude Desktop", {
+  onDone_0("Session transferred to OpenCC Desktop", {
     display: "system"
   });
   await gracefulShutdown(0, "other");

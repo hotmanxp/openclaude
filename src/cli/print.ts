@@ -325,6 +325,7 @@ import {
 import {
   startQueryProfile,
   logQueryProfileReport,
+  clearQueryProfile,
 } from 'src/utils/queryProfiler.js'
 import { asSessionId } from 'src/types/ids.js'
 import { jsonStringify } from '../utils/slowOperations.js'
@@ -1073,7 +1074,9 @@ export function createHeadlessHeartbeatStructuredEmitter(
 ): (message: HeadlessHeartbeatEvent) => void | Promise<void> {
   return message => {
     if (!hasDrainStarted()) {
-      return
+      // Before drain starts, write directly so startup signals in
+      // stream-json mode are not silently dropped.
+      return structuredIO.write(message)
     }
     structuredIO.outbound.enqueue(message)
   }
@@ -2605,6 +2608,7 @@ function runHeadlessStreaming(
     } finally {
       runPhase = 'finally_flush'
       options.heartbeat?.setPhase('flushing')
+      clearQueryProfile()
       // Flush pending internal events before going idle
       await structuredIO.flushInternalEvents()
       runPhase = 'finally_post_flush'
@@ -4944,7 +4948,7 @@ function reregisterChannelHandlerAfterReconnect(
   )
   if (gate.action !== 'register') return
 
-  const entry = findChannelEntry(connection.name, getAllowedChannels())
+  const entry = findChannelEntry(connection.name, getAllowedChannels(), connection.config.pluginSource)
   const pluginId =
     entry?.kind === 'plugin'
       ? (`${entry.name}@${entry.marketplace}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)

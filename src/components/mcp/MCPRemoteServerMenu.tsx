@@ -158,7 +158,7 @@ export function MCPRemoteServerMenu({
     isActive: isAuthenticating
   });
 
-  // Escape to cancel Claude AI authentication
+  // Escape to cancel OpenCC AI authentication
   useKeybinding('confirm:no', () => {
     setIsClaudeAIAuthenticating(false);
     setClaudeAIAuthUrl(null);
@@ -167,7 +167,7 @@ export function MCPRemoteServerMenu({
     isActive: isClaudeAIAuthenticating
   });
 
-  // Escape to cancel Claude AI clear auth
+  // Escape to cancel OpenCC AI clear auth
   useKeybinding('confirm:no', () => {
     setIsClaudeAIClearingAuth(false);
     setClaudeAIClearAuthUrl(null);

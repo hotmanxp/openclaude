@@ -1,4 +1,74 @@
-import { GrowthBook } from '@growthbook/growthbook'
+// `@growthbook/growthbook` is treated as an OPTIONAL dependency — the SDK
+// is only needed when `is1PEventLoggingEnabled()` is true (ants / internal
+// builds). External users never reach the client-instantiation path, so
+// failure to resolve the package degrades gracefully to "all gates return
+// defaultValue" rather than crashing module load.
+//
+// We define a structural `GrowthBook` interface mirroring only the methods
+// we actually call, instead of importing the class type. This way:
+//   - The module graph stays free of the `@growthbook/growthbook` import edge,
+//     so bun/node module resolution does not need the package to be installed.
+//   - TypeScript still gets full type-checking on every call site.
+//   - When the package IS installed, `loadGrowthBookClass()` resolves it
+//     dynamically and we use the real class. When it's NOT installed,
+//     every `getGrowthBookClient()` call returns null and all callers fall
+//     back to defaults via `isGrowthBookEnabled()` / cache paths.
+interface GrowthBook {
+  init(opts: { timeout?: number }): Promise<{ source: string; success: boolean }>
+  setPayload(payload: {
+    features: Record<string, unknown>
+    [key: string]: unknown
+  }): Promise<void>
+  getPayload(): {
+    features?: Record<string, unknown>
+    [key: string]: unknown
+  } | null
+  getFeatures(): Record<string, unknown> | null | undefined
+  getFeatureValue<T>(feature: string, defaultValue: T): T
+  refreshFeatures(): Promise<void>
+  destroy(): void
+}
+
+let growthBookCtor:
+  | (new (config: Record<string, unknown>) => GrowthBook)
+  | null = null
+let growthBookLoadPromise: Promise<void> | null = null
+
+/**
+ * Dynamically load the GrowthBook SDK class. Returns silently (ctor stays
+ * null) if the package is not installed — callers treat null as "GrowthBook
+ * unavailable, all gates fall through to defaults".
+ *
+ * Typed against a local `GrowthBookModule` shape (not `typeof import(...)`)
+ * so this file type-checks even when `@growthbook/growthbook` is not in
+ * node_modules — the SDK is treated as an optional dependency.
+ */
+type GrowthBookModule = {
+  GrowthBook: new (config: Record<string, unknown>) => GrowthBook
+}
+function loadGrowthBookClass(): Promise<void> {
+  if (growthBookLoadPromise) return growthBookLoadPromise
+  const loader = (import(
+    /* @ts-expect-error optional dep, may be absent from node_modules */
+    '@growthbook/growthbook'
+  ) as Promise<GrowthBookModule>)
+  growthBookLoadPromise = loader
+    .then(mod => {
+      growthBookCtor = mod.GrowthBook
+    })
+    .catch(() => {
+      // Package not installed — leave ctor null. isGrowthBookEnabled() will
+      // also short-circuit for non-ant users, but this catches the edge case
+      // where an ant build runs without the package linked.
+      growthBookCtor = null
+    })
+  return growthBookLoadPromise
+}
+
+// Kick off the load eagerly so the first gate lookup doesn't pay the
+// dynamic-import latency. Failure is silent — we just stay in degraded mode.
+void loadGrowthBookClass()
+
 import { isEqual, memoize } from 'lodash-es'
 import {
   getIsNonInteractiveSession,
@@ -523,7 +593,13 @@ const getGrowthBookClient = memoize(
 
     // Capture in local variable so the init callback operates on THIS client,
     // not a later client if reinitialization happens before init completes
-    const thisClient = new GrowthBook({
+    if (!growthBookCtor) {
+      // SDK package not installed — refuse to create a client. The next
+      // getFeatureValue_* call will retry the dynamic load; if it still
+      // fails, all gates stay at their defaults, which is safe.
+      return null
+    }
+    const thisClient = new growthBookCtor({
       apiHost: baseUrl,
       clientKey,
       attributes,

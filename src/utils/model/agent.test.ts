@@ -62,7 +62,7 @@ describe('getAgentModel provider-aware fallback', () => {
     }
   })
 
-  describe('Claude-native providers', () => {
+  describe('OpenCC-native providers', () => {
     test.skip('haiku alias resolves via PROVIDER_ALIAS_OVERRIDES for firstParty native', async () => {
       mockProviders({ provider: 'firstParty', isFirstParty: true })
       mockAliasOverrides()
@@ -79,7 +79,7 @@ describe('getAgentModel provider-aware fallback', () => {
     })
   })
 
-  describe('Non-Claude-native providers', () => {
+  describe('Non-OpenCC-native providers', () => {
     test.skip('haiku alias honors PROVIDER_ALIAS_OVERRIDES for OpenAI provider', async () => {
       mockProviders({ provider: 'openai', isFirstParty: false })
       mockAliasOverrides()

@@ -99,7 +99,7 @@ const externalTips: Tip[] = [
   {
     id: 'new-user-warmup',
     content: async () =>
-      `Start with small features or bug fixes, tell Open CC to propose a plan, and verify its suggested edits`,
+      `Start with small features or bug fixes, tell OpenCC to propose a plan, and verify its suggested edits`,
     cooldownSessions: 3,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -146,7 +146,7 @@ const externalTips: Tip[] = [
   {
     id: 'git-worktrees',
     content: async () =>
-      'Use git worktrees to run multiple Open CC sessions in parallel.',
+      'Use git worktrees to run multiple OpenCC sessions in parallel.',
     cooldownSessions: 10,
     isRelevant: async () => {
       try {
@@ -161,7 +161,7 @@ const externalTips: Tip[] = [
   {
     id: 'color-when-multi-clauding',
     content: async () =>
-      'Running multiple Open CC sessions? Use /color and /rename to tell them apart at a glance.',
+      'Running multiple OpenCC sessions? Use /color and /rename to tell them apart at a glance.',
     cooldownSessions: 10,
     isRelevant: async () => {
       if (getCurrentSessionAgentColor()) return false
@@ -219,7 +219,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'memory-command',
-    content: async () => 'Use /memory to view and manage Open CC memory',
+    content: async () => 'Use /memory to view and manage OpenCC memory',
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -258,7 +258,7 @@ const externalTips: Tip[] = [
   {
     id: 'prompt-queue',
     content: async () =>
-      'Hit Enter to queue up additional messages while Open CC is working.',
+      'Hit Enter to queue up additional messages while OpenCC is working.',
     cooldownSessions: 5,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -268,14 +268,14 @@ const externalTips: Tip[] = [
   {
     id: 'enter-to-steer-in-relatime',
     content: async () =>
-      'Send messages to Open CC while it works to steer Open CC in real-time',
+      'Send messages to OpenCC while it works to steer OpenCC in real-time',
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'todo-list',
     content: async () =>
-      'Ask Open CC to create a todo list when working on complex tasks to track progress and remain on track',
+      'Ask OpenCC to create a todo list when working on complex tasks to track progress and remain on track',
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
@@ -308,7 +308,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'ide-upsell-external-terminal',
-    content: async () => 'Connect Open CC to your IDE · /ide',
+    content: async () => 'Connect OpenCC to your IDE · /ide',
     cooldownSessions: 4,
     async isRelevant() {
       if (isSupportedTerminal()) {
@@ -334,7 +334,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'install-slack-app',
-    content: async () => 'Run /install-slack-app to use Open CC in Slack',
+    content: async () => 'Run /install-slack-app to use OpenCC in Slack',
     cooldownSessions: 10,
     isRelevant: async () => !getGlobalConfig().slackAppInstallCount,
   },
@@ -358,7 +358,7 @@ const externalTips: Tip[] = [
   {
     id: 'paste-images-mac',
     content: async () =>
-      'Paste images into Open CC using control+v (not cmd+v!)',
+      'Paste images into OpenCC using control+v (not cmd+v!)',
     cooldownSessions: 10,
     isRelevant: async () => getPlatform() === 'macos',
   },
@@ -524,7 +524,7 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tide_elm', 'off')
       return variant === 'copy_b'
-        ? `Use ${cmd} for better one-shot answers. Open CC thinks it through first.`
+        ? `Use ${cmd} for better one-shot answers. OpenCC thinks it through first.`
         : `Working on something tricky? ${cmd} gives better first answers`
     },
     cooldownSessions: 3,

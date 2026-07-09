@@ -40,6 +40,7 @@ import {
   isValidAwsStsOutput,
 } from './aws.js'
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
+import { importOptionalRuntimeModule } from './optionalRuntimeModule.js'
 import { clearBetasCaches } from './betas.js'
 import {
   type AccountInfo,
@@ -81,7 +82,7 @@ import { clearToolSchemaCache } from './toolSchemaCache.js'
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 
 /**
- * CCR and Open CC Desktop spawn the CLI with OAuth and should never fall back
+ * CCR and OpenCC Desktop spawn the CLI with OAuth and should never fall back
  * to the user's ~/.claude/settings.json API-key config (apiKeyHelper,
  * env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN). Those settings exist for
  * the user's terminal CLI, not managed sessions. Without this guard, a user
@@ -855,8 +856,11 @@ const GCP_CREDENTIALS_CHECK_TIMEOUT_MS = 5_000
  */
 export async function checkGcpCredentialsValid(): Promise<boolean> {
   try {
-    // Dynamically import to avoid loading google-auth-library unnecessarily
-    const { GoogleAuth } = await import('google-auth-library')
+    // Dynamically import to avoid loading google-auth-library unnecessarily.
+    // It is an optional, on-demand dependency (not shipped by default).
+    const { GoogleAuth } = await importOptionalRuntimeModule<
+      typeof import('google-auth-library')
+    >('google-auth-library', 'Vertex AI (GCP) authentication')
     const auth = new GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     })
@@ -1538,7 +1542,7 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 
     logEvent('tengu_oauth_token_refresh_starting', {})
     const refreshedTokens = await refreshOAuthToken(lockedTokens.refreshToken, {
-      // For Open CC.ai subscribers, omit scopes so the default
+      // For OpenCC.ai subscribers, omit scopes so the default
       // CLAUDE_AI_OAUTH_SCOPES applies — this allows scope expansion
       // (e.g. adding user:file_upload) on refresh without re-login.
       scopes: shouldUseClaudeAIAuth(lockedTokens.scopes)
@@ -1594,10 +1598,10 @@ export function hasProfileScope(): boolean {
 
 export function is1PApiCustomer(): boolean {
   // 1P API customers are users who are NOT:
-  // 1. Open CC.ai subscribers (Max, Pro, Enterprise, Team)
+  // 1. OpenCC.ai subscribers (Max, Pro, Enterprise, Team)
   // 2. Vertex AI users
   // 3. AWS Bedrock users
-  // Exclude Open CC.ai subscribers
+  // Exclude OpenCC.ai subscribers
   if (isClaudeAISubscriber()) {
     return false
   }
@@ -1622,7 +1626,7 @@ export function isOverageProvisioningAllowed(): boolean {
   const accountInfo = getOauthAccountInfo()
   const billingType = accountInfo?.billingType
 
-  // Must be a Open CC subscriber with a supported subscription type
+  // Must be a OpenCC subscriber with a supported subscription type
   if (!isClaudeAISubscriber() || !billingType) {
     return false
   }
@@ -1714,15 +1718,15 @@ export function getSubscriptionName(): string {
 
   switch (subscriptionType) {
     case 'enterprise':
-      return 'Open CC Enterprise'
+      return 'OpenCC Enterprise'
     case 'team':
-      return 'Open CC Team'
+      return 'OpenCC Team'
     case 'max':
-      return 'Open CC Max'
+      return 'OpenCC Max'
     case 'pro':
-      return 'Open CC Pro'
+      return 'OpenCC Pro'
     default:
-      return 'Open CC API'
+      return 'OpenCC API'
   }
 }
 

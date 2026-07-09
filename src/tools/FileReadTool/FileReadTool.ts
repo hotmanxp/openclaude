@@ -48,6 +48,10 @@ import {
   ImageResizeError,
   maybeResizeAndDownsampleImageBuffer,
 } from '../../utils/imageResizer.js'
+import {
+  getImageProcessor,
+  ImageProcessorUnavailableError,
+} from './imageProcessor.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { isAutoMemFile } from '../../utils/memoryFileDetection.js'
@@ -189,7 +193,7 @@ const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 
 /**
  * Detects if a file path is a session-related file for analytics logging.
- * Only matches files within the Open CC config directory (e.g., ~/.claude).
+ * Only matches files within the OpenCC config directory (e.g., ~/.claude).
  * Returns the type of session file or null if not a session file.
  */
 function detectSessionFileType(
@@ -197,7 +201,7 @@ function detectSessionFileType(
 ): 'session_memory' | 'session_transcript' | null {
   const configDir = getClaudeConfigHomeDir()
 
-  // Only match files within the Open CC config directory
+  // Only match files within the OpenCC config directory
   if (!filePath.startsWith(configDir)) {
     return null
   }
@@ -1169,18 +1173,13 @@ export async function readImageWithTokenBudget(
       }
     } catch (e) {
       logError(e)
-      // Fallback: heavily compressed version from the SAME buffer
+      // Fallback: heavily compressed version from the SAME buffer, loaded via
+      // the shared optional image processor (NOT a raw import('sharp')). This
+      // keeps the missing-image-processor contract: when no processor is
+      // installed, surface the actionable install hint instead of swallowing it
+      // and returning an image that already exceeded the token budget.
       try {
-        const sharpModule = await import('sharp')
-        const sharp =
-          (
-            // @ts-ignore - type conversion issue
-            sharpModule as {
-              default?: typeof sharpModule
-            } & typeof sharpModule
-          ).default || sharpModule
-
-        // @ts-ignore - sharp callable issue
+        const sharp = await getImageProcessor()
         const fallbackBuffer = await sharp(imageBuffer)
           .resize(400, 400, {
             fit: 'inside',
@@ -1191,6 +1190,10 @@ export async function readImageWithTokenBudget(
 
         return createImageResponse(fallbackBuffer, 'jpeg', originalSize)
       } catch (error) {
+        // No image processor available → surface the install hint rather than
+        // returning an over-budget image. Other failures (e.g. a corrupt
+        // buffer) still degrade gracefully to the original.
+        if (error instanceof ImageProcessorUnavailableError) throw error
         logError(error)
         return createImageResponse(imageBuffer, detectedFormat, originalSize)
       }

@@ -242,7 +242,7 @@ export function getDefaultMainLoopModel(): ModelName {
  */
 export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   name = name.toLowerCase()
-  // Special cases for Open CC 4+ models to differentiate versions
+  // Special cases for OpenCC 4+ models to differentiate versions
   // Order matters: check more specific versions first (4-5 before 4)
   if (name.includes('claude-opus-4-6')) {
     return 'claude-opus-4-6'
@@ -268,7 +268,7 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
   if (name.includes('claude-haiku-4-5')) {
     return 'claude-haiku-4-5'
   }
-  // Open CC 3.x models use a different naming scheme (claude-3-{family})
+  // OpenCC 3.x models use a different naming scheme (claude-3-{family})
   if (name.includes('claude-3-7-sonnet')) {
     return 'claude-3-7-sonnet'
   }
@@ -373,17 +373,17 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
-  // For OpenAI provider, show the actual model name not a Open CC alias
+  // For OpenAI provider, show the actual model name not a OpenCC alias
   if (getAPIProvider() === 'openai') {
     // Return display names for known models
     const modelNames: Record<string, string> = {
       'gpt-4o': 'GPT-4o',
       'gpt-4.1': 'GPT-4.1',
-      'claude-opus-4.6': 'Open CC Opus 4.6',
-      'claude-opus-4.5': 'Open CC Opus 4.5',
-      'claude-sonnet-4.6': 'Open CC Sonnet 4.6',
-      'claude-sonnet-4.5': 'Open CC Sonnet 4.5',
-      'claude-haiku-4.5': 'Open CC Haiku 4.5',
+      'claude-opus-4.6': 'OpenCC Opus 4.6',
+      'claude-opus-4.5': 'OpenCC Opus 4.5',
+      'claude-sonnet-4.6': 'OpenCC Sonnet 4.6',
+      'claude-sonnet-4.5': 'OpenCC Sonnet 4.5',
+      'claude-haiku-4.5': 'OpenCC Haiku 4.5',
       'grok-code-fast-1': 'Grok Code Fast 1',
     }
     if (modelNames[model]) {
@@ -462,18 +462,18 @@ export function renderModelName(model: ModelName): string {
 
 /**
  * Returns a safe author name for public display (e.g., in git commit trailers).
- * Returns "Open CC {ModelName}" for publicly known models, or "Open CC ({model})"
+ * Returns "OpenCC {ModelName}" for publicly known models, or "OpenCC ({model})"
  * for unknown/internal models so the exact model name is preserved.
  *
  * @param model The full model name
- * @returns "Open CC {ModelName}" for public models, or "Open CC ({model})" for non-public models
+ * @returns "OpenCC {ModelName}" for public models, or "OpenCC ({model})" for non-public models
  */
 export function getPublicModelName(model: ModelName): string {
   const publicName = getPublicModelDisplayName(model)
   if (publicName) {
-    return `Open CC ${publicName}`
+    return `OpenCC ${publicName}`
   }
-  return `Open CC (${model})`
+  return `OpenCC (${model})`
 }
 
 /**
@@ -494,10 +494,29 @@ export function parseUserSpecifiedModel(
   const modelInputTrimmed = modelInput.trim()
   const normalizedModel = modelInputTrimmed.toLowerCase()
 
+  // Separate "the [1m] tag is present in the input" from "1M context is active".
+  // The tag must ALWAYS be stripped before alias/model matching, otherwise an
+  // aliased request like `sonnet[1m]` fails to resolve to its base model. Whether
+  // to re-append the tag depends on has1mContext, which returns false when 1M is
+  // disabled (CLAUDE_CODE_DISABLE_1M_CONTEXT) — in that case the request resolves
+  // to the base model with the tag dropped, not left as an unresolved alias.
+  const hasTagSyntax = /\[1m]$/i.test(normalizedModel)
   const has1mTag = has1mContext(normalizedModel)
-  const modelString = has1mTag
+  const modelString = hasTagSyntax
     ? normalizedModel.replace(/\[1m]$/i, '').trim()
     : normalizedModel
+
+  // Re-apply the [1m] tag policy to a resolved model. The resolved value may
+  // itself carry a [1m] suffix — e.g. a custom default override like
+  // ANTHROPIC_DEFAULT_SONNET_MODEL=Deploy[1m] baked into getDefaultSonnetModel().
+  // Strip whatever tag is present, then re-attach [1m] only when a tag was
+  // requested (on the user input OR the resolved default) AND 1M context is
+  // enabled. This guarantees CLAUDE_CODE_DISABLE_1M_CONTEXT drops the tag no
+  // matter where it came from, while still honoring an env default's opt-in.
+  const applyOneMTag = (resolved: ModelName): ModelName => {
+    const base = resolved.replace(/\[1m]$/i, '').trim()
+    return has1mTag || has1mContext(resolved) ? base + '[1m]' : base
+  }
 
   if (isModelAlias(modelString)) {
     // ANTHROPIC_DEFAULT_*_MODEL env vars take precedence over both the
@@ -513,7 +532,17 @@ export function parseUserSpecifiedModel(
             ? process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
             : undefined
     if (envOverride !== undefined && envOverride !== '') {
-      return envOverride + (has1mTag ? '[1m]' : '')
+      // Honor `applyOneMTag` semantics here too: strip any baked [1m] suffix
+      // from the env override, then re-attach [1m] only when 1M is active.
+      // "Active" here means either (a) the user input carries a [1m] tag, OR
+      // (b) the env override itself opted in by baking [1m] into the resolved
+      // default. This guarantees CLAUDE_CODE_DISABLE_1M_CONTEXT drops the tag
+      // whether the source is the env default's baked suffix or the user input,
+      // and prevents `[1m][1m]` duplication when both carry it. With 1M enabled
+      // and neither source carrying the tag, no tag is attached.
+      const base = envOverride.replace(/\[1m\]$/i, '').trim()
+      const wantTag = has1mTag || has1mContext(envOverride)
+      return wantTag ? base + '[1m]' : base
     }
 
     // Provider-aware alias override (firstParty / openai) takes precedence over
@@ -528,28 +557,30 @@ export function parseUserSpecifiedModel(
           modelString as AliasOverrideTier,
         )
         if (override !== undefined) {
-          return override + (has1mTag ? '[1m]' : '')
+          const base = override.replace(/\[1m\]$/i, '').trim()
+          const wantTag = has1mTag || has1mContext(override)
+          return wantTag ? base + '[1m]' : base
         }
       }
     }
 
     switch (modelString) {
       case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
+        return applyOneMTag(getDefaultSonnetModel()) // Sonnet is default, Opus in plan mode
       case 'sonnet':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+        return applyOneMTag(getDefaultSonnetModel())
       case 'haiku':
-        return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
+        return applyOneMTag(getDefaultHaikuModel())
       case 'opus':
-        return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+        return applyOneMTag(getDefaultOpusModel())
       case 'best':
-        return getBestModel()
+        return applyOneMTag(getBestModel())
       default:
     }
   }
 
   // Opus 4/4.1 are no longer available on the first-party API (same as
-  // Open CC.ai) — silently remap to the current Opus default. The 'opus'
+  // OpenCC.ai) — silently remap to the current Opus default. The 'opus'
   // alias already resolves to 4.6, so the only users on these explicit
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
@@ -558,7 +589,7 @@ export function parseUserSpecifiedModel(
     isLegacyOpusFirstParty(modelString) &&
     isLegacyModelRemapEnabled()
   ) {
-    return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+    return applyOneMTag(getDefaultOpusModel())
   }
 
   if (process.env.USER_TYPE === 'ant') {
@@ -576,10 +607,15 @@ export function parseUserSpecifiedModel(
     // can tell the user to restart/wait for flag cache refresh to get the latest values.
   }
 
-  // Preserve original case for custom model names (e.g., Azure Foundry deployment IDs)
-  // Only strip [1m] suffix if present, maintaining case of the base model
-  if (has1mTag) {
-    return modelInputTrimmed.replace(/\[1m\]$/i, '').trim() + '[1m]'
+  // Preserve original case for custom model names (e.g., Azure Foundry deployment IDs).
+  // Strip a present [1m] suffix (maintaining base-model case) and re-append it
+  // only when 1M is active — when disabled, a custom `mydeploy[1m]` must resolve
+  // to the base `mydeploy`, not an unservable `mydeploy[1m]` model id.
+  if (hasTagSyntax) {
+    return (
+      modelInputTrimmed.replace(/\[1m\]$/i, '').trim() +
+      (has1mTag ? '[1m]' : '')
+    )
   }
   return modelInputTrimmed
 }
@@ -675,16 +711,16 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
     return has1m ? 'Sonnet 4 (with 1M context)' : 'Sonnet 4'
   }
   if (canonical.includes('claude-3-7-sonnet')) {
-    return 'Open CC 3.7 Sonnet'
+    return 'OpenCC 3.7 Sonnet'
   }
   if (canonical.includes('claude-3-5-sonnet')) {
-    return 'Open CC 3.5 Sonnet'
+    return 'OpenCC 3.5 Sonnet'
   }
   if (canonical.includes('claude-haiku-4-5')) {
     return 'Haiku 4.5'
   }
   if (canonical.includes('claude-3-5-haiku')) {
-    return 'Open CC 3.5 Haiku'
+    return 'OpenCC 3.5 Haiku'
   }
 
   return undefined

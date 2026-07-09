@@ -5,6 +5,7 @@ import {
   getEnhancedPRAttribution,
 } from '../utils/attribution.js'
 import { getDefaultBranch } from '../utils/git.js'
+import { getForbiddenCommitMessagePatterns } from '../utils/governancePolicy.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
 
@@ -30,6 +31,11 @@ function getPromptContent(
 ): string {
   const { commit: commitAttribution, pr: defaultPrAttribution } =
     getAttributionTexts()
+  const forbiddenPatterns = getForbiddenCommitMessagePatterns()
+  const forbiddenPatternText =
+    forbiddenPatterns.length > 0
+      ? `\n- The commit message must not contain these forbidden patterns: ${forbiddenPatterns.map(p => `\`${p}\``).join(', ')}`
+      : ''
   // Use provided PR attribution or fall back to default
   const effectivePrAttribution = prAttribution ?? defaultPrAttribution
   const safeUser = process.env.SAFEUSER || ''
@@ -72,7 +78,7 @@ function getPromptContent(
 - NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
 - NEVER run force push to main/master, warn the user if they request it
 - Do not commit files that likely contain secrets (.env, credentials.json, etc)
-- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported${forbiddenPatternText}
 
 ## Your task
 

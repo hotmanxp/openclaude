@@ -100,6 +100,43 @@ export function getSSLErrorHint(error: unknown): string | null {
 }
 
 /**
+ * Classifies an APIError into a short, user-facing reason phrase. Intended
+ * for the compact retry line in SystemAPIErrorMessage (ported from upstream
+ * PR #1862). Covers the categories the user is most likely to act on: rate
+ * limits, overloads, server errors, transport failures (incl. OpenAI-compat
+ * shim's plain-text errors), and explicit timeouts. Anything else falls
+ * back to a generic "API error".
+ */
+export function briefAPIErrorReason(error: APIError): string {
+  const connectionDetails = extractConnectionErrorDetails(error)
+  if (connectionDetails?.code === 'ETIMEDOUT') {
+    return 'Request timed out'
+  }
+  if (connectionDetails || error.message === 'Connection error.') {
+    return 'Connection issue'
+  }
+  // The OpenAI-compat shim wraps network failures in plain-text messages with
+  // no cause chain for extractConnectionErrorDetails to walk.
+  if (
+    /transport error|fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(
+      error.message ?? '',
+    )
+  ) {
+    return 'Connection issue'
+  }
+  switch (error.status) {
+    case 429:
+      return 'Rate limited'
+    case 529:
+      return 'API overloaded'
+  }
+  if (typeof error.status === 'number' && error.status >= 500) {
+    return 'API server error'
+  }
+  return 'API error'
+}
+
+/**
  * Strips HTML content (e.g., CloudFlare error pages) from a message string,
  * returning a user-friendly title or empty string if HTML is detected.
  * Returns the original message unchanged if no HTML is found.

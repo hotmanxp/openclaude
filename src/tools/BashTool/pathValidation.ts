@@ -21,6 +21,10 @@ import {
   validatePath,
 } from '../../utils/permissions/pathValidation.js'
 import type { BashTool } from './BashTool.js'
+import type {
+  BashCommandAnalysis,
+  LegacyShellParseAnalysis,
+} from './bashCommandAnalysis.js'
 import { stripSafeWrappers } from './bashPermissions.js'
 import { sedCommandIsAllowedByAllowlist } from './sedValidation.js'
 
@@ -619,7 +623,7 @@ function validateCommandPaths(
   if (validator && !validator(args)) {
     return {
       behavior: 'ask',
-      message: `${command} with flags requires manual approval to ensure path safety. For security, Open CC cannot automatically validate ${command} commands that use flags, as some flags like --target-directory=PATH can bypass path validation.`,
+      message: `${command} with flags requires manual approval to ensure path safety. For security, OpenCC cannot automatically validate ${command} commands that use flags, as some flags like --target-directory=PATH can bypass path validation.`,
       decisionReason: {
         type: 'other',
         reason: `${command} command with flags requires manual approval`,
@@ -645,7 +649,7 @@ function validateCommandPaths(
   if (compoundCommandHasCd && operationType !== 'read') {
     return {
       behavior: 'ask',
-      message: `Commands that change directories and perform write operations require explicit approval to ensure paths are evaluated correctly. For security, Open CC cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
+      message: `Commands that change directories and perform write operations require explicit approval to ensure paths are evaluated correctly. For security, OpenCC cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
       decisionReason: {
         type: 'other',
         reason:
@@ -674,7 +678,7 @@ function validateCommandPaths(
         decisionReason?.type === 'other' ||
         decisionReason?.type === 'safetyCheck'
           ? decisionReason.reason
-          : `${command} in '${resolvedPath}' was blocked. For security, Open CC may only ${ACTION_VERBS[command]} the allowed working directories for this session: ${dirListStr}.`
+          : `${command} in '${resolvedPath}' was blocked. For security, OpenCC may only ${ACTION_VERBS[command]} the allowed working directories for this session: ${dirListStr}.`
 
       if (decisionReason?.type === 'rule') {
         return {
@@ -788,16 +792,30 @@ export function createPathChecker(
  * This is necessary because shell-quote parses patterns like *.txt as glob objects,
  * but we need them as strings for path validation.
  */
-function parseCommandArguments(cmd: string): string[] {
-  const parseResult = tryParseShellCommand(cmd, env => `$${env}`)
-  if (!parseResult.success) {
-    // Malformed shell syntax, return empty array
-    return []
+function parseCommandArguments(
+  cmd: string,
+  legacyParse?: LegacyShellParseAnalysis,
+): string[] | null {
+  const parsed =
+    legacyParse === undefined || legacyParse.kind === 'not-run'
+      ? tryParseShellCommand(cmd, env => `$${env}`)
+      : legacyParse
+
+  const tokens =
+    'success' in parsed
+      ? parsed.success
+        ? parsed.tokens
+        : null
+      : parsed.kind === 'ok'
+        ? parsed.tokens
+        : null
+
+  if (tokens === null) {
+    return null
   }
-  const parsed = parseResult.tokens
   const extractedArgs: string[] = []
 
-  for (const arg of parsed) {
+  for (const arg of tokens) {
     if (typeof arg === 'string') {
       // Include empty strings - they're valid arguments (e.g., grep "" /tmp/t)
       extractedArgs.push(arg)
@@ -836,6 +854,7 @@ function validateSinglePathCommand(
   cwd: string,
   toolPermissionContext: ToolPermissionContext,
   compoundCommandHasCd?: boolean,
+  analysis?: BashCommandAnalysis,
 ): PermissionResult {
   // SECURITY: Strip wrapper commands (timeout, nice, nohup, time) before extracting
   // the base command. Without this, dangerous commands wrapped with these utilities
@@ -845,7 +864,20 @@ function validateSinglePathCommand(
   const strippedCmd = stripSafeWrappers(cmd)
 
   // Parse command into arguments, handling quotes and globs
-  const extractedArgs = parseCommandArguments(strippedCmd)
+  const legacyParse =
+    analysis?.command === strippedCmd ? analysis.legacyParse : undefined
+  const extractedArgs = parseCommandArguments(strippedCmd, legacyParse)
+  if (extractedArgs === null) {
+    return {
+      behavior: 'ask',
+      message:
+        'Command arguments could not be parsed safely and require manual approval',
+      decisionReason: {
+        type: 'other',
+        reason: 'Command arguments could not be parsed safely',
+      },
+    }
+  }
   if (extractedArgs.length === 0) {
     return {
       behavior: 'passthrough',
@@ -935,7 +967,7 @@ function validateOutputRedirections(
   if (compoundCommandHasCd && redirections.length > 0) {
     return {
       behavior: 'ask',
-      message: `Commands that change directories and write via output redirection require explicit approval to ensure paths are evaluated correctly. For security, Open CC cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
+      message: `Commands that change directories and write via output redirection require explicit approval to ensure paths are evaluated correctly. For security, OpenCC cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
       decisionReason: {
         type: 'other',
         reason:
@@ -969,7 +1001,7 @@ function validateOutputRedirections(
           ? decisionReason.reason
           : decisionReason?.type === 'rule'
             ? `Output redirection to '${resolvedPath}' was blocked by a deny rule.`
-            : `Output redirection to '${resolvedPath}' was blocked. For security, Open CC may only write to files in the allowed working directories for this session: ${dirListStr}.`
+            : `Output redirection to '${resolvedPath}' was blocked. For security, OpenCC may only write to files in the allowed working directories for this session: ${dirListStr}.`
 
       // If denied by a deny rule, return 'deny' behavior
       if (decisionReason?.type === 'rule') {
@@ -1017,6 +1049,7 @@ export function checkPathConstraints(
   compoundCommandHasCd?: boolean,
   astRedirects?: Redirect[],
   astCommands?: SimpleCommand[],
+  analysis?: BashCommandAnalysis,
 ): PermissionResult {
   // SECURITY: Process substitution >(cmd) can execute commands that write to files
   // without those files appearing as redirect targets. For example:
@@ -1033,6 +1066,22 @@ export function checkPathConstraints(
       decisionReason: {
         type: 'other',
         reason: 'Process substitution requires manual approval',
+      },
+    }
+  }
+
+  if (
+    !astRedirects &&
+    analysis?.command === input.command &&
+    analysis.legacyParse.kind === 'failed'
+  ) {
+    return {
+      behavior: 'ask',
+      message:
+        'Command paths could not be parsed safely and require manual approval',
+      decisionReason: {
+        type: 'other',
+        reason: 'Command paths could not be parsed safely',
       },
     }
   }
@@ -1089,11 +1138,14 @@ export function checkPathConstraints(
   } else {
     const commands = splitCommand_DEPRECATED(input.command)
     for (const cmd of commands) {
+      const commandAnalysis =
+        commands.length === 1 && cmd === input.command ? analysis : undefined
       const result = validateSinglePathCommand(
         cmd,
         cwd,
         toolPermissionContext,
         compoundCommandHasCd,
+        commandAnalysis,
       )
       if (result.behavior === 'ask' || result.behavior === 'deny') {
         return result

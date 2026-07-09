@@ -248,16 +248,21 @@ export function parseGitDiff(
         continue
       }
 
-      // Skip binary file markers and other metadata
+      // Skip diff metadata lines, but ONLY before any hunk has started.
+      // Once we're inside a hunk, a line whose text begins with `---`/`+++`
+      // is a real removed/added line (e.g. `---legacy-peer-deps` /
+      // `+++quiet-flag`), not a file-header marker. Dropping them here would
+      // silently drop user content and under-count changes.
       if (
-        line.startsWith('index ') ||
-        line.startsWith('---') ||
-        line.startsWith('+++') ||
-        line.startsWith('new file') ||
-        line.startsWith('deleted file') ||
-        line.startsWith('old mode') ||
-        line.startsWith('new mode') ||
-        line.startsWith('Binary files')
+        !currentHunk &&
+        (line.startsWith('index ') ||
+          line.startsWith('---') ||
+          line.startsWith('+++') ||
+          line.startsWith('new file') ||
+          line.startsWith('deleted file') ||
+          line.startsWith('old mode') ||
+          line.startsWith('new mode') ||
+          line.startsWith('Binary files'))
       ) {
         continue
       }
@@ -445,7 +450,7 @@ export async function fetchSingleFileGitDiff(
  * Extracts only the hunk content (starting from @@) as the patch,
  * and counts additions/deletions.
  */
-function parseRawDiffToToolUseDiff(
+export function parseRawDiffToToolUseDiff(
   filename: string,
   rawDiff: string,
   status: 'modified' | 'added',
@@ -462,9 +467,16 @@ function parseRawDiffToToolUseDiff(
     }
     if (inHunks) {
       patchLines.push(line)
-      if (line.startsWith('+') && !line.startsWith('+++')) {
+      // Count every added/removed line inside a hunk. The `+++ b/file` and
+      // `--- a/file` headers only appear in the preamble before the first `@@`,
+      // so they never reach here — guarding on `!startsWith('+++')` /
+      // `!startsWith('---')` would instead drop genuine hunk content whose text
+      // begins with `++`/`--` (e.g. `+++quiet-flag`, `---legacy-peer-deps`, a
+      // YAML `---` separator), undercounting additions/deletions. Mirrors the
+      // in-hunk handling already documented in parseGitDiff above.
+      if (line.startsWith('+')) {
         additions++
-      } else if (line.startsWith('-') && !line.startsWith('---')) {
+      } else if (line.startsWith('-')) {
         deletions++
       }
     }

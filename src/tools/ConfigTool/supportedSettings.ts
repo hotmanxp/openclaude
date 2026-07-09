@@ -132,7 +132,24 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'settings',
     type: 'string',
     description:
-      'Preferred language for Open CC responses and voice dictation (e.g., "japanese", "spanish")',
+      'Preferred language for OpenCC responses and voice dictation (e.g., "japanese", "spanish")',
+  },
+  questionAutoContinueTimeoutSec: {
+    source: 'settings',
+    type: 'string',
+    description:
+      'Auto-submit idle AskUserQuestion dialogs with default answers (seconds; 0 to disable)',
+    validateOnWrite: async v => {
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0) {
+        return {
+          valid: false,
+          error: 'Must be a non-negative integer (seconds)',
+        }
+      }
+      return { valid: true }
+    },
+    formatOnRead: v => (v === undefined || v === null ? '0' : String(v)),
   },
   teammateMode: {
     source: 'global',
@@ -177,7 +194,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'global' as const,
           type: 'boolean' as const,
           description:
-            'Push to your mobile device when idle after Open CC finishes (requires Remote Control)',
+            'Push to your mobile device when idle after OpenCC finishes (requires Remote Control)',
         },
         inputNeededNotifEnabled: {
           source: 'global' as const,
@@ -189,7 +206,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'global' as const,
           type: 'boolean' as const,
           description:
-            'Allow Open CC to push to your mobile device when it deems it appropriate (requires Remote Control)',
+            'Allow OpenCC to push to your mobile device when it deems it appropriate (requires Remote Control)',
         },
       }
     : {}),

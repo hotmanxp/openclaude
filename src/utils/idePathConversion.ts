@@ -1,26 +1,26 @@
 /**
  * Path conversion utilities for IDE communication
- * Handles conversions between Open CC's environment and the IDE's environment
+ * Handles conversions between OpenCC's environment and the IDE's environment
  */
 
 import { execFileSync } from 'child_process'
 
 export interface IDEPathConverter {
   /**
-   * Convert path from IDE format to Open CC's local format
+   * Convert path from IDE format to OpenCC's local format
    * Used when reading workspace folders from IDE lockfile
    */
   toLocalPath(idePath: string): string
 
   /**
-   * Convert path from Open CC's local format to IDE format
+   * Convert path from OpenCC's local format to IDE format
    * Used when sending paths to IDE (showDiffInIDE, etc.)
    */
   toIDEPath(localPath: string): string
 }
 
 /**
- * Converter for Windows IDE + WSL Open CC scenario
+ * Converter for Windows IDE + WSL OpenCC scenario
  */
 export class WindowsToWSLConverter implements IDEPathConverter {
   constructor(private wslDistroName: string | undefined) {}

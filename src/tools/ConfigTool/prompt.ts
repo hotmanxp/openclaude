@@ -6,7 +6,7 @@ import {
   SUPPORTED_SETTINGS,
 } from './supportedSettings.js'
 
-export const DESCRIPTION = 'Get or set Open CC configuration settings.'
+export const DESCRIPTION = 'Get or set OpenCC configuration settings.'
 
 /**
  * Generate the prompt documentation from the registry
@@ -47,9 +47,9 @@ export function generatePrompt(): string {
 
   const modelSection = generateModelSection()
 
-  return `Get or set Open CC configuration settings.
+  return `Get or set OpenCC configuration settings.
 
-  View or change Open CC settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.
+  View or change OpenCC settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.
 
 
 ## Usage

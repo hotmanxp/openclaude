@@ -93,7 +93,7 @@ async function createWorkflowFile(
         ...context,
       })
       throw new Error(
-        `Failed to create workflow file ${workflowPath}: A Open CC workflow file already exists in this repository. Please remove it first or update it manually.`,
+        `Failed to create workflow file ${workflowPath}: A OpenCC workflow file already exists in this repository. Please remove it first or update it manually.`,
       )
     }
 
@@ -232,7 +232,7 @@ export async function setupGitHubActions(
         workflows.push({
           path: '.github/workflows/claude.yml',
           content: WORKFLOW_CONTENT,
-          message: 'Open CC PR Assistant workflow',
+          message: 'OpenCC PR Assistant workflow',
         })
       }
 
@@ -240,7 +240,7 @@ export async function setupGitHubActions(
         workflows.push({
           path: '.github/workflows/claude-code-review.yml',
           content: CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,
-          message: 'Open CC Review workflow',
+          message: 'OpenCC Review workflow',
         })
       }
 

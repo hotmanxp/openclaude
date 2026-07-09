@@ -13,7 +13,7 @@ import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
-import { useSettings } from '../../hooks/useSettings.js';
+import { type ReadonlySettings, useSettings } from '../../hooks/useSettings.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '../../ink.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
@@ -25,6 +25,7 @@ import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { isUndercover } from '../../utils/undercover.js';
+import { getGlobalConfig } from '../../utils/config.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';
@@ -69,6 +70,77 @@ type Props = {
   historyFailedMatch: boolean;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
+
+/**
+ * Pure computation for whether the footer renders a status line below the
+ * prompt, and which one. Returns `'custom'` when the user's statusline
+ * command fires, `'builtin'` when a no-cost builtin fallback renders, or
+ * `null` when the row's render guards fail (non-prompt mode, short
+ * fullscreen, exit message, paste in progress).
+ *
+ * The `'? for shortcuts'` discoverability hint is gated on this result —
+ * see shouldSuppressShortcutsHint for the rules.
+ *
+ * Substance ported from upstream PR #1862 ("honest feedback pass"). The
+ * `'builtin'` branch is currently a no-op for OpenCC: there is no
+ * BuiltinStatusLine component (OpenCC ships only the user-configurable
+ * custom status line). Plumbed in so a future builtin can drop in without
+ * reshuffling call sites.
+ */
+export function resolveFooterStatusLine(
+  settings: ReadonlySettings,
+  guards: {
+    isPromptMode: boolean;
+    isShort: boolean;
+    exitMessageShown: boolean;
+    isPasting: boolean;
+  },
+): 'custom' | 'builtin' | null {
+  if (
+    !guards.isPromptMode ||
+    guards.isShort ||
+    guards.exitMessageShown ||
+    guards.isPasting
+  ) {
+    return null;
+  }
+  if (statusLineShouldDisplay(settings)) return 'custom';
+  return null; // OpenCC: no builtin status line today
+}
+
+/**
+ * Number of startup sessions before the `? for shortcuts` discoverability
+ * hint is hidden on built-in status-line users. New users see the hint
+ * alongside the builtin; established users get a quieter footer. Custom
+ * status-line users always hide the hint regardless of tenure.
+ */
+export const SHORTCUTS_HINT_STARTUP_GRACE = 10;
+
+/**
+ * Whether to suppress the `? for shortcuts` discoverability hint. The hint
+ * must never disappear from a state where no status line actually renders,
+ * so caller-suppressed and search-in-progress always win. Custom status
+ * lines — explicit user configuration — also win regardless of tenure.
+ * Built-in status lines only suppress for established users.
+ *
+ * OpenCC has no builtin status line today, so the `'builtin'` branch is a
+ * no-op (see resolveFooterStatusLine). Substance ported from upstream
+ * PR #1862.
+ */
+export function shouldSuppressShortcutsHint(args: {
+  suppressedByCaller: boolean;
+  footerStatusLine: 'custom' | 'builtin' | null;
+  isSearching: boolean;
+  numStartups: number;
+}): boolean {
+  if (args.suppressedByCaller || args.isSearching) return true;
+  if (args.footerStatusLine === 'custom') return true;
+  return (
+    args.footerStatusLine === 'builtin' &&
+    args.numStartups > SHORTCUTS_HINT_STARTUP_GRACE
+  );
+}
+
 function PromptInputFooter({
   apiKeyStatus,
   debug,
@@ -127,8 +199,28 @@ function PromptInputFooter({
   const coordinatorTaskIndex = useAppState(s => s.coordinatorTaskIndex);
   const pillSelected = tasksSelected && (coordinatorTaskCount === 0 || coordinatorTaskIndex < 0);
 
-  // Hide `? for shortcuts` if the user has a custom status line, or during ctrl-r
-  const suppressHint = suppressHintFromProps || statusLineShouldDisplay(settings) || isSearching;
+  // Which status line (if any) actually renders below the prompt. Together
+  // with the search flag and caller suppression, this drives the
+  // `? for shortcuts` discoverability hint — see shouldSuppressShortcutsHint.
+  // Plumbed in even though OpenCC has no builtin status line today so a
+  // future builtin can drop in without reshuffling call sites.
+  // (Substance ported from upstream PR #1862.)
+  const footerStatusLine = resolveFooterStatusLine(settings, {
+    isPromptMode: mode === 'prompt',
+    isShort,
+    exitMessageShown: exitMessage.show,
+    isPasting,
+  });
+  // Hide `? for shortcuts` during ctrl-r search, or — for established users
+  // only — when a status line actually renders. A custom status line is
+  // explicit user configuration, so it always wins. See
+  // shouldSuppressShortcutsHint for the full rules.
+  const suppressHint = shouldSuppressShortcutsHint({
+    suppressedByCaller: suppressHintFromProps,
+    footerStatusLine,
+    isSearching,
+    numStartups: getGlobalConfig().numStartups,
+  });
   // Fullscreen: portal data to FullscreenLayout — see promptOverlayContext.tsx
   const overlayData = useMemo(() => isFullscreen && suggestions.length ? {
     suggestions,
@@ -161,6 +253,7 @@ function PromptInputFooter({
     </>;
 }
 export default memo(PromptInputFooter);
+
 type BridgeStatusProps = {
   bridgeSelected: boolean;
 };

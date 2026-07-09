@@ -105,7 +105,7 @@ export function modelSupportsISP(model: string): boolean {
   )
 }
 
-// Context management is supported on Open CC 4+ models
+// Context management is supported on OpenCC 4+ models
 export function modelSupportsContextManagement(model: string): boolean {
   const canonical = getCanonicalName(model)
   const provider = getAPIProvider()
@@ -177,7 +177,7 @@ export function modelSupportsAutoMode(model: string): boolean {
 
 /**
  * Get the correct tool search beta header for the current API provider.
- * - Open CC API / Foundry: advanced-tool-use-2025-11-20
+ * - OpenCC API / Foundry: advanced-tool-use-2025-11-20
  * - Vertex AI / Bedrock: tool-search-tool-2025-10-19
  */
 export function getToolSearchBetaHeader(): string {

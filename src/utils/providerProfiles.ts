@@ -13,6 +13,7 @@ import type { ProfileEnv } from './providerProfile.js'
 import { buildOpenAIProfileEnv } from './providerProfile.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { getPrimaryModel, parseModelList } from './providerModels.js'
+import { isModelAlias } from './model/aliases.js'
 
 export type ProviderPreset =
   | 'anthropic'
@@ -197,6 +198,59 @@ export function getProviderPresetDefaults(
       }
     }
   }
+}
+
+/**
+ * Return the default (first) model from a profile's model field.
+ * The model field can be a single model name or a comma/semicolon-separated
+ * list. Returns null when the field is empty or whitespace-only.
+ *
+ * Used by maybeResetMainLoopModel to decide what mainLoopModel should be
+ * reset to when this profile is activated mid-session.
+ */
+export function getDefaultModelForProfile(profile: ProviderProfile): string | null {
+  const models = parseModelList(profile.model)
+  return models.length > 0 ? models[0] : null
+}
+
+/**
+ * Decide whether the session's mainLoopModel should be reset when the user
+ * activates `activeProfile` via /provider → "Set active provider".
+ *
+ * Pure function — does not mutate AppState. The caller (ProviderManager.tsx
+ * select-active onSelect) owns the setAppState call.
+ *
+ * Rules (evaluated in order):
+ * 1. If profile has no default model → no reset.
+ * 2. If currentModel is undefined/null/empty → reset to defaultModel.
+ * 3. If currentModel === defaultModel → skip (already aligned).
+ * 4. If currentModel is a model alias (opus/sonnet/haiku/best/...) → skip
+ *    (preserves user's alias-based selection).
+ * 5. Otherwise → reset, returning previousModel + newModel for caller to use
+ *    in user-facing status message.
+ */
+export function maybeResetMainLoopModel(
+  activeProfile: ProviderProfile,
+  currentModel: string | undefined | null,
+): { reset: boolean; previousModel?: string; newModel?: string } {
+  const defaultModel = getDefaultModelForProfile(activeProfile)
+  if (defaultModel === null) {
+    return { reset: false }
+  }
+
+  if (currentModel === undefined || currentModel === null || currentModel === '') {
+    return { reset: true, newModel: defaultModel }
+  }
+
+  if (currentModel === defaultModel) {
+    return { reset: false }
+  }
+
+  if (isModelAlias(currentModel)) {
+    return { reset: false }
+  }
+
+  return { reset: true, previousModel: currentModel, newModel: defaultModel }
 }
 
 export function getProviderProfiles(

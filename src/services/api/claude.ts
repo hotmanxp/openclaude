@@ -58,6 +58,13 @@ import {
 } from '../../utils/api.js'
 import { getOauthAccountInfo } from '../../utils/auth.js'
 import {
+  getStreamingAbortMessage,
+  isExpectedSideTaskAbortReason,
+  normalizeAbortReason,
+  shouldCreateUserInterruptionMessage,
+} from '../../utils/abortReasons.js'
+import {
+  getBedrockExtraBodyParamsBetas,
   getMergedBetas,
   getModelBetas,
 } from '../../utils/betas.js'
@@ -100,6 +107,7 @@ import {
   extractQuotaStatusFromHeaders,
 } from '../claudeAiLimits.js'
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
+import { getStreamIdleTimeoutMs } from './openaiShim.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = true
@@ -109,7 +117,6 @@ const autoModeStateModule = true
 import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
-  APIConnectionTimeoutError,
   APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk/error'
@@ -784,6 +791,45 @@ export async function* queryModelWithStreaming({
       options,
     )
   })
+}
+
+export function getClaudeStreamingAbortLogMessage(
+  signal: Pick<AbortSignal, 'reason'>,
+  streamingError: unknown,
+): string {
+  return getStreamingAbortMessage(signal.reason, errorMessage(streamingError))
+}
+
+export function getClaudeExpectedSideTaskApiAbortLogMessage(
+  signal: Pick<AbortSignal, 'aborted' | 'reason'>,
+  errorFromRetry: unknown,
+): string | null {
+  if (!signal.aborted || !isExpectedSideTaskAbortReason(signal.reason)) {
+    return null
+  }
+  const error =
+    errorFromRetry instanceof CannotRetryError
+      ? errorFromRetry.originalError
+      : errorFromRetry
+  if (!(error instanceof APIUserAbortError)) {
+    return null
+  }
+  return `Expected side-task API abort (${normalizeAbortReason(signal.reason)}): ${errorMessage(error)}`
+}
+
+function handleClaudeExpectedSideTaskApiAbort(
+  signal: Pick<AbortSignal, 'aborted' | 'reason'>,
+  errorFromRetry: unknown,
+  releaseStreamResources: () => void,
+): boolean {
+  const expectedSideTaskAbortLogMessage =
+    getClaudeExpectedSideTaskApiAbortLogMessage(signal, errorFromRetry)
+  if (!expectedSideTaskAbortLogMessage) return false
+  if (!(errorFromRetry instanceof CannotRetryError)) {
+    logForDebugging(expectedSideTaskAbortLogMessage)
+  }
+  releaseStreamResources()
+  return true
 }
 
 /**
@@ -1902,8 +1948,7 @@ async function* queryModel(
     const streamWatchdogEnabled = isEnvTruthy(
       process.env.CLAUDE_ENABLE_STREAM_WATCHDOG,
     )
-    const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+    const STREAM_IDLE_TIMEOUT_MS = getStreamIdleTimeoutMs()
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
@@ -2389,7 +2434,7 @@ async function* queryModel(
                 max_tokens: maxOutputTokens,
               })
               yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: Open CC's response exceeded the ${
+                content: `${API_ERROR_MESSAGE_PREFIX}: OpenCC's response exceeded the ${
                   maxOutputTokens
                 } output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
                 apiError: 'max_output_tokens',
@@ -2402,13 +2447,10 @@ async function* queryModel(
                 max_tokens: maxOutputTokens,
                 output_tokens: usage.output_tokens,
               })
-              // Reuse the max_output_tokens recovery path — from the model's
-              // perspective, both mean "response was cut off, continue from
-              // where you left off."
               yield createAssistantAPIErrorMessage({
                 content: `${API_ERROR_MESSAGE_PREFIX}: The model has reached its context window limit.`,
-                apiError: 'max_output_tokens',
-                error: 'max_output_tokens',
+                apiError: 'context_overflow',
+                error: 'invalid_request',
               })
             }
             break
@@ -2553,15 +2595,16 @@ async function* queryModel(
       }
 
       if (streamingError instanceof APIUserAbortError) {
-        // Check if the abort signal was triggered by the user (ESC key)
-        // If the signal is aborted, it's a user-initiated abort
+        // If the signal is aborted, classify by the AbortSignal reason.
         // If not, it's likely a timeout from the SDK
         if (signal.aborted) {
-          // This is a real user abort (ESC key was pressed)
           logForDebugging(
-            `Streaming aborted by user: ${errorMessage(streamingError)}`,
+            getClaudeStreamingAbortLogMessage(signal, streamingError),
           )
-          if (isAdvisorInProgress) {
+          if (
+            isAdvisorInProgress &&
+            shouldCreateUserInterruptionMessage(signal.reason)
+          ) {
             logEvent('tengu_advisor_tool_interrupted', {
               model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2577,14 +2620,14 @@ async function* queryModel(
             `Streaming timeout (SDK abort): ${streamingError.message}`,
             { level: 'error' },
           )
-          // Throw a more specific error for timeout
-          throw new APIConnectionTimeoutError({ message: 'Request timed out' })
+          // Treat provider/SDK stream timeouts like other streaming failures:
+          // fall back below while the parent query signal is still live.
         }
       }
 
       if (signal.aborted) {
         logForDebugging(
-          `Streaming aborted by parent signal: ${errorMessage(streamingError)}`,
+          getClaudeStreamingAbortLogMessage(signal, streamingError),
         )
         throw new APIUserAbortError()
       }
@@ -2732,6 +2775,16 @@ async function* queryModel(
       throw errorFromRetry
     }
 
+    if (
+      handleClaudeExpectedSideTaskApiAbort(
+        signal,
+        errorFromRetry,
+        releaseStreamResources,
+      )
+    ) {
+      return
+    }
+
     if (signal.aborted) {
       releaseStreamResources()
       return
@@ -2824,6 +2877,16 @@ async function* queryModel(
         // Propagate model-fallback signal to query.ts (see comment above).
         if (fallbackError instanceof FallbackTriggeredError) {
           throw fallbackError
+        }
+
+        if (
+          handleClaudeExpectedSideTaskApiAbort(
+            signal,
+            fallbackError,
+            releaseStreamResources,
+          )
+        ) {
+          return
         }
 
         // Fallback also failed, handle as normal error
@@ -3427,7 +3490,7 @@ export async function queryHaiku({
 type QueryWithModelOptions = Omit<Options, 'getToolPermissionContext'>
 
 /**
- * Query a specific model through the Open CC infrastructure.
+ * Query a specific model through the OpenCC infrastructure.
  * This goes through the full query pipeline including proper authentication,
  * betas, and headers - unlike direct API calls.
  */

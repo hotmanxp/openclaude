@@ -119,7 +119,7 @@ test('generateSessionTitle extracts first { to last } even with trailing comment
 test('generateSessionTitle regex matches array too, but schema rejects it', async () => {
   // The regex is intentionally permissive — it matches both `{}` and `[]`
   // so we don't miss a model output. The zod schema (z.object) then
-  // rejects arrays, falling back to the 'Open CC' default. This test
+  // rejects arrays, falling back to the 'OpenCC' default. This test
   // locks the regex behavior so a future refactor that drops the `[..]`
   // alternative (back to v3) will be caught.
   haikuMock.mockImplementation(async () =>

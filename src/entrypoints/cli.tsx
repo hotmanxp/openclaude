@@ -56,7 +56,7 @@ process.env.COREPACK_ENABLE_AUTO_PIN = '0';
 // tool-heavy loops) do not hit V8's ~2 GB default ceiling. Only raise the cap
 // when the user has not already set NODE_OPTIONS --max-old-space-size so we
 // do not override an intentionally lower or higher personal setting.
-// CCR (Claude Code Remote / container) environments are covered by the same
+// CCR (OpenCC Remote / container) environments are covered by the same
 // unconditional assignment — the previous CLAUDE_CODE_REMOTE guard was too
 // restrictive, preventing local users from benefiting from the raised limit.
 // Closes: hotmanxp/opencc#402 — JavaScript heap OOM during large tasks.
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time
     // biome-ignore lint/suspicious/noConsole:: intentional console output
-    console.log(`${MACRO.DISPLAY_VERSION ?? MACRO.VERSION} (Open CC)`);
+    console.log(`${MACRO.DISPLAY_VERSION ?? MACRO.VERSION} (OpenCC)`);
     return;
   }
 
@@ -411,5 +411,7 @@ async function main(): Promise<void> {
   profileCheckpoint('cli_after_main_complete');
 }
 
-// eslint-disable-next-line custom-rules/no-top-level-side-effects
-void main();
+// eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level
+if (process.env.OPENCC_DISABLE_CLI_ENTRYPOINT_AUTO_RUN !== '1') {
+  await main();
+}

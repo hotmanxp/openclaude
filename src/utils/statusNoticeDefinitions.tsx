@@ -95,7 +95,7 @@ const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
     const authTokenInfo = getAuthTokenSource();
     return <WarningNoticeRow marginTop={1}>
         <Text color="warning">
-          Auth conflict: Using {authTokenInfo.source} instead of Claude account
+          Auth conflict: Using {authTokenInfo.source} instead of OpenCC account
           subscription token. Either unset {authTokenInfo.source}, or run
           `claude /logout`.
         </Text>
@@ -256,7 +256,7 @@ const localModelContextLoadNotice: StatusNoticeDefinition = {
 
 // Permissive permission modes (acceptEdits, bypassPermissions, auto) suppress
 // the per-tool consent prompt that normally gives the user a moment to inspect
-// what the model is about to do. On first-party Claude, the AI safety
+// what the model is about to do. On first-party OpenCC, the AI safety
 // classifier (gated by `modelSupportsAutoMode`) is the backstop that catches
 // PI-driven dangerous calls in that consent-free path. For 3P providers the
 // classifier never runs (betas.ts:166), so users get the consent shortcut

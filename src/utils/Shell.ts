@@ -16,6 +16,7 @@ import { logForDebugging } from './debug.js'
 import { errorMessage, isENOENT } from './errors.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
+import { normalizeAbortReason } from './abortReasons.js'
 import {
   createAbortedCommand,
   createFailedCommand,
@@ -127,7 +128,7 @@ export async function findSuitableShell(): Promise<string> {
   // If no valid shell found, throw a helpful error
   if (!shellPath) {
     const errorMsg =
-      'No suitable shell found. Open CC CLI requires a Posix shell environment. ' +
+      'No suitable shell found. OpenCC CLI requires a Posix shell environment. ' +
       'Please ensure you have a valid shell installed and the SHELL environment variable set.'
     logError(new Error(errorMsg))
     throw new Error(errorMsg)
@@ -244,14 +245,16 @@ export async function exec(
       cwd = fallback
     } else {
       return createFailedCommand(
-        `Working directory "${cwd}" is no longer a valid directory. Please restart Open CC from an existing directory.`,
+        `Working directory "${cwd}" is no longer a valid directory. Please restart OpenCC from an existing directory.`,
       )
     }
   }
 
   // If already aborted, don't spawn the process at all
   if (abortSignal.aborted) {
-    return createAbortedCommand()
+    return createAbortedCommand(undefined, {
+      abortReason: normalizeAbortReason(abortSignal.reason),
+    })
   }
 
   const binShell = provider.shellPath
@@ -446,9 +449,16 @@ export async function exec(
 
     logForDebugging(`Shell exec error: ${errorMessage(error)}`)
 
-    return createAbortedCommand(undefined, {
+    if (abortSignal.aborted) {
+      return createAbortedCommand(undefined, {
+        code: 126, // Standard Unix code for execution errors
+        stderr: errorMessage(error),
+        abortReason: normalizeAbortReason(abortSignal.reason),
+      })
+    }
+
+    return createFailedCommand(errorMessage(error), {
       code: 126, // Standard Unix code for execution errors
-      stderr: errorMessage(error),
     })
   }
 }

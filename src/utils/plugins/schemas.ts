@@ -13,7 +13,7 @@ import { lazySchema } from '../lazySchema.js'
  */
 
 /**
- * Official marketplace names that are reserved for Anthropic/Open CC official use.
+ * Official marketplace names that are reserved for Anthropic/OpenCC official use.
  * These names are allowed ONLY for official marketplaces and blocked for third parties.
  */
 export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
@@ -58,7 +58,7 @@ export function isMarketplaceAutoUpdate(
 }
 
 /**
- * Pattern to detect names that impersonate official Anthropic/Open CC marketplaces.
+ * Pattern to detect names that impersonate official Anthropic/OpenCC marketplaces.
  *
  * Matches names containing variations like:
  * - "official" combined with "anthropic" or "claude" (e.g., "official-claude-plugins")
@@ -79,7 +79,7 @@ export const BLOCKED_OFFICIAL_NAME_PATTERN =
 const NON_ASCII_PATTERN = /[^\u0020-\u007E]/
 
 /**
- * Check if a marketplace name impersonates an official Anthropic/Open CC marketplace.
+ * Check if a marketplace name impersonates an official Anthropic/OpenCC marketplace.
  *
  * @param name - The marketplace name to check
  * @returns true if the name is blocked (impersonates official), false if allowed
@@ -116,6 +116,48 @@ export const OFFICIAL_GITHUB_ORG = 'anthropics'
  * @param source - The marketplace source configuration
  * @returns An error message if validation fails, or null if valid
  */
+/**
+ * True only when a git URL genuinely targets the official org on github.com.
+ *
+ * Uses exact host + first-path-segment matching, not a substring check: a
+ * substring like `url.includes('github.com/anthropics/')` also matches hostile
+ * URLs such as `https://notgithub.com/anthropics/x` or
+ * `https://evil.com/github.com/anthropics/x`, which would let an attacker claim
+ * a reserved official-marketplace name from a repo they control.
+ */
+function isOfficialAnthropicsGitUrl(rawUrl: string): boolean {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) {
+    return false
+  }
+
+  // scp-like SSH form: git@github.com:anthropics/<repo> (has no scheme).
+  if (!trimmed.includes('://')) {
+    const scp = /^[^@\s]+@([^:\s]+):(.+)$/.exec(trimmed)
+    if (scp) {
+      const host = scp[1]!.toLowerCase()
+      const firstSegment = scp[2]!.replace(/^\/+/, '').split('/')[0]?.toLowerCase()
+      return host === 'github.com' && firstSegment === OFFICIAL_GITHUB_ORG
+    }
+    return false
+  }
+
+  // Scheme forms: https://, http://, ssh://git@github.com/anthropics/<repo>.
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.hostname.toLowerCase() !== 'github.com') {
+      return false
+    }
+    const firstSegment = parsed.pathname
+      .replace(/^\/+/, '')
+      .split('/')[0]
+      ?.toLowerCase()
+    return firstSegment === OFFICIAL_GITHUB_ORG
+  } catch {
+    return false
+  }
+}
+
 export function validateOfficialNameSource(
   name: string,
   source: { source: string; repo?: string; url?: string },
@@ -139,13 +181,7 @@ export function validateOfficialNameSource(
 
   // Check for git URL source type
   if (source.source === 'git' && source.url) {
-    const url = source.url.toLowerCase()
-    // Check for HTTPS URL format: https://github.com/anthropics/...
-    // or SSH format: git@github.com:anthropics/...
-    const isHttpsAnthropics = url.includes('github.com/anthropics/')
-    const isSshAnthropics = url.includes('git@github.com:anthropics/')
-
-    if (isHttpsAnthropics || isSshAnthropics) {
+    if (isOfficialAnthropicsGitUrl(source.url)) {
       return null // Valid: reserved name from official git URL
     }
 
@@ -234,7 +270,7 @@ const MarketplaceNameSchema = lazySchema(() =>
     )
     .refine(name => !isBlockedOfficialName(name), {
       message:
-        'Marketplace name impersonates an official Anthropic/Open CC marketplace',
+        'Marketplace name impersonates an official Anthropic/OpenCC marketplace',
     })
     .refine(name => name.toLowerCase() !== 'inline', {
       message:
@@ -323,7 +359,7 @@ const PluginManifestMetadataSchema = lazySchema(() =>
  * Schema for plugin hooks configuration (hooks.json)
  *
  * Defines the hooks that a plugin can provide to intercept and modify
- * Open CC behavior at various lifecycle events.
+ * OpenCC behavior at various lifecycle events.
  */
 export const PluginHooksSchema = lazySchema(() =>
   z.object({
@@ -1228,7 +1264,7 @@ export function isLocalPluginSource(source: PluginSource): source is string {
  * For local sources (`file`/`directory`), `installLocation` IS the user's path —
  * it lives outside the plugins cache dir and marketplace operations on it are
  * read-only. For remote sources (`github`/`git`/`url`/`npm`), `installLocation`
- * is a cache-dir entry managed by Open CC and subject to rm/re-clone.
+ * is a cache-dir entry managed by OpenCC and subject to rm/re-clone.
  *
  * Contrast with isLocalPluginSource, which operates on PluginSource (the
  * per-plugin source inside a marketplace entry) and checks for `./` prefix.
@@ -1465,10 +1501,10 @@ export const InstalledPluginSchema = lazySchema(() =>
  * Schema for the installed_plugins.json file (V1 format)
  *
  * Contains a version number and maps plugin IDs to their installation metadata.
- * Maintained automatically by Open CC, not edited by users.
+ * Maintained automatically by OpenCC, not edited by users.
  *
  * The version field tracks schema changes. When the version doesn't match
- * the current schema version, Open CC will update the file on next startup.
+ * the current schema version, OpenCC will update the file on next startup.
  *
  * Example file:
  * {

@@ -3,7 +3,7 @@ import { c as _c } from "react-compiler-runtime";
 import * as React from 'react';
 import { useState } from 'react';
 import { Box, Text } from 'src/ink.js';
-import { formatAPIError } from 'src/services/api/errorUtils.js';
+import { briefAPIErrorReason, formatAPIError } from 'src/services/api/errorUtils.js';
 import type { SystemAPIErrorMessage } from 'src/types/message.js';
 import { useInterval } from 'usehooks-ts';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
@@ -36,9 +36,6 @@ export function SystemAPIErrorMessage(t0) {
     t2 = $[0];
   }
   useInterval(t2, hidden || done ? null : 1000);
-  if (hidden) {
-    return null;
-  }
   let t3;
   if ($[1] !== countdownMs || $[2] !== retryInMs) {
     t3 = Math.round((retryInMs - countdownMs) / 1000);
@@ -49,6 +46,23 @@ export function SystemAPIErrorMessage(t0) {
     t3 = $[3];
   }
   const retryInSecondsLive = Math.max(0, t3);
+  if (hidden) {
+    // Visible compact retry line for early attempts (substance from upstream
+    // PR #1862 — "honest feedback pass"). Without this, transient rate
+    // limits looked exactly like a hang: first three attempts render a dim
+    // line, attempts ≥ 4 keep the full error block below.
+    return (
+      <Text dimColor={true}>
+        {briefAPIErrorReason(error)} — retrying in {retryInSecondsLive}
+        {" "}
+        {retryInSecondsLive === 1 ? "second" : "seconds"}… (attempt{" "}
+        {retryAttempt}/{maxRetries})
+        {process.env.API_TIMEOUT_MS
+          ? ` · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it`
+          : ""}
+      </Text>
+    );
+  }
   let T0;
   let T1;
   let T2;

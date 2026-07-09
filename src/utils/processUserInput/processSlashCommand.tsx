@@ -8,6 +8,7 @@ import { NO_CONTENT_MESSAGE } from 'src/constants/messages.js';
 import type { SetToolJSXFn, ToolUseContext } from 'src/Tool.js';
 import type { AssistantMessage, AttachmentMessage, Message, NormalizedUserMessage, ProgressMessage, UserMessage } from 'src/types/message.js';
 import { addInvokedSkill, getSessionId } from '../../bootstrap/state.js';
+import { invokeUserPromptExpansionHook } from '../../hooks/userPromptExpansion.js';
 import { COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG } from '../../constants/xml.js';
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED, logEvent } from '../../services/analytics/index.js';
@@ -41,6 +42,11 @@ import { isOfficialMarketplaceName, parsePluginIdentifier } from '../plugins/plu
 import { isRestrictedToPluginOnly, isSourceAdminTrusted } from '../settings/pluginOnlyPolicy.js';
 import { parseSlashCommand } from '../slashCommandParsing.js';
 import { sleep } from '../sleep.js';
+import {
+  STACKED_SKILL_LIMIT,
+  splitStackedSkillInvocation,
+  type SplitStackedSkillInvocationResult,
+} from './processStackedSkillInvocation.js';
 import { recordSkillUsage } from '../suggestions/skillUsageTracking.js';
 import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js';
 import { buildPluginCommandTelemetryFields } from '../telemetry/pluginTelemetry.js';
@@ -332,6 +338,42 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
   } = parsed;
   const sanitizedCommandName = isMcp ? 'mcp' : !builtInCommandNames().has(commandName) ? 'custom' : commandName;
 
+  // NEW 2026-07-04 (v2.1.201 port): expand leading slash-skill stack.
+  // Single-skill invocations fall through unchanged (commands.length === 1
+  // AND not capped). Stack of length > 1 OR `capped` dispatches to the new
+  // helper which honors the UserPromptExpansion hook chain per command.
+  const stacked = splitStackedSkillInvocation({
+    primaryCommandName: commandName,
+    primaryArgs: parsedArgs,
+    resolveCommand: (name) => findCommand(name, context.options.commands),
+  });
+  if (stacked.commands.length > 1 || stacked.capped) {
+    return processStackedSkillInvocation(stacked, {
+      getMessagesForSlashCommand: (cmdName, cmdArgs) =>
+        getMessagesForSlashCommand(
+          cmdName,
+          cmdArgs,
+          setToolJSX,
+          context,
+          precedingInputBlocks,
+          imageContentBlocks,
+          isAlreadyProcessing,
+          canUseTool,
+          uuid,
+        ).then((R) => ({
+          messages: R.messages,
+          allowedTools: R.allowedTools,
+          disallowedTools: R.disallowedTools,
+          // Pass shouldQuery through so stacked skills still trigger the
+          // main model loop when appropriate (e.g., last stacked skill
+          // loads prompt context but the trailing args should query).
+          shouldQuery: R.shouldQuery,
+        })),
+      emitWarning: (msg) => logForDebugging(msg),
+      logForDebugging,
+    });
+  }
+
   // Check if it's a real command before processing
   if (!hasCommand(commandName, context.options.commands)) {
     // Check if this looks like a command name vs a file path or other input
@@ -543,7 +585,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
           precedingInputBlocks
         })
       }), createUserMessage({
-        content: `This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "${commandName}" skill for you.`
+        content: `This skill can only be invoked by OpenCC, not directly by users. Ask OpenCC to use the "${commandName}" skill for you.`
       })],
       shouldQuery: false,
       command
@@ -794,6 +836,87 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
 }
 function formatCommandInput(command: CommandBase, args: string): string {
   return formatCommandInputTags(getCommandName(command), args);
+}
+
+/**
+ * Drives the stacked-skill expansion path introduced in v2.1.201 (OpenCC port
+ * 2026-07-04). For each resolved command in `stacked.commands`, this helper:
+ *   1. Invokes the (currently stubbed) UserPromptExpansion hook chain. If a
+ *      hook vetoes the expansion, the command is skipped with a debug log
+ *      entry and the loop continues — never aborts.
+ *   2. Calls `getMessagesForSlashCommand` with the command's trailing args
+ *      and accumulates its messages, allowedTools, and disallowedTools onto
+ *      the result.
+ *   3. Catches any per-skill throw and pushes a system warning instead of
+ *      aborting the rest of the stack.
+ * After all stacked skills are processed, if the scanner hit the
+ * STACKED_SKILL_LIMIT cap, a final warning is appended.
+ */
+async function processStackedSkillInvocation(
+  stacked: SplitStackedSkillInvocationResult,
+  deps: {
+    getMessagesForSlashCommand: (commandName: string, args: string) => Promise<{
+      messages: ProcessUserInputBaseResult['messages'];
+      allowedTools?: string[];
+      disallowedTools?: string[];
+    }>;
+    emitWarning: (message: string) => void;
+    logForDebugging: (message: string) => void;
+  },
+): Promise<ProcessUserInputBaseResult> {
+  const T: ProcessUserInputBaseResult = {
+    messages: [],
+    shouldQuery: true, // stacked skills produced messages — main loop must query the model
+    allowedTools: undefined,
+    disallowedTools: undefined,
+  };
+
+  for (const cmd of stacked.commands) {
+    const hookResult = await invokeUserPromptExpansionHook({ command: cmd, args: stacked.trailingArgs });
+    if (hookResult && 'blocked' in hookResult) {
+      deps.logForDebugging(
+        `Stacked skill /${cmd.name} blocked by UserPromptExpansion hook: ${hookResult.reason}`,
+      );
+      T.messages.push(
+        createSystemMessage(
+          `Stacked skill /${cmd.name} blocked by UserPromptExpansion hook: ${hookResult.reason}`,
+          'warning',
+        ),
+      );
+      continue;
+    }
+    try {
+      const R = await deps.getMessagesForSlashCommand(cmd.name, stacked.trailingArgs);
+      T.messages.push(...R.messages);
+      T.allowedTools = [...(T.allowedTools ?? []), ...(R.allowedTools ?? [])];
+      T.disallowedTools = [...(T.disallowedTools ?? []), ...(R.disallowedTools ?? [])];
+      // NEW 2026-07-05: OR-accumulate shouldQuery. Without this, stacked
+      // skills produce messages but never query the model — the trailing
+      // user args is silently dropped.
+      if (R.shouldQuery) T.shouldQuery = true;
+    } catch (A) {
+      deps.logForDebugging(
+        `stacked slash command expansion threw for /${cmd.name}: ${String(A)}`,
+      );
+      T.messages.push(
+        createSystemMessage(
+          `Stacked skill /${cmd.name} failed to load: ${String(A)}`,
+          'warning',
+        ),
+      );
+    }
+  }
+
+  if (stacked.capped) {
+    T.messages.push(
+      createSystemMessage(
+        `Stacked command limit (${STACKED_SKILL_LIMIT}) reached — remaining input passed as arguments`,
+        'warning',
+      ),
+    );
+  }
+
+  return T;
 }
 
 /**

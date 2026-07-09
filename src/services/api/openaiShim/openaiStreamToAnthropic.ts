@@ -3,19 +3,27 @@ import { hasToolFieldMapping, normalizeToolArguments } from '../toolArgumentNorm
 import { createStreamState, processStreamChunk, getStreamStats } from '../../../utils/streamingOptimizer.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import type { AnthropicStreamEvent } from '../codexShim.js'
-import { makeMessageId, convertChunkUsage, repairPossiblyTruncatedObjectJson, JSON_REPAIR_SUFFIXES, readWithTimeout } from './streaming.js'
+import {
+  makeMessageId,
+  convertChunkUsage,
+  repairPossiblyTruncatedObjectJson,
+  JSON_REPAIR_SUFFIXES,
+  readWithIdleTimeout,
+  createReaderCanceller,
+  getStreamIdleTimeoutMs,
+} from './streaming.js'
 import type { OpenAIStreamChunk } from './types.js'
-
-// Mutable state object shared between the caller and readWithTimeout
-interface ReadState {
-  lastDataTime: number
-}
 
 async function* openaiStreamToAnthropic(
   response: Response,
   model: string,
   signal?: AbortSignal,
 ): AsyncGenerator<AnthropicStreamEvent> {
+  const readerOrNull = response.body?.getReader()
+  if (!readerOrNull) return
+  const reader: ReadableStreamDefaultReader<Uint8Array> = readerOrNull
+  const readerCanceller = createReaderCanceller(reader, signal)
+
   const messageId = makeMessageId()
   let contentBlockIndex = 0
   const activeToolCalls = new Map<
@@ -36,33 +44,11 @@ async function* openaiStreamToAnthropic(
   let hasEmittedFinalUsage = false
   let hasProcessedFinishReason = false
   const streamState = createStreamState()
-
-  // Emit message_start
-  yield {
-    type: 'message_start',
-    message: {
-      id: messageId,
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model,
-      stop_reason: null,
-      stop_sequence: null,
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-    },
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) return
+  let streamComplete = false
 
   const decoder = new TextDecoder()
   let buffer = ''
-  const readState: ReadState = { lastDataTime: Date.now() }
+  const streamIdleTimeoutMs = getStreamIdleTimeoutMs()
 
   const closeActiveContentBlock = async function* () {
     if (!hasEmittedContentStart) return
@@ -85,16 +71,58 @@ async function* openaiStreamToAnthropic(
   }
 
   try {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+
+    // Emit message_start
+    yield {
+      type: 'message_start',
+      message: {
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model,
+        stop_reason: null,
+        stop_sequence: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    }
+
     while (true) {
-      const chunkResult = (await readWithTimeout(reader, signal, readState, 'OpenAI/Gemini')) as { done: boolean; value: Uint8Array }
-      const { done, value } = chunkResult
-      if (done) break
+      if (signal?.aborted) {
+        readerCanceller.cancel(new DOMException('Aborted', 'AbortError'))
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const { done, value } = await readWithIdleTimeout(reader, streamIdleTimeoutMs, {
+        signal,
+        cancelReader: readerCanceller.cancel,
+      })
+      if (done) {
+        streamComplete = true
+        break
+      }
+
+      if (signal?.aborted) {
+        readerCanceller.cancel(new DOMException('Aborted', 'AbortError'))
+        throw new DOMException('Aborted', 'AbortError')
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
+        if (signal?.aborted) {
+          readerCanceller.cancel(new DOMException('Aborted', 'AbortError'))
+          throw new DOMException('Aborted', 'AbortError')
+        }
         const trimmed = line.trim()
         if (!trimmed || trimmed === 'data: [DONE]') continue
         if (!trimmed.startsWith('data: ')) {
@@ -366,6 +394,10 @@ async function* openaiStreamToAnthropic(
       }
     }
   } finally {
+    if (!streamComplete || signal?.aborted) {
+      readerCanceller.cancel(new DOMException('Aborted', 'AbortError'))
+    }
+    readerCanceller.cleanup()
     reader.releaseLock()
   }
 
@@ -384,6 +416,7 @@ async function* openaiStreamToAnthropic(
   }
 
   yield { type: 'message_stop' }
+  streamComplete = true
 }
 
 export { openaiStreamToAnthropic }

@@ -10,9 +10,9 @@ import { getWorkload } from '../utils/workloadContext.js'
 const DEFAULT_PREFIX =
   `You are OpenCC, an coding agent and CLI.`
 const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX =
-  `You are OpenCC, an coding agent and CLI running within the Open CC Agent SDK.`
+  `You are OpenCC, an coding agent and CLI running within the OpenCC Agent SDK.`
 const AGENT_SDK_PREFIX =
-  `You are OpenCC, built on the Open CC Agent SDK.`
+  `You are OpenCC, built on the OpenCC Agent SDK.`
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
   DEFAULT_PREFIX,
@@ -69,7 +69,7 @@ function isAttributionHeaderEnabled(): boolean {
  * When NATIVE_CLIENT_ATTESTATION is enabled, includes a `cch=00000` placeholder.
  * Before the request is sent, Bun's native HTTP stack finds this placeholder
  * in the request body and overwrites the zeros with a computed hash. The
- * server verifies this token to confirm the request came from a real Open CC
+ * server verifies this token to confirm the request came from a real OpenCC
  * Code client. See bun-anthropic/src/http/Attestation.zig for implementation.
  *
  * We use a placeholder (instead of injecting from Zig) because same-length

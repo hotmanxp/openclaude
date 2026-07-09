@@ -1,8 +1,8 @@
 /**
- * OAuth types for Open CC.ai authentication
+ * OAuth types for OpenCC.ai authentication
  */
 
-// Subscription types for Open CC.ai plans
+// Subscription types for OpenCC.ai plans
 // Using string type to match mockRateLimits.ts which uses type SubscriptionType = string
 export type SubscriptionType = string
 

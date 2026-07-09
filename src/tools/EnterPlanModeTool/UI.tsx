@@ -20,7 +20,7 @@ ProgressMessage<ToolProgressData>[], _options: {
       </Box>
       <Box paddingLeft={2}>
         <Text dimColor>
-          Claude is now exploring and designing an implementation approach.
+          OpenCC is now exploring and designing an implementation approach.
         </Text>
       </Box>
     </Box>;

@@ -18,6 +18,16 @@ import {
   resolveRouteIdFromBaseUrl,
   type RouteDescriptor,
 } from './routeMetadata.js'
+import { parseCustomHeadersEnv } from '../utils/providerCustomHeaders.js'
+import { firstUsableCredential } from '../services/api/credentialPool.js'
+import { ZAI_GLM_OPENAI_SHIM } from './transport/zaiGlmShim.js'
+
+function normalizeModelApiName(
+  value: string | undefined,
+): string | null {
+  const baseModel = getBaseModelApiName(value)
+  return baseModel ? baseModel.toLowerCase() : null
+}
 
 function getBaseModelApiName(value: string | undefined): string | null {
   const trimmed = value?.trim()
@@ -29,13 +39,6 @@ function getBaseModelApiName(value: string | undefined): string | null {
   const baseModel =
     queryIndex === -1 ? trimmed : trimmed.slice(0, queryIndex).trim()
   return baseModel || null
-}
-
-function normalizeModelApiName(
-  value: string | undefined,
-): string | null {
-  const baseModel = getBaseModelApiName(value)
-  return baseModel ? baseModel.toLowerCase() : null
 }
 
 function matchesCatalogEntryModel(
@@ -148,22 +151,11 @@ export function openAIShimSupportsApiFormatForModel(
 
 function inferRemoteModelOpenAIShimConfig(
   modelApiName: string | undefined,
-  routeId?: string | null,
+  catalogEntry: ModelCatalogEntry | null,
 ): Partial<OpenAIShimTransportConfig> | undefined {
   const normalizedModel = normalizeModelApiName(modelApiName)
   if (!normalizedModel) {
     return undefined
-  }
-
-  // GitHub Copilot routes Claude models through the native Anthropic
-  // transport (see isGithubNativeAnthropicMode). The Copilot gateway
-  // accepts and echoes back thinking blocks; stripping them on resume
-  // (the 3P default) loses reasoning the model needs to continue.
-  if (routeId === 'github' && normalizedModel.includes('claude')) {
-    return {
-      preserveReasoningContent: true,
-      maxTokensField: 'max_tokens',
-    }
   }
 
   if (normalizedModel.startsWith('mimo-v2')) {
@@ -203,6 +195,18 @@ function inferRemoteModelOpenAIShimConfig(
     }
   }
 
+  // Only infer the Z.AI GLM shim for routes without a catalog entry
+  // (direct/aggregator aliases like `glm-5.2` or `openrouter/zhipu/glm-5.2`).
+  // Catalog-backed GLM routes declare their own contract via
+  // `transportOverrides.openaiShim`: Z.AI-contract routes (zai, opencode-go,
+  // atlas-cloud) opt in explicitly, while non-Z.AI ones (nearai, fireworks)
+  // keep their provider-specific request shape instead of this shim.
+  const hasGlm = segments.some(s => /^glm-\d/.test(s))
+  const isFireworks = segments.some(s => s === 'fireworks')
+  if (hasGlm && !isFireworks && !catalogEntry) {
+    return { ...ZAI_GLM_OPENAI_SHIM }
+  }
+
   return undefined
 }
 
@@ -224,6 +228,7 @@ export function resolveOpenAIShimRuntimeContext(options?: {
   model?: string
   activeProfileProvider?: string
   treatAsLocal?: boolean
+  preferBaseUrlRoute?: boolean
 }): OpenAIShimRuntimeContext {
   const processEnv = options?.processEnv ?? process.env
   const runtimeEnv: NodeJS.ProcessEnv = {
@@ -260,7 +265,7 @@ export function resolveOpenAIShimRuntimeContext(options?: {
       ? {
           maxTokensField: 'max_tokens' as const,
         }
-      : inferRemoteModelOpenAIShimConfig(options?.model, routeId)
+      : inferRemoteModelOpenAIShimConfig(options?.model, catalogEntry)
 
   return {
     routeId,

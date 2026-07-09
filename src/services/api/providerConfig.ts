@@ -93,6 +93,8 @@ export type ResolvedProviderRequest = {
   requestedModel: string
   resolvedModel: string
   baseUrl: string
+  reasoning?: { effort?: string }
+  thinking?: { type?: string }
 }
 
 function asEnvUrl(value: string | undefined): string | undefined {
@@ -129,6 +131,7 @@ export function resolveProviderRequest(options?: {
   model?: string
   baseUrl?: string
   fallbackModel?: string
+  processEnv?: NodeJS.ProcessEnv
 }): ResolvedProviderRequest {
   const requestedModel =
     options?.model?.trim() ||

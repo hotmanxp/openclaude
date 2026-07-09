@@ -21,6 +21,7 @@ import {
   validateFlags,
 } from '../../utils/shell/readOnlyCommandValidation.js'
 import type { BashTool } from './BashTool.js'
+import type { LegacyShellParseAnalysis } from './bashCommandAnalysis.js'
 import { isNormalizedGitCommand } from './bashPermissions.js'
 import { bashCommandIsSafe_DEPRECATED } from './bashSecurity.js'
 import {
@@ -1449,7 +1450,7 @@ const READONLY_COMMAND_REGEXES = new Set([
   // Also allow optional 2>&1 stderr redirection at the end
   /^echo(?:\s+(?:'[^']*'|"[^"$<>\n\r]*"|[^|;&`$(){}><#\\!"'\s]+))*(?:\s+2>&1)?\s*$/,
 
-  // Open CC CLI help
+  // OpenCC CLI help
   /^claude -h$/,
   /^claude --help$/,
 
@@ -1643,7 +1644,7 @@ function isCommandReadOnly(command: string): boolean {
 
   // Tools like git allow `--upload-pack=cmd` to be abbreviated as `--up=cmd`
   // Regex filters can be bypassed, so we use strict allowlist validation instead.
-  // This requires defining a set of known safe flags. Open CC can help with this,
+  // This requires defining a set of known safe flags. OpenCC can help with this,
   // but please look over it to ensure it didn't add any flags that allow file writes
   // code execution, or network requests.
   if (isCommandSafeViaFlagParsing(testCommand)) {
@@ -1810,12 +1811,16 @@ function commandWritesToGitInternalPaths(command: string): boolean {
 export function checkReadOnlyConstraints(
   input: z.infer<typeof BashTool.inputSchema>,
   compoundCommandHasCd: boolean,
+  legacyParse?: LegacyShellParseAnalysis,
 ): PermissionResult {
   const { command } = input
 
   // Detect if the command is not parseable and return early
-  const result = tryParseShellCommand(command, env => `$${env}`)
-  if (!result.success) {
+  const isParseable =
+    legacyParse === undefined || legacyParse.kind === 'not-run'
+      ? tryParseShellCommand(command, env => `$${env}`).success
+      : legacyParse.kind === 'ok'
+  if (!isParseable) {
     return {
       behavior: 'passthrough',
       message: 'Command cannot be parsed, requires further permission checks',

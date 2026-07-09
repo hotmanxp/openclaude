@@ -47,9 +47,9 @@ export function autoModeConfigHandler(): void {
 }
 
 const CRITIQUE_SYSTEM_PROMPT =
-  'You are an expert reviewer of auto mode classifier rules for Open CC.\n' +
+  'You are an expert reviewer of auto mode classifier rules for OpenCC.\n' +
   '\n' +
-  'Open CC has an "auto mode" that uses an AI classifier to decide whether ' +
+  'OpenCC has an "auto mode" that uses an AI classifier to decide whether ' +
   'tool calls should be auto-approved or require user confirmation. Users can ' +
   'write custom rules in three categories:\n' +
   '\n' +

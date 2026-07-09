@@ -24,7 +24,7 @@ const WOODPECKER_MASCOT_ROWS = [
   '  ▝▝  ▝▝',
 ] as const
 
-// 2026-06-13 Claude Code mascot sprite (verbatim from upstream v2.1.177).
+// 2026-06-13 OpenCC mascot sprite (verbatim from upstream v2.1.177).
 // Preserved here for reference / easy revert. NOT rendered — kept under
 // the LEGACY_ prefix so a future grep surfaces the swap history.
 const LEGACY_CLAUDE_MASCOT_ROWS = [

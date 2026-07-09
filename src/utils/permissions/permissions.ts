@@ -122,6 +122,7 @@ export function permissionRuleSourceDisplayString(
 export function getAllowRules(
   context: ToolPermissionContext,
 ): PermissionRule[] {
+  if (!context || !context.alwaysAllowRules) return []
   return PERMISSION_RULE_SOURCES.flatMap(source =>
     (context.alwaysAllowRules[source] || []).map(ruleString => ({
       source,
@@ -205,12 +206,13 @@ export function createPermissionRequestMessage(
   }
 
   // Default message without listing allowed commands
-  const message = `Open CC requested permissions to use ${toolName}, but you haven't granted it yet.`
+  const message = `OpenCC requested permissions to use ${toolName}, but you haven't granted it yet.`
 
   return message
 }
 
 export function getDenyRules(context: ToolPermissionContext): PermissionRule[] {
+  if (!context || !context.alwaysDenyRules) return []
   return PERMISSION_RULE_SOURCES.flatMap(source =>
     (context.alwaysDenyRules[source] || []).map(ruleString => ({
       source,
@@ -221,6 +223,7 @@ export function getDenyRules(context: ToolPermissionContext): PermissionRule[] {
 }
 
 export function getAskRules(context: ToolPermissionContext): PermissionRule[] {
+  if (!context || !context.alwaysAskRules) return []
   return PERMISSION_RULE_SOURCES.flatMap(source =>
     (context.alwaysAskRules[source] || []).map(ruleString => ({
       source,

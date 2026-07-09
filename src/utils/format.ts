@@ -11,12 +11,29 @@ export function formatFileSize(sizeInBytes: number): string {
   if (kb < 1) {
     return `${sizeInBytes} bytes`
   }
+  // Promote to the next unit when the rounded value reaches 1024, so
+  // 1023.999...KB → "1MB" instead of the impossible "1024KB". Recursing with
+  // the equivalent byte count keeps the rounding behavior in one place.
   if (kb < 1024) {
-    return `${kb.toFixed(1).replace(/\.0$/, '')}KB`
+    const formatted = kb.toFixed(1).replace(/\.0$/, '')
+    if (Number(formatted) >= 1024) {
+      // Roll over to MB. Compute the MB value directly to avoid recursing
+      // with a byte count (which would loop forever on the same branch).
+      const mbValue = kb / 1024
+      return `${mbValue.toFixed(1).replace(/\.0$/, '')}MB`
+    }
+    return `${formatted}KB`
   }
   const mb = kb / 1024
   if (mb < 1024) {
-    return `${mb.toFixed(1).replace(/\.0$/, '')}MB`
+    const formatted = mb.toFixed(1).replace(/\.0$/, '')
+    if (Number(formatted) >= 1024) {
+      // Roll over to GB. Compute the GB value directly to avoid recursing
+      // with a byte count (which would loop forever on the same branch).
+      const gbValue = mb / 1024
+      return `${gbValue.toFixed(1).replace(/\.0$/, '')}GB`
+    }
+    return `${formatted}MB`
   }
   const gb = mb / 1024
   return `${gb.toFixed(1).replace(/\.0$/, '')}GB`
@@ -27,8 +44,18 @@ export function formatFileSize(sizeInBytes: number): string {
  * Unlike formatDuration, always keeps the decimal — use for sub-minute timings
  * where the fractional second is meaningful (TTFT, hook durations, etc.).
  */
+/**
+ * Renders milliseconds as a one-decimal second value, rounding in integer
+ * milliseconds so half-steps are stable. Rounding the raw fraction with
+ * `(ms / 1000).toFixed(1)` is unstable because values like `0.95` aren't
+ * exactly representable in binary floating point (`950` would render `0.9`).
+ */
+function oneDecimalSeconds(ms: number): string {
+  return (Math.round(ms / 100) / 10).toFixed(1)
+}
+
 export function formatSecondsShort(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`
+  return `${oneDecimalSeconds(ms)}s`
 }
 
 export function formatDuration(
@@ -40,10 +67,12 @@ export function formatDuration(
     if (ms === 0) {
       return '0s'
     }
-    // For durations < 1s, show 1 decimal place (e.g., 0.5s)
-    if (ms < 1) {
-      const s = (ms / 1000).toFixed(1)
-      return `${s}s`
+    // For durations < 1s, show 1 decimal place (e.g., 0.5s). The threshold is
+    // 1000ms (1s), not 1ms — at `ms < 1` this branch could only ever fire for
+    // sub-millisecond values and always returned "0.0s", so real sub-second
+    // durations fell through and rendered as "0s".
+    if (ms < 1000) {
+      return `${oneDecimalSeconds(ms)}s`
     }
     const s = Math.floor(ms / 1000).toString()
     return `${s}s`

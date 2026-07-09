@@ -9,6 +9,7 @@ import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   getDefaultBashTimeoutMs,
+  getEffectiveBashTimeoutMs,
   getMaxBashTimeoutMs,
 } from '../../utils/timeouts.js'
 import {
@@ -30,6 +31,10 @@ export function getDefaultTimeoutMs(): number {
 
 export function getMaxTimeoutMs(): number {
   return getMaxBashTimeoutMs()
+}
+
+export function getEffectiveTimeoutMs(timeout: unknown): number {
+  return getEffectiveBashTimeoutMs(timeout)
 }
 
 function getBackgroundUsageNote(): string | null {
@@ -241,7 +246,7 @@ function getSimpleSandboxSection(): string {
 }
 
 export function getSimplePrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep in Open CC's shell,
+  // Ant-native builds alias find/grep to embedded bfs/ugrep in OpenCC's shell,
   // so we don't steer away from them (and Glob/Grep tools are removed).
   const embedded = hasEmbeddedSearchTools()
 

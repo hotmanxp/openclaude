@@ -71,6 +71,10 @@ import { count } from '../array.js'
 import { logForDebugging } from '../debug.js'
 import { cloneFileStateCache } from '../fileStateCache.js'
 import {
+  getMaxActiveMessagesHardCap,
+  shouldCompactActiveMessageHistory,
+} from '../maxActiveMessages.js'
+import {
   SUBAGENT_REJECT_MESSAGE,
   SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
 } from '../messages.js'
@@ -1060,7 +1064,7 @@ export async function runInProcessTeammate(
     // Resetting per prompt iteration dropped prior prompts' output tokens and
     // tool-use counts from `task.progress`, so the leader's pill + spinner
     // aggregate read zero/low values between turns even after long sessions
-    // (#475). The Claude API returns `input_tokens` as cumulative for that
+    // (#475). The OpenCC API returns `input_tokens` as cumulative for that
     // request (includes prior history sent via `forkContextMessages`), so
     // `latestInputTokens` already represents the running context cost — we
     // just need `cumulativeOutputTokens` and `toolUseCount` to keep their
@@ -1097,12 +1101,20 @@ export async function runInProcessTeammate(
       // Check if compaction is needed before building context
       let contextMessages = allMessages
       const tokenCount = tokenCountWithEstimation(allMessages)
+      const activeMessageHardCap = getMaxActiveMessagesHardCap()
+      const tokenThreshold = getAutoCompactThreshold(
+        toolUseContext.options.mainLoopModel,
+      )
       if (
-        tokenCount >
-        getAutoCompactThreshold(toolUseContext.options.mainLoopModel)
+        shouldCompactActiveMessageHistory({
+          messageCount: allMessages.length,
+          tokenCount,
+          tokenThreshold,
+          activeMessageLimit: activeMessageHardCap,
+        })
       ) {
         logForDebugging(
-          `[inProcessRunner] ${identity.agentId} compacting history (${tokenCount} tokens)`,
+          `[inProcessRunner] ${identity.agentId} compacting history (${tokenCount} tokens, ${allMessages.length} messages)`,
         )
         // Create an isolated copy of toolUseContext so that compaction
         // does not clear the main session's readFileState cache or
@@ -1243,6 +1255,22 @@ export async function runInProcessTeammate(
               break
             }
 
+            if (
+              message.type === 'system' &&
+              'subtype' in message &&
+              message.subtype === 'compact_boundary'
+            ) {
+              allMessages.length = 0
+              resetMicrocompactState()
+              if (teammateReplacementState) {
+                teammateReplacementState = createContentReplacementState()
+              }
+              updateTaskState(
+                taskId,
+                task => ({ ...task, messages: [] }),
+                setAppState,
+              )
+            }
             iterationMessages.push(message)
             allMessages.push(message)
 

@@ -1,7 +1,7 @@
 /**
  * Bg daemon IPC protocol — frame codec + zod schemas.
  *
- * Ported verbatim from upstream Claude Code 2.1.177. Wire format and field
+ * Ported verbatim from upstream OpenCC 2.1.177. Wire format and field
  * names are part of the cross-process contract; any drift triggers `EPROTO`
  * once a client connects to a server built from this module.
  *

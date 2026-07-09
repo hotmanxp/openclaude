@@ -4,6 +4,27 @@
 
 export type AuthMode = 'api-key' | 'oauth' | 'adc' | 'token' | 'none'
 
+export type ReasoningControlMode = 'levels' | 'always' | 'never'
+
+export type ReasoningEffortLevel =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
+export type ReasoningWireFormat =
+  | 'reasoning_effort'
+  | 'zai_compatible'
+  | 'deepseek_compatible'
+
+export interface ReasoningControlSpec {
+  mode: ReasoningControlMode
+  levels?: ReasoningEffortLevel[]
+  defaultLevel?: ReasoningEffortLevel
+  wireFormat?: ReasoningWireFormat
+}
+
 export type TransportKind =
   | 'anthropic-native'
   | 'anthropic-proxy'
@@ -37,9 +58,12 @@ export interface OpenAIShimTransportConfig {
   preserveReasoningContent?: boolean
   requireReasoningContentOnAssistantMessages?: boolean
   reasoningContentFallback?: '' | 'omit'
-  thinkingRequestFormat?: 'none' | 'deepseek-compatible'
+  thinkingRequestFormat?: 'none' | 'deepseek-compatible' | 'zai-compatible'
   maxTokensField?: OpenAIShimTokenField
   removeBodyFields?: string[]
+  enableToolStreaming?: true
+  requiredApiFormat?: 'chat' | 'responses'
+  endpointPath?: string
 }
 
 export interface CapabilityFlags {
@@ -80,9 +104,11 @@ export interface ModelCatalogEntry {
   default?: boolean
   hidden?: boolean
   modelDescriptorId?: string
+  aliases?: string[]
   capabilities?: CapabilityFlags
   contextWindow?: number
   maxOutputTokens?: number
+  reasoning?: ReasoningControlSpec
   transportOverrides?: CatalogTransportOverrides
   notes?: string
 }
@@ -111,6 +137,7 @@ export interface SetupMetadata {
   authMode: AuthMode
   credentialEnvVars?: string[]
   setupPrompt?: string
+  dedicatedCredentialsOnly?: boolean
 }
 
 export interface StartupMetadata {

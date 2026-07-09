@@ -156,5 +156,5 @@ test('built-in agent prompts describe OpenCC instead of Claude Code', () => {
   expect(guidePrompt).toContain('You are the OpenCC guide agent.')
   expect(guidePrompt).toContain('**OpenCC** (the CLI tool)')
   expect(guidePrompt).not.toContain('You are the Claude guide agent.')
-  expect(guidePrompt).not.toContain('**Claude Code** (the CLI tool)')
+  expect(guidePrompt).not.toContain('**Claude** (the CLI tool)')
 })

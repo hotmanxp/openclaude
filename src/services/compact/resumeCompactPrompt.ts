@@ -3,7 +3,7 @@ import { tokenCountWithEstimation } from '../../utils/tokens.js'
 import { getAutoCompactThreshold } from './autoCompact.js'
 
 // Prompt compact on resume when the conversation exceeds this fraction of the
-// auto-compact threshold. Matches Claude Code's behavior of offering compaction
+// auto-compact threshold. Matches OpenCC's behavior of offering compaction
 // before the session is already at the limit.
 const RESUME_COMPACT_THRESHOLD_FRACTION = 0.7
 

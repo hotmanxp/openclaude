@@ -33,7 +33,7 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (!accessToken) {
     throw new Error(
-      'Open CC web sessions require authentication with a Open CC.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+      'OpenCC web sessions require authentication with a OpenCC.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
     )
   }
 

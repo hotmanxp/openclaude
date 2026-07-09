@@ -17,7 +17,7 @@ import { isTelemetryDisabled } from '../../utils/privacyLevel.js'
  * - Privacy level is no-telemetry or essential-traffic
  */
 export function isAnalyticsDisabled(): boolean {
-  // Open Open CC does not send product telemetry.
+  // Open OpenCC does not send product telemetry.
   return true
 }
 

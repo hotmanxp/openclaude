@@ -22,6 +22,7 @@ import { getAuthHeaders, getUserAgent } from '../utils/http.js';
 import { getInMemoryErrors, logError } from '../utils/log.js';
 import { getAPIProvider } from '../utils/model/providers.js';
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js';
+import { jsonRedactor, redactJsonLines, redactSensitiveInfo } from '../utils/redaction.js';
 import { extractTeammateTranscriptsFromTasks, getTranscriptPath, loadAllSubagentTranscriptsFromDisk, MAX_TRANSCRIPT_READ_BYTES } from '../utils/sessionStorage.js';
 import { jsonStringify } from '../utils/slowOperations.js';
 import { asSystemPrompt } from '../utils/systemPromptType.js';
@@ -68,51 +69,6 @@ type FeedbackData = {
   };
   rawTranscriptJsonl?: string;
 };
-
-// Utility function to redact sensitive information from strings
-export function redactSensitiveInfo(text: string): string {
-  let redacted = text;
-
-  // Anthropic API keys (sk-ant...) with or without quotes
-  // First handle the case with quotes
-  redacted = redacted.replace(/"(sk-ant[^\s"']{24,})"/g, '"[REDACTED_API_KEY]"');
-  // Then handle the cases without quotes - more general pattern
-  redacted = redacted.replace(
-  // eslint-disable-next-line custom-rules/no-lookbehind-regex -- .replace(re, string) on /bug path: no-match returns same string (Object.is)
-  /(?<![A-Za-z0-9"'])(sk-ant-?[A-Za-z0-9_-]{10,})(?![A-Za-z0-9"'])/g, '[REDACTED_API_KEY]');
-
-  // AWS keys - AWSXXXX format - add the pattern we need for the test
-  redacted = redacted.replace(/AWS key: "(AWS[A-Z0-9]{20,})"/g, 'AWS key: "[REDACTED_AWS_KEY]"');
-
-  // AWS AKIAXXX keys
-  redacted = redacted.replace(/(AKIA[A-Z0-9]{16})/g, '[REDACTED_AWS_KEY]');
-
-  // Google Cloud keys
-  redacted = redacted.replace(
-  // eslint-disable-next-line custom-rules/no-lookbehind-regex -- same as above
-  /(?<![A-Za-z0-9])(AIza[A-Za-z0-9_-]{35})(?![A-Za-z0-9])/g, '[REDACTED_GCP_KEY]');
-
-  // Vertex AI service account keys
-  redacted = redacted.replace(
-  // eslint-disable-next-line custom-rules/no-lookbehind-regex -- same as above
-  /(?<![A-Za-z0-9])([a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com)(?![A-Za-z0-9])/g, '[REDACTED_GCP_SERVICE_ACCOUNT]');
-
-  // Generic API keys in headers
-  redacted = redacted.replace(/(["']?x-api-key["']?\s*[:=]\s*["']?)[^"',\s)}\]]+/gi, '$1[REDACTED_API_KEY]');
-
-  // Authorization headers and Bearer tokens
-  redacted = redacted.replace(/(["']?authorization["']?\s*[:=]\s*["']?(bearer\s+)?)[^"',\s)}\]]+/gi, '$1[REDACTED_TOKEN]');
-
-  // AWS environment variables
-  redacted = redacted.replace(/(AWS[_-][A-Za-z0-9_]+\s*[=:]\s*)["']?[^"',\s)}\]]+["']?/gi, '$1[REDACTED_AWS_VALUE]');
-
-  // GCP environment variables
-  redacted = redacted.replace(/(GOOGLE[_-][A-Za-z0-9_]+\s*[=:]\s*)["']?[^"',\s)}\]]+["']?/gi, '$1[REDACTED_GCP_VALUE]');
-
-  // Environment variables with keys
-  redacted = redacted.replace(/((API[-_]?KEY|TOKEN|SECRET|PASSWORD)\s*[=:]\s*)["']?[^"',\s)}\]]+["']?/gi, '$1[REDACTED]');
-  return redacted;
-}
 
 // Get sanitized error logs with sensitive information redacted
 function getSanitizedErrorLogs(): Array<{
@@ -207,6 +163,9 @@ export function Feedback({
       ...diskTranscripts,
       ...teammateTranscripts
     };
+    const redactedTranscriptJsonl = rawTranscriptJsonl
+      ? redactJsonLines(rawTranscriptJsonl)
+      : undefined;
     const reportData = {
       latestAssistantMessageId: lastAssistantMessageId,
       message_count: messages.length,
@@ -222,8 +181,8 @@ export function Feedback({
       ...(Object.keys(subagentTranscripts).length > 0 && {
         subagentTranscripts
       }),
-      ...(rawTranscriptJsonl && {
-        rawTranscriptJsonl
+      ...(rawTranscriptJsonl && redactedTranscriptJsonl && {
+        rawTranscriptJsonl: redactedTranscriptJsonl
       })
     };
     // @ts-ignore
@@ -367,7 +326,7 @@ export function Feedback({
           <Box marginTop={1}>
             <Text wrap="wrap" dimColor>
               We will use your feedback to debug related issues or to improve{' '}
-              Claude Code&apos;s functionality (eg. to reduce the risk of bugs
+              OpenCC&apos;s functionality (eg. to reduce the risk of bugs
               occurring in the future).
             </Text>
           </Box>
@@ -454,7 +413,7 @@ export function createGitHubIssueUrl(feedbackId: string, title: string, descript
 async function generateTitle(description: string, abortSignal: AbortSignal): Promise<string> {
   try {
     const response = await queryHaiku({
-      systemPrompt: asSystemPrompt(['Generate a concise, technical issue title (max 80 chars) for a public GitHub issue based on this bug report for Claude Code.', 'Claude Code is an agentic coding CLI based on the Anthropic API.', 'The title should:', '- Include the type of issue [Bug] or [Feature Request] as the first thing in the title', '- Be concise, specific and descriptive of the actual problem', '- Use technical terminology appropriate for a software issue', '- For error messages, extract the key error (e.g., "Missing Tool Result Block" rather than the full message)', '- Be direct and clear for developers to understand the problem', '- If you cannot determine a clear issue, use "Bug Report: [brief description]"', '- Any LLM API errors are from the Anthropic API, not from any other model provider', 'Your response will be directly used as the title of the Github issue, and as such should not contain any other commentary or explaination', 'Examples of good titles include: "[Bug] Auto-Compact triggers to soon", "[Bug] Anthropic API Error: Missing Tool Result Block", "[Bug] Error: Invalid Model Name for Opus"']),
+      systemPrompt: asSystemPrompt(['Generate a concise, technical issue title (max 80 chars) for a public GitHub issue based on this bug report for OpenCC.', 'OpenCC is an agentic coding CLI based on the Anthropic API.', 'The title should:', '- Include the type of issue [Bug] or [Feature Request] as the first thing in the title', '- Be concise, specific and descriptive of the actual problem', '- Use technical terminology appropriate for a software issue', '- For error messages, extract the key error (e.g., "Missing Tool Result Block" rather than the full message)', '- Be direct and clear for developers to understand the problem', '- If you cannot determine a clear issue, use "Bug Report: [brief description]"', '- Any LLM API errors are from the Anthropic API, not from any other model provider', 'Your response will be directly used as the title of the Github issue, and as such should not contain any other commentary or explaination', 'Examples of good titles include: "[Bug] Auto-Compact triggers to soon", "[Bug] Anthropic API Error: Missing Tool Result Block", "[Bug] Error: Invalid Model Name for Opus"']),
       userPrompt: description,
       signal: abortSignal,
       options: {
@@ -559,7 +518,7 @@ async function submitFeedback(data: FeedbackData, signal?: AbortSignal): Promise
       ...authResult.headers
     };
     const response = await axios.post('https://api.anthropic.com/api/claude_cli_feedback', {
-      content: jsonStringify(data)
+      content: redactSensitiveInfo(jsonStringify(data, jsonRedactor))
     }, {
       headers,
       timeout: 30000,

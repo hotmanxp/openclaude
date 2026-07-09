@@ -565,7 +565,7 @@ export const WebSearchTool = buildTool({
   maxResultSizeChars: 100_000,
   shouldDefer: true,
   async description(input) {
-    return `Open CC wants to search the web for: ${input.query}`
+    return `OpenCC wants to search the web for: ${input.query}`
   },
   userFacingName() {
     return 'Web Search'

@@ -7,7 +7,7 @@ export type PromptArgs = {
 }
 
 /**
- * Build the system prompt that asks Claude to write a workflow script.
+ * Build the system prompt that asks OpenCC to write a workflow script.
  * The generated script is a JS async function that receives `args` (the
  * user's invocation args, pre-parsed to an object) and a set of helper
  * globals for dispatching sub-tasks. Returns the final report string.

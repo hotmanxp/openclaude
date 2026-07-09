@@ -22,8 +22,11 @@ import {
 import {
   addToToolDuration,
   getCodeEditToolDecisionCounter,
+  getReplayIndexBuilder,
   getStatsStore,
 } from '../../bootstrap/state.js'
+import type { QueryActiveToolUse } from '../../utils/queryLifecycle.js'
+import { shouldSkipSessionPersistence } from '../../utils/sessionPersistencePolicy.js'
 import {
   buildCodeEditToolAttributes,
   isCodeEditingTool,
@@ -62,11 +65,16 @@ import type {
 } from '../../types/message.js'
 import { count } from '../../utils/array.js'
 import { createAttachmentMessage } from '../../utils/attachments.js'
+import {
+  getMissingToolResultAbortMessage,
+  shouldCreateUserInterruptionMessage,
+} from '../../utils/abortReasons.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   AbortError,
   errorMessage,
   getErrnoCode,
+  isAbortError,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
@@ -88,6 +96,7 @@ import {
   startSessionActivity,
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
+import { createToolQueryLeaseInput } from './queryActivityLease.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
@@ -138,6 +147,76 @@ export const HOOK_TIMING_DISPLAY_THRESHOLD_MS = 500
 /** Log a debug warning when hooks/permission-decision block for this long. Matches
  * BashTool's PROGRESS_THRESHOLD_MS — the collapsed view feels stuck past this. */
 const SLOW_PHASE_LOG_THRESHOLD_MS = 2000
+
+function getAlreadyAbortedToolResultMessage(reason: unknown): string {
+  if (reason === 'interrupt' || shouldCreateUserInterruptionMessage(reason)) {
+    return CANCEL_MESSAGE
+  }
+  return getMissingToolResultAbortMessage(reason)
+}
+
+export function getReplayModifiedFiles(
+  toolName: string,
+  input: unknown,
+): string[] | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+
+  const record = input as Record<string, unknown>
+  const path =
+    toolName === NOTEBOOK_EDIT_TOOL_NAME
+      ? record.notebook_path
+      : toolName === BASH_TOOL_NAME
+        ? getReplayBashModifiedFile(record)
+      : toolName === FILE_EDIT_TOOL_NAME || toolName === FILE_WRITE_TOOL_NAME
+        ? record.file_path
+        : undefined
+
+  return typeof path === 'string' && path.length > 0 ? [path] : undefined
+}
+
+export function getReplayResultStatusForError(
+  error: unknown,
+): 'error' | 'cancelled' {
+  return isAbortError(error) ? 'cancelled' : 'error'
+}
+
+export function normalizeReplayToolInput<T>(
+  processedInput: T,
+  originalInput: T,
+  backfilledClone: T | null,
+): T {
+  if (
+    backfilledClone &&
+    processedInput !== originalInput &&
+    typeof processedInput === 'object' &&
+    processedInput !== null &&
+    'file_path' in processedInput &&
+    typeof originalInput === 'object' &&
+    originalInput !== null &&
+    'file_path' in originalInput &&
+    (processedInput as Record<string, unknown>).file_path ===
+      (backfilledClone as Record<string, unknown>).file_path
+  ) {
+    return {
+      ...processedInput,
+      file_path: (originalInput as Record<string, unknown>).file_path,
+    } as T
+  }
+
+  return processedInput !== backfilledClone ? processedInput : originalInput
+}
+
+function getReplayBashModifiedFile(
+  input: Record<string, unknown>,
+): unknown {
+  const simulatedSedEdit = input._simulatedSedEdit
+  if (!simulatedSedEdit || typeof simulatedSedEdit !== 'object') {
+    return undefined
+  }
+  return (simulatedSedEdit as Record<string, unknown>).filePath
+}
 
 /**
  * Classify a tool execution error into a telemetry-safe string.
@@ -416,6 +495,9 @@ export async function* runToolUse(
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
+      const abortMessage = getAlreadyAbortedToolResultMessage(
+        toolUseContext.abortController.signal.reason,
+      )
       logEvent('tengu_tool_use_cancelled', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         toolUseID:
@@ -444,11 +526,11 @@ export async function* runToolUse(
         ),
       })
       const content = createToolResultStopMessage(toolUse.id)
-      content.content = withMemoryCorrectionHint(CANCEL_MESSAGE)
+      content.content = withMemoryCorrectionHint(abortMessage)
       yield {
         message: createUserMessage({
           content: [content],
-          toolUseResult: CANCEL_MESSAGE,
+          toolUseResult: abortMessage,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       }
@@ -677,7 +759,7 @@ export function normalizeToolInputForValidation(
   }
 }
 
-async function checkPermissionsAndCallTool(
+export async function checkPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
   input: { [key: string]: boolean | string | number },
@@ -766,6 +848,33 @@ async function checkPermissionsAndCallTool(
     ]
   }
 
+  // Lifecycle tracking — register this tool use with the queryLifecycle
+  // tracker so abort/cancel/discard can find and end it. Schema validation
+  // has already passed at this point, so we know it's a real tool use.
+  const lifecycleStartTime = Date.now()
+  const queryLifecycle = toolUseContext.queryLifecycle
+  if (queryLifecycle) {
+    const lifecycleBashTimeoutMs =
+      tool.name === BASH_TOOL_NAME &&
+      parsedInput.success &&
+      typeof parsedInput.data === 'object' &&
+      parsedInput.data !== null &&
+      'timeout' in parsedInput.data
+        ? (parsedInput.data as { timeout?: number }).timeout
+        : undefined
+    const lifecycleToolUse: QueryActiveToolUse = {
+      toolUseId: toolUseID,
+      toolName: tool.name,
+      startedAt: lifecycleStartTime,
+      ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+      ...(lifecycleBashTimeoutMs !== undefined && {
+        timeoutMs: lifecycleBashTimeoutMs,
+      }),
+    }
+    queryLifecycle.startToolUse(lifecycleToolUse)
+  }
+
+  try {
   // Validate input values. Each tool has its own validation logic
   const isValidCall = await tool.validateInput?.(
     parsedInput.data,
@@ -1085,6 +1194,41 @@ async function checkPermissionsAndCallTool(
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
 
+    // Record the deny decision on the active queryLifecycle entry so observers
+    // (abort/cancel/discard telemetry) see the final decision outcome, not the
+    // pre-permission snapshot. The endToolUse in the finally block will clear
+    // the entry shortly after.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      queryLifecycle.updateToolUse({
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        startedAt: lifecycleStartTime,
+        ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+      })
+    }
+
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        const replayBuilder = getReplayIndexBuilder()
+        replayBuilder.trackToolStart(
+          toolUseID,
+          tool.name,
+          (parsedInput.success ? parsedInput.data : input) as Record<
+            string,
+            unknown
+          >,
+        )
+        replayBuilder.trackToolEnd(
+          toolUseID,
+          tool.name,
+          'permission_denied',
+          permissionDecision.message,
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
+
     logEvent('tengu_tool_use_can_use_tool_rejected', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1215,6 +1359,30 @@ async function checkPermissionsAndCallTool(
   // (Don't overwrite if undefined - processedInput may have been modified by passthrough hooks)
   if (permissionDecision.updatedInput !== undefined) {
     processedInput = permissionDecision.updatedInput
+
+    // Reflect permission-updated metadata (e.g. bash timeoutMs) in the
+    // active queryLifecycle entry so abort/cancel/discard observe the
+    // post-permission state, not the pre-permission snapshot captured at
+    // startToolUse time. Skip when the tool has already been ended (e.g.
+    // by an earlier discard/abort path) so we don't resurrect its entry.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      const updatedBashTimeoutMs =
+        tool.name === BASH_TOOL_NAME &&
+        typeof processedInput === 'object' &&
+        processedInput !== null &&
+        'timeout' in processedInput
+          ? (processedInput as { timeout?: number }).timeout
+          : undefined
+      queryLifecycle.updateToolUse({
+        toolUseId: toolUseID,
+        toolName: tool.name,
+        startedAt: lifecycleStartTime,
+        ...(tool.name === BASH_TOOL_NAME && { isBash: true }),
+        ...(updatedBashTimeoutMs !== undefined && {
+          timeoutMs: updatedBashTimeoutMs,
+        }),
+      })
+    }
   }
 
   // Prepare tool parameters for logging in tool_result event.
@@ -1264,6 +1432,16 @@ async function checkPermissionsAndCallTool(
   const startTime = Date.now()
 
   startSessionActivity('tool_exec')
+  const queryActivityLease = toolUseContext.queryActivity?.acquireLease(
+    createToolQueryLeaseInput(tool.name, toolUseID, processedInput) ?? {
+      owner: 'tool',
+      id: toolUseID,
+      description: tool.name,
+    },
+  )
+  toolUseContext.queryActivity?.registerActivity(
+    `tool:${tool.name}:start`,
+  )
   // If processedInput still points at the backfill clone, no hook/permission
   // replaced it — pass the pre-backfill callInput so call() sees the model's
   // original field values. Otherwise converge on the hook-supplied input.
@@ -1289,6 +1467,17 @@ async function checkPermissionsAndCallTool(
   } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
+  if (!shouldSkipSessionPersistence()) {
+    try {
+      getReplayIndexBuilder().trackToolStart(
+        toolUseID,
+        tool.name,
+        callInput as Record<string, unknown>,
+      )
+    } catch {
+      // Ignore errors in replay tracking
+    }
+  }
   try {
     const result = await tool.call(
       callInput,
@@ -1305,10 +1494,15 @@ async function checkPermissionsAndCallTool(
           toolUseID: progress.toolUseID,
           data: progress.data,
         })
+        toolUseContext.queryActivity?.registerActivity(
+          `tool:${tool.name}:progress`,
+        )
       },
     )
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+    const replayResultPreview =
+      typeof result.data === 'string' ? result.data.slice(0, 200) : undefined
 
     // Log tool content/output as span event if enabled
     if (result.data && typeof result.data === 'object') {
@@ -1672,10 +1866,37 @@ async function checkPermissionsAndCallTool(
     for (const hookResult of hookResults) {
       resultingMessages.push(hookResult)
     }
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        getReplayIndexBuilder().trackToolEnd(
+          toolUseID,
+          tool.name,
+          'success',
+          replayResultPreview,
+          getReplayModifiedFiles(tool.name, callInput),
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
     return resultingMessages
   } catch (error) {
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+
+    if (!shouldSkipSessionPersistence()) {
+      try {
+        const errorMsg = errorMessage(error)
+        getReplayIndexBuilder().trackToolEnd(
+          toolUseID,
+          tool.name,
+          getReplayResultStatusForError(error),
+          errorMsg.slice(0, 200),
+        )
+      } catch {
+        // Ignore errors in replay tracking
+      }
+    }
 
     endToolExecutionSpan({
       success: false,
@@ -1833,10 +2054,23 @@ async function checkPermissionsAndCallTool(
       ...hookMessages,
     ]
   } finally {
-    stopSessionActivity('tool_exec')
-    // Clean up decision info after logging
-    if (decisionInfo) {
-      toolUseContext.toolDecisions?.delete(toolUseID)
+    try {
+      queryActivityLease?.release()
+      toolUseContext.queryActivity?.registerActivity(`tool:${tool.name}:end`)
+    } finally {
+      stopSessionActivity('tool_exec')
+      // Clean up decision info after logging
+      if (decisionInfo) {
+        toolUseContext.toolDecisions?.delete(toolUseID)
+      }
+    }
+  }
+  } finally {
+    // Guard with isActiveToolUse so an endToolUse that already happened
+    // earlier (e.g. via discard/abort or a permission callback) doesn't
+    // get re-fired here and double-count in observers.
+    if (queryLifecycle?.isActiveToolUse(toolUseID)) {
+      queryLifecycle.endToolUse(toolUseID)
     }
   }
 }

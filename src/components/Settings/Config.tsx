@@ -27,6 +27,7 @@ import { Dialog } from '../design-system/Dialog.js';
 import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
+import { AutoContinueTimeoutPicker } from '../AutoContinueTimeoutPicker.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -84,7 +85,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'CompactModel' | 'ExternalIncludes' | 'OutputStyle' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
+type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'CompactModel' | 'ExternalIncludes' | 'OutputStyle' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates' | 'AutoContinueTimeout';
 export function Config({
   onClose,
   context,
@@ -107,6 +108,9 @@ export function Config({
   const initialOutputStyle = React.useRef(currentOutputStyle);
   const [currentLanguage, setCurrentLanguage] = useState<string | undefined>(settingsData?.language);
   const initialLanguage = React.useRef(currentLanguage);
+  const [currentAutoContinueTimeoutSec, setCurrentAutoContinueTimeoutSec] = useState<string>(
+    settingsData?.questionAutoContinueTimeoutSec ? String(settingsData.questionAutoContinueTimeoutSec) : '0',
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isSearchMode, setIsSearchMode] = useState(true);
@@ -740,7 +744,7 @@ export function Config({
     }
   }, {
     id: 'agentPushNotifEnabled',
-    label: 'Claude 决定时推送',
+    label: 'OpenCC 决定时推送',
     value: globalConfig.agentPushNotifEnabled ?? false,
     type: 'boolean' as const,
     onChange(agentPushNotifEnabled: boolean) {
@@ -804,6 +808,12 @@ export function Config({
     value: currentLanguage ?? 'Default (English)',
     type: 'managedEnum' as const,
     onChange: () => {} // handled by LanguagePicker submenu
+  }, {
+    id: 'questionAutoContinueTimeoutSec',
+    label: '问题自动续答倒计时',
+    value: currentAutoContinueTimeoutSec === '0' ? '已禁用' : `${currentAutoContinueTimeoutSec}s`,
+    type: 'managedEnum' as const,
+    onChange: () => {} // handled by AutoContinueTimeoutPicker submenu
   }, {
     id: 'editorMode',
     label: '编辑器模式',
@@ -918,7 +928,7 @@ export function Config({
     }
   }] : []), {
     id: 'claudeInChromeDefaultEnabled',
-    label: '默认启用 Chrome 中的 Claude',
+    label: '默认启用 Chrome 中的 OpenCC',
     value: globalConfig.claudeInChromeDefaultEnabled ?? true,
     type: 'boolean' as const,
     onChange(enabled_5: boolean) {
@@ -1206,7 +1216,7 @@ export function Config({
     });
     // Check for API key changes
     // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
-    // processes but ignored by Claude Code itself (see auth.ts).
+    // processes but ignored by OpenCC itself (see auth.ts).
     const effectiveApiKey = isRunningOnHomespace() ? undefined : process.env.ANTHROPIC_API_KEY;
     const initialUsingCustomKey = Boolean(effectiveApiKey && initialConfig.current.customApiKeyResponses?.approved?.includes(normalizeApiKeyForConfig(effectiveApiKey)));
     const currentUsingCustomKey = Boolean(effectiveApiKey && globalConfig.customApiKeyResponses?.approved?.includes(normalizeApiKeyForConfig(effectiveApiKey)));
@@ -1405,7 +1415,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'model' || setting_0.id === 'compactModel' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'language') {
+    if (setting_0.id === 'theme' || setting_0.id === 'model' || setting_0.id === 'compactModel' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'language' || setting_0.id === 'questionAutoContinueTimeoutSec') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1435,6 +1445,10 @@ export function Config({
           return;
         case 'language':
           setShowSubmenu('Language');
+          setTabsHidden(true);
+          return;
+        case 'questionAutoContinueTimeoutSec':
+          setShowSubmenu('AutoContinueTimeout');
           setTabsHidden(true);
           return;
       }
@@ -1721,6 +1735,41 @@ export function Config({
           language: (language ?? 'default') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           source: 'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
+      }} onCancel={() => {
+        setShowSubmenu(null);
+        setTabsHidden(false);
+      }} />
+          <Text dimColor>
+            <Byline>
+              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
+              <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+            </Byline>
+          </Text>
+        </> : showSubmenu === 'AutoContinueTimeout' ? <>
+          <AutoContinueTimeoutPicker initialValueSec={currentAutoContinueTimeoutSec} onComplete={valueSec => {
+        isDirty.current = true;
+        setCurrentAutoContinueTimeoutSec(valueSec);
+        updateSettingsForSource('userSettings', {
+          questionAutoContinueTimeoutSec: valueSec
+        });
+        setChanges(prev_11 => {
+          if ('questionAutoContinueTimeoutSec' in prev_11) {
+            const {
+              questionAutoContinueTimeoutSec: _q,
+              ...rest
+            } = prev_11;
+            return {
+              ...rest,
+              questionAutoContinueTimeoutSec: valueSec
+            };
+          }
+          return {
+            ...prev_11,
+            questionAutoContinueTimeoutSec: valueSec
+          };
+        });
+        setShowSubmenu(null);
+        setTabsHidden(false);
       }} onCancel={() => {
         setShowSubmenu(null);
         setTabsHidden(false);

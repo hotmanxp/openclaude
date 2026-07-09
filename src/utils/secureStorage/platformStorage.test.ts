@@ -127,7 +127,7 @@ describe("Secure Storage Platform Implementations", () => {
       const otherName = getSecureStorageServiceName(CREDENTIALS_SERVICE_SUFFIX);
 
       expect(otherName).not.toBe(defaultName);
-      expect(otherName).toContain("Open CC");
+      expect(otherName).toContain("OpenCC");
       expect(otherName).toContain(CREDENTIALS_SERVICE_SUFFIX);
     });
 

@@ -6,6 +6,7 @@ import {
   getCommandName,
 } from '../../commands.js'
 import type { SuggestionItem } from '../../components/PromptInput/PromptInputFooterSuggestions.js'
+import { STACKED_SKILL_LIMIT } from '../processUserInput/processStackedSkillInvocation.js'
 import { getSkillUsageScore } from './skillUsageTracking.js'
 
 // Treat these characters as word separators for command search
@@ -158,6 +159,53 @@ export function findMidInputSlashCommand(
   if (cursorOffset > slashPos + 1 + fullCommand.length) {
     return null
   }
+
+  return {
+    token: '/' + fullCommand,
+    startPos: slashPos,
+    partialCommand: fullCommand,
+  }
+}
+
+/**
+ * Like findMidInputSlashCommand but for the SECOND leading slash token.
+ * Triggers only when input starts with "/" AND has at least one " /" boundary
+ * after the first token. Caps at STACKED_SKILL_LIMIT (5) leading skills to stay
+ * consistent with the v2.1.201 runtime stack cap.
+ *
+ * @param input Full input (must start with "/")
+ * @param cursorOffset Cursor position
+ * @returns MidInputSlashCommand for the second token, or null
+ */
+export function findStackedMidInputSlashCommand(
+  input: string,
+  cursorOffset: number,
+): MidInputSlashCommand | null {
+  if (!input.startsWith('/')) return null
+
+  // Count existing leading slash tokens (groups of "/cmd" preceded by whitespace)
+  // Cap at STACKED_SKILL_LIMIT (5) to avoid ghost for the 6th stack slot.
+  const leadingCount = (input.match(/\s\/[a-zA-Z0-9_:-]/g) ?? []).length
+  if (leadingCount >= STACKED_SKILL_LIMIT) return null
+
+  // Find LAST " /<partial>" pattern; cursor must be within the token.
+  const re = /\s\/([a-zA-Z0-9_:-]*)/g
+  let lastMatch: { slashPos: number; partial: string } | null = null
+  let m: RegExpExecArray | null
+  while ((m = re.exec(input)) !== null) {
+    const slashPos = m.index + 1
+    const partial = m[1] ?? ''
+    if (cursorOffset < slashPos) continue
+    if (cursorOffset > slashPos + 1 + partial.length) continue
+    lastMatch = { slashPos, partial }
+  }
+  if (!lastMatch) return null
+
+  const { slashPos } = lastMatch
+  const textAfterSlash = input.slice(slashPos + 1)
+  const commandMatch = textAfterSlash.match(/^[a-zA-Z0-9_:-]*/)
+  const fullCommand = commandMatch ? commandMatch[0] : ''
+  if (cursorOffset > slashPos + 1 + fullCommand.length) return null
 
   return {
     token: '/' + fullCommand,

@@ -898,7 +898,7 @@ export type ConfigScope = "local" | "user" | "project"
 
 export type SdkBeta = "context-1m-2025-08-07"
 
-/** Open CC decides when and how much to think (Opus 4.6+). */
+/** OpenCC decides when and how much to think (Opus 4.6+). */
 export type ThinkingAdaptive = {
   type: "adaptive"
 }
@@ -914,7 +914,7 @@ export type ThinkingDisabled = {
   type: "disabled"
 }
 
-/** Controls Open CC's thinking/reasoning behavior. When set, takes precedence over the deprecated maxThinkingTokens. */
+/** Controls OpenCC's thinking/reasoning behavior. When set, takes precedence over the deprecated maxThinkingTokens. */
 export type ThinkingConfig = SDKUsage2
 
 export type McpStdioServerConfig = SDKUsage3

@@ -19,7 +19,7 @@
  *   - Pure functions, no globals: callers pass the provider explicitly so
  *     that tests, background agents and teammates get consistent results
  *     even when the process-level provider flag differs.
- *   - Honest N/A: Copilot (non-Claude) and Ollama do not expose cache data
+ *   - Honest N/A: Copilot (non-OpenCC) and Ollama do not expose cache data
  *     at all. Returning 0 would lie and corrupt aggregate hit-rate, so we
  *     return `supported: false` and let the display decide how to render.
  *   - `hitRate` is null whenever there is no input to compare against
@@ -43,7 +43,7 @@
  *                       usage.prompt_cache_miss_tokens
  *   - Gemini:           usage.cached_content_token_count,
  *                       usage.prompt_token_count
- *   - Copilot (non-Claude) / Ollama: not reported → supported=false
+ *   - Copilot (non-OpenCC) / Ollama: not reported → supported=false
  */
 import type { APIProvider } from '../../utils/model/providers.js'
 
@@ -431,7 +431,7 @@ export function extractCacheMetrics(
   const read = asNumber(u.cache_read_input_tokens)
   const created = asNumber(u.cache_creation_input_tokens)
   const fresh = asNumber(u.input_tokens)
-  // Copilot vanilla (no Claude) and Ollama don't expose cache fields at
+  // Copilot vanilla (no OpenCC) and Ollama don't expose cache fields at
   // all as a provider-identity matter. These are explicit provider
   // selections (via CLAUDE_CODE_USE_GITHUB and the Ollama base-URL
   // default port), so we can hard-wire `supported: false` and let the

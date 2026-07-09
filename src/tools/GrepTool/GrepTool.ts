@@ -444,7 +444,7 @@ export const GrepTool = buildTool({
     // The timeout is handled by ripgrep itself via execFile timeout option
     // We don't use AbortController for timeout to avoid interrupting the agent loop
     // If ripgrep times out, it throws RipgrepTimeoutError which propagates up
-    // so Open CC knows the search didn't complete (rather than thinking there were no matches)
+    // so OpenCC knows the search didn't complete (rather than thinking there were no matches)
     const results = await ripGrep(args, absolutePath, abortController.signal)
 
     if (output_mode === 'content') {

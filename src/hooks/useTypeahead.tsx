@@ -22,7 +22,7 @@ import { generateProgressiveArgumentHint, parseArguments } from '../utils/argume
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
-import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
+import { applyCommandSuggestion, findMidInputSlashCommand, findStackedMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
 import { getDirectoryCompletions, getPathCompletions, isPathLikeToken } from '../utils/suggestions/directoryCompletion.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
@@ -402,6 +402,18 @@ export function useTypeahead({
   // that occurs when using useState + useEffect (effect runs after render).
   const syncPromptGhostText = useMemo((): InlineGhostText | undefined => {
     if (mode !== 'prompt' || suppressSuggestions) return undefined;
+    // NEW 2026-07-05: stacked-skill ghost (second-token after leading /cmd)
+    const stackedMid = findStackedMidInputSlashCommand(input, cursorOffset);
+    if (stackedMid) {
+      const match = getBestCommandMatch(stackedMid.partialCommand, commands);
+      if (match) {
+        return {
+          text: match.suffix,
+          fullCommand: match.fullCommand,
+          insertPosition: stackedMid.startPos + 1 + stackedMid.partialCommand.length,
+        };
+      }
+    }
     const midInputCommand = findMidInputSlashCommand(input, cursorOffset);
     if (!midInputCommand) return undefined;
     const match = getBestCommandMatch(midInputCommand.partialCommand, commands);
@@ -550,6 +562,24 @@ export function useTypeahead({
         const match = getBestCommandMatch(midInputCommand.partialCommand, commands);
         if (match) {
           // Clear dropdown suggestions when showing ghost text
+          setSuggestionsState(() => ({
+            commandArgumentHint: undefined,
+            suggestions: [],
+            selectedSuggestion: -1
+          }));
+          setSuggestionType('none');
+          setMaxColumnWidth(undefined);
+          return;
+        }
+      }
+      // NEW 2026-07-05: stacked mid-input (e.g. "/skill-a /bar<caret>") also
+      // produces a ghost completion via syncPromptGhostText. Without this
+      // block the dropdown would still render /skill-a candidates beneath
+      // the ghost for the second token.
+      const stackedMid = findStackedMidInputSlashCommand(value, effectiveCursorOffset);
+      if (stackedMid) {
+        const match = getBestCommandMatch(stackedMid.partialCommand, commands);
+        if (match) {
           setSuggestionsState(() => ({
             commandArgumentHint: undefined,
             suggestions: [],
@@ -929,6 +959,21 @@ export function useTypeahead({
         const after = input.slice(midInputCommand.startPos + midInputCommand.token.length);
         const newInput = before + '/' + effectiveGhostText.fullCommand + ' ' + after;
         const newCursorOffset = midInputCommand.startPos + 1 + effectiveGhostText.fullCommand.length + 1;
+        onInputChange(newInput);
+        setCursorOffset(newCursorOffset);
+        return;
+      }
+
+      // NEW 2026-07-05: stacked mid-input (e.g. "/skill-a /bar<caret>") — accept ghost
+      // for the SECOND leading token. Without this branch, Tab falls through to
+      // "select suggestion" instead of accepting the ghost completion.
+      const stackedMid = findStackedMidInputSlashCommand(input, cursorOffset);
+      if (stackedMid) {
+        const before = input.slice(0, stackedMid.startPos);
+        const after = input.slice(stackedMid.startPos + stackedMid.token.length);
+        const replacement = '/' + effectiveGhostText.fullCommand;
+        const newInput = before + replacement + after;
+        const newCursorOffset = stackedMid.startPos + replacement.length;
         onInputChange(newInput);
         setCursorOffset(newCursorOffset);
         return;
