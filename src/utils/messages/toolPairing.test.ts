@@ -5,9 +5,11 @@ import {
   createAssistantMessage,
   createUserMessage,
   ensureToolResultPairing,
+} from '../messages.js'
+import {
   selectToolPairSafeMessageRange,
   validateToolResultPairing,
-} from './messages.js'
+} from './toolPairing.js'
 
 function assistantWithToolUses(...ids: string[]): AssistantMessage {
   return createAssistantMessage({
