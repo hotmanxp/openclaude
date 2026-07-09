@@ -73,7 +73,7 @@
 - 使用现有 `useTerminalSize()` hook (来自 `src/hooks/useTerminalSize.ts`)
 - 阈值常量: `COMPACT_LAYOUT_THRESHOLD = 80`
 - 当 `terminalSize.columns >= 80` → 宽屏; 否则 → 窄屏
-- terminalSize 不可用时 (单元测试无 context): 抛错 (hook 自身已处理, 见 hook 实现)
+- 单元测试用 `mock.module('.../useTerminalSize.js', ...)` mock 整个 hook 返回固定 `{ columns: N, rows: M }`; 不依赖 TerminalSizeContext 兜底 (hook 真实行为是 throw, 走 mock 路径)
 
 ---
 
@@ -96,21 +96,27 @@ type CompactPhasesBarProps = {
 **渲染结构**:
 - 整个 `<Box flexDirection="column">` 无边框
 - 不渲染 `<Text bold>Phases</Text>` 标题 (省略, 节省垂直空间)
+- 不显示 `phaseDetails.detail` 副标题 (窄屏省垂直空间, 详情文案仅在宽屏 `PhasesPane` 显示)
 - 每个 phase 一行 `<Text inverse={isSelected}>`:
-  - 状态符号: `✓` (全部 done 且无 failed) / `✗` (有 failed) / `›` (focused && isSelected) / ` ` (其他)
+  - **状态符号** (始终显示, 与 focus 无关):
+    - `✓` (绿色) — `total > 0 && done === total && failed === 0` (全部完成无失败)
+    - `✗` (红色) — `failed > 0` (任一 agent 失败)
+    - ` ` (空格) — 其他 (进行中 / pending)
+  - **焦点指示** (仅当 `focused && i === selectedIdx`):
+    - 整行 `inverse` 背景
+    - 编号用 cyan 颜色 (`<Text color="cyan">`)
   - 编号: `${i + 1}.`
   - 标题: 截断到 `Math.max(8, width - 16)` 字符 + `…`
   - 进度: `${done}/${total}` (仅当 total > 0)
-  - 颜色: 符号颜色 = `allDone ? green : isCurrent ? cyan : isSelected && focused ? white : undefined`
 
-**视觉示例** (width=60):
+**视觉示例** (width=60, focus 在 Phase 3):
 ```
-✓ 1. Phase 1: Build (serial)         1/1
-✓ 2. Phase 2: Static checks (3…       3/3
-› 3. Phase 3: TUI verification (7…    5/7
+  ✓ 1. Phase 1: Build (serial)         1/1
+  ✓ 2. Phase 2: Static checks (3…       3/3
+ › 3. Phase 3: TUI verification (7…    5/7   (整行 inverse)
 ```
 
-**截断规则**: 标题 `Math.max(8, width - 16)` (至少 8 字符可见, 留 16 字符给 `✓ 1. ...  1/1` 装饰)
+**截断规则**: 标题 `Math.max(8, width - 16)` (至少 8 字符可见, 留 16 字符给 `✓ N. ...  1/1` 装饰)
 
 ---
 
