@@ -52,6 +52,7 @@ import type { PermissionRule, PermissionRuleSource } from './PermissionRule.js'
 import { createReadRuleSuggestion } from './PermissionUpdate.js'
 import type { PermissionUpdate } from './PermissionUpdateSchema.js'
 import { getRuleByContentsForToolName } from './permissions.js'
+import { isPermissiveSafety } from './safetyLevel.js'
 
 declare const MACRO: { VERSION: string }
 
@@ -526,7 +527,10 @@ export function isOpenClaudeCommitMessagePath(absolutePath: string): boolean {
  * - Shell configuration files (to prevent shell startup script manipulation)
  * - UNC paths (to prevent network file access and WebDAV attacks)
  */
-function isDangerousFilePathToAutoEdit(path: string): boolean {
+function isDangerousFilePathToAutoEdit(
+  path: string,
+  { skipConfigFileList = false }: { skipConfigFileList?: boolean } = {},
+): boolean {
   const absolutePath = expandPath(path)
   const pathSegments = absolutePath.split(sep)
   const fileName = pathSegments.at(-1)
@@ -573,7 +577,7 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
   }
 
   // Check for dangerous configuration files (case-insensitive)
-  if (fileName) {
+  if (!skipConfigFileList && fileName) {
     const normalizedFileName = normalizeCaseForComparison(fileName)
     if (
       (DANGEROUS_FILES as readonly string[]).some(
@@ -750,9 +754,13 @@ export function checkPathSafetyForAutoEdit(
     }
   }
 
-  // Check for dangerous files on all paths
+  // Check for dangerous files on all paths. In permissive safety mode
+  // (OPENCC_SAFETY_LEVEL=permissive) we skip only the filename list that
+  // can prompt on routine edits like .gitmodules, shell rc files, or .mcp.json.
+  // Directory, UNC, symlink-resolved, and Windows path guards remain active.
+  const skipConfigFileList = isPermissiveSafety()
   for (const pathToCheck of pathsToCheck) {
-    if (isDangerousFilePathToAutoEdit(pathToCheck)) {
+    if (isDangerousFilePathToAutoEdit(pathToCheck, { skipConfigFileList })) {
       return {
         safe: false,
         message: `${PRODUCT_DISPLAY_NAME} requested permissions to edit ${path} which is a sensitive file.`,

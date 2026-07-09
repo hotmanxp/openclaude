@@ -471,6 +471,28 @@ addition to the `CLAUDE_CODE_OPENAI_CONTEXT_WINDOWS` /
   metadata (a known catalog model keeps its catalog limit unless you set an
   *exact* env override for it).
 
+## Safety strictness
+
+OpenCC runs several "safety" checks: a model-level refusal directive, bash
+command-injection validation, and sensitive-file / auto-edit guards. These are
+conservative by design, but a few of them can surface as refusals or approval
+prompts for entirely benign, routine coding tasks (e.g. editing `.gitmodules`,
+running a build script that contains `$(date)`, or writing a CTF port scanner).
+See [issue #1616](https://github.com/Gitlawb/openclaude/issues/1616).
+
+Set `OPENCC_SAFETY_LEVEL` to dial strictness without changing behavior for
+everyone:
+
+| Value | Behavior |
+|-------|----------|
+| `strict` | Current/default-equivalent non-permissive behavior. |
+| `balanced` | Default. Same behavior as `strict`. |
+| `permissive` | Opt-in mode for users who prefer fewer false-positive stops. It bypasses the legacy bash command-injection validation path entirely, keeps ordinary interpreter allow-rules (`Bash(python:*)`, `Bash(npm run:*)`, …) when entering auto mode, and skips prompts for routine edits to filenames on the broad sensitive-file list. Dangerous directory, Windows-path, symlink-resolved path, and UNC guards remain active. The model-level prompt is not weakened by this flag. |
+
+```bash
+export OPENCC_SAFETY_LEVEL=permissive   # relax benign-task false positives
+```
+
 ## Runtime Hardening
 
 Use these commands to validate your setup and catch mistakes early:

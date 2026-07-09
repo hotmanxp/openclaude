@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, mock, test } from 'bun:test'
 import {
   handleInteractivePermission,
   type InteractivePermissionParams,
@@ -25,8 +25,8 @@ function setup(opts?: {
 }) {
   // Plain (non-idempotent) spy: a double-call fails the exactly-once assertions,
   // so the handler can't lean on QueryGuard's internal idempotence.
-  const resume = vi.fn()
-  const beginUserInteraction = vi.fn(() => resume)
+  const resume = mock()
+  const beginUserInteraction = mock(() => resume)
   let queueItem: QueueItem | undefined
 
   const abortController = new AbortController()
@@ -39,8 +39,8 @@ function setup(opts?: {
     toolUseID: 'tu-1',
     toolUseContext: {
       queryActivity: {
-        registerActivity: vi.fn(),
-        acquireLease: vi.fn(() => ({ id: '', release() {} })),
+        registerActivity: mock(),
+        acquireLease: mock(() => ({ id: '', release() {} })),
         beginUserInteraction,
       },
       abortController,
@@ -49,25 +49,25 @@ function setup(opts?: {
         mcp: { clients: [] },
       }),
     },
-    pushToQueue: vi.fn((item: QueueItem) => {
+    pushToQueue: mock((item: QueueItem) => {
       if (opts?.throwOnPush) throw new Error('setup boom')
       queueItem = item
     }),
-    removeFromQueue: vi.fn(),
-    updateQueueItem: vi.fn(),
-    logDecision: vi.fn(),
-    logCancelled: vi.fn(),
-    handleUserAllow: vi.fn(async () => ({ behavior: 'allow' })),
-    cancelAndAbort: vi.fn(() => ({ behavior: 'deny' })),
-    buildAllow: vi.fn((input: Record<string, unknown>) => ({
+    removeFromQueue: mock(),
+    updateQueueItem: mock(),
+    logDecision: mock(),
+    logCancelled: mock(),
+    handleUserAllow: mock(async () => ({ behavior: 'allow' })),
+    cancelAndAbort: mock(() => ({ behavior: 'deny' })),
+    buildAllow: mock((input: Record<string, unknown>) => ({
       behavior: 'allow',
       updatedInput: input,
     })),
-    persistPermissions: vi.fn(),
-    runHooks: vi.fn(async () => null),
+    persistPermissions: mock(),
+    runHooks: mock(async () => null),
   }
 
-  const resolve = vi.fn()
+  const resolve = mock()
   const params = {
     ctx,
     description: 'desc',
@@ -135,7 +135,7 @@ describe('handleInteractivePermission watchdog suspension', () => {
   test('resumes before awaiting post-approval async work', () => {
     const { ctx, getQueueItem, resume } = setup()
     let releaseAllow: (() => void) | undefined
-    ctx.handleUserAllow = vi.fn(
+    ctx.handleUserAllow = mock(
       () =>
         new Promise(res => {
           releaseAllow = () => res({ behavior: 'allow' })
@@ -148,7 +148,7 @@ describe('handleInteractivePermission watchdog suspension', () => {
 
   test('resumes even when allow processing throws', async () => {
     const { ctx, getQueueItem, resume } = setup()
-    ctx.handleUserAllow = vi.fn(async () => {
+    ctx.handleUserAllow = mock(async () => {
       throw new Error('persist failed')
     })
     await expect(getQueueItem().onAllow({}, [])).rejects.toThrow('persist failed')
@@ -176,10 +176,10 @@ describe('handleInteractivePermission watchdog suspension', () => {
 
   test('cancels the remote bridge prompt on external abort', () => {
     const bridge = {
-      sendRequest: vi.fn(),
-      onResponse: vi.fn(() => () => {}),
-      cancelRequest: vi.fn(),
-      sendResponse: vi.fn(),
+      sendRequest: mock(),
+      onResponse: mock(() => () => {}),
+      cancelRequest: mock(),
+      sendResponse: mock(),
     }
     const { abortController } = setup({ bridge })
     abortController.abort()
