@@ -74,7 +74,7 @@ import type {
 import { isAdvisorBlock } from './advisor.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { count } from './array.js'
-import { isEnvTruthy, runtimeFeature } from './envUtils.js'
+import { isEnvTruthy } from './envUtils.js'
 import {
   type Attachment,
   type HookAttachment,
@@ -163,6 +163,14 @@ import {
 import { escapeRegExp } from './stringUtils.js'
 import { isTodoV2Enabled } from './tasks.js'
 import {
+  CANCEL_MESSAGE,
+  createUserMessage,
+  INTERRUPT_MESSAGE,
+  INTERRUPT_MESSAGE_FOR_TOOL_USE,
+  isSyntheticApiErrorMessage,
+  REJECT_MESSAGE,
+} from './messages/factories.js'
+import {
   formatToolResultPairingIssue,
   validateToolResultPairing,
   type ToolResultPairingValidationContext,
@@ -211,13 +219,6 @@ export function deriveShortMessageId(uuid: string): string {
   return parseInt(hex, 16).toString(36).slice(0, 6)
 }
 
-export const INTERRUPT_MESSAGE = '[Request interrupted by user]'
-export const INTERRUPT_MESSAGE_FOR_TOOL_USE =
-  '[Request interrupted by user for tool use]'
-export const CANCEL_MESSAGE =
-  "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed."
-export const REJECT_MESSAGE =
-  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."
 export const REJECT_MESSAGE_WITH_REASON_PREFIX =
   "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n"
 export const SUBAGENT_REJECT_MESSAGE =
@@ -244,8 +245,6 @@ export function AUTO_REJECT_MESSAGE(toolName: string): string {
 export function DONT_ASK_REJECT_MESSAGE(toolName: string): string {
   return `Permission to use ${toolName} has been denied because OpenCC is running in don't ask mode. ${DENIAL_WORKAROUND_GUIDANCE}`
 }
-export const NO_RESPONSE_REQUESTED = 'No response requested.'
-
 // Synthetic tool_result content inserted by ensureToolResultPairing when a
 // tool_use block has no matching tool_result. Exported so HFI submission can
 // reject any payload containing it — placeholder satisfies pairing structurally
@@ -304,346 +303,28 @@ export function buildClassifierUnavailableMessage(
   )
 }
 
-export const SYNTHETIC_MODEL = '<synthetic>'
-
-export const SYNTHETIC_MESSAGES = new Set([
+export {
+  CANCEL_MESSAGE,
   INTERRUPT_MESSAGE,
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
-  CANCEL_MESSAGE,
-  REJECT_MESSAGE,
   NO_RESPONSE_REQUESTED,
-])
-
-export function isSyntheticMessage(message: Message): boolean {
-  return (
-    message.type !== 'progress' &&
-    message.type !== 'attachment' &&
-    message.type !== 'system' &&
-    Array.isArray(message.message.content) &&
-    message.message.content[0]?.type === 'text' &&
-    SYNTHETIC_MESSAGES.has(message.message.content[0].text)
-  )
-}
-
-function isSyntheticApiErrorMessage(
-  message: Message,
-): message is AssistantMessage & { isApiErrorMessage: true } {
-  return (
-    message.type === 'assistant' &&
-    message.isApiErrorMessage === true &&
-    message.message.model === SYNTHETIC_MODEL
-  )
-}
-
-export function getLastAssistantMessage(
-  messages: Message[],
-): AssistantMessage | undefined {
-  // findLast exits early from the end — much faster than filter + last for
-  // large message arrays (called on every REPL render via useFeedbackSurvey).
-  return messages.findLast(
-    (msg): msg is AssistantMessage => msg.type === 'assistant',
-  )
-}
-
-export function hasToolCallsInLastAssistantTurn(messages: Message[]): boolean {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i]
-    if (message && message.type === 'assistant') {
-      const assistantMessage = message as AssistantMessage
-      const content = assistantMessage.message.content
-      if (Array.isArray(content)) {
-        return content.some(block => block.type === 'tool_use')
-      }
-    }
-  }
-  return false
-}
-
-function baseCreateAssistantMessage({
-  content,
-  isApiErrorMessage = false,
-  apiError,
-  error,
-  errorDetails,
-  isVirtual,
-  usage = {
-    input_tokens: 0,
-    output_tokens: 0,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens: 0,
-    server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
-    service_tier: null,
-    cache_creation: {
-      ephemeral_1h_input_tokens: 0,
-      ephemeral_5m_input_tokens: 0,
-    },
-    inference_geo: null,
-    iterations: null,
-    speed: null,
-  },
-}: {
-  content: BetaContentBlock[]
-  isApiErrorMessage?: boolean
-  apiError?: AssistantMessage['apiError']
-  error?: SDKAssistantMessageError
-  errorDetails?: string
-  isVirtual?: true
-  usage?: Usage
-}): AssistantMessage {
-  return {
-    type: 'assistant',
-    uuid: randomUUID(),
-    timestamp: new Date().toISOString(),
-    message: {
-      id: randomUUID(),
-      container: null,
-      model: SYNTHETIC_MODEL,
-      role: 'assistant',
-      stop_reason: 'stop_sequence',
-      stop_sequence: '',
-      type: 'message',
-      usage,
-      content,
-      context_management: null,
-    },
-    requestId: undefined,
-    apiError,
-    error,
-    errorDetails,
-    isApiErrorMessage,
-    isVirtual,
-  }
-}
-
-export function createAssistantMessage({
-  content,
-  usage,
-  isVirtual,
-}: {
-  content: string | BetaContentBlock[]
-  usage?: Usage
-  isVirtual?: true
-}): AssistantMessage {
-  return baseCreateAssistantMessage({
-    content:
-      typeof content === 'string'
-        ? [
-            {
-              type: 'text' as const,
-              text: content === '' ? NO_CONTENT_MESSAGE : content,
-            } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
-          ]
-        : content,
-    usage,
-    isVirtual,
-  })
-}
-
-export function createAssistantAPIErrorMessage({
-  content,
-  apiError,
-  error,
-  errorDetails,
-}: {
-  content: string
-  apiError?: AssistantMessage['apiError']
-  error?: SDKAssistantMessageError
-  errorDetails?: string
-}): AssistantMessage {
-  return baseCreateAssistantMessage({
-    content: [
-      {
-        type: 'text' as const,
-        text: content === '' ? NO_CONTENT_MESSAGE : content,
-      } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
-    ],
-    isApiErrorMessage: true,
-    apiError,
-    error,
-    errorDetails,
-  })
-}
-
-export function createUserMessage({
-  content,
-  isMeta,
-  isVisibleInTranscriptOnly,
-  isVirtual,
-  isCompactSummary,
-  summarizeMetadata,
-  toolUseResult,
-  isAgentStepLimitToolResult,
-  mcpMeta,
-  uuid,
-  timestamp,
-  imagePasteIds,
-  sourceToolAssistantUUID,
-  permissionMode,
-  origin,
-}: {
-  content: string | ContentBlockParam[]
-  isMeta?: boolean
-  isVisibleInTranscriptOnly?: boolean
-  isVirtual?: boolean
-  isCompactSummary?: boolean
-  toolUseResult?: unknown // Matches tool's `Output` type
-  isAgentStepLimitToolResult?: boolean
-  /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
-  mcpMeta?: {
-    _meta?: Record<string, unknown>
-    structuredContent?: Record<string, unknown>
-  }
-  uuid?: UUID | string
-  timestamp?: string
-  imagePasteIds?: number[]
-  // For tool_result messages: the UUID of the assistant message containing the matching tool_use
-  sourceToolAssistantUUID?: UUID
-  // Permission mode when message was sent (for rewind restoration)
-  permissionMode?: PermissionMode
-  summarizeMetadata?: {
-    messagesSummarized: number
-    userContext?: string
-    direction?: PartialCompactDirection
-  }
-  // Provenance of this message. undefined = human (keyboard).
-  origin?: MessageOrigin
-}): UserMessage {
-  const rewindRestorablePermissionMode = isDangerousPermissionMode(
-    permissionMode,
-  )
-    ? undefined
-    : permissionMode
-  const m: UserMessage = {
-    type: 'user',
-    message: {
-      role: 'user',
-      content: content || NO_CONTENT_MESSAGE, // Make sure we don't send empty messages
-    },
-    isMeta,
-    isVisibleInTranscriptOnly,
-    isVirtual,
-    isCompactSummary,
-    summarizeMetadata,
-    uuid: (uuid as UUID | undefined) || randomUUID(),
-    timestamp: timestamp ?? new Date().toISOString(),
-    toolUseResult,
-    isAgentStepLimitToolResult,
-    mcpMeta,
-    imagePasteIds,
-    sourceToolAssistantUUID,
-    permissionMode: rewindRestorablePermissionMode,
-    origin,
-  }
-  return m
-}
-
-export function prepareUserContent({
-  inputString,
-  precedingInputBlocks,
-}: {
-  inputString: string
-  precedingInputBlocks: ContentBlockParam[]
-}): string | ContentBlockParam[] {
-  if (precedingInputBlocks.length === 0) {
-    return inputString
-  }
-
-  return [
-    ...precedingInputBlocks,
-    {
-      text: inputString,
-      type: 'text',
-    },
-  ]
-}
-
-export function createUserInterruptionMessage({
-  toolUse = false,
-}: {
-  toolUse?: boolean
-}): UserMessage {
-  const content = toolUse ? INTERRUPT_MESSAGE_FOR_TOOL_USE : INTERRUPT_MESSAGE
-
-  return createUserMessage({
-    content: [
-      {
-        type: 'text',
-        text: content,
-      },
-    ],
-  })
-}
-
-/**
- * Creates a new synthetic user caveat message for local commands (eg. bash, slash).
- * We need to create a new message each time because messages must have unique uuids.
- */
-export function createSyntheticUserCaveatMessage(): UserMessage {
-  return createUserMessage({
-    content: `<${LOCAL_COMMAND_CAVEAT_TAG}>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</${LOCAL_COMMAND_CAVEAT_TAG}>`,
-    isMeta: true,
-  })
-}
-
-/**
- * Formats the command-input breadcrumb the model sees when a slash command runs.
- */
-export function formatCommandInputTags(
-  commandName: string,
-  args: string,
-): string {
-  return `<${COMMAND_NAME_TAG}>/${commandName}</${COMMAND_NAME_TAG}>
-            <${COMMAND_MESSAGE_TAG}>${commandName}</${COMMAND_MESSAGE_TAG}>
-            <${COMMAND_ARGS_TAG}>${args}</${COMMAND_ARGS_TAG}>`
-}
-
-/**
- * Builds the breadcrumb trail the SDK set_model control handler injects
- * so the model can see mid-conversation switches. Same shape the CLI's
- * /model command produces via processSlashCommand.
- */
-export function createModelSwitchBreadcrumbs(
-  modelArg: string,
-  resolvedDisplay: string,
-): UserMessage[] {
-  return [
-    createSyntheticUserCaveatMessage(),
-    createUserMessage({ content: formatCommandInputTags('model', modelArg) }),
-    createUserMessage({
-      content: `<${LOCAL_COMMAND_STDOUT_TAG}>Set model to ${resolvedDisplay}</${LOCAL_COMMAND_STDOUT_TAG}>`,
-    }),
-  ]
-}
-
-export function createProgressMessage<P extends Progress>({
-  toolUseID,
-  parentToolUseID,
-  data,
-}: {
-  toolUseID: string
-  parentToolUseID: string
-  data: P
-}): ProgressMessage<P> {
-  return {
-    type: 'progress',
-    data,
-    toolUseID,
-    parentToolUseID,
-    uuid: randomUUID(),
-    timestamp: new Date().toISOString(),
-  }
-}
-
-export function createToolResultStopMessage(
-  toolUseID: string,
-): ToolResultBlockParam {
-  return {
-    type: 'tool_result',
-    content: CANCEL_MESSAGE,
-    is_error: true,
-    tool_use_id: toolUseID,
-  }
-}
+  REJECT_MESSAGE,
+  SYNTHETIC_MESSAGES,
+  SYNTHETIC_MODEL,
+  createAssistantAPIErrorMessage,
+  createAssistantMessage,
+  createModelSwitchBreadcrumbs,
+  createProgressMessage,
+  createSyntheticUserCaveatMessage,
+  createToolResultStopMessage,
+  createUserInterruptionMessage,
+  createUserMessage,
+  formatCommandInputTags,
+  getLastAssistantMessage,
+  hasToolCallsInLastAssistantTurn,
+  isSyntheticMessage,
+  prepareUserContent,
+} from './messages/factories.js'
 
 export function extractTag(html: string, tagName: string): string | null {
   if (!html.trim() || !tagName.trim()) {
@@ -734,108 +415,7 @@ export function isNotEmptyMessage(message: Message): boolean {
   )
 }
 
-// Deterministic UUID derivation. Produces a stable UUID-shaped string from a
-// parent UUID + content block index so that the same input always produces the
-// same key across calls. Used by normalizeMessages and synthetic message creation.
-export function deriveUUID(parentUUID: UUID, index: number): UUID {
-  const hex = index.toString(16).padStart(12, '0')
-  return `${parentUUID.slice(0, 24)}${hex}` as UUID
-}
-
-// Split messages, so each content block gets its own message
-export function normalizeMessages(
-  messages: AssistantMessage[],
-): NormalizedAssistantMessage[]
-export function normalizeMessages(
-  messages: UserMessage[],
-): NormalizedUserMessage[]
-export function normalizeMessages(
-  messages: (AssistantMessage | UserMessage)[],
-): (NormalizedAssistantMessage | NormalizedUserMessage)[]
-export function normalizeMessages(messages: Message[]): NormalizedMessage[]
-export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
-  // isNewChain tracks whether we need to generate new UUIDs for messages when normalizing.
-  // When a message has multiple content blocks, we split it into multiple messages,
-  // each with a single content block. When this happens, we need to generate new UUIDs
-  // for all subsequent messages to maintain proper ordering and prevent duplicate UUIDs.
-  // This flag is set to true once we encounter a message with multiple content blocks,
-  // and remains true for all subsequent messages in the normalization process.
-  let isNewChain = false
-  return messages.flatMap(message => {
-    switch (message.type) {
-      case 'assistant': {
-        isNewChain = isNewChain || message.message.content.length > 1
-        return message.message.content.map((_, index) => {
-          const uuid = isNewChain
-            ? deriveUUID(message.uuid, index)
-            : message.uuid
-          return {
-            type: 'assistant' as const,
-            timestamp: message.timestamp,
-            message: {
-              ...message.message,
-              content: [_],
-              context_management: message.message.context_management ?? null,
-            },
-            isMeta: message.isMeta,
-            isVirtual: message.isVirtual,
-            requestId: message.requestId,
-            uuid,
-            error: message.error,
-            isApiErrorMessage: message.isApiErrorMessage,
-            advisorModel: message.advisorModel,
-          } as NormalizedAssistantMessage
-        })
-      }
-      case 'attachment':
-        return [message]
-      case 'progress':
-        return [message]
-      case 'system':
-        return [message]
-      case 'user': {
-        if (typeof message.message.content === 'string') {
-          const uuid = isNewChain ? deriveUUID(message.uuid, 0) : message.uuid
-          return [
-            {
-              ...message,
-              uuid,
-              message: {
-                ...message.message,
-                content: [{ type: 'text', text: message.message.content }],
-              },
-            } as NormalizedMessage,
-          ]
-        }
-        isNewChain = isNewChain || message.message.content.length > 1
-        let imageIndex = 0
-        return message.message.content.map((_, index) => {
-          const isImage = _.type === 'image'
-          // For image content blocks, extract just the ID for this image
-          const imageId =
-            isImage && message.imagePasteIds
-              ? message.imagePasteIds[imageIndex]
-              : undefined
-          if (isImage) imageIndex++
-          return {
-            ...createUserMessage({
-              content: [_],
-              toolUseResult: message.toolUseResult,
-              mcpMeta: message.mcpMeta,
-              isMeta: message.isMeta,
-              isVisibleInTranscriptOnly: message.isVisibleInTranscriptOnly,
-              isVirtual: message.isVirtual,
-              timestamp: message.timestamp,
-              imagePasteIds: imageId !== undefined ? [imageId] : undefined,
-              origin: message.origin,
-            }),
-            uuid: isNewChain ? deriveUUID(message.uuid, index) : message.uuid,
-          } as NormalizedMessage
-        })
-      }
-    }
-  })
-}
+export { deriveUUID, normalizeMessages, normalizeMessagesCached } from './messages/normalize.js'
 
 type ToolUseRequestMessage = NormalizedAssistantMessage & {
   message: { content: [ToolUseBlock] }
@@ -1540,6 +1120,19 @@ export function isSystemLocalCommandMessage(
 }
 
 /**
+ * A context-collapse summary placeholder. Like local-command system messages,
+ * its content must survive model-input normalization (converted to a user
+ * message) so the collapsed-span summary stays visible to the model.
+ */
+export function isCollapseSummaryMessage(message: Message): boolean {
+  return (
+    message.type === 'system' &&
+    message.subtype === 'informational' &&
+    (message as { isCollapseSummary?: boolean }).isCollapseSummary === true
+  )
+}
+
+/**
  * Strips tool_reference blocks for tools that no longer exist from tool_result content.
  * This handles the case where a session was saved with MCP tools that are no longer
  * available (e.g., MCP server was disconnected, renamed, or removed).
@@ -1622,12 +1215,15 @@ function stripUnavailableToolReferencesFromUserMessage(
 /**
  * Appends internal snip metadata to the last text block of a user message.
  * Only mutates the API-bound copy, not the stored message.
- * This lets OpenCC reference message IDs when calling the snip tool.
+ * This lets Claude reference message IDs when calling the snip tool.
  */
 export function appendMessageTagToUserMessage(
   message: UserMessage,
 ): UserMessage {
-  if (message.isMeta) {
+  // isCollapseSummary blocks must never carry a snip id: the model could queue
+  // the only replacement for an archived span for removal. A merge can clear
+  // isMeta while keeping isCollapseSummary, so both are checked here.
+  if (message.isMeta || message.isCollapseSummary) {
     return message
   }
 
@@ -1716,6 +1312,42 @@ export function appendMessageTagToUserMessage(
       content: newContent as typeof content,
     },
   }
+}
+
+// Matches the exact internal snip marker appended by appendMessageTagToUserMessage
+// (with or without the leading newline used for the no-text-block variant). The
+// body has no '<' chars, so [^<]* terminates cleanly at the closing tag.
+const SNIP_TAG_PATTERN =
+  /\n?<system-reminder>snip_id=[^<]*<\/system-reminder>/g
+
+/**
+ * Remove any internal snip marker from user content. Used when a merge folds a
+ * collapse summary into a real user turn: the real turn may have been tagged
+ * before the merge, and the merged block must not present a snip id (it carries
+ * the only replacement for an archived span).
+ */
+function stripSnipTagsFromContent(
+  content: string | ContentBlockParam[],
+): string | ContentBlockParam[] {
+  if (typeof content === 'string') {
+    return content.replace(SNIP_TAG_PATTERN, '')
+  }
+  if (!Array.isArray(content)) return content
+  const result: ContentBlockParam[] = []
+  for (const block of content) {
+    if (block?.type === 'text') {
+      const original = (block as TextBlockParam).text
+      const text = original.replace(SNIP_TAG_PATTERN, '')
+      // Drop a text block whose only content was the snip marker; sending an
+      // empty text block alongside the collapse summary is invalid. Pre-existing
+      // empty blocks are left untouched so this stays scoped to the merge path.
+      if (text === '' && original !== '') continue
+      result.push({ ...block, text })
+    } else {
+      result.push(block)
+    }
+  }
+  return result
 }
 
 /**
@@ -2054,7 +1686,7 @@ export function normalizeMessagesForAPI(
   // hashes, breaking VCR fixture lookup. Computed once here so the pre-merge
   // injection (in the user case) and the post-merge sweep below share it.
   let injectSnipTags = false
-  if (runtimeFeature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
+  if (feature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
     const { isSnipRuntimeEnabled } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -2141,10 +1773,13 @@ export function normalizeMessagesForAPI(
         | UserMessage
         | AssistantMessage
         | AttachmentMessage
-        | SystemLocalCommandMessage => {
+        | SystemLocalCommandMessage
+        | SystemInformationalMessage => {
         if (
           _.type === 'progress' ||
-          (_.type === 'system' && !isSystemLocalCommandMessage(_)) ||
+          (_.type === 'system' &&
+            !isSystemLocalCommandMessage(_) &&
+            !isCollapseSummaryMessage(_)) ||
           isSyntheticApiErrorMessage(_)
         ) {
           return false
@@ -2156,11 +1791,25 @@ export function normalizeMessagesForAPI(
       switch (message.type) {
         case 'system': {
           // local_command system messages need to be included as user messages
-          // so the model can reference previous command output in later turns
+          // so the model can reference previous command output in later turns.
+          // Context-collapse summaries take the same path so the <collapsed>
+          // summary stays visible after its archived span is removed.
+          //
+          // Preserve isMeta: collapse-summary placeholders are created isMeta so
+          // the snip-tag sweep (appendMessageTagToUserMessage skips isMeta) does
+          // not mark the only replacement for an archived span as snippable,
+          // which would let the model remove the summary collapse relies on.
+          // local_command messages carry no isMeta and stay snippable as before.
           const userMsg = createUserMessage({
             content: message.content,
             uuid: message.uuid,
             timestamp: message.timestamp,
+            isMeta: message.isMeta,
+            // Carry the collapse-summary marker onto the user message so it
+            // stays non-snippable even after a merge clears isMeta (a merge
+            // with an adjacent real user turn would otherwise expose the
+            // <collapsed> summary under a snippable id).
+            isCollapseSummary: isCollapseSummaryMessage(message),
           })
           const lastMessage = last(result)
           if (lastMessage?.type === 'user') {
@@ -2504,7 +2153,16 @@ function isToolResultMessage(msg: Message): boolean {
 export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   const lastContent = normalizeUserTextContent(a.message.content)
   const currentContent = normalizeUserTextContent(b.message.content)
-  if (runtimeFeature('HISTORY_SNIP')) {
+  // A merge that absorbs a collapse summary stays non-snippable: the combined
+  // block holds the only replacement for an archived span, so it must keep the
+  // marker and shed any snip id a real-user operand was tagged with pre-merge.
+  const isCollapseSummary =
+    a.isCollapseSummary || b.isCollapseSummary ? (true as const) : undefined
+  const finalize = (
+    content: string | ContentBlockParam[],
+  ): string | ContentBlockParam[] =>
+    isCollapseSummary ? stripSnipTagsFromContent(content) : content
+  if (feature('HISTORY_SNIP')) {
     // A merged message is only meta if ALL merged messages are meta. If any
     // operand is real user content, the result must not be flagged isMeta
     // (so internal snip ids get injected and it's treated as user-visible content).
@@ -2519,11 +2177,12 @@ export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
       return {
         ...a,
         isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
+        isCollapseSummary,
         uuid: a.isMeta ? b.uuid : a.uuid,
         message: {
           ...a.message,
-          content: hoistToolResults(
-            joinTextAtSeam(lastContent, currentContent),
+          content: finalize(
+            hoistToolResults(joinTextAtSeam(lastContent, currentContent)),
           ),
         },
       }
@@ -2531,12 +2190,15 @@ export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   }
   return {
     ...a,
+    isCollapseSummary,
     // Preserve the non-meta message's uuid so snip ids (derived from uuid)
     // stay stable across API calls (meta messages like system context get fresh uuids each call)
     uuid: a.isMeta ? b.uuid : a.uuid,
     message: {
       ...a.message,
-      content: hoistToolResults(joinTextAtSeam(lastContent, currentContent)),
+      content: finalize(
+        hoistToolResults(joinTextAtSeam(lastContent, currentContent)),
+      ),
     },
   }
 }
@@ -3577,7 +3239,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     }
     case 'todo_reminder': {
-      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const todoItems = attachment.content
@@ -3600,7 +3262,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       if (!isTodoV2Enabled()) {
         return []
       }
-      if (isEnvTruthy(process.env.OPENCC_DISABLE_TOOL_REMINDERS)) {
+      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
         return []
       }
       const taskItems = attachment.content
@@ -4068,7 +3730,7 @@ You have exited auto mode. The user may now want to interact more directly. You 
       ])
     }
     case 'context_efficiency': {
-      if (runtimeFeature('HISTORY_SNIP')) {
+      if (feature('HISTORY_SNIP')) {
         const { SNIP_NUDGE_TEXT } =
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -4093,6 +3755,15 @@ You have exited auto mode. The user may now want to interact more directly. You 
       return wrapMessagesInSystemReminder([
         createUserMessage({
           content: `The user has requested reasoning effort level: ${attachment.level}. Apply this to the current turn.`,
+          isMeta: true,
+        }),
+      ])
+    }
+    case 'ultracode_mode': {
+      return wrapMessagesInSystemReminder([
+        createUserMessage({
+          content:
+            'You are running in ultracode mode. You have standing permission to orchestrate multi-agent workflows for this session: you may spawn subagents, parallelize tasks, and coordinate parallel tool calls without asking for confirmation.',
           isMeta: true,
         }),
       ])
@@ -4273,7 +3944,6 @@ export {
   getMessagesAfterCompactBoundary,
   isCompactBoundaryMessage,
 } from "./messages/systemFactories.js"
-
 
 export function shouldShowUserMessage(
   message: NormalizedMessage,
