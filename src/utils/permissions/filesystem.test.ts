@@ -13,6 +13,8 @@ import {
 import { getAutoMemPath } from '../../memdir/paths.js'
 import { createToolFixture } from '../../test/toolFixtures.js'
 import { checkWritePermissionForTool } from './filesystem.js'
+import { resetSafetyLevelCache } from './safetyLevel.js'
+import { resetSafetyLevelForTest } from '../../test/safetyLevelTestHelpers.js'
 
 const writeInputSchema = z.object({
   file_path: z.string(),
@@ -119,6 +121,7 @@ describe('OpenClaude commit message temp file permissions', () => {
 
   afterEach(async () => {
     setOriginalCwd(originalCwd)
+    resetSafetyLevelForTest()
     await rm(projectDir, { recursive: true, force: true })
   })
 
@@ -181,5 +184,50 @@ describe('OpenClaude commit message temp file permissions', () => {
     )
 
     expect(result.behavior).not.toBe('allow')
+  })
+
+  test.each([
+    '.gitmodules',
+    '.bashrc',
+    '.zshrc',
+    '.profile',
+    '.mcp.json',
+    '.claude.json',
+    '.openclaude.json',
+  ])('permits dangerous-file-list edit for %s in permissive safety mode', fileName => {
+    process.env.OPENCC_SAFETY_LEVEL = 'permissive'
+    resetSafetyLevelCache()
+
+    const result = checkWritePermissionForTool(
+      writeTool,
+      { file_path: join(projectDir, fileName) },
+      {
+        ...permissionContext('acceptEdits'),
+        additionalWorkingDirectories: new Map([
+          [projectDir, { path: projectDir, source: 'session' }],
+        ]),
+      },
+    )
+
+    expect(result.behavior).toBe('allow')
+  })
+
+  test('still prompts for dangerous directories in permissive safety mode', () => {
+    process.env.OPENCC_SAFETY_LEVEL = 'permissive'
+    resetSafetyLevelCache()
+
+    const result = checkWritePermissionForTool(
+      writeTool,
+      { file_path: join(projectDir, '.git', 'config') },
+      {
+        ...permissionContext('acceptEdits'),
+        additionalWorkingDirectories: new Map([
+          [projectDir, { path: projectDir, source: 'session' }],
+        ]),
+      },
+    )
+
+    expect(result.behavior).toBe('ask')
+    expect(result.decisionReason).toMatchObject({ type: 'safetyCheck' })
   })
 })
