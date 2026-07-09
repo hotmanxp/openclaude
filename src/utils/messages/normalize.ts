@@ -1,13 +1,36 @@
-import type { UUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type {
+  ContentBlock,
   NormalizedAssistantMessage,
   NormalizedMessage,
   NormalizedUserMessage,
   Message,
   AssistantMessage,
   UserMessage,
+  UUID,
 } from '../../types/message.js'
+
+// Local message shapes with the `message` envelope narrowed to what normalize
+// needs. The parent `Message` interface leaves `message` optional (it is absent
+// for system/progress/attachment/etc), so iterating `Message[]` and reading
+// `m.message.content` would not narrow correctly. These local shapes are the
+// post-normalization pre-conditions: only assistant/user variants reach the
+// branches that dereference `m.message`, and we assert that here.
+type AssistantMessageWithBody = AssistantMessage & {
+  message: NonNullable<AssistantMessage['message']>
+  uuid: UUID
+  timestamp: string
+}
+type UserMessageWithBody = UserMessage & {
+  message: NonNullable<UserMessage['message']>
+  uuid: UUID
+  timestamp: string
+}
+type MessageWithBody = Message & {
+  message: NonNullable<Message['message']>
+  uuid: UUID
+  timestamp: string
+}
 
 function createNormalizedUserBlockMessage({
   source,
@@ -15,16 +38,17 @@ function createNormalizedUserBlockMessage({
   imagePasteIds,
   uuid,
 }: {
-  source: UserMessage
+  source: UserMessageWithBody
   content: ContentBlockParam[]
-  imagePasteIds?: number[]
+  imagePasteIds?: (number | string)[]
   uuid: UUID
 }): UserMessage {
   return {
     type: 'user',
+    content: '',
     message: {
       role: 'user',
-      content,
+      content: content as unknown as string | ContentBlock[],
     },
     isMeta: source.isMeta,
     isVisibleInTranscriptOnly: source.isVisibleInTranscriptOnly,
@@ -47,7 +71,17 @@ export function deriveUUID(parentUUID: UUID, index: number): UUID {
   return `${parentUUID.slice(0, 24)}${hex}` as UUID
 }
 
-// Split messages, so each content block gets its own message
+// Split messages, so each content block gets its own message. Restores the
+// upstream per-subtype overload set (AssistantMessage[] -> NormalizedAssistantMessage[],
+// etc.) so callers that pass concrete subtypes get a precisely-typed return.
+// The impl signature stays a single (Message[] -> NormalizedMessage[]) — TS
+// cannot verify overload-impl contravariance here because OpenCC's
+// UserMessage.uuid? / AssistantMessage.uuid? (optional) are not assignable
+// to Message.uuid: string (required) at the array level. The body returns
+// the union of normalized types matching the widest overload, which is sound.
+// @ts-expect-error - overload-impl variance: per-subtype overload inputs are
+// not contravariant with the impl's Message[] input because the optional-uuid
+// subtypes don't satisfy Message.uuid: string at the array level. Body is sound.
 export function normalizeMessages(
   messages: AssistantMessage[],
 ): NormalizedAssistantMessage[]
@@ -66,68 +100,77 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
   // This flag is set to true once we encounter a message with multiple content blocks,
   // and remains true for all subsequent messages in the normalization process.
   let isNewChain = false
-  return messages.flatMap(message => {
+  return messages.flatMap((message): NormalizedMessage[] => {
     switch (message.type) {
+      default:
+        return [message as unknown as NormalizedMessage]
       case 'assistant': {
-        isNewChain = isNewChain || message.message.content.length > 1
-        return message.message.content.map((_, index) => {
+        const m = message as AssistantMessageWithBody
+        const content = m.message.content
+        // assistant content is always an array per the SDK contract; if a
+        // string slips in, fall back to an empty array rather than erroring.
+        const blocks = Array.isArray(content) ? content : []
+        isNewChain = isNewChain || blocks.length > 1
+        return blocks.map((_, index) => {
           const uuid = isNewChain
-            ? deriveUUID(message.uuid, index)
-            : message.uuid
+            ? deriveUUID(m.uuid, index)
+            : m.uuid
           return {
             type: 'assistant' as const,
-            timestamp: message.timestamp,
+            timestamp: m.timestamp,
             message: {
-              ...message.message,
-              content: [_],
-              context_management: message.message.context_management ?? null,
+              ...m.message,
+              content: [_] as ContentBlockParam[],
+              context_management: m.message.context_management ?? null,
             },
-            isMeta: message.isMeta,
-            isVirtual: message.isVirtual,
-            requestId: message.requestId,
+            isMeta: m.isMeta,
+            isVirtual: m.isVirtual,
+            requestId: m.requestId,
             uuid,
-            error: message.error,
-            isApiErrorMessage: message.isApiErrorMessage,
-            advisorModel: message.advisorModel,
-          } as NormalizedAssistantMessage
+            error: m.error,
+            isApiErrorMessage: m.isApiErrorMessage,
+            advisorModel: m.advisorModel,
+          } as unknown as NormalizedAssistantMessage
         })
       }
       case 'attachment':
-        return [message]
+        return [message as unknown as NormalizedMessage]
       case 'progress':
-        return [message]
+        return [message as unknown as NormalizedMessage]
       case 'system':
-        return [message]
+        return [message as unknown as NormalizedMessage]
       case 'user': {
-        if (typeof message.message.content === 'string') {
-          const uuid = isNewChain ? deriveUUID(message.uuid, 0) : message.uuid
+        const m = message as UserMessageWithBody
+        if (typeof m.message.content === 'string') {
+          const uuid = isNewChain ? deriveUUID(m.uuid, 0) : m.uuid
           return [
             {
-              ...message,
+              ...m,
               uuid,
               message: {
-                ...message.message,
-                content: [{ type: 'text', text: message.message.content }],
+                ...m.message,
+                content: [{ type: 'text', text: m.message.content }],
               },
-            } as NormalizedMessage,
+            } as unknown as NormalizedMessage,
           ]
         }
-        isNewChain = isNewChain || message.message.content.length > 1
+        isNewChain = isNewChain || m.message.content.length > 1
         let imageIndex = 0
-        return message.message.content.map((_, index) => {
+        return m.message.content.map((_, index) => {
           const isImage = _.type === 'image'
           // For image content blocks, extract just the ID for this image
           const imageId =
-            isImage && message.imagePasteIds
-              ? message.imagePasteIds[imageIndex]
+            isImage && m.imagePasteIds
+              ? m.imagePasteIds[imageIndex]
               : undefined
           if (isImage) imageIndex++
           return createNormalizedUserBlockMessage({
-            source: message,
-            content: [_],
-            imagePasteIds: imageId !== undefined ? [imageId] : undefined,
-            uuid: isNewChain ? deriveUUID(message.uuid, index) : message.uuid,
-          }) as NormalizedMessage
+            source: m,
+            content: [_] as unknown as ContentBlockParam[],
+            imagePasteIds:
+              imageId !== undefined ? [imageId] as (string | number)[] : undefined,
+            uuid: isNewChain ? deriveUUID(m.uuid, index) : m.uuid,
+          }) as unknown as NormalizedMessage
         })
       }
     }
@@ -197,8 +240,8 @@ function normalizeSingleMessageWithFlag(
   const exitFlag =
     entryFlag ||
     ((message.type === 'assistant' ||
-      (message.type === 'user' && typeof message.message.content !== 'string')) &&
-      message.message.content.length > 1)
+      (message.type === 'user' && typeof (message as MessageWithBody).message.content !== 'string')) &&
+      (message as MessageWithBody).message.content.length > 1)
 
   if (!entryFlag) {
     return { out: normalizeMessages([message]), exitFlag }
@@ -212,7 +255,7 @@ function normalizeSingleMessageWithFlag(
     case 'attachment':
     case 'progress':
     case 'system':
-      return { out: [message], exitFlag }
+      return { out: [message] as unknown as NormalizedMessage[], exitFlag }
     default: {
       const normalized = normalizeMessages([message])
       return {
@@ -220,8 +263,8 @@ function normalizeSingleMessageWithFlag(
           (m, index) =>
             ({
               ...m,
-              uuid: deriveUUID(message.uuid, index),
-            }) as NormalizedMessage,
+              uuid: deriveUUID(message.uuid as UUID, index),
+            }) as unknown as NormalizedMessage,
         ),
         exitFlag,
       }
