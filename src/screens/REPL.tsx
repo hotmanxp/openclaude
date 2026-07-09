@@ -2616,6 +2616,13 @@ export function REPL({
       if (!mainThreadAgentDefinition) return merged;
       return resolveAgentTools(mainThreadAgentDefinition, merged, false, true).resolvedTools;
     };
+    const queryActivity = queryGeneration === undefined ? undefined : {
+      registerActivity: (reason: string) => {
+        queryGuard.registerActivity(reason, queryGeneration);
+      },
+      acquireLease: (input) => queryGuard.acquireLease(input, queryGeneration),
+      beginUserInteraction: () => queryGuard.beginUserInteraction(queryGeneration)
+    } satisfies ProcessUserInputContext['queryActivity'];
     return {
       abortController,
       options: {
