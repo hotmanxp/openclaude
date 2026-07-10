@@ -360,16 +360,7 @@ function registerCommonCompactStubs(options: CompactMockOptions = {}) {
       uuid: `sys-${Math.random()}`,
       timestamp: new Date().toISOString(),
     })),
-    getAssistantMessageText: mock(
-      (msg: Message) => {
-        const content = msg.message?.content
-        if (typeof content === 'string') return content
-        if (Array.isArray(content) && content[0]?.type === 'text') {
-          return content[0].text
-        }
-        return ''
-      },
-    ),
+    getAssistantMessageText: _realMessagesModule.getAssistantMessageText,
     getLastAssistantMessage: mock(
       (msgs: Message[]) => msgs.findLast(m => m.type === 'assistant') ?? null,
     ),
