@@ -29,6 +29,7 @@ import { getGlobalConfig } from '../../utils/config.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';
+import { KeepMounted } from './KeepMounted.js';
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
 import { PromptInputHelpMenu } from './PromptInputHelpMenu.js';
@@ -106,6 +107,15 @@ export function resolveFooterStatusLine(
   }
   if (statusLineShouldDisplay(settings)) return 'custom';
   return null; // OpenCC: no builtin status line today
+}
+
+export function resolveConfiguredFooterStatusLine(settings: ReadonlySettings): 'custom' | 'builtin' | null {
+  return resolveFooterStatusLine(settings, {
+    isPromptMode: true,
+    isShort: false,
+    exitMessageShown: false,
+    isPasting: false
+  });
 }
 
 /**
@@ -211,6 +221,7 @@ function PromptInputFooter({
     exitMessageShown: exitMessage.show,
     isPasting,
   });
+  const configuredFooterStatusLine = resolveConfiguredFooterStatusLine(settings);
   // Hide `? for shortcuts` during ctrl-r search, or — for established users
   // only — when a status line actually renders. A custom status line is
   // explicit user configuration, so it always wins. See
@@ -228,27 +239,28 @@ function PromptInputFooter({
     maxColumnWidth
   } : null, [isFullscreen, suggestions, selectedSuggestion, maxColumnWidth]);
   useSetPromptOverlay(overlayData);
-  if (suggestions.length && !isFullscreen) {
-    return <Box paddingX={2} paddingY={0}>
-        <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} />
-      </Box>;
-  }
-  if (helpOpen) {
-    return <PromptInputHelpMenu dimColor={true} fixedWidth={true} paddingX={2} />;
-  }
+  const showInlineSuggestions = suggestions.length > 0 && !isFullscreen;
+  const hideRegularFooter = showInlineSuggestions || helpOpen;
   return <>
-      <Box flexDirection={isNarrow ? 'column' : 'row'} justifyContent={isNarrow ? 'flex-start' : 'space-between'} paddingX={2} gap={isNarrow ? 0 : 1}>
-        <Box flexDirection="column" flexShrink={isNarrow ? 0 : 1}>
-          {mode === 'prompt' && !isShort && !exitMessage.show && !isPasting && statusLineShouldDisplay(settings) && <StatusLine messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} vimMode={vimMode} />}
+      <KeepMounted hidden={hideRegularFooter}>
+        <Box flexDirection={isNarrow ? 'column' : 'row'} justifyContent={isNarrow ? 'flex-start' : 'space-between'} paddingX={2} gap={isNarrow ? 0 : 1}>
+          <Box flexDirection="column" flexShrink={isNarrow ? 0 : 1}>
+          <KeepMounted hidden={footerStatusLine === null}>
+            {configuredFooterStatusLine === 'custom' ? <StatusLine messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} vimMode={vimMode} /> : null}
+          </KeepMounted>
           <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
-        </Box>
-        <Box flexShrink={1} gap={1}>
+          </Box>
+          <Box flexShrink={1} gap={1}>
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
           {isAntEmployee() && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
           <GoalStatusIndicator />
+          </Box>
         </Box>
-      </Box>
+      </KeepMounted>
+      {showInlineSuggestions ? <Box paddingX={2} paddingY={0}>
+          <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} />
+        </Box> : helpOpen ? <PromptInputHelpMenu dimColor={true} fixedWidth={true} paddingX={2} /> : null}
       {isAntEmployee() && <CoordinatorTaskPanel />}
     </>;
 }
