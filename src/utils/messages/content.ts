@@ -74,38 +74,42 @@ export function stripPromptXMLTags(content: string): string {
   return content.replace(STRIPPED_TAGS_RE, '').trim()
 }
 
-export function getAssistantMessageText(message: Message): string | null {
+export function getAssistantMessageText(message: Message | NormalizedMessage): string | null {
   if (message.type !== 'assistant') {
     return null
   }
 
+  const inner = message.message
+  if (!inner) return null
+  const content = inner.content
+  if (!Array.isArray(content)) return null
+
   // For content blocks array, extract and concatenate text blocks
-  if (Array.isArray(message.message.content)) {
-    return (
-      message.message.content
-        .filter(block => block.type === 'text')
-        .map(block => (block.type === 'text' ? block.text : ''))
-        .join('\n')
-        .trim() || null
-    )
-  }
-  return null
+  return (
+    content
+      .filter(block => block.type === 'text')
+      .map(block => (block.type === 'text' ? block.text : ''))
+      .join('\n')
+      .trim() || null
+  )
 }
 
 export function getUserMessageText(
-  message: Message | NormalizedMessage,
+  message: Message | NormalizedMessage | UserMessage,
 ): string | null {
   if (message.type !== 'user') {
     return null
   }
 
-  const content = message.message.content
+  const inner = message.message
+  if (!inner) return null
+  const content = inner.content
 
-  return getContentText(content)
+  return getContentText(content as string | DeepImmutable<Array<ContentBlockParam>>)
 }
 
 export function textForResubmit(
-  msg: UserMessage,
+  msg: Message | NormalizedMessage | UserMessage,
 ): { text: string; mode: 'bash' | 'prompt' } | null {
   const content = getUserMessageText(msg)
   if (content === null) return null

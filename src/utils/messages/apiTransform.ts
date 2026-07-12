@@ -30,7 +30,7 @@ export function appendMessageTagToUserMessage(
     return message
   }
 
-  const idToken = deriveShortMessageId(message.uuid)
+  const idToken = deriveShortMessageId(message.uuid ?? '')
   const tag =
     `\n<system-reminder>snip_id=${idToken}; system-generated; ` +
     `for snip tool use only; do not discuss in thinking or responses.</system-reminder>`
@@ -225,7 +225,12 @@ export function stripToolReferenceBlocksFromUserMessage(
 export function stripCallerFieldFromAssistantMessage(
   message: AssistantMessage,
 ): AssistantMessage {
-  const hasCallerField = message.message.content.some(
+  const blocks = message.message.content
+  if (!Array.isArray(blocks)) {
+    return message
+  }
+
+  const hasCallerField = blocks.some(
     block =>
       block.type === 'tool_use' && 'caller' in block,
   )
@@ -238,7 +243,7 @@ export function stripCallerFieldFromAssistantMessage(
     ...message,
     message: {
       ...message.message,
-      content: message.message.content.map(block => {
+      content: blocks.map(block => {
         if (block.type !== 'tool_use') {
           return block
         }
