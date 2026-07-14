@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js';
@@ -33,7 +33,66 @@ export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
   if (feature('KAIROS') && getKairosActive()) return false;
   return settings?.statusLine !== undefined;
 }
-function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
+export function resolveStatusLineTokenTotals(
+  totalInputTokens: number,
+  totalOutputTokens: number,
+  unreportedSessionUsage: SessionUsage | null,
+): {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokensAreEstimated: boolean | undefined;
+} {
+  if (!unreportedSessionUsage) {
+    return {
+      totalInputTokens,
+      totalOutputTokens,
+      totalTokensAreEstimated: undefined,
+    };
+  }
+
+  return {
+    totalInputTokens: totalInputTokens + unreportedSessionUsage.input_tokens,
+    totalOutputTokens: totalOutputTokens + unreportedSessionUsage.output_tokens,
+    totalTokensAreEstimated: true,
+  };
+}
+
+/** Resolves the next statusline side effect for the current visibility transition. */
+export function resolveStatusLineUpdateAction(options: {
+  active: boolean;
+  hasRun: boolean;
+  needsRefresh: boolean;
+  stateChanged: boolean;
+  commandChanged: boolean;
+  hasPendingUpdate: boolean;
+}): {
+  action: 'cancel';
+  needsRefresh: boolean;
+} | {
+  action: 'run' | 'schedule' | 'none';
+} {
+  if (!options.active) {
+    return {
+      action: 'cancel',
+      needsRefresh: options.needsRefresh || options.stateChanged || options.commandChanged || options.hasPendingUpdate
+    };
+  }
+  if (!options.hasRun || options.needsRefresh || options.commandChanged) {
+    return {
+      action: 'run'
+    };
+  }
+  if (options.stateChanged) {
+    return {
+      action: 'schedule'
+    };
+  }
+  return {
+    action: 'none'
+  };
+}
+
+export function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
   const agentType = getMainThreadAgentType();
   const worktreeSession = getCurrentWorktreeSession();
   const runtimeModel = getRuntimeMainLoopModel({
@@ -132,6 +191,8 @@ type Props = {
   messagesRef: React.RefObject<Message[]>;
   lastAssistantMessageId: string | null;
   vimMode?: VimMode;
+  active?: boolean;
+  executeCommand?: typeof executeStatusLineCommand;
 };
 export function getLastAssistantMessageId(messages: Message[]): string | null {
   // @ts-ignore - uuid not on AssistantMessage type
@@ -140,7 +201,9 @@ export function getLastAssistantMessageId(messages: Message[]): string | null {
 function StatusLineInner({
   messagesRef,
   lastAssistantMessageId,
-  vimMode
+  vimMode,
+  active = true,
+  executeCommand = executeStatusLineCommand
 }: Props): React.ReactNode {
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
   const permissionMode = useAppState(s => s.toolPermissionContext.mode);
@@ -167,6 +230,15 @@ function StatusLineInner({
   addedDirsRef.current = additionalWorkingDirectories;
   const mainLoopModelRef = useRef(mainLoopModel);
   mainLoopModelRef.current = mainLoopModel;
+  const activeRef = useRef(active);
+  const needsRefreshRef = useRef(false);
+  useLayoutEffect(() => {
+    activeRef.current = active;
+    if (!active && abortControllerRef.current !== undefined) {
+      needsRefreshRef.current = true;
+      abortControllerRef.current.abort();
+    }
+  }, [active]);
 
   // Track previous state to detect changes and cache expensive calculations
   const previousStateRef = useRef<{
@@ -175,12 +247,16 @@ function StatusLineInner({
     permissionMode: PermissionMode;
     vimMode: VimMode | undefined;
     mainLoopModel: ModelName;
+    outputStyle: ReadonlySettings['outputStyle'];
+    additionalWorkingDirectories: typeof additionalWorkingDirectories;
   }>({
     messageId: null,
     exceeds200kTokens: false,
     permissionMode,
     vimMode,
     mainLoopModel,
+outputStyle: settings?.outputStyle,
+    additionalWorkingDirectories
   });
 
   // Debounce timer ref
@@ -188,16 +264,22 @@ function StatusLineInner({
 
   // True when the next invocation should log its result (first run or after settings reload)
   const logNextResultRef = useRef(true);
+  const hasRunRef = useRef(false);
+  const statusLineCommand = settings?.statusLine?.command;
+  const previousStatusLineCommandRef = useRef(statusLineCommand);
 
   // Stable update function — reads latest values from refs
   const doUpdate = useCallback(async () => {
+    if (!activeRef.current) {
+      needsRefreshRef.current = true;
+      return;
+    }
     // Cancel any in-flight requests
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const msgs = messagesRef.current;
     const logResult = logNextResultRef.current;
-    logNextResultRef.current = false;
     try {
       let exceeds200kTokens = previousStateRef.current.exceeds200kTokens;
 
@@ -209,8 +291,9 @@ function StatusLineInner({
         previousStateRef.current.exceeds200kTokens = exceeds200kTokens;
       }
       const statusInput = buildStatusLineCommandInput(permissionModeRef.current, exceeds200kTokens, settingsRef.current, msgs, Array.from(addedDirsRef.current.keys()), mainLoopModelRef.current, vimModeRef.current);
-      const text = await executeStatusLineCommand(statusInput, controller.signal, undefined, logResult);
+      const text = await executeCommand(statusInput, controller.signal, undefined, logResult);
       if (!controller.signal.aborted) {
+        if (logResult) logNextResultRef.current = false;
         setAppState(prev => {
           if (prev.statusLineText === text) return prev;
           return {
@@ -221,11 +304,28 @@ function StatusLineInner({
       }
     } catch {
       // Silently ignore errors in status line updates
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = undefined;
+      }
     }
-  }, [messagesRef, setAppState]);
+  }, [executeCommand, messagesRef, setAppState]);
+
+  const cancelPendingUpdate = useCallback(() => {
+    if (debounceTimerRef.current !== undefined) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = undefined;
+    }
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = undefined;
+  }, []);
 
   // Stable debounced schedule function — no deps, uses refs
   const scheduleUpdate = useCallback(() => {
+    if (!activeRef.current) {
+      needsRefreshRef.current = true;
+      return;
+    }
     if (debounceTimerRef.current !== undefined) {
       clearTimeout(debounceTimerRef.current);
     }
@@ -235,29 +335,42 @@ function StatusLineInner({
     }, 300, debounceTimerRef, doUpdate);
   }, [doUpdate]);
 
-  // Only trigger update when assistant message, permission mode, vim mode, or model changes
+// Single state-machine effect for initial activation, visibility changes,
+// input changes, and command hot reload. Keeping these transitions together
+// avoids correctness depending on effect declaration order.
   useEffect(() => {
-    if (lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel) {
-      // Don't update messageId here — let doUpdate handle it so
-      // exceeds200kTokens is recalculated with the latest messages
-      previousStateRef.current.permissionMode = permissionMode;
-      previousStateRef.current.vimMode = vimMode;
-      previousStateRef.current.mainLoopModel = mainLoopModel;
-      scheduleUpdate();
-    }
-  }, [lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, scheduleUpdate]);
+    const stateChanged = lastAssistantMessageId !== previousStateRef.current.messageId || permissionMode !== previousStateRef.current.permissionMode || vimMode !== previousStateRef.current.vimMode || mainLoopModel !== previousStateRef.current.mainLoopModel || settings?.outputStyle !== previousStateRef.current.outputStyle || additionalWorkingDirectories !== previousStateRef.current.additionalWorkingDirectories;
+    const commandChanged = statusLineCommand !== previousStatusLineCommandRef.current;
+    previousStateRef.current.permissionMode = permissionMode;
+    previousStateRef.current.vimMode = vimMode;
+    previousStateRef.current.mainLoopModel = mainLoopModel;
+    previousStateRef.current.outputStyle = settings?.outputStyle;
+    previousStateRef.current.additionalWorkingDirectories = additionalWorkingDirectories;
+    previousStatusLineCommandRef.current = statusLineCommand;
+    if (commandChanged) logNextResultRef.current = true;
 
-  // When the statusLine command changes (hot reload), log the next result
-  const statusLineCommand = settings?.statusLine?.command;
-  const isFirstSettingsRender = useRef(true);
-  useEffect(() => {
-    if (isFirstSettingsRender.current) {
-      isFirstSettingsRender.current = false;
+    const transition = resolveStatusLineUpdateAction({
+      active,
+      hasRun: hasRunRef.current,
+      needsRefresh: needsRefreshRef.current,
+      stateChanged,
+      commandChanged,
+      hasPendingUpdate: debounceTimerRef.current !== undefined || abortControllerRef.current !== undefined
+    });
+    if (transition.action === 'cancel') {
+      needsRefreshRef.current = transition.needsRefresh;
+      cancelPendingUpdate();
       return;
     }
-    logNextResultRef.current = true;
-    void doUpdate();
-  }, [statusLineCommand, doUpdate]);
+    needsRefreshRef.current = false;
+    if (transition.action === 'run') {
+      cancelPendingUpdate();
+      hasRunRef.current = true;
+      void doUpdate();
+      return;
+    }
+    if (transition.action === 'schedule') scheduleUpdate();
+  }, [active, lastAssistantMessageId, permissionMode, vimMode, mainLoopModel, settings?.outputStyle, additionalWorkingDirectories, statusLineCommand, cancelPendingUpdate, doUpdate, scheduleUpdate]);
 
   // Separate effect for logging on mount
   useEffect(() => {
@@ -292,18 +405,14 @@ function StatusLineInner({
     // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   }, []); // Only run once on mount - settings stable for initial logging
 
-  // Initial update on mount + cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
-    void doUpdate();
     return () => {
-      abortControllerRef.current?.abort();
-      if (debounceTimerRef.current !== undefined) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      cancelPendingUpdate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
-  }, []); // Only run once on mount, not when doUpdate changes
+  }, [cancelPendingUpdate]);
 
   // Get padding from settings or default to 0
   const paddingX = settings?.statusLine?.padding ?? 0;

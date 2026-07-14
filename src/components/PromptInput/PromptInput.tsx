@@ -118,6 +118,7 @@ import { BackgroundTasksDialog } from '../tasks/BackgroundTasksDialog.js';
 import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { TeamsDialog } from '../teams/TeamsDialog.js';
 import VimTextInput from '../VimTextInput.js';
+import { applyHistorySearchActiveState } from './footerVisibility.js';
 import { detectModeEntry, getModeFromInput, getValueFromInput } from './inputModes.js';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT, Notifications } from './Notifications.js';
 import PromptInputFooter from './PromptInputFooter.js';
@@ -366,6 +367,9 @@ function PromptInput({
     }
     return toolPermissionContext;
   }, [viewedTeammate, toolPermissionContext]);
+  const setHistorySearchActive = useCallback((active: boolean) => {
+    applyHistorySearchActiveState(active, setHelpOpen, setIsSearchingHistory);
+  }, [setHelpOpen, setIsSearchingHistory]);
   const {
     historyQuery,
     setHistoryQuery,
@@ -374,7 +378,7 @@ function PromptInput({
   } = useHistorySearch(entry => {
     setPastedContents(entry.pastedContents);
     void onSubmit(entry.display);
-  }, input, trackAndSetInput, setCursorOffset, cursorOffset, onModeChange, mode, isSearchingHistory, setIsSearchingHistory, setPastedContents, pastedContents);
+  }, input, trackAndSetInput, setCursorOffset, cursorOffset, onModeChange, mode, isSearchingHistory, setHistorySearchActive, setPastedContents, pastedContents);
   // Counter for paste IDs (shared between images and text).
   // Compute initial value once from existing messages (for --continue/--resume).
   // useRef(fn()) evaluates fn() on every render and discards the result after

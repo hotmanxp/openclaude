@@ -29,11 +29,13 @@ import { getGlobalConfig } from '../../utils/config.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';
+import { resolveFooterOverlay, resolveTransientFooterMessage } from './footerVisibility.js';
 import { KeepMounted } from './KeepMounted.js';
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
 import { PromptInputHelpMenu } from './PromptInputHelpMenu.js';
 import { isAntEmployee } from '../../utils/buildConfig.js';
+
 type Props = {
   apiKeyStatus: VerificationStatus;
   debug: boolean;
@@ -199,6 +201,12 @@ function PromptInputFooter({
   // has terminal scrollback to absorb overflow, so we never hide StatusLine there.
   const isFullscreen = isFullscreenEnvEnabled();
   const isShort = isFullscreen && rows < 24;
+  const footerOverlay = resolveFooterOverlay({
+    hasInlineSuggestions: suggestions.length > 0 && !isFullscreen,
+    helpOpen,
+    isSearching
+  });
+  const hideRegularFooter = footerOverlay !== null;
 
   // Pill highlights when tasks is the active footer item AND no specific
   // agent row is selected. When coordinatorTaskIndex >= 0 the pointer has
@@ -218,6 +226,7 @@ function PromptInputFooter({
   const footerStatusLine = resolveFooterStatusLine(settings, {
     isPromptMode: mode === 'prompt',
     isShort,
+    hideRegularFooter,
     exitMessageShown: exitMessage.show,
     isPasting,
   });
@@ -239,16 +248,14 @@ function PromptInputFooter({
     maxColumnWidth
   } : null, [isFullscreen, suggestions, selectedSuggestion, maxColumnWidth]);
   useSetPromptOverlay(overlayData);
-  const showInlineSuggestions = suggestions.length > 0 && !isFullscreen;
-  const hideRegularFooter = showInlineSuggestions || helpOpen;
   return <>
       <KeepMounted hidden={hideRegularFooter}>
         <Box flexDirection={isNarrow ? 'column' : 'row'} justifyContent={isNarrow ? 'flex-start' : 'space-between'} paddingX={2} gap={isNarrow ? 0 : 1}>
           <Box flexDirection="column" flexShrink={isNarrow ? 0 : 1}>
           <KeepMounted hidden={footerStatusLine === null}>
-            {configuredFooterStatusLine === 'custom' ? <StatusLine messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} vimMode={vimMode} /> : null}
+{configuredFooterStatusLine === 'custom' ? <StatusLine active={footerStatusLine === 'custom'} messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} vimMode={vimMode} /> : configuredFooterStatusLine === 'builtin' ? <BuiltinStatusLine messagesRef={messagesRef} lastAssistantMessageId={lastAssistantMessageId} /> : null}
           </KeepMounted>
-          <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
+          <PromptInputFooterLeftSide active={!hideRegularFooter} exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
           </Box>
           <Box flexShrink={1} gap={1}>
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
@@ -258,9 +265,9 @@ function PromptInputFooter({
           </Box>
         </Box>
       </KeepMounted>
-      {showInlineSuggestions ? <Box paddingX={2} paddingY={0}>
+      {footerOverlay === 'suggestions' ? <Box paddingX={2} paddingY={0}>
           <PromptInputFooterSuggestions suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} />
-        </Box> : helpOpen ? <PromptInputHelpMenu dimColor={true} fixedWidth={true} paddingX={2} /> : null}
+</Box> : footerOverlay === 'help' ? <PromptInputHelpMenu dimColor={true} fixedWidth={true} paddingX={2} /> : null}
       {isAntEmployee() && <CoordinatorTaskPanel />}
     </>;
 }
