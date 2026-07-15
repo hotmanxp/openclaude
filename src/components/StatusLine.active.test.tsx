@@ -54,7 +54,7 @@ function assistantMessage(id: string): Message {
         cache_read_input_tokens: 0,
       },
     },
-  } as Message
+  } as unknown as Message
 }
 
 async function waitFor(
@@ -207,7 +207,7 @@ test('cancels hidden statusline work and refreshes once reactivated', async () =
       settings: { ...prev.settings, outputStyle: 'Explanatory' },
     }))
     await waitFor(() => calls.length === 4, 'output-style refresh')
-    expect(calls[3]!.input.output_style.name).toBe('Explanatory')
+    expect((calls[3]!.input as { output_style: { name: string } }).output_style.name).toBe('Explanatory')
     calls[3]!.resolve('output-style')
     await waitFor(
       () => latestState.statusLineText === 'output-style',
@@ -226,7 +226,7 @@ test('cancels hidden statusline work and refreshes once reactivated', async () =
       },
     }))
     await waitFor(() => calls.length === 5, 'workspace-directory refresh')
-    expect(calls[4]!.input.workspace.added_dirs).toContain(addedDirectory)
+    expect((calls[4]!.input as { workspace: { added_dirs: string[] } }).workspace.added_dirs).toContain(addedDirectory)
     calls[4]!.resolve('workspace-directory')
     await waitFor(
       () => latestState.statusLineText === 'workspace-directory',

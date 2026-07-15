@@ -36,7 +36,7 @@ export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
 export function resolveStatusLineTokenTotals(
   totalInputTokens: number,
   totalOutputTokens: number,
-  unreportedSessionUsage: SessionUsage | null,
+  unreportedSessionUsage: { input_tokens: number; output_tokens: number } | null,
 ): {
   totalInputTokens: number;
   totalOutputTokens: number;
