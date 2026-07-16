@@ -1,7 +1,6 @@
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -18,7 +17,6 @@ import {
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
 import type { Message } from '../../types/message.js'
-import * as realConfig from '../../utils/config.js'
 
 // Several earlier test files in the smoke suite call
 // mock.module('../../utils/model/providers.js', ...) to stub getAPIProvider.
@@ -756,6 +754,49 @@ async function restoreCompactTestMocks() {
   mock.module('../../utils/auth.js', () => ({ ..._realAuthModule }))
   mock.module('../../utils/path.js', () => ({ ..._realPathModule }))
   mock.module('../../utils/config.js', () => ({ ..._realConfigModule }))
+  // These compact-only stubs affect the standalone microcompact and
+  // auto-compact tests that run later in the serialized smoke suite.
+  mock.module('../tokenEstimation.js', () => ({ ..._realTokenEstimationModule }))
+  mock.module('../api/claude.js', () => ({ ..._realClaudeApiModule }))
+  mock.module('../analytics/growthbook.js', () => ({ ..._realGrowthBookModule }))
+  mock.module('../../utils/context.js', () => ({ ..._realContextModule }))
+  mock.module('../../utils/errors.js', () => ({ ..._realErrorsModule }))
+  mock.module('../../utils/tokens.js', () => ({ ..._realTokensModule }))
+  // Keep the cleanup load-bearing: these modules are consumed by standalone
+  // auto-compact tests when this file happens to run first in the smoke suite.
+  const [
+    restoredContext,
+    restoredErrors,
+    restoredTokens,
+    restoredTokenEstimation,
+    restoredClaudeApi,
+    restoredGrowthBook,
+  ] = await Promise.all([
+    import('../../utils/context.js'),
+    import('../../utils/errors.js'),
+    import('../../utils/tokens.js'),
+    import('../tokenEstimation.js'),
+    import('../api/claude.js'),
+    import('../analytics/growthbook.js'),
+  ])
+  expect(restoredContext.getContextWindowForModel).toBe(
+    _realContextModule.getContextWindowForModel,
+  )
+  expect(restoredErrors.hasExactErrorMessage).toBe(
+    _realErrorsModule.hasExactErrorMessage,
+  )
+  expect(restoredTokens.tokenCountWithEstimation).toBe(
+    _realTokensModule.tokenCountWithEstimation,
+  )
+  expect(restoredTokenEstimation.roughTokenCountEstimation).toBe(
+    _realTokenEstimationModule.roughTokenCountEstimation,
+  )
+  expect(restoredClaudeApi.getMaxOutputTokensForModel).toBe(
+    _realClaudeApiModule.getMaxOutputTokensForModel,
+  )
+  expect(restoredGrowthBook.getFeatureValue_CACHED_MAY_BE_STALE).toBe(
+    _realGrowthBookModule.getFeatureValue_CACHED_MAY_BE_STALE,
+  )
   // projectInstructions: the stub above replaces the whole module with only
   // getProjectInstructionFilePaths, so every other export becomes undefined.
   // Downstream CLAUDE.md discovery in runAgent.routing.test.ts then crashes in

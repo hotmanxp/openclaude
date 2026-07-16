@@ -39,6 +39,11 @@ type ImportAutoCompactOptions = {
 }
 
 async function importAutoCompact(options: ImportAutoCompactOptions = {}) {
+  // compact.test.ts uses process-global module stubs. Re-register the real
+  // dependencies this standalone suite needs before importing autoCompact.
+  mock.module('../../utils/context.js', () => ({ ...realContext }))
+  mock.module('../../utils/errors.js', () => ({ ...realErrors }))
+  mock.module('../../utils/tokens.js', () => ({ ...realTokens }))
   mock.module('../../utils/config.js', () => ({
     ...realConfig,
     getGlobalConfig: () => ({ autoCompactEnabled: true }),
