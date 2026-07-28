@@ -846,7 +846,7 @@ async function* queryLoop(
         )
       ) {
         const MAX_ACTIVE_MESSAGES = Number.parseInt(
-          process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '200',
+          process.env.OPENCC_MAX_ACTIVE_MESSAGES ?? '1000',
           10,
         )
         const floorPct = validateBoundedIntEnvVar(
