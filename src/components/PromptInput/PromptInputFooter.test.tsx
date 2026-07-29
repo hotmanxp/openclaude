@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { ReadonlySettings } from '../../hooks/useSettings.js'
 import {
-  SHORTCUTS_HINT_STARTUP_GRACE,
+  resolveConfiguredFooterStatusLine,
   resolveFooterStatusLine,
+  SHORTCUTS_HINT_STARTUP_GRACE,
   shouldSuppressShortcutsHint,
 } from './PromptInputFooter.js'
 
@@ -39,6 +40,24 @@ describe('resolveFooterStatusLine', () => {
     ['paste in progress', { ...passGuards, isPasting: true }],
   ])('returns null when guards fail (%s)', (_name, guards) => {
     expect(resolveFooterStatusLine(mkSettings(true), guards)).toBeNull()
+  })
+})
+
+describe('resolveConfiguredFooterStatusLine', () => {
+  test('keeps a custom statusline configured while transient UI hides its row', () => {
+    const passGuards = {
+      isPromptMode: true,
+      isShort: false,
+      exitMessageShown: false,
+      isPasting: false,
+    }
+    expect(resolveConfiguredFooterStatusLine(mkSettings(true))).toBe('custom')
+    expect(
+      resolveFooterStatusLine(mkSettings(true), {
+        ...passGuards,
+        exitMessageShown: true,
+      }),
+    ).toBeNull()
   })
 })
 

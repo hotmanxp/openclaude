@@ -1,13 +1,15 @@
 import { expect, test } from 'bun:test'
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { AssistantMessage, Message, UserMessage } from '../types/message.js'
+import type { AssistantMessage, Message, UserMessage } from '../../types/message.js'
 import {
   createAssistantMessage,
   createUserMessage,
   ensureToolResultPairing,
+} from '../messages.js'
+import {
   selectToolPairSafeMessageRange,
   validateToolResultPairing,
-} from './messages.js'
+} from './toolPairing.js'
 
 function assistantWithToolUses(...ids: string[]): AssistantMessage {
   return createAssistantMessage({

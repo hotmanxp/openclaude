@@ -19,7 +19,7 @@ import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { toError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
 import { loadPluginAgents } from '../utils/plugins/loadPluginAgents.js'
-import { getPluginCommands } from '../utils/plugins/loadPluginCommands.js'
+import { getPluginCommands, getPluginSkills } from '../utils/plugins/loadPluginCommands.js'
 import { loadPluginHooks } from '../utils/plugins/loadPluginHooks.js'
 import { loadPluginLspServers } from '../utils/plugins/lspPluginIntegration.js'
 import { loadPluginMcpServers } from '../utils/plugins/mcpPluginIntegration.js'
@@ -83,7 +83,18 @@ export function useManagePlugins({
       let agents: AgentDefinition[] = []
 
       try {
-        commands = await getPluginCommands()
+        // Load both plugin commands AND plugin skills. Plugin skills (e.g.
+        // superpowers' brainstorming, using-superpowers, etc.) only have a
+        // `skills/` dir in the plugin manifest, not `commands/`, so they
+        // don't surface via getPluginCommands(). Without this, the
+        // plugin-name fuzzy search typeahead (commandSuggestions.ts) sees
+        // those entries missing and falls back to weak description fuzzy
+        // matches against unrelated user-level skills.
+        const [pluginCommandsResult, pluginSkillsResult] = await Promise.all([
+          getPluginCommands(),
+          getPluginSkills(),
+        ])
+        commands = [...pluginCommandsResult, ...pluginSkillsResult]
         setPluginCommandsState(commands)
       } catch (error) {
         const errorMessage =

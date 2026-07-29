@@ -61,7 +61,7 @@ export interface OpenAIShimTransportConfig {
   thinkingRequestFormat?: 'none' | 'deepseek-compatible' | 'zai-compatible'
   maxTokensField?: OpenAIShimTokenField
   removeBodyFields?: string[]
-  enableToolStreaming?: true
+  enableToolStreaming?: boolean
   requiredApiFormat?: 'chat' | 'responses'
   endpointPath?: string
 }

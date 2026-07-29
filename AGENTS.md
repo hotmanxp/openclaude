@@ -94,6 +94,8 @@ worktrees yield only a partial package set (~460/1678) and produce
 false-positive typecheck and test-stub failures. Agents MUST NOT run
 `bun add` (would mutate the symlinked target).
 
+Never stage or commit the `node_modules` symlink.
+
 ## Architecture
 
 ### Provider System

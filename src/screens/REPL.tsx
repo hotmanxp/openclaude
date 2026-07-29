@@ -2616,6 +2616,19 @@ export function REPL({
       if (!mainThreadAgentDefinition) return merged;
       return resolveAgentTools(mainThreadAgentDefinition, merged, false, true).resolvedTools;
     };
+    // queryActivity passes `thisGeneration` to QueryGuard so watchdog
+    // register/lease/beginUserInteraction calls are tagged with the active
+    // query generation (defaults to 0 for non-query callers like immediate
+    // slash commands and the bare-exit path). The full `queryGeneration`
+    // surface lives on QueryLifecycleContext for telemetry — REPL only
+    // needs the local generation token here.
+    const queryActivity = thisGeneration === 0 ? undefined : {
+      registerActivity: (reason: string) => {
+        queryGuard.registerActivity(reason, thisGeneration);
+      },
+      acquireLease: (input) => queryGuard.acquireLease(input, thisGeneration),
+      beginUserInteraction: () => queryGuard.beginUserInteraction(thisGeneration)
+    } satisfies ProcessUserInputContext['queryActivity'];
     return {
       abortController,
       options: {
@@ -2729,13 +2742,7 @@ export function REPL({
       setHasInterruptibleToolInProgress: (v: boolean) => {
         hasInterruptibleToolInProgressRef.current = v;
       },
-      queryActivity: {
-        registerActivity: (reason: string) => {
-          queryGuard.registerActivity(reason, thisGeneration);
-        },
-        acquireLease: input =>
-          queryGuard.acquireLease(input, thisGeneration),
-      },
+      queryActivity,
       resume,
       setConversationId,
       setActiveSessionAgent: agent => {
