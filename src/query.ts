@@ -1182,16 +1182,17 @@ async function* queryLoop(
       }
     }
 
-    if (
-      isAboveMaxActiveMessagesLimit(messagesForQuery.length, activeMessageLimit)
-    ) {
-      yield createAssistantAPIErrorMessage({
-        content:
-          'The conversation is over the active-message safety limit, but automatic compaction could not reduce it before the next provider request. OpenCC stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.',
-        error: 'invalid_request',
-      })
-      return { reason: 'blocking_limit' }
-    }
+    // Disabled: active-message safety cap no longer blocks the request.
+    // if (
+    //   isAboveMaxActiveMessagesLimit(messagesForQuery.length, activeMessageLimit)
+    // ) {
+    //   yield createAssistantAPIErrorMessage({
+    //     content:
+    //       'The conversation is over the active-message safety limit, but automatic compaction could not reduce it before the next provider request. OpenCC stopped before sending another oversized request. Run /compact, undo recent large tool output, or start a new session with /new.',
+    //     error: 'invalid_request',
+    //   })
+    //   return { reason: 'blocking_limit' }
+    // }
 
     let attemptWithFallback = true
     const toolsForModel = agentStepLimit?.summaryRequested
