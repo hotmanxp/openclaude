@@ -354,6 +354,9 @@ test('trip messages do not echo unsafe tool names, error categories, or paths', 
 test('multiple identical failures in the same batch count once toward the threshold', () => {
   const state = createToolFailureLoopGuardState()
 
+  // OpenCC raised the runtime default from 3 to 5 in ba162054 for product
+  // headroom; pass 3 explicitly so this test exercises the once-per-turn
+  // counting at the threshold the upstream test fixtures assume.
   const first = update(
     state,
     [
@@ -370,14 +373,18 @@ test('multiple identical failures in the same batch count once toward the thresh
       toolResult('d', 'Error writing file: failed to replace text'),
       toolResult('e', 'Error writing file: failed to replace text'),
     ],
+    3,
   )
   expect(first.tripped).toBe(false)
 
   // Once-per-key counting must land at 1, not a partial double-count: the next
   // turn stays below threshold, and only the turn after that trips.
-  const second = update(state, [toolUse('d', 'Edit')], [
-    toolResult('d', 'Error writing file: failed to replace text'),
-  ])
+  const second = update(
+    state,
+    [toolUse('d', 'Edit')],
+    [toolResult('d', 'Error writing file: failed to replace text')],
+    3,
+  )
   expect(second.tripped).toBe(false)
   if (second.tripped || !second.advisories) {
     throw new Error('Expected penultimate advisory after a once-counted parallel batch')
@@ -385,9 +392,12 @@ test('multiple identical failures in the same batch count once toward the thresh
   expect(second.advisories).toHaveLength(1)
   expect(second.advisories[0]?.message).toContain('2/3 times')
 
-  const third = update(state, [toolUse('e', 'Edit')], [
-    toolResult('e', 'Error writing file: failed to replace text'),
-  ])
+  const third = update(
+    state,
+    [toolUse('e', 'Edit')],
+    [toolResult('e', 'Error writing file: failed to replace text')],
+    3,
+  )
   if (!third.tripped) {
     throw new Error('Expected Edit FileWriteError failures to trip on the third turn')
   }
@@ -406,21 +416,28 @@ test('same-batch parallel failures still accumulate across later turns', () => {
       toolResult('b', '<tool_use_error>ENOENT: no such file or directory: /y</tool_use_error>'),
       toolResult('c', '<tool_use_error>ENOENT: no such file or directory: /z</tool_use_error>'),
     ],
+    3,
   )
   expect(first.tripped).toBe(false)
 
-  const second = update(state, [toolUse('d', 'Bash')], [
-    toolResult('d', '<tool_use_error>ENOENT: no such file or directory: /w</tool_use_error>'),
-  ])
+  const second = update(
+    state,
+    [toolUse('d', 'Bash')],
+    [toolResult('d', '<tool_use_error>ENOENT: no such file or directory: /w</tool_use_error>')],
+    3,
+  )
   expect(second.tripped).toBe(false)
   if (second.tripped || !second.advisories) {
     throw new Error('Expected penultimate advisory on the second Bash NotFound turn')
   }
   expect(second.advisories).toHaveLength(1)
 
-  const decision = update(state, [toolUse('e', 'Bash')], [
-    toolResult('e', '<tool_use_error>ENOENT: no such file or directory: /v</tool_use_error>'),
-  ])
+  const decision = update(
+    state,
+    [toolUse('e', 'Bash')],
+    [toolResult('e', '<tool_use_error>ENOENT: no such file or directory: /v</tool_use_error>')],
+    3,
+  )
 
   if (!decision.tripped) {
     throw new Error('Expected cross-turn Bash NotFound failures to trip')
@@ -492,9 +509,12 @@ test('parallel same-path failures in a single turn do not trip the guard', () =>
 test('parallel penultimate failures emit a single advisory per signature', () => {
   const state = createToolFailureLoopGuardState()
 
-  update(state, [toolUse('a', 'Bash')], [
-    toolResult('a', 'ENOENT: no such file or directory: /a'),
-  ])
+  update(
+    state,
+    [toolUse('a', 'Bash')],
+    [toolResult('a', 'ENOENT: no such file or directory: /a')],
+    3,
+  )
   const decision = update(
     state,
     [toolUse('b', 'Bash'), toolUse('c', 'Bash'), toolUse('d', 'Bash')],
@@ -503,6 +523,7 @@ test('parallel penultimate failures emit a single advisory per signature', () =>
       toolResult('c', 'ENOENT: no such file or directory: /c'),
       toolResult('d', 'ENOENT: no such file or directory: /d'),
     ],
+    3,
   )
 
   if (decision.tripped || !decision.advisories) {
