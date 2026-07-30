@@ -71,14 +71,17 @@ describe('AgentTool input schema model override', () => {
   })
 
   test('trims accepted model overrides', () => {
+    // OpenCC restricts `model` to the 3-provider scope (sonnet/opus/haiku),
+    // so the upstream deepseek/...:nitro test string is replaced with sonnet
+    // while preserving the whitespace-trim assertion.
     const result = inputSchema().safeParse({
       ...baseInput,
-      model: '  deepseek/deepseek-v4-flash:nitro  ',
+      model: '  sonnet  ',
     })
 
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.model).toBe('deepseek/deepseek-v4-flash:nitro')
+      expect(result.data.model).toBe('sonnet')
     }
   })
 
