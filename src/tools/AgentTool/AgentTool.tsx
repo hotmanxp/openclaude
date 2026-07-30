@@ -96,7 +96,7 @@ const baseInputSchema = lazySchema(() => z.object({
 }));
 
 // Full schema combining base + multi-agent params + isolation
-const fullInputSchema = lazySchema(() => {
+export const fullInputSchema = lazySchema(() => {
   // Multi-agent parameters
   const multiAgentInputSchema = z.object({
     name: z.string().optional().describe('Name for the spawned agent. Makes it addressable via SendMessage({to: name}) while running.'),
@@ -109,7 +109,6 @@ const fullInputSchema = lazySchema(() => {
   }).refine(input => input.cwd === undefined || isAbsolute(input.cwd), {
     path: ['cwd'],
     message: 'cwd must be an absolute path.',
-  });
   });
 });
 
