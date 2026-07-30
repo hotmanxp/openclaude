@@ -161,7 +161,10 @@ describe('relevancePruning', () => {
       // Large target keeps every group; with preserveRecent=3 the last three
       // are sliced off first, so a broken final sort leaves them out front.
       const result = pruneByRelevance(messages, { targetTokens: 1_000_000 })
-      expect(result.map(m => m.message.id)).toEqual(messages.map(m => m.message.id))
+      // envMessage's inner `message` field is typed as `T | undefined`; the test
+      // fixture always populates it, so the bang asserts intent without changing
+      // the surrounding shape that the test is actually asserting on.
+      expect(result.map(m => m.message!.id)).toEqual(messages.map(m => m.message!.id))
     })
   })
 })
