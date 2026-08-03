@@ -6,6 +6,7 @@ import {
 import {
   getGlobalConfig,
   saveGlobalConfig,
+  type ProviderModelRouteOverride,
   type ProviderProfile,
 } from './config.js'
 import { getSettings_DEPRECATED } from './settings/settings.js'
@@ -251,6 +252,45 @@ export function maybeResetMainLoopModel(
   }
 
   return { reset: true, previousModel: currentModel, newModel: defaultModel }
+}
+
+export type ModelRouteOverride = ProviderModelRouteOverride
+
+function isValidModelRouteOverride(
+  override: ModelRouteOverride | undefined,
+): override is ModelRouteOverride {
+  if (!override || typeof override !== 'object') return false
+  if (typeof override.baseUrl !== 'string' || override.baseUrl.trim() === '') {
+    return false
+  }
+  return (
+    (typeof override.apiKey === 'string' && override.apiKey !== '') ||
+    (typeof override.authToken === 'string' && override.authToken !== '')
+  )
+}
+
+/**
+ * Resolve a per-model API endpoint + key override by resolved final model name.
+ * Match order: strip [1m] suffix → exact match → lowercase match. Invalid
+ * entries are ignored.
+ */
+export function getModelRouteOverride(
+  model: string,
+): ModelRouteOverride | undefined {
+  const overrides = getGlobalConfig().providerModelOverrides
+  if (!overrides) return undefined
+
+  const base = model.replace(/\[1m\]$/i, '').trim()
+  const exact = overrides[base]
+  if (isValidModelRouteOverride(exact)) return exact
+
+  const lower = base.toLowerCase()
+  for (const [name, override] of Object.entries(overrides)) {
+    if (name.toLowerCase() === lower && isValidModelRouteOverride(override)) {
+      return override
+    }
+  }
+  return undefined
 }
 
 export function getProviderProfiles(

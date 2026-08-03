@@ -219,6 +219,12 @@ export type ProviderProfile = {
   authHeaderValue?: string
 }
 
+export type ProviderModelRouteOverride = {
+  baseUrl: string
+  apiKey?: string
+  authToken?: string
+}
+
 export type GlobalConfig = {
   /**
    * @deprecated Use settings.apiKeyHelper instead.
@@ -621,6 +627,10 @@ export type GlobalConfig = {
   // which API provider env vars are applied for the current session.
   providerProfiles?: ProviderProfile[]
   activeProviderProfileId?: string
+
+  // Per-model endpoint + key overrides overlaid on the active provider profile.
+  // Key is the resolved final model name (parseUserSpecifiedModel output).
+  providerModelOverrides?: Record<string, ProviderModelRouteOverride>
 
   // Per-profile cache for models discovered from OpenAI-compatible endpoints.
   // Keyed by provider profile id.
