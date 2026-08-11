@@ -1777,6 +1777,11 @@ class Project {
       void this.enqueueWrite(targetFile, entry)
     } else if (entry.type === 'session-branch') {
       void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'goal-state') {
+      // Goal state entries are always appended to the session file so that
+      // the goal's `id` is observable in the file (used by the
+      // atomic-replace regression test).
+      void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'marble-origami-commit') {
       // Always append. Commit order matters for restore (later commits may
       // reference earlier commits' summary messages), so these must be
@@ -6115,18 +6120,20 @@ export async function enrichLogs(
 }
 
 /**
- * Stub for `recordGoalState` — pending port of goal tracking infrastructure
- * (issue: OpenCC lacks Project.insertGoalState + GoalStateEntry type).
- * PR #1600 expects this to write GoalStateEntry to disk; until that
- * infrastructure lands, callers see a NO-OP. Messages that import this
- * still work — they just don't durably persist goal state across resumes.
- *
- * Replace with the UP-HEAD implementation when Project.insertGoalState is
- * ported. See PR #1293 (session-scoped /goal continuation) for context.
+ * Persist a goal state for a session. Routes through `Project.appendEntry`
+ * with a `GoalStateEntry` so the entry shows up in the session file with
+ * the goal's `id` field (used by the atomic-replace regression test to
+ * verify queued appends survive across a paused rewrite). The upstream
+ * cherry-pick called `Project.insertGoalState` directly, but that method
+ * has not been ported in opencc; using the generic append path keeps the
+ * behavior observable to consumers without depending on the missing API.
  */
 export async function recordGoalState(
-  _goal: unknown,
-  _sessionId?: unknown,
+  goal: GoalState | null,
+  sessionId: UUID = getSessionId() as UUID,
 ): Promise<void> {
-  // NO-OP until goal tracking infrastructure is ported.
+  await getProject().appendEntry(
+    { type: 'goal-state', sessionId, goal },
+    sessionId,
+  )
 }
