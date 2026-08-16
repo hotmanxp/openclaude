@@ -376,30 +376,10 @@ test('collectLiveBackgroundSessionIds falls back to UDS sessions when registry r
   ).toEqual(new Set([liveSessionId]))
 })
 
-test('deserializeMessages preserves thinking blocks for GitHub native Claude transport', async () => {
-  clearProviderEnv()
-  process.env.CLAUDE_CODE_USE_GITHUB = '1'
-  process.env.OPENAI_MODEL = 'claude-sonnet-4-6'
-  const { deserializeMessages } = await importFreshConversationRecovery()
-
-  const deserialized = deserializeMessages([
-    {
-      type: 'assistant',
-      message: {
-        role: 'assistant',
-        content: [
-          { type: 'thinking', thinking: 'need a plan' },
-          { type: 'text', text: 'working on it' },
-        ],
-      },
-    } as any,
-  ])
-
-  const content = (deserialized[0] as any)?.message?.content as Array<{
-    type: string
-  }>
-  expect(content.some(block => block.type === 'thinking')).toBe(true)
-})
+// Skipped per AGENTS.md: GitHub is a legacy dropped provider in opencc; the
+// upstream-only `deserializeMessages preserves thinking blocks for GitHub
+// native Claude transport` test was removed when the GitHub-native Claude
+// transport path was retired. Restore alongside any future re-enable.
 
 test('deserializeMessages strips dangerous permission modes from rewindable user messages', async () => {
   clearProviderEnv()
