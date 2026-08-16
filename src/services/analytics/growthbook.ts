@@ -49,7 +49,6 @@ type GrowthBookModule = {
 function loadGrowthBookClass(): Promise<void> {
   if (growthBookLoadPromise) return growthBookLoadPromise
   const loader = (import(
-    /* @ts-expect-error optional dep, may be absent from node_modules */
     '@growthbook/growthbook'
   ) as Promise<GrowthBookModule>)
   growthBookLoadPromise = loader
