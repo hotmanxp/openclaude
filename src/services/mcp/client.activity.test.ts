@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test'
 import {
   ErrorCode,
   McpError,
@@ -9,11 +9,11 @@ import type { ConnectedMCPServer } from './types.js'
 
 describe('MCP tool activity', () => {
   afterEach(() => {
-    vi.useRealTimers()
+    jest.useRealTimers()
   })
 
   test('emits progress heartbeats while a tool call remains pending', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     let resolveToolCall: ((result: unknown) => void) | undefined
     let reportServerProgress:
       | ((progress: {
@@ -23,7 +23,7 @@ describe('MCP tool activity', () => {
         }) => void)
       | undefined
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -31,7 +31,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(
+      callTool: mock(
         (
           _request: unknown,
           _schema: unknown,
@@ -55,7 +55,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn()
+    const onProgress = mock()
     const parentMessage = createAssistantMessage({
       content: [
         {
@@ -71,7 +71,7 @@ describe('MCP tool activity', () => {
       {},
       {
         abortController: new AbortController(),
-        setAppState: vi.fn(),
+        setAppState: mock(),
       } as never,
       undefined as never,
       parentMessage,
@@ -83,7 +83,7 @@ describe('MCP tool activity', () => {
 
     // Silent server: no progress notifications at all. The wrapper's own
     // heartbeat must still fire so QueryGuard sees activity.
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
     expect(onProgress).toHaveBeenLastCalledWith({
       toolUseID: 'toolu_heartbeat',
@@ -101,7 +101,7 @@ describe('MCP tool activity', () => {
       total: 10,
       message: 'Indexing files',
     })
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
 
     // The next heartbeat carries the cached server progress values.
@@ -134,7 +134,7 @@ describe('MCP tool activity', () => {
         progressMessage: 'Indexing files',
       }),
     })
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
     expect(onProgress).toHaveBeenLastCalledWith({
       toolUseID: 'toolu_heartbeat',
@@ -151,13 +151,13 @@ describe('MCP tool activity', () => {
     resolveToolCall?.({ content: [{ type: 'text', text: 'done' }] })
     await callPromise
     const progressCountAfterCompletion = onProgress.mock.calls.length
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     expect(onProgress).toHaveBeenCalledTimes(progressCountAfterCompletion)
   })
 
   test('a throwing started callback does not prevent the tool call', async () => {
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -165,7 +165,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(async () => ({
+      callTool: mock(async () => ({
         content: [{ type: 'text', text: 'done' }],
       })),
     }
@@ -178,7 +178,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn(({ data }: { data: { status: string } }) => {
+    const onProgress = mock(({ data }: { data: { status: string } }) => {
       if (data.status === 'started') {
         throw new Error('progress consumer failure')
       }
@@ -199,7 +199,7 @@ describe('MCP tool activity', () => {
         {},
         {
           abortController: new AbortController(),
-          setAppState: vi.fn(),
+          setAppState: mock(),
         } as never,
         undefined as never,
         parentMessage,
@@ -212,10 +212,10 @@ describe('MCP tool activity', () => {
   })
 
   test('a throwing progress callback does not break the tool call', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     let resolveToolCall: ((result: unknown) => void) | undefined
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -223,7 +223,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(
+      callTool: mock(
         () =>
           new Promise(resolve => {
             resolveToolCall = resolve
@@ -239,7 +239,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn(({ data }: { data: { status: string } }) => {
+    const onProgress = mock(({ data }: { data: { status: string } }) => {
       if (data.status === 'progress') {
         throw new Error('progress consumer failure')
       }
@@ -259,7 +259,7 @@ describe('MCP tool activity', () => {
       {},
       {
         abortController: new AbortController(),
-        setAppState: vi.fn(),
+        setAppState: mock(),
       } as never,
       undefined as never,
       parentMessage,
@@ -270,7 +270,7 @@ describe('MCP tool activity', () => {
 
     // Heartbeat throws inside the timer callback; it must be contained
     // instead of surfacing as an uncaught exception.
-    expect(() => vi.advanceTimersByTime(30_000)).not.toThrow()
+    expect(() => jest.advanceTimersByTime(30_000)).not.toThrow()
 
     resolveToolCall?.({ content: [{ type: 'text', text: 'done' }] })
     await expect(callPromise).resolves.toMatchObject({
@@ -280,7 +280,7 @@ describe('MCP tool activity', () => {
 
   test('a throwing completed callback does not turn success into failure', async () => {
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -288,7 +288,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(async () => ({
+      callTool: mock(async () => ({
         content: [{ type: 'text', text: 'done' }],
       })),
     }
@@ -301,7 +301,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn(({ data }: { data: { status: string } }) => {
+    const onProgress = mock(({ data }: { data: { status: string } }) => {
       if (data.status === 'completed') {
         throw new Error('progress consumer failure')
       }
@@ -322,7 +322,7 @@ describe('MCP tool activity', () => {
         {},
         {
           abortController: new AbortController(),
-          setAppState: vi.fn(),
+          setAppState: mock(),
         } as never,
         undefined as never,
         parentMessage,
@@ -336,7 +336,7 @@ describe('MCP tool activity', () => {
 
   test('a throwing failed callback preserves the original tool error', async () => {
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -344,7 +344,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(async () => {
+      callTool: mock(async () => {
         throw new Error('original tool failure')
       }),
     }
@@ -357,7 +357,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn(({ data }: { data: { status: string } }) => {
+    const onProgress = mock(({ data }: { data: { status: string } }) => {
       if (data.status === 'failed') {
         throw new Error('progress consumer failure')
       }
@@ -378,7 +378,7 @@ describe('MCP tool activity', () => {
         {},
         {
           abortController: new AbortController(),
-          setAppState: vi.fn(),
+          setAppState: mock(),
         } as never,
         undefined as never,
         parentMessage,
@@ -393,7 +393,7 @@ describe('MCP tool activity', () => {
       | ((progress: { progress: number }) => void)
       | undefined
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -401,7 +401,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(
+      callTool: mock(
         (
           _request: unknown,
           _schema: unknown,
@@ -423,7 +423,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn(({ data }: { data: { status: string } }) => {
+    const onProgress = mock(({ data }: { data: { status: string } }) => {
       if (data.status === 'progress') {
         throw new Error('progress consumer failure')
       }
@@ -443,7 +443,7 @@ describe('MCP tool activity', () => {
       {},
       {
         abortController: new AbortController(),
-        setAppState: vi.fn(),
+        setAppState: mock(),
       } as never,
       undefined as never,
       parentMessage,
@@ -464,7 +464,7 @@ describe('MCP tool activity', () => {
   })
 
   test('session-expired retry resets cached server progress', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     let callCount = 0
     let resolveToolCall: ((result: unknown) => void) | undefined
     let reportServerProgress:
@@ -479,7 +479,7 @@ describe('MCP tool activity', () => {
       { code: 404 },
     )
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -487,7 +487,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(
+      callTool: mock(
         (
           _request: unknown,
           _schema: unknown,
@@ -520,7 +520,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn()
+    const onProgress = mock()
     const parentMessage = createAssistantMessage({
       content: [
         {
@@ -536,7 +536,7 @@ describe('MCP tool activity', () => {
       {},
       {
         abortController: new AbortController(),
-        setAppState: vi.fn(),
+        setAppState: mock(),
       } as never,
       undefined as never,
       parentMessage,
@@ -551,7 +551,7 @@ describe('MCP tool activity', () => {
     // Heartbeats during the retried attempt must not report the previous
     // attempt's cached progress, since the retried call starts over.
     onProgress.mockClear()
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
     expect(onProgress).toHaveBeenCalled()
     const lastCall = onProgress.mock.calls.at(-1)?.[0]
@@ -570,7 +570,7 @@ describe('MCP tool activity', () => {
   })
 
   test('url-elicitation wait and retry reset cached server progress', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     let callCount = 0
     let resolveToolCall: ((result: unknown) => void) | undefined
     let resolveElicitation:
@@ -598,7 +598,7 @@ describe('MCP tool activity', () => {
       },
     )
     const sdkClient = {
-      request: vi.fn(async () => ({
+      request: mock(async () => ({
         tools: [
           {
             name: 'slow-tool',
@@ -606,7 +606,7 @@ describe('MCP tool activity', () => {
           },
         ],
       })),
-      callTool: vi.fn(
+      callTool: mock(
         (
           _request: unknown,
           _schema: unknown,
@@ -639,7 +639,7 @@ describe('MCP tool activity', () => {
     } as unknown as ConnectedMCPServer
     const [tool] = await fetchToolsForClient(connection)
     expect(tool).toBeDefined()
-    const onProgress = vi.fn()
+    const onProgress = mock()
     const parentMessage = createAssistantMessage({
       content: [
         {
@@ -655,8 +655,8 @@ describe('MCP tool activity', () => {
       {},
       {
         abortController: new AbortController(),
-        setAppState: vi.fn(),
-        handleElicitation: vi.fn(
+        setAppState: mock(),
+        handleElicitation: mock(
           () =>
             new Promise<{ action: 'accept' }>(resolve => {
               resolveElicitation = resolve
@@ -677,7 +677,7 @@ describe('MCP tool activity', () => {
     // Heartbeats while waiting for elicitation must not report progress from
     // the abandoned protocol attempt.
     onProgress.mockClear()
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
     expect(onProgress).toHaveBeenCalled()
     const lastHeartbeat = onProgress.mock.calls.at(-1)?.[0]

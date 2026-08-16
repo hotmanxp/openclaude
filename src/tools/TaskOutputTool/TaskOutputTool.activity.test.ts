@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test'
 import { TaskOutputTool } from './TaskOutputTool.js'
 
 describe('TaskOutput activity', () => {
   afterEach(() => {
-    vi.useRealTimers()
+    jest.useRealTimers()
   })
 
   test('emits progress heartbeats during a long blocking wait', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     const abortController = new AbortController()
     const task = {
       id: 'task-1',
@@ -15,7 +15,7 @@ describe('TaskOutput activity', () => {
       status: 'running',
       description: 'long-running task',
     }
-    const onProgress = vi.fn()
+    const onProgress = mock()
     const callPromise = TaskOutputTool.call(
       { task_id: task.id, block: true, timeout: 600_000 },
       {
@@ -27,20 +27,20 @@ describe('TaskOutput activity', () => {
       onProgress,
     )
 
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     await Promise.resolve()
     abortController.abort()
-    vi.advanceTimersByTime(100)
+    jest.advanceTimersByTime(100)
     await Promise.resolve()
     await expect(callPromise).rejects.toThrow()
 
     expect(onProgress).toHaveBeenCalledTimes(2)
-    vi.advanceTimersByTime(30_000)
+    jest.advanceTimersByTime(30_000)
     expect(onProgress).toHaveBeenCalledTimes(2)
   })
 
   test('a throwing progress callback does not break the blocking wait', async () => {
-    vi.useFakeTimers()
+    jest.useFakeTimers()
     const abortController = new AbortController()
     const task = {
       id: 'task-2',
@@ -48,7 +48,7 @@ describe('TaskOutput activity', () => {
       status: 'running',
       description: 'long-running task',
     }
-    const onProgress = vi.fn(() => {
+    const onProgress = mock(() => {
       throw new Error('progress consumer failure')
     })
     const callPromise = TaskOutputTool.call(
@@ -64,10 +64,10 @@ describe('TaskOutput activity', () => {
 
     // Heartbeat throws inside the timer callback; it must be contained
     // instead of surfacing as an uncaught exception.
-    expect(() => vi.advanceTimersByTime(30_000)).not.toThrow()
+    expect(() => jest.advanceTimersByTime(30_000)).not.toThrow()
     await Promise.resolve()
     abortController.abort()
-    vi.advanceTimersByTime(100)
+    jest.advanceTimersByTime(100)
     await Promise.resolve()
     await expect(callPromise).rejects.toThrow()
     expect(onProgress).toHaveBeenCalledTimes(2)
