@@ -85,6 +85,7 @@ function message(uuid: UUID, content: string): Message {
     type: 'user',
     uuid,
     timestamp: TIMESTAMP,
+    content,
     message: { role: 'user', content },
     isMeta: false,
   }
