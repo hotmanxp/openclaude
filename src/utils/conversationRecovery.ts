@@ -872,3 +872,16 @@ export async function loadConversationForResume(
     throw error
   }
 }
+
+/**
+ * Fork-local adapter of the upstream helper of the same name (added in
+ * upstream #1642 alongside the local background sessions feature, then
+ * referenced by upstream's bg.ts for --bg pr-resume).
+ */
+export async function findResumeSessionIdByPrSelector(
+  selector: true | string,
+): Promise<UUID | null> {
+  const log = findResumeLogByPrSelector(await loadMessageLogs(), selector)
+  if (!log) return null
+  return getSessionIdFromLog(log) ?? null
+}

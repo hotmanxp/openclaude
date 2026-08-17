@@ -10,6 +10,7 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from '../bootstrap/state.js'
+import { noteBackgroundSessionTerminationSignal } from './backgroundSessionTermination.js'
 import instances from '../ink/instances.js'
 import {
   DISABLE_KITTY_KEYBOARD,
@@ -285,15 +286,18 @@ export const setupGracefulShutdown = memoize(() => {
       },
     )
     logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGINT' })
+    noteBackgroundSessionTerminationSignal('SIGINT')
     void gracefulShutdown(0)
   })
   process.on('SIGTERM', () => {
     logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGTERM' })
+    noteBackgroundSessionTerminationSignal('SIGTERM')
     void gracefulShutdown(143) // Exit code 143 (128 + 15) for SIGTERM
   })
   if (process.platform !== 'win32') {
     process.on('SIGHUP', () => {
       logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGHUP' })
+      noteBackgroundSessionTerminationSignal('SIGHUP')
       void gracefulShutdown(129) // Exit code 129 (128 + 1) for SIGHUP
     })
 
