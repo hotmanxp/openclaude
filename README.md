@@ -6,6 +6,7 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, A
 
 [![PR Checks](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml)
 [![Release](https://img.shields.io/github/v/tag/Gitlawb/openclaude?label=release&color=0ea5e9)](https://github.com/Gitlawb/openclaude/tags)
+[![npm downloads](https://img.shields.io/npm/dm/@gitlawb/openclaude)](https://www.npmjs.com/package/@gitlawb/openclaude)
 [![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/Gitlawb/openclaude/discussions)
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)

@@ -265,7 +265,9 @@ Usage notes:
     process.env.USER_TYPE === 'ant'
       ? `\n- You can set \`isolation: "remote"\` to run the agent in a remote CCR environment. This is always a background task; you'll be notified when it completes. Use for long-running tasks that need a fresh sandbox.`
       : ''
-  }${
+  }
+- When the current session is outside a git repository (for example a parent folder that contains multiple git repos), set \`cwd\` to the absolute path of the target child repository. You can combine \`cwd\` with \`isolation: "worktree"\` so the worktree is created from that child repo. If worktree creation fails only because no git repository is available, the agent still runs with that \`cwd\` override instead of failing, and the tool result notes that worktree isolation was unavailable.${
+
     isInProcessTeammate()
       ? `
 - The run_in_background, name, team_name, and mode parameters are not available in this context. Only synchronous subagents are supported.`

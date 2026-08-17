@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { acquireSharedMutationLock, releaseSharedMutationLock } from '../../test/sharedMutationLock.js'
+import { saveGlobalConfig } from '../../utils/config.js'
 import { getAnthropicClient } from './client.js'
 
 type FetchType = typeof globalThis.fetch
@@ -1366,4 +1367,52 @@ test.skip('rejects CRLF-injected custom headers before sending OpenAI-compatible
   expect(capturedHeaders?.get('x-safe-header')).toBeNull()
   expect(capturedHeaders?.get('x-injected')).toBeNull()
   expect(capturedHeaders?.get('authorization')).toBe('Bearer openai-test-key')
+})
+
+// ─── per-model route override (anthropic native path) ─────────────────────
+
+test('getAnthropicClient uses override baseURL when model matches providerModelOverrides', async () => {
+  // Force env baseURL to differ from override so the SDK cannot coincidentally
+  // read the override URL from env defaults.
+  const prevBaseUrl = process.env.ANTHROPIC_BASE_URL
+  process.env.ANTHROPIC_BASE_URL = 'https://env-default.example.com'
+  saveGlobalConfig(c => ({
+    ...c,
+    providerModelOverrides: {
+      'MiniMax-M2.7-highspeed': {
+        baseUrl: 'https://api.minimaxi.com/anthropic',
+        authToken: 'sk-minimax',
+      },
+    },
+  }))
+  try {
+    const client = await getAnthropicClient({
+      apiKey: 'env-test-key',
+      maxRetries: 0,
+      model: 'MiniMax-M2.7-highspeed',
+    })
+    expect(client.baseURL).toBe('https://api.minimaxi.com/anthropic')
+  } finally {
+    if (prevBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL
+    else process.env.ANTHROPIC_BASE_URL = prevBaseUrl
+    saveGlobalConfig(c => ({ ...c, providerModelOverrides: undefined }))
+  }
+})
+
+test('getAnthropicClient falls back to env baseURL when model has no override', async () => {
+  const prevBaseUrl = process.env.ANTHROPIC_BASE_URL
+  process.env.ANTHROPIC_BASE_URL = 'https://env-default.example.com'
+  saveGlobalConfig(c => ({ ...c, providerModelOverrides: {} }))
+  try {
+    const client = await getAnthropicClient({
+      apiKey: 'env-test-key',
+      maxRetries: 0,
+      model: 'no-such-model',
+    })
+    expect(client.baseURL).toBe('https://env-default.example.com')
+  } finally {
+    if (prevBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL
+    else process.env.ANTHROPIC_BASE_URL = prevBaseUrl
+    saveGlobalConfig(c => ({ ...c, providerModelOverrides: undefined }))
+  }
 })

@@ -16,6 +16,7 @@ import type { RemoteAgentTaskState } from '../../tasks/RemoteAgentTask/RemoteAge
 import type { TaskState } from '../../tasks/types.js';
 import { AbortError } from '../../utils/errors.js';
 import { lazySchema } from '../../utils/lazySchema.js';
+import { logError } from '../../utils/log.js';
 import { extractTextContent } from '../../utils/messages.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
 import { sleep } from '../../utils/sleep.js';
@@ -54,6 +55,7 @@ type TaskOutputToolOutput = {
   retrieval_status: 'success' | 'timeout' | 'not_ready';
   task: TaskOutput | null;
 };
+const TASK_OUTPUT_ACTIVITY_INTERVAL_MS = 30_000;
 
 // Re-export Progress from centralized types to break import cycles
 export type { TaskOutputProgress as Progress } from '../../types/tools.js';
@@ -242,17 +244,33 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     }
 
     // Blocking: wait for completion
-    if (onProgress) {
-      onProgress({
-        toolUseID: `task-output-waiting-${Date.now()}`,
-        data: {
-          type: 'waiting_for_task',
-          taskDescription: task.description,
-          taskType: task.type
-        }
-      });
+    const reportWaiting = () => {
+      if (!onProgress) return;
+      try {
+        onProgress({
+          toolUseID: `task-output-waiting-${task_id}`,
+          data: {
+            type: 'waiting_for_task',
+            taskDescription: task.description,
+            taskType: task.type
+          }
+        });
+      } catch (error) {
+        // Timer callbacks escape the surrounding try/finally; an uncaught
+        // throw here would crash the process.
+        logError(error);
+      }
+    };
+    reportWaiting();
+    const activityInterval = onProgress ? setInterval(reportWaiting, TASK_OUTPUT_ACTIVITY_INTERVAL_MS) : undefined;
+    let completedTask: TaskState | null;
+    try {
+      completedTask = await waitForTaskCompletion(task_id, toolUseContext.getAppState, timeout, toolUseContext.abortController);
+    } finally {
+      if (activityInterval !== undefined) {
+        clearInterval(activityInterval);
+      }
     }
-    const completedTask = await waitForTaskCompletion(task_id, toolUseContext.getAppState, timeout, toolUseContext.abortController);
     if (!completedTask) {
       return {
         data: {
