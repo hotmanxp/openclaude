@@ -88,6 +88,24 @@ if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
+  // #2133: If we're a registered background session, install the terminal
+  // finalizer before any other work — it must be in place before any path
+  // that can call process.exit() runs. The private env value only routes
+  // the check; the registry's exact ID/PID match is the authority.
+  {
+    const { BACKGROUND_SESSION_ID_ENV, BACKGROUND_SESSION_LAUNCHER_PID_ENV } =
+      await import('../cli/bgRouting.js')
+    if (
+      process.env[BACKGROUND_SESSION_ID_ENV] !== undefined ||
+      process.env[BACKGROUND_SESSION_LAUNCHER_PID_ENV] !== undefined
+    ) {
+      const { prepareBackgroundSessionFinalizer } = await import(
+        '../cli/bgFinalizer.js'
+      )
+      await prepareBackgroundSessionFinalizer()
+    }
+  }
+
   // Fast-path for --version/-v: zero module loading needed
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time

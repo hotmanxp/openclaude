@@ -58,3 +58,21 @@ export function extractArgsAfterDoubleDash(
   }
   return { command: commandOrValue, args }
 }
+
+/**
+ * Return the slice of `args` before the first `--` delimiter (or the full
+ * array if no delimiter is present). This is the inverse of
+ * `extractArgsAfterDoubleDash`: callers that need to detect flags inside a
+ * prompt like `claude --bg my-prompt -- --ignore-this` should only look at
+ * the part before `--`, otherwise a dash-prefixed prompt would be mistaken
+ * for a CLI flag.
+ *
+ * Mirrors the upstream `argsBeforeDelimiter` helper (added in #1642 for the
+ * local background sessions feature). Kept here as a fork-local addition so
+ * we don't need to drag the upstream `bg.ts` callers' full dependency tree
+ * into the fork.
+ */
+export function argsBeforeDelimiter(args: string[]): string[] {
+  const delimiterIndex = args.indexOf('--')
+  return delimiterIndex === -1 ? args : args.slice(0, delimiterIndex)
+}
