@@ -223,7 +223,11 @@ export class QueryGuard {
     this._suspendedAt = 0
     this._totalSuspendedMs = 0
     this._lastContext = null
-    this._queryStartedAt = Date.now()
+    // Deadline arithmetic is monotonic so NTP/manual wall-clock jumps
+    // cannot manufacture an immediate timeout or postpone an
+    // already-scheduled one. Wall-clock timestamps stay on Date.now()
+    // for external metadata (context.startedAt, metadata.startedAt).
+    this._queryStartedAt = performance.now()
     this._lastActivityAt = this._queryStartedAt
     this._context = this._createContext(metadata)
     this._getActiveOperations = metadata?.getActiveOperations ?? null
@@ -323,7 +327,7 @@ export class QueryGuard {
     void reason
     if (this._status !== 'running') return
     if (generation !== undefined && generation !== this._generation) return
-    this._lastActivityAt = Date.now()
+    this._lastActivityAt = performance.now()
     this._scheduleTimeout()
   }
 
@@ -344,7 +348,7 @@ export class QueryGuard {
       }
     }
 
-    const now = Date.now()
+    const now = performance.now()
     const leaseTimeoutMs =
       typeof input.timeoutMs === 'number' &&
       Number.isFinite(input.timeoutMs) &&
@@ -412,7 +416,7 @@ export class QueryGuard {
       return () => {}
     }
     if (this._suspendCount === 0) {
-      this._suspendedAt = Date.now()
+      this._suspendedAt = performance.now()
     }
     this._suspendCount++
     this._scheduleTimeout()
@@ -438,7 +442,7 @@ export class QueryGuard {
    */
   private _resumeAfterInteraction(): void {
     if (this._status !== 'running') return
-    const now = Date.now()
+    const now = performance.now()
     const suspendedStartedAt = this._suspendedAt
     const suspendedMs = Math.max(0, now - suspendedStartedAt)
     this._suspendedAt = 0
@@ -614,7 +618,9 @@ export class QueryGuard {
       generation: this._generation,
       reason,
       timeoutMs: this._getTimeoutMsForReason(reason, now),
-      elapsedMs: now - context.startedAt,
+      // Monotonic milliseconds since query start; not comparable with
+      // context.startedAt (wall clock for external metadata).
+      elapsedMs: now - this._queryStartedAt,
       context,
       activeOperations: this._snapshotActiveOperations(),
     }
@@ -633,7 +639,7 @@ export class QueryGuard {
     this._clearTimeout()
     if (this._status !== 'running') return
 
-    const now = Date.now()
+    const now = performance.now()
     const reason = this._getTimeoutReason(now)
     if (reason) {
       this._timeoutId = setTimeout(() => this._handleTimeout(), 0)
@@ -652,7 +658,7 @@ export class QueryGuard {
     this._timeoutId = null
     if (this._status !== 'running') return
 
-    const now = Date.now()
+    const now = performance.now()
     const reason = this._getTimeoutReason(now)
     if (!reason) {
       this._scheduleTimeout()
