@@ -13,6 +13,8 @@ export type QueryTerminalReason =
 
 export type QueryGuardTimeoutReason = 'idle' | 'hard_max' | 'lease_expired'
 
+export type QueryTerminalOutcome = 'aborted' | 'failed' | 'completed'
+
 export type QueryActiveApiCall = {
   clientRequestId?: string
   requestId?: string | null
@@ -66,6 +68,7 @@ export type QueryGuardTimeoutInfo = {
   elapsedMs: number
   context: QueryLifecycleContext
   activeOperations: QueryActiveOperationSnapshot
+  causalEventId?: string
 }
 
 export function getQueryTerminalReason(
@@ -90,6 +93,14 @@ export function getQueryTerminalReason(
     default:
       return 'unknown'
   }
+}
+
+export function getQueryTerminalOutcome(
+  signal: Pick<AbortSignal, 'aborted'>,
+  didThrow: boolean,
+): QueryTerminalOutcome {
+  if (signal.aborted) return 'aborted'
+  return didThrow ? 'failed' : 'completed'
 }
 
 export function formatQueryLifecycleAbortSignalReason(reason: string): string {

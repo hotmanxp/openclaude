@@ -24,6 +24,7 @@ import type {
 } from '../../types/permissions.js'
 import { setClassifierApproval } from '../../utils/classifierApprovals.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { requestAbort } from '../../utils/interruptionTrace.js'
 import { executePermissionRequestHooks } from '../../utils/hooks.js'
 import {
   REJECT_MESSAGE,
@@ -158,6 +159,7 @@ function createPermissionContext(
       feedback?: string,
       isAbort?: boolean,
       contentBlocks?: ContentBlockParam[],
+      abortTrace?: { source: string; causalEventId?: string },
     ): PermissionDecision {
       const sub = !!toolUseContext.agentId
       const baseMessage = feedback
@@ -170,7 +172,12 @@ function createPermissionContext(
         logForDebugging(
           `Aborting: tool=${tool.name} isAbort=${isAbort} hasFeedback=${!!feedback} isSubagent=${sub}`,
         )
-        toolUseContext.abortController.abort('interrupt')
+        requestAbort(toolUseContext.abortController, 'interrupt', {
+          source: abortTrace?.source ?? 'permission_abort',
+          causalEventId: abortTrace?.causalEventId,
+          subsystem: 'tool_permission',
+          controllerRole: 'query-root',
+        })
       }
       return { behavior: 'ask', message, contentBlocks }
     },
@@ -249,7 +256,11 @@ function createPermissionContext(
               logForDebugging(
                 `Hook interrupt: tool=${tool.name} hookMessage=${decision.message}`,
               )
-              toolUseContext.abortController.abort('interrupt')
+              requestAbort(toolUseContext.abortController, 'interrupt', {
+                source: 'permission_hook',
+                subsystem: 'tool_permission',
+                controllerRole: 'query-root',
+              })
             }
             return this.buildDeny(
               decision.message || 'Permission denied by hook',

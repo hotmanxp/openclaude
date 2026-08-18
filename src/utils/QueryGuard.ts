@@ -35,6 +35,7 @@
  *   )
  */
 import { createSignal } from './signal.js'
+import { traceInterruptionEvent } from './interruptionTrace.js'
 import type {
   QueryActiveOperationSnapshot,
   QueryGuardMetadata,
@@ -667,6 +668,21 @@ export class QueryGuard {
 
     const terminalReason = terminalReasonForTimeout(reason)
     const timeoutInfo = this._buildTimeoutInfo(reason, now)
+    const firedCausalEventId = traceInterruptionEvent('query_guard.fired', {
+      subsystem: 'query_guard',
+      phase: terminalReason,
+      queryId: timeoutInfo.context?.queryId,
+      queryGeneration: timeoutInfo.generation,
+      querySource: timeoutInfo.context?.querySource,
+      trigger: reason,
+      elapsedQueryMs: timeoutInfo.elapsedMs,
+      sinceLastActivityMs: now - this._lastActivityAt,
+      activeApiCallCount: timeoutInfo.activeOperations.apiCalls.length,
+      activeToolUseCount: timeoutInfo.activeOperations.toolUses.length,
+      leaseCount: this._activeLeases.size,
+      suspendCount: this._suspendCount,
+    })
+    if (firedCausalEventId) timeoutInfo.causalEventId = firedCausalEventId
 
     console.error(
       `[QueryGuard] Query ${reason} timeout - force-ending to prevent infinite spinner`,
