@@ -1,44 +1,54 @@
 /**
- * BackgroundAgentViewDialog — Ink dialog for the bg daemon job list.
+ * BackgroundAgentViewDialog — Ink dialog for the v2 session-registry
+ * job list.
  *
- * T9 of the bg-agent-view plan. Renders a `claude bg-agents`-style job list
- * fed by the daemon `list` op (not `appState.tasks` — that's what the
- * sibling `BackgroundTasksDialog.tsx` does for in-process tasks).
+ * Reads from `src/cli/bgRegistry.ts` (the v2 model introduced by
+ * upstream #1642, hardened by #2133 in fork `14395791`) rather than the
+ * v1 daemon socket. Sessions are persisted under
+ * `~/.claude/bg-sessions/sessions/{id}.json`, so the dialog renders
+ * every session the fork has ever launched — including `exited`,
+ * `failed`, `stale`, and `killed` terminals — without needing the v1
+ * daemon (`opencc daemon`) running.
  *
  * Design:
  *
- * 1. Data fetch lives in {@link loadJobs} / {@link killJob} (pure
- *    functions over the IPC transport). The React hook
- *    {@link useBackgroundAgentJobs} wraps them with state, so the
+ * 1. Data fetch lives in {@link loadSessions} / {@link killSession}
+ *    (pure functions over the bgRegistry module). The React hook
+ *    {@link useBackgroundAgentSessions} wraps them with state, so the
  *    renderer is a thin paint layer. Pure functions are trivial to
  *    unit-test without booting Ink or React 19 / @testing-library —
  *    see `BackgroundAgentViewDialog.test.tsx`.
  *
- * 2. Layout mirrors `BackgroundTasksDialog`'s row shape (pointer +
- *    label + status) so the visual contract matches what users
- *    already see from `/tasks`.
+ * 2. Layout mirrors the prior v1 row shape (pointer + label + status)
+ *    so the visual contract is preserved across the v1 → v2 switch.
  *
- * 3. Kill routes to the daemon via `requestDaemon({op:'kill', short})`
- *    — NOT to `LocalShellTask.kill` or any in-process task handle.
- *    The daemon owns the worker process; we just send the op.
+ * 3. Kill routes through {@link killBackgroundSession} in
+ *    `cli/bg.ts` (not v1 daemon `kill` op, not `LocalShellTask.kill`).
+ *    bg.ts handles SIGTERM → SIGKILL, identity verification, and the
+ *    finalizer terminal-fact write (see `backgroundSessionTermination.ts`).
  *
- * 4. Foreground (PTY attach) is deferred to v2 per plan §T9 spec. `f`
- *    closes the dialog with a note rather than silently no-op'ing.
+ * 4. Foreground (PTY attach) is deferred to v2 per upstream 2.1.177
+ *    spec. `f` closes the dialog with a note rather than silently
+ *    no-op'ing.
  *
  * 5. No snapshot tests for the Ink tree — `react-ink-testing-library`
  *    is not in this repo, and snapshotting Ink's ANSI-stripped output
- *    is notoriously flaky. The data layer (loadJobs, killJob) is
- *    tested in `BackgroundAgentViewDialog.test.tsx`.
- *
- * @see docs/superpowers/plans/2026-06-13-plan-bg-agent-view.md §T9
+ *    is notoriously flaky. The data layer (loadSessions, killSession)
+ *    is tested in `BackgroundAgentViewDialog.test.tsx`.
  */
 
 import figures from 'figures'
 import { Box, Text, useApp, useInput } from '../../ink.js'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import {
+  isTerminalBackgroundSession,
+  listBackgroundSessions,
+  refreshBackgroundSessionStatuses,
+  resolveBackgroundSession,
+  type BackgroundSession,
+} from '../../cli/bgRegistry.js'
+import { killBackgroundSession } from '../../cli/bg.js'
 import type { JobRecord } from '../../utils/daemon/protocol.js'
-import { BG_PROTO } from '../../utils/daemon/protocol.js'
-import { DaemonError, requestOnPath } from '../../utils/daemon/socket.js'
 
 // ---------- Public props ----------
 
@@ -50,299 +60,225 @@ export interface BackgroundAgentViewDialogProps {
 // ---------- Pure data-layer functions (testable) ----------
 
 /**
- * Test seam: replaces the path the dialog uses for daemon IPC. Production
- * callers leave this alone; the default is `getSockPath()` from
- * `./utils/daemon/socket.js`.
+ * Test seam: replaces the registry root path the dialog reads from.
+ * Production callers leave this alone; the default is
+ * `<claude-config-home>/bg-sessions` (see `_setBackgroundSessionsRootForTesting`).
  */
-let sockPathOverride: string | null = null
-
-export function setBackgroundAgentSockPathForTesting(path: string | null): void {
-  sockPathOverride = path
+export function setBackgroundAgentRegistryRootForTesting(
+  root: string | null,
+): void {
+  // Lazy require to avoid a module-load cycle: bgRegistry imports
+  // generic process utils that touch fs at top level.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const {_setBackgroundSessionsRootForTesting} =
+    require('../../cli/bgRegistry.js') as {
+      _setBackgroundSessionsRootForTesting: (root: string | undefined) => void
+    }
+  _setBackgroundSessionsRootForTesting(root ?? undefined)
 }
 
-export function resolveBackgroundAgentSockPath(getSockPath: () => string): string {
-  return sockPathOverride ?? getSockPath()
-}
-
-/** Outcome of a `list` op from the bg daemon. */
-export type LoadJobsResult =
+/** Outcome of loading sessions from the v2 registry. */
+export type LoadSessionsResult =
   | { ok: true; jobs: JobRecord[] }
-  | { ok: false; error: string; code: string }
+  | { ok: false; error: string }
 
 /**
- * Send `list` to the daemon and return the sorted job array. Sorts
- * `createdAt` desc (newest first) to match `BackgroundTasksDialog`'s
+ * Read every session from the v2 registry, refresh process liveness,
+ * and project the `BackgroundSession[]` shape into the dialog's
+ * `JobRecord[]` UI shape.
+ *
+ * Sorts `startedAt` desc (newest first) to match the v1 dialog's
  * natural "what just started?" top-of-list ordering.
  *
- * Never throws — daemon / transport errors are surfaced as
- * `{ok:false, error, code}` so the hook can render them as a UI state
+ * Never throws — filesystem / parse errors are surfaced as
+ * `{ok:false, error}` so the hook can render them as a UI state
  * rather than crashing the REPL.
  */
-export async function loadJobs(
-  sockPath: string,
-  timeoutMs: number,
-  deps: { requestOnPathFn?: typeof requestOnPath } = {},
-): Promise<LoadJobsResult> {
-  const req = deps.requestOnPathFn ?? requestOnPath
+export async function loadSessions(deps: {
+  listFn?: () => Promise<BackgroundSession[]>
+  refreshFn?: () => Promise<BackgroundSession[]>
+} = {}): Promise<LoadSessionsResult> {
+  const list = deps.listFn ?? listBackgroundSessions
+  const refresh = deps.refreshFn ?? refreshBackgroundSessionStatuses
   try {
-    const resp = await req(
-      sockPath,
-      { proto: BG_PROTO, op: 'list' },
-      timeoutMs,
+    const refreshed = await refresh()
+    // refresh returns the same shape as list but with statuses updated;
+    // fall back to list if refresh returns nothing (e.g., empty dir).
+    const sessions = refreshed.length > 0 ? refreshed : await list()
+    const sorted = [...sessions].sort((a, b) =>
+      b.startedAt.localeCompare(a.startedAt),
     )
-    if (resp.ok && resp.op === 'list') {
-      const sorted = [...resp.jobs].sort((a, b) => b.createdAt - a.createdAt)
-      return { ok: true, jobs: sorted }
-    }
-    if (!resp.ok) {
-      return { ok: false, error: resp.error, code: resp.code }
-    }
-    return {
-      ok: false,
-      error: `unexpected op in list response: ${(resp as { op: string }).op}`,
-      code: 'EPROTO',
-    }
+    return { ok: true, jobs: sorted.map(sessionToJob) }
   } catch (err) {
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-      code: err instanceof DaemonError ? err.code : 'EUNKNOWN',
     }
   }
 }
 
-/** Outcome of a `kill` op. */
-export type KillJobResult =
-  | { ok: true }
-  | { ok: false; error: string; code: string }
+/** Outcome of killing a single session. */
+export type KillSessionResult = { ok: true } | { ok: false; error: string }
 
 /**
- * Send `kill` for a single job short id. Never throws.
+ * Resolve a short id back to its session record and run the v2 kill
+ * pipeline. Never throws — registry / process errors are surfaced as
+ * `{ok:false, error}`.
  */
-export async function killJob(
-  sockPath: string,
-  short: JobRecord['short'],
-  timeoutMs: number,
-  deps: { requestOnPathFn?: typeof requestOnPath } = {},
-): Promise<KillJobResult> {
-  const req = deps.requestOnPathFn ?? requestOnPath
+export async function killSession(
+  short: string,
+  deps: {
+    resolveFn?: (id: string) => Promise<BackgroundSession | null>
+    killFn?: (session: BackgroundSession) => Promise<BackgroundSession>
+  } = {},
+): Promise<KillSessionResult> {
+  const resolve = deps.resolveFn ?? resolveBackgroundSession
+  const kill = deps.killFn ?? killBackgroundSession
   try {
-    const resp = await req(
-      sockPath,
-      { proto: BG_PROTO, op: 'kill', short },
-      timeoutMs,
-    )
-    if (resp.ok) return { ok: true }
-    return { ok: false, error: resp.error, code: resp.code }
+    const session = await resolve(short)
+    if (!session) {
+      return { ok: false, error: `No background session with id ${short}` }
+    }
+    await kill(session)
+    return { ok: true }
   } catch (err) {
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-      code: err instanceof DaemonError ? err.code : 'EUNKNOWN',
     }
   }
+}
+
+/**
+ * Adapter: project a `BackgroundSession` into the dialog's `JobRecord`
+ * UI shape so the existing `BackgroundAgentRow` renderer is unchanged.
+ *
+ * Field mapping (v2 → JobRecord):
+ *   - `job.short`        ← session.id (already `bg-<8 hex>`)
+ *   - `job.source`       ← session.provider ?? 'shell'  (mapped to JobSource enum)
+ *   - `job.cwd`          ← session.cwd
+ *   - `job.createdAt`    ← new Date(session.startedAt).getTime()
+ *   - `job.dying`        ← isTerminal(session) OR session.status === 'stale'
+ *   - `job.isolation`    ← 'none' (v2 has no worktree concept)
+ */
+function sessionToJob(session: BackgroundSession): JobRecord {
+  const dying =
+    isTerminalBackgroundSession(session) || session.status === 'stale'
+  return {
+    short: session.id as unknown as JobRecord['short'],
+    nonce: '',
+    sessionId: session.sessionId,
+    source: mapProviderToSource(session.provider),
+    cwd: session.cwd,
+    createdAt: new Date(session.startedAt).getTime(),
+    isolation: 'none',
+    dying,
+  }
+}
+
+/**
+ * Map v2 session.provider (anthropic / ollama / openai-compatible /
+ * undefined) into the v1 `JobSource` enum. v1's enum covers how a
+ * job was *dispatched* (shell / slash / fleet / spare / respawn);
+ * v2 only tracks the underlying provider. Pick the closest match —
+ * for now any provider routes through 'shell' since all v2 launches
+ * are shell-style `--bg` invocations.
+ */
+function mapProviderToSource(
+  provider: string | undefined,
+): JobRecord['source'] {
+  // v1 source values: 'shell' | 'slash' | 'fleet' | 'spare' | 'respawn'.
+  // All `--bg` launches are functionally `shell` in v1 terms.
+  // We keep the provider name in the row via the adapter below;
+  // returning a stable enum value avoids schema-validation surprises.
+  return 'shell'
 }
 
 // ---------- React hook ----------
 
-export interface UseBackgroundAgentJobsResult {
+export interface UseBackgroundAgentSessionsResult {
   jobs: JobRecord[]
   loading: boolean
   error: string | null
-  /** Re-fetch the job list. */
+  /** Re-fetch the session list. */
   refresh: () => Promise<void>
   /**
-   * Send a `kill` op to the daemon for `short`. On success the local
-   * cache is filtered to drop the killed job.
+   * Send a kill through the v2 pipeline for `short`. On success the
+   * local cache is filtered to drop the killed session.
    */
   kill: (short: JobRecord['short']) => Promise<void>
 }
 
 /**
- * Fetch + cache + sort the bg daemon's live job list.
+ * Fetch + cache + sort the v2 registry's session list.
  *
- * Errors are kept as a single string field — `null` when none. The hook
- * never throws; the caller decides how to render an error state.
+ * Errors are kept as a single string field — `null` when none. The
+ * hook never throws; the caller decides how to render an error state.
  */
-export function useBackgroundAgentJobs(
-  getSockPath: () => string,
-  opts: { requestTimeoutMs?: number; deps?: { requestOnPathFn?: typeof requestOnPath } } = {},
-): UseBackgroundAgentJobsResult {
-  const requestTimeoutMs = opts.requestTimeoutMs ?? 5000
-  const deps = opts.deps
+export function useBackgroundAgentSessions(
+  deps: {
+    listFn?: () => Promise<BackgroundSession[]>
+    refreshFn?: () => Promise<BackgroundSession[]>
+    resolveFn?: (id: string) => Promise<BackgroundSession | null>
+    killFn?: (session: BackgroundSession) => Promise<BackgroundSession>
+  } = {},
+): UseBackgroundAgentSessionsResult {
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
-  const sockPath = useMemo(() => resolveBackgroundAgentSockPath(getSockPath), [getSockPath])
-
-  const refresh = useMemo(
-    () =>
-      async () => {
-        setLoading(true)
-        setError(null)
-        const r = await loadJobs(sockPath, requestTimeoutMs, deps)
-        if (r.ok) {
-          setJobs(r.jobs)
-        } else {
-          setError(`${r.code}: ${r.error}`)
-        }
-        setLoading(false)
-      },
-    [sockPath, requestTimeoutMs, deps],
-  )
+  const refresh = async () => {
+    setLoading(true)
+    setError(null)
+    const r = await loadSessions({
+      listFn: deps.listFn,
+      refreshFn: deps.refreshFn,
+    })
+    if (r.ok) {
+      setJobs(r.jobs)
+    } else {
+      setError(r.error)
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
     void refresh()
-  }, [refresh])
+    // The hook's deps object is intentionally omitted: callers pass
+    // test seams; production callers pass `{}`. Re-running on identity
+    // churn of an `{}` literal would be wasteful.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const kill = useMemo(
-    () =>
-      async (short: JobRecord['short']) => {
-        const r = await killJob(sockPath, short, requestTimeoutMs, deps)
-        if (r.ok) {
-          setJobs(prev => prev.filter(j => j.short !== short))
-          setError(null)
-        } else {
-          setError(`${r.code}: ${r.error}`)
-        }
-      },
-    [sockPath, requestTimeoutMs, deps],
-  )
+  const kill = async (short: JobRecord['short']) => {
+    const r = await killSession(short, {
+      resolveFn: deps.resolveFn,
+      killFn: deps.killFn,
+    })
+    if (r.ok) {
+      setJobs(prev => prev.filter(j => j.short !== short))
+      setError(null)
+    } else {
+      setError(r.error)
+    }
+  }
 
   return { jobs, loading, error, refresh, kill }
 }
 
-// ---------- Daemon-down hint ----------
-
-/**
- * User-facing hint surfaced when the daemon is unreachable or returns
- * an error. Kept identical to `bgAgents.ts`'s message so users see the
- * same string in both the CLI and the `/background` slash.
- */
-export const INSTALL_HINT =
-  'No background daemon is running. Run `opencc daemon install` to set it up as a persistent service.'
-
 // ---------- Component ----------
 
 /**
- * Ink-based interactive dialog for the bg daemon's live job list.
+ * Ink-based interactive dialog for the v2 session-registry job list.
  *
- * Mounted by T8's `/background` slash command. Sibling to
- * `BackgroundTasksDialog` (which reads `appState.tasks`); this one
- * reads from the daemon via `useBackgroundAgentJobs`.
+ * Mounted by T8's `/background` slash command. Reads directly from
+ * `bgRegistry.ts` (no daemon socket required).
  */
 export function BackgroundAgentViewDialog({
   onDone,
 }: BackgroundAgentViewDialogProps): React.ReactNode {
   const { exit } = useApp()
-  // Static-importing `getSockPath` from `socket.js` at module top would
-  // eagerly execute the darwin-only guard at file-load time, which is
-  // fine in production but trips bun:test on non-darwin CI. Lazy import
-  // defers the call until first render.
-  const [sockApi, setSockApi] = useState<
-    { getSockPath: () => string } | null
-  >(null)
-  const [sockApiError, setSockApiError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void import('../../utils/daemon/socket.js')
-      .then(mod => {
-        if (cancelled) return
-        setSockApi({ getSockPath: mod.getSockPath })
-      })
-      .catch(err => {
-        if (cancelled) return
-        setSockApiError(err instanceof Error ? err.message : String(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  if (!sockApi && !sockApiError) {
-    return (
-      <Box flexDirection="column" paddingX={1}>
-        <Text bold>Background agents</Text>
-        <Text dimColor>Loading…</Text>
-      </Box>
-    )
-  }
-
-  if (sockApiError) {
-    return (
-      <BackgroundErrorView message={sockApiError} onDone={onDone} />
-    )
-  }
-
-  // `getSockPath` is darwin-only and throws on other platforms.
-  let resolvedPath: string
-  try {
-    resolvedPath = resolveBackgroundAgentSockPath(sockApi!.getSockPath)
-  } catch (err) {
-    return (
-      <BackgroundErrorView
-        message={err instanceof Error ? err.message : String(err)}
-        onDone={onDone}
-      />
-    )
-  }
-
-  return (
-    <BackgroundAgentViewDialogInner
-      sockPath={resolvedPath}
-      onDone={onDone}
-      exit={exit}
-    />
-  )
-}
-
-function BackgroundErrorView({
-  message,
-  onDone,
-}: {
-  message: string
-  onDone: (note?: string) => void
-}): React.ReactNode {
-  useInput((input, key) => {
-    if (key.escape || input === 'q') {
-      onDone('Background agents dialog dismissed')
-    }
-  })
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold>Background agents</Text>
-      <Text color="warning">{message}</Text>
-      <Text dimColor>{INSTALL_HINT}</Text>
-      <Box marginTop={1}>
-        <Text dimColor>Press Esc or q to close.</Text>
-      </Box>
-    </Box>
-  )
-}
-
-interface InnerProps {
-  sockPath: string
-  onDone: (note?: string) => void
-  exit: () => void
-}
-
-/**
- * Inner component. Owns the input loop and renders the rows. Split out
- * from the outer wrapper so `useBackgroundAgentJobs` reads a stable
- * `sockPath` string (the alternative — passing a `() => string` getter
- * — would invalidate the hook's `useMemo` on every render).
- */
-function BackgroundAgentViewDialogInner({
-  sockPath,
-  onDone,
-  exit,
-}: InnerProps): React.ReactNode {
-  const getSockPath = useMemo(() => () => sockPath, [sockPath])
-  const { jobs, loading, error, refresh, kill } = useBackgroundAgentJobs(
-    getSockPath,
-  )
+  const { jobs, loading, error, refresh, kill } = useBackgroundAgentSessions()
   const [selectedIdx, setSelectedIdx] = useState(0)
 
   // Clamp the selection when the list shrinks (e.g. after a kill).
@@ -410,8 +346,9 @@ interface BodyProps {
 }
 
 /**
- * Pure renderer for the dialog body. Stateless — receives everything as
- * props so it's easy to lift into tests or a future snapshot harness.
+ * Pure renderer for the dialog body. Stateless — receives everything
+ * as props so it's easy to lift into tests or a future snapshot
+ * harness.
  */
 function BackgroundAgentViewDialogBody({
   jobs,
@@ -428,7 +365,10 @@ function BackgroundAgentViewDialogBody({
     body = (
       <Box flexDirection="column">
         <Text color="warning">Error: {error}</Text>
-        <Text dimColor>{INSTALL_HINT}</Text>
+        <Text dimColor>
+          Could not read the v2 session registry. Check filesystem
+          permissions on ~/.claude/bg-sessions/.
+        </Text>
       </Box>
     )
   } else if (jobs.length === 0) {
@@ -436,8 +376,8 @@ function BackgroundAgentViewDialogBody({
       <Box flexDirection="column">
         <Text dimColor>No background agents running.</Text>
         <Text dimColor>
-          Use a <Text color="cyan">BackgroundAgent</Text> tool call to start
-          one.
+          Use <Text color="cyan">opencc --bg &quot;&lt;prompt&gt;&quot;</Text>{' '}
+          to start one.
         </Text>
       </Box>
     )
@@ -445,7 +385,7 @@ function BackgroundAgentViewDialogBody({
     body = (
       <Box flexDirection="column">
         <Text dimColor>
-          {runningCount} running, {jobs.length - runningCount} dying
+          {runningCount} running, {jobs.length - runningCount} terminal
         </Text>
         <Box flexDirection="column" marginTop={1}>
           {jobs.map((job, idx) => (
@@ -495,8 +435,8 @@ function BackgroundAgentViewDialogBody({
 }
 
 /**
- * One row per daemon job. Mirrors `BackgroundTasksDialog`'s pointer +
- * label layout for visual consistency with `/tasks`.
+ * One row per session. Mirrors the v1 layout (pointer + label) for
+ * visual continuity across the v1 → v2 switch.
  */
 function BackgroundAgentRow({
   job,
