@@ -38,7 +38,7 @@ afterEach(async () => {
   rmSync(tempRoot, { recursive: true, force: true })
   mock.module('./settings/settings.js', () => ({ ...realSettings }))
   mock.restore()
-  await releaseSharedMutationLock('utils/gitSettings.test.ts')
+  await releaseSharedMutationLock()
 })
 
 // Two of the new cwd-based detection tests (lines 44, 67) fail in the full
