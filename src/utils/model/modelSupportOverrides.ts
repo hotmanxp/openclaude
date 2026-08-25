@@ -1,5 +1,5 @@
 import memoize from 'lodash-es/memoize.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
 
 export type ModelCapabilityOverride =
   | 'effort'
@@ -26,7 +26,9 @@ const TIERS = [
 function buildCapabilityOverrideCacheKey(
   model: string,
   capability: ModelCapabilityOverride,
+  apiProvider?: ReturnType<typeof getAPIProvider>,
 ): string {
+  const resolvedApiProvider = apiProvider ?? getAPIProvider()
   const envParts = TIERS.flatMap(tier => [
     process.env[tier.modelEnvVar] ?? '',
     process.env[tier.capabilitiesEnvVar] ?? '',
@@ -35,7 +37,9 @@ function buildCapabilityOverrideCacheKey(
   return [
     model.toLowerCase(),
     capability,
-    getAPIProvider(),
+    resolvedApiProvider,
+    process.env.ANTHROPIC_BASE_URL ?? '',
+    process.env.USER_TYPE ?? '',
     ...envParts,
   ].join('\0')
 }
@@ -45,8 +49,16 @@ function buildCapabilityOverrideCacheKey(
  * the pinned ANTHROPIC_DEFAULT_*_MODEL env vars.
  */
 export const get3PModelCapabilityOverride = memoize(
-  (model: string, capability: ModelCapabilityOverride): boolean | undefined => {
-    if (getAPIProvider() === 'firstParty') {
+  (
+    model: string,
+    capability: ModelCapabilityOverride,
+    apiProvider?: ReturnType<typeof getAPIProvider>,
+  ): boolean | undefined => {
+    const resolvedApiProvider = apiProvider ?? getAPIProvider()
+    if (
+      resolvedApiProvider === 'firstParty' &&
+      isFirstPartyAnthropicBaseUrl()
+    ) {
       return undefined
     }
     const m = model.toLowerCase()
