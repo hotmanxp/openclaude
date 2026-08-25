@@ -419,7 +419,7 @@ Day-to-day commands:
 - `bun test path/to/file.test.ts` — focused runs for the areas you touch
 - `bun run test:coverage` — coverage to `coverage/lcov.info` plus a visual report at `coverage/index.html` (`bun run test:coverage:ui` rebuilds just the UI)
 - `bun run smoke` — smoke checks
-- `bun run doctor:runtime`, `bun run verify:privacy`, `bun run security:pr-scan -- --base origin/main`
+- `bun run doctor:runtime`, `bun run verify:privacy`; for PR intent scanning, use the fresh-upstream, explicit-ref workflow in the [local pre-push validation contract](CONTRIBUTING.md#validation)
 
 Focused suites: `bun run test:provider`, `bun run test:provider-recommendation`.
 
@@ -447,7 +447,7 @@ OpenClaude leaves Node's standard compile-cache controls authoritative. Set
 `NODE_DISABLE_COMPILE_CACHE=1` to disable the optimization, including for V8
 coverage runs that require uncached compilation.
 
-Recommended validation before opening a PR:
+Before opening or updating a PR, run the authoritative [local pre-push validation contract](CONTRIBUTING.md#validation). The commands below are useful for narrow iteration, but they do not replace that required preflight:
 
 - `bun run build`
 - `bun run smoke`
