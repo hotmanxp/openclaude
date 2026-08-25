@@ -32,6 +32,7 @@ import {
 } from '../ink/termio/osc.js'
 import { shutdownDatadog } from '../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
+import { reportErrorToSentry } from './sentry.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -338,6 +339,10 @@ export const setupGracefulShutdown = memoize(() => {
       error_name:
         error.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    // Optional Sentry reporting (env-driven, opt-in). No-op unless
+    // SENTRY_DSN is set; only sends the sanitized message for
+    // TelemetrySafeError instances, never this raw error.
+    reportErrorToSentry(error)
   })
 
   // Log unhandled promise rejections for container observability and analytics
@@ -361,6 +366,10 @@ export const setupGracefulShutdown = memoize(() => {
       error_name:
         errorName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    // Optional Sentry reporting (env-driven, opt-in). No-op unless
+    // SENTRY_DSN is set; only sends the sanitized message for
+    // TelemetrySafeError instances, never this raw rejection reason.
+    reportErrorToSentry(reason)
   })
 })
 

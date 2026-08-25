@@ -697,3 +697,32 @@ teammate active-message compaction, malformed hard-cap overrides, and
 pruned-history tool-call/tool-result pairing. They are not a substitute for a
 multi-hour manual soak, but they pin the bounded-history and conversion
 invariants that previously let long sessions grow until Node/V8 OOM.
+
+## Optional Error Reporting (Sentry)
+
+OpenClaude can optionally report sanitized error events to Sentry. This is
+disabled by default and opt-in only.
+
+```bash
+export SENTRY_DSN=https://your-key@your-org.ingest.sentry.io/your-project
+openclaude
+```
+
+Notes:
+
+- Reporting only activates when `SENTRY_DSN` is set. Unset, this is a no-op.
+- Reporting is skipped even when `SENTRY_DSN` is set if `DISABLE_TELEMETRY` or
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set, matching the same privacy
+  levels used for existing telemetry (see [Runtime Hardening](#runtime-hardening)).
+- Only sanitized, telemetry-safe error messages are sent — never raw error
+  messages, which may contain file paths or other identifying information.
+- `@sentry/node` is an optional dev dependency and is **not included** in the
+  default `npm install -g @gitlawb/openclaude` install (see
+  [Optional provider packages](#optional-provider-packages)). If you set
+  `SENTRY_DSN` without installing it separately, reporting is silently
+  disabled (no error, no crash). Install it explicitly with:
+
+```bash
+  npm i -g @sentry/node
+```
+
