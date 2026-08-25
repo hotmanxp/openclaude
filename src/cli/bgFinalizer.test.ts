@@ -11,9 +11,15 @@ import {
 } from './bgFinalizer.js'
 import { buildBackgroundChildProcessConfig } from './bg.js'
 import {
+  BACKGROUND_PROCESS_MARKER_FLAG,
+  backgroundProcessMarkerToken,
+  isValidBackgroundProcessMarker,
+} from './bgRouting.js'
+import {
   _setBackgroundSessionsRootForTesting,
   listBackgroundSessions,
   refreshBackgroundSessionStatuses,
+  verifyBackgroundSessionProcessIdentity,
   type BackgroundSession,
 } from './bgRegistry.js'
 
@@ -343,6 +349,7 @@ describe('background session finalizer', () => {
     id: string,
     args: string[],
   ): Promise<number> {
+    const processMarker = 'c'.repeat(64)
     const processEnv: NodeJS.ProcessEnv = {
       ...process.env,
       OPENCLAUDE_CONFIG_DIR: configDir,
@@ -356,6 +363,7 @@ describe('background session finalizer', () => {
       processEnv,
       stdoutLogPath: join(configDir, `${id}.out.log`),
       backgroundSessionId: id,
+      processMarker,
       launcherPid: process.pid,
     })
     const child = spawn(childConfig.command, childConfig.args, {
@@ -367,7 +375,11 @@ describe('background session finalizer', () => {
     await mkdir(join(sessionsRoot, 'sessions'), { recursive: true })
     await writeFile(
       join(sessionsRoot, 'sessions', `${id}.json`),
-      JSON.stringify(ownedSession(id, child.pid)),
+      JSON.stringify({
+        ...ownedSession(id, child.pid),
+        processMarker,
+        command: [childConfig.command, ...childConfig.args],
+      }),
     )
     const [code] = (await once(child, 'exit')) as [number]
     return code
@@ -484,6 +496,11 @@ describe('background session finalizer', () => {
         exitCode: expectation.exitCode,
         terminalReason: 'exit_code',
       })
+      expect(isValidBackgroundProcessMarker(session.processMarker)).toBe(true)
+      expect(session.command).toContain(
+        backgroundProcessMarkerToken(session.processMarker!),
+      )
+      expect(stdout).not.toContain(BACKGROUND_PROCESS_MARKER_FLAG)
       expect(await Bun.file(session.stdoutLogPath).exists()).toBe(true)
       expect(await Bun.file(session.stderrLogPath).exists()).toBe(true)
     })
@@ -520,6 +537,12 @@ describe('background session finalizer', () => {
     expect(stderr).toBe('')
     expect(stdout).toMatch(/bg-built-success\s+exited/)
     expect(stdout).toMatch(/bg-built-failure\s+failed/)
+    for (const session of await listBackgroundSessions()) {
+      expect(session.processMarker).toBe('c'.repeat(64))
+      expect(session.command).toContain(
+        backgroundProcessMarkerToken(session.processMarker!),
+      )
+    }
   })
 
   it.skip(
