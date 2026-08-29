@@ -33,6 +33,7 @@ import {
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import { logError } from '../../utils/log.js'
+import { requestAbort } from '../../utils/interruptionTrace.js'
 import type { SetAppState } from '../../utils/messageQueueManager.js'
 import {
   createSystemMessage,
@@ -57,6 +58,17 @@ import {
 
 const MAX_SPECULATION_TURNS = 20
 const MAX_SPECULATION_MESSAGES = 100
+
+function requestSpeculationAbort(
+  controller: AbortController,
+  source: string,
+): void {
+  requestAbort(controller, undefined, {
+    source,
+    subsystem: 'prompt_suggestion',
+    controllerRole: 'speculation',
+  })
+}
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit'])
 const SAFE_READ_ONLY_TOOLS = new Set([
@@ -368,6 +380,11 @@ async function generatePipelinedSuggestion(
 
     const pipelineAbortController = createChildAbortController(
       parentAbortController,
+      undefined,
+      {
+        subsystem: 'prompt_suggestion',
+        controllerRole: 'suggestion-pipeline',
+      },
     )
     if (pipelineAbortController.signal.aborted) return
 
@@ -415,6 +432,11 @@ export async function startSpeculation(
 
   const abortController = createChildAbortController(
     context.toolUseContext.abortController,
+    undefined,
+    {
+      subsystem: 'prompt_suggestion',
+      controllerRole: 'speculation',
+    },
   )
 
   if (abortController.signal.aborted) return
@@ -439,7 +461,7 @@ export async function startSpeculation(
     speculation: {
       status: 'active',
       id,
-      abort: () => abortController.abort(),
+      abort: () => requestSpeculationAbort(abortController, 'speculation_cancelled'),
       startTime,
       messagesRef,
       writtenPathsRef,
@@ -486,7 +508,10 @@ export async function startSpeculation(
                 completedAt: Date.now(),
               },
             }))
-            abortController.abort()
+            requestSpeculationAbort(
+              abortController,
+              'speculation_edit_boundary',
+            )
             return denySpeculation(
               'Speculation paused: file edit requires permission',
               'speculation_edit_boundary',
@@ -590,7 +615,10 @@ export async function startSpeculation(
             updateActiveSpeculationState(setAppState, () => ({
               boundary: { type: 'bash', command, completedAt: Date.now() },
             }))
-            abortController.abort()
+            requestSpeculationAbort(
+              abortController,
+              'speculation_bash_boundary',
+            )
             return denySpeculation(
               'Speculation paused: bash boundary',
               'speculation_bash_boundary',
@@ -624,7 +652,7 @@ export async function startSpeculation(
             completedAt: Date.now(),
           },
         }))
-        abortController.abort()
+        requestSpeculationAbort(abortController, 'speculation_unknown_tool')
         return denySpeculation(
           `Tool ${tool.name} not allowed during speculation`,
           'speculation_unknown_tool',
@@ -638,7 +666,10 @@ export async function startSpeculation(
         if (msg.type === 'assistant' || msg.type === 'user') {
           messagesRef.current.push(msg)
           if (messagesRef.current.length >= MAX_SPECULATION_MESSAGES) {
-            abortController.abort()
+            requestSpeculationAbort(
+              abortController,
+              'speculation_message_limit',
+            )
           }
           if (isUserMessageWithArrayContent(msg)) {
             const newTools = count(
@@ -678,7 +709,7 @@ export async function startSpeculation(
       abortController,
     )
   } catch (error) {
-    abortController.abort()
+    requestSpeculationAbort(abortController, 'speculation_failure')
 
     if (error instanceof Error && error.name === 'AbortError') {
       safeRemoveOverlay(overlayPath)

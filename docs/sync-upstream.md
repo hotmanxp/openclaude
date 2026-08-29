@@ -812,3 +812,101 @@ Notes:
 - TUI smoke: `node bin/opencc -p "say 'ok' and stop"` → **"ok"** via MiniMax-M3 profile
 - `git push origin main-opencc` → pushed `8654fff0`
 
+---
+
+## 2026-08-25 sync (`r3-A`/`r3-B`/`r3-C` tier 1 batch, 6 commits pushed)
+
+Tier 1 batch from the 2026-08-25 review (10 days of upstream commits
+since `5e374789`). 3 parallel `pick-upstream-2026-08-r3-{A,B,C}`
+detached worktrees with `node_modules` symlinked from the main worktree
+(per the `fsync` setup rules — fresh `bun install` in detached
+worktrees yields a partial package set that produces false-positive
+typecheck/test failures).
+
+### Tier 1 — applied, full (4 of 8)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `8db88306` (#2170) | `f55feeab` | `fix(settings)`: stop proto-named permission rules from aborting validation (2 files, 18 new tests, `Object.hasOwn` guard on `getCustomValidation`) |
+| `ca7c3efb` (#2163) | `e4ca2251` | `fix(bg)`: identify sessions with persisted process markers (7 files, `BACKGROUND_PROCESS_MARKER_FLAG` cli option + `isValidBackgroundProcessMarker`) |
+| `294bd9a1` (#2139) | `ebd1e8cd` | `feat(sentry)`: optional env-driven error reporting (7 files, `src/utils/sentry.ts` + opt-in `initializeSentry()` from `init.ts`; `@ts-nocheck` escape hatch because the shared `node_modules` has no `@sentry/node` runtime — dynamic import guard makes this a silent no-op when the package is absent) |
+
+### Tier 1 — applied, partial (2 of 8)
+
+| Upstream | Local | What it did / what got skipped |
+|---|---|---|
+| `39c3850c` (#2151) | `0f55d4ae` | `docs`: tighten PR review expectations — applied `README.md` + `.github/pull_request_template.md`; **skipped** `CONTRIBUTING.md` + `AGENTS.md` because both have diverged significantly in fork (intro / TOC / validation section all restructured upstream; fork's AGENTS.md has OpenCC Provider Policy / Anti-Patterns / Silenced Tests sections that wholesale replacement would erase). Fork-only documentation divergence to revisit in a dedicated session. |
+| `54f963d0` (#2153) | `ecd4cfad` | `fix(openai-shim)`: drop synthetic tool-results marker — applied `markerEchoGuard.ts` (new) + `messageConversion.ts`; **skipped** `openaiShim.test.ts` (3way conflict vs fork's earlier partial port `05140554` Mistral-gated marker injection), `messageConversion.test.ts` (fork file structure differs), `responseAdapters.ts` / `responseConversion.ts` (fork split differently). 7 new `markerEchoGuard.test.ts` cases landed clean. |
+
+### Tier 1 — applied, partial + marked fork-policy-conflict (1 of 8)
+
+| Upstream | Local | What it did / what got skipped |
+|---|---|---|
+| `69aca780` (#2148) | `13ea27b5` | `fix(effort)`: preserve known model exclusions when force-enabled — applied `modelSupportOverrides.ts` (13-line cache-key change + `isFirstPartyAnthropicBaseUrl` guard). **Skipped entire 6-file remainder** (`effort.ts` +262 lines, `client.ts` +10, `client.test.ts` +457, `effort.test.ts` +389, `claude.lifecycle.test.ts` +84, `effort.codex.test.ts` +339) — **fork provider policy conflict, not infrastructure gap**. Wholesale-replace attempt produced 24 typecheck errors, of which 6 reference fork-removed providers (`bedrock` / `vertex` / `foundry` / `github` / `codex`) inside upstream's `switch`/case` blocks. The PR's value proposition is "route-specific reasoning controls for 9 providers"; fork only supports 3, so the 6 files have zero runtime impact on fork users. See the **Deferred — fork-policy-conflict** section below. |
+
+### Tier 1 — skipped, fork-missing infrastructure (2 of 8)
+
+| Upstream | Why skipped |
+|---|---|
+| `e8026263` (#2154) | `fix(tui)`: proper Unicode/IME input handling — upstream introduces `composeCombiningMark` / `replacePreviousWithChar` / `ComposedTextEdit` / `COMBINING_MARK_RE` exports in `useTextInput.ts` plus modifications to `applyPrintableInput` / `applyCoalescedDelInput` / `useTextInput` hook internals + `parse-keypress.ts` non-ASCII fallback. Fork's `useTextInput.ts` is the older version without these symbols. 3way would produce 5+ conflict blocks. Resume after syncing the upstream IME infrastructure commits that precede this one. |
+| `34536c62` (#2137) | `fix(settings)`: preserve concurrent updates — upstream introduces a 516-line `settingsFileTransaction.ts` (file-lock + `SharedArrayBuffer` cross-process sync + `spawnSync` writes + `SETTINGS_LOCK_WAIT_MS=2000` contention wait) plus a `withIsolatedUserSettings` test helper. Fork's `getClaudeConfigHomeDir()` is **lodash memoize** (`WorkflowTool.ts:593` comment) and does not read `claudeConfigHomeDirOverride`, so the test helper would write to `~/.claude/settings.json` and pollute real user config. Three-stage remediation needed: (1) drop lodash memoize on fork `getClaudeConfigHomeDir` (or add an override bypass arg); (2) port `withIsolatedUserSettings` to fork; (3) then re-attempt the upstream 6-file sync. Park for a dedicated session. |
+
+### Verification (2026-08-25, all 6 pushed commits)
+
+- `bun run typecheck` → 0 errors (with `@ts-nocheck` on `src/utils/sentry.ts` per fork-Message-type drift)
+- `bun run build` → ✓ Built opencc v0.21.0 → `dist/cli.mjs` rebuilt; `dist/sdk.mjs` 158 files; `OPTIONAL_RUNTIME_EXTERNALS` extended to include `@sentry/node`
+- `bun test` (full) → **5237 pass / 198 skip / 0 fail** across 5435 tests / 738 files / 27.35s. Baseline was 5134 / 183 / 0; +103 new pass, +15 new skip (one additional baseline-drift skip preserved in `bgFinalizer.test.ts` per the 1d2ee79c convention), 0 fail delta.
+- TUI smoke (5 cases with `--debug`): basic conversation + Read + Bash + Grep + `BACKGROUND_PROCESS_MARKER_FLAG` verification → all `ok`
+- Debug log scan: no regressions; non-fatal `rg error` / `auto mode disabled` / `MCP registry 403` are pre-existing
+- `git push origin main-opencc` → `e4ca2251..ebd1e8cd` (6 commits, 18 files, +1384/-22)
+
+### Deferred — fork-policy-conflict (`69aca780` remaining 6 files)
+
+Per AGENTS.md "Provider Policy: only three providers are supported:
+anthropic, ollama, openai-compatible". Upstream `69aca780` extends
+`effort.ts` with route-specific reasoning controls for **9 providers**
+(upstream's full roster), adding switch/case blocks over `bedrock` /
+`vertex` / `foundry` / `github` / `codex` — five providers the fork
+deliberately removed.
+
+A wholesale `git show upstream/main:src/utils/effort.ts > src/utils/effort.ts`
++ fork zai-helper re-append was attempted on a fresh
+`pick-upstream-2026-08-r4-reasoning` worktree and produced 24
+typecheck errors. 6 of those 24 are `no overlap` errors on
+fork-removed providers (e.g. `effort.ts(489,5): This comparison
+appears to be unintentional because the types '"openai" | "gemini" |
+"mistral" | "anthropic" | "hicap"' and '"bedrock"' have no overlap`).
+
+The remaining 18 errors are derivative (downstream of the fork's
+narrower `EffortLevel` / `ModelDescriptor` / `ModelCapabilityOverride`
+shapes — fork lacks `'xhigh'` in `EFFORT_LEVELS`, lacks
+`ModelDescriptor.reasoning`, lacks `'xhigh_effort'` capability
+override, etc.). All 24 would need to be resolved by either:
+
+- **(A)** Extending fork's types to match upstream (introduces `'xhigh'`
+  as a 4th deep-reasoning marker; adds `ModelDescriptor.reasoning`
+  field; widens `getAPIProvider()` to include 5 removed providers) —
+  violates the fork's 3-provider policy.
+- **(B)** Stripping the 5 removed-provider branches from the upstream
+  patch via `sed` before 3way — fragile (the branches are interleaved
+  with provider-agnostic logic in the same function bodies).
+- **(C)** Resyncing when upstream forks a `lite-effort` variant for
+  3-provider-only consumers — not on upstream's roadmap.
+
+**Recommendation**: leave the 6-file remainder as-is. The PR's
+runtime behavior on fork (only `modelSupportOverrides.ts`'s 13-line
+cache-key change is active) is identical to what fork shipped before
+the PR landed upstream — no regression introduced, and no user-facing
+feature lost. A note will be added to `AGENTS.md`'s "Silenced Tests
+& Dead Code" section pointing readers at this analysis if anyone
+proposes the port later.
+
+### Cleanup
+
+The 3 `pick-upstream-2026-08-r3-{A,B,C}` detached worktrees remain on
+disk for inspection (`git log --oneline 5e374789..HEAD` in each
+shows the pick chain). The `pick-upstream-2026-08-r4-reasoning`
+worktree was created, used for the wholesale-effort diagnosis, and
+removed via `git worktree remove --force` once the conclusion was
+reached. `git worktree list` shows the post-r3 state.
+

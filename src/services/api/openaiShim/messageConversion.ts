@@ -1,6 +1,7 @@
 import { isEnvTruthy } from '../../../utils/envUtils.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { hasGeminiApiHost } from './providerUtils.js'
+import { stripEchoedToolResultsMarker } from './markerEchoGuard.js'
 import type { OpenAIMessage } from './types.js'
 
 function convertSystemPrompt(
@@ -260,11 +261,12 @@ function convertMessages(
           role: 'assistant',
           content: (() => {
             const c = convertContentBlocks(textContent)
-            return typeof c === 'string'
+            const text = typeof c === 'string'
               ? c
               : Array.isArray(c)
                 ? c.map((p: { text?: string }) => p.text ?? '').join('')
                 : ''
+            return stripEchoedToolResultsMarker(text)
           })(),
         }
 
@@ -366,11 +368,12 @@ function convertMessages(
           role: 'assistant',
           content: (() => {
             const c = convertContentBlocks(content)
-            return typeof c === 'string'
+            const text = typeof c === 'string'
               ? c
               : Array.isArray(c)
                 ? c.map((p: { text?: string }) => p.text ?? '').join('')
                 : ''
+            return stripEchoedToolResultsMarker(text)
           })(),
         }
 

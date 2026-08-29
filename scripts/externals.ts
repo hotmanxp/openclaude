@@ -15,6 +15,10 @@
 export const COMMON_EXTERNALS: string[] = [
   // Native image processing
   'sharp',
+  // Optional Sentry error reporting — dynamically imported in utils/sentry.ts
+  // only when SENTRY_DSN is set. Not shipped by default; kept external so
+  // esbuild doesn't try to inline it.
+  '@sentry/node',
   // Cloud provider SDKs (Bedrock/Vertex/Foundry runtime indirection — kept as
   // dev deps for typecheck resolution but externalized from bundle)
   'google-auth-library',
@@ -72,6 +76,10 @@ export const OPTIONAL_RUNTIME_EXTERNALS: string[] = [
   // Optional: only image reads need it, and it carries a native install
   // script. Kept opt-in so default installs run no install scripts.
   'sharp',
+  // Optional Sentry error reporting — dynamically imported in utils/sentry.ts
+  // only when SENTRY_DSN is set. Not shipped by default; kept external so
+  // esbuild doesn't try to inline it.
+  '@sentry/node',
 ]
 
 // OPTIONAL_RUNTIME_EXTERNALS that are loaded ONLY through the runtime importer

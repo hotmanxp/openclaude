@@ -32,6 +32,7 @@ import {
 } from '../ink/termio/osc.js'
 import { shutdownDatadog } from '../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
+import { reportErrorToSentry } from './sentry.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -39,8 +40,13 @@ import {
 import type { AppState } from '../state/AppState.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
 import { createCombinedAbortSignal } from './combinedAbortSignal.js'
+import { hasPrintFlag } from './printFlag.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
+import {
+  flushInterruptionTrace,
+  waitForInterruptionTraceFlush,
+} from './interruptionTrace.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCurrentSessionTitle, sessionIdExists } from './sessionStorage.js'
 import { sleep } from './sleep.js'
@@ -266,7 +272,7 @@ export const setupGracefulShutdown = memoize(() => {
     // avoid racing with it. Only check print mode — other non-interactive
     // sessions (--sdk-url, --init-only, non-TTY) don't register their own
     // SIGINT handler and need gracefulShutdown to run.
-    if (process.argv.includes('-p') || process.argv.includes('--print')) {
+    if (hasPrintFlag(process.argv)) {
       return
     }
     // Plan11: when there are running background tasks, show the
@@ -333,6 +339,10 @@ export const setupGracefulShutdown = memoize(() => {
       error_name:
         error.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    // Optional Sentry reporting (env-driven, opt-in). No-op unless
+    // SENTRY_DSN is set; only sends the sanitized message for
+    // TelemetrySafeError instances, never this raw error.
+    reportErrorToSentry(error)
   })
 
   // Log unhandled promise rejections for container observability and analytics
@@ -356,6 +366,10 @@ export const setupGracefulShutdown = memoize(() => {
       error_name:
         errorName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    // Optional Sentry reporting (env-driven, opt-in). No-op unless
+    // SENTRY_DSN is set; only sends the sanitized message for
+    // TelemetrySafeError instances, never this raw rejection reason.
+    reportErrorToSentry(reason)
   })
 })
 
@@ -555,6 +569,12 @@ export async function gracefulShutdown(
       // stderr may be closed (e.g., SSH disconnect). Ignore write errors.
     }
   }
+
+  // Root interruption traces are queued off the cancellation path so they
+  // cannot delay abort. Drain that queue before the final process exit; the
+  // drain has its own budget so a blocked target cannot stall normal exit.
+  flushInterruptionTrace('graceful_shutdown')
+  await Promise.race([waitForInterruptionTraceFlush(), sleep(500)])
 
   forceExit(exitCode)
 }

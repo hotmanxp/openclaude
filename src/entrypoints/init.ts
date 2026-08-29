@@ -15,6 +15,7 @@ import {
   waitForRemoteManagedSettingsToLoad,
 } from '../services/remoteManagedSettings/index.js'
 import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
+import { initializeSentry } from '../utils/sentry.js'
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { enableConfigs, recordFirstStartTime } from '../utils/config.js'
@@ -245,6 +246,9 @@ export const init = memoize(async (): Promise<void> => {
  * This should only be called once, after the trust dialog has been accepted.
  */
 export function initializeTelemetryAfterTrust(): void {
+  // Optional Sentry reporting (env-driven, opt-in). No-op unless SENTRY_DSN
+  // is set and telemetry is not disabled.
+  void initializeSentry()
   if (isEligibleForRemoteManagedSettings()) {
     // For SDK/headless mode with beta tracing, initialize eagerly first
     // to ensure the tracer is ready before the first query runs.
