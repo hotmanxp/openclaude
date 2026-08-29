@@ -1,3 +1,6 @@
+// @ts-nocheck — upstream PR #2102 calls `getAgentDefinitionsWithOverrides()`
+// with zero args, but fork's lodash-es/memoize.js typing marks the
+// single (cwd: string) argument as required. Runtime works either way.
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import type { ToolUseContext } from '../../Tool.js'
 import {
@@ -127,6 +130,7 @@ async function importAgentToolWithSpawnMock(): Promise<{
 function makeToolUseContext(options: {
   mainLoopModel?: string
   activeAgents?: AgentDefinition[]
+  allAgents?: AgentDefinition[]
 } = {}): ToolUseContext {
   const appState = {
     toolPermissionContext: { mode: 'default' },
@@ -146,7 +150,7 @@ function makeToolUseContext(options: {
       isNonInteractiveSession: false,
       agentDefinitions: {
         activeAgents: options.activeAgents ?? [],
-        allAgents: options.activeAgents ?? [],
+        allAgents: options.allAgents ?? options.activeAgents ?? [],
       },
     },
     abortController: new AbortController(),
@@ -191,6 +195,7 @@ function callTeammateAgentTool(
   contextOptions: {
     mainLoopModel?: string
     activeAgents?: AgentDefinition[]
+    allAgents?: AgentDefinition[]
   } = {},
 ): ReturnType<typeof AgentTool.call> {
   return AgentTool.call(
@@ -277,7 +282,7 @@ test('passes routed agentModels keys to teammate spawns by subagent type', async
       },
     },
     agentRouting: {
-      'general-purpose': 'deepseek-grunt',
+      'custom-helper': 'deepseek-grunt',
     },
   } as unknown as SettingsJson
   allowedModelsForTest = new Set(['deepseek-grunt'])
@@ -285,8 +290,8 @@ test('passes routed agentModels keys to teammate spawns by subagent type', async
 
   await callTeammateAgentTool(
     AgentTool,
-    { subagent_type: 'general-purpose' },
-    { activeAgents: [createAgentDefinition('general-purpose')] },
+    { subagent_type: 'custom-helper' },
+    { activeAgents: [createAgentDefinition('custom-helper')] },
   )
 
   expect(getSpawnConfig(spawnTeammate).model).toBe('deepseek-grunt')
@@ -305,7 +310,7 @@ test('applies a model-only route to a teammate spawn without a cross-provider ov
       mini: { model: 'gpt-5-mini' },
     },
     agentRouting: {
-      verification: 'mini',
+      'custom-researcher': 'mini',
     },
   } as unknown as SettingsJson
   allowedModelsForTest = new Set(['gpt-5-mini'])
@@ -313,8 +318,8 @@ test('applies a model-only route to a teammate spawn without a cross-provider ov
 
   await callTeammateAgentTool(
     AgentTool,
-    { subagent_type: 'verification' },
-    { activeAgents: [createAgentDefinition('verification')] },
+    { subagent_type: 'custom-researcher' },
+    { activeAgents: [createAgentDefinition('custom-researcher')] },
   )
 
   expect(getSpawnConfig(spawnTeammate).model).toBe('gpt-5-mini')
@@ -388,9 +393,9 @@ test('does not let non-configured explicit teammate models fall through to defau
     AgentTool,
     {
       model: 'custom-provider-model',
-      subagent_type: 'general-purpose',
+      subagent_type: 'custom-helper',
     },
-    { activeAgents: [createAgentDefinition('general-purpose')] },
+    { activeAgents: [createAgentDefinition('custom-helper')] },
   )
 
   expect(getSpawnConfig(spawnTeammate).model).toBe('custom-provider-model')
@@ -406,7 +411,7 @@ test('rejects disallowed routed provider models before spawning a teammate', asy
       },
     },
     agentRouting: {
-      'general-purpose': 'deepseek-grunt',
+      'custom-helper': 'deepseek-grunt',
     },
   } as unknown as SettingsJson
   const { AgentTool, spawnTeammate } = await importAgentToolWithSpawnMock()
@@ -414,11 +419,96 @@ test('rejects disallowed routed provider models before spawning a teammate', asy
   await expect(
     callTeammateAgentTool(
       AgentTool,
-      { subagent_type: 'general-purpose' },
-      { activeAgents: [createAgentDefinition('general-purpose')] },
+      { subagent_type: 'custom-helper' },
+      { activeAgents: [createAgentDefinition('custom-helper')] },
     ),
   ).rejects.toThrow(
     "Model 'deepseek-grunt' is not available. Your organization restricts model selection.",
   )
   expect(spawnTeammate).not.toHaveBeenCalled()
+})
+
+test('rejects built-in agents from being spawned as teammates', async () => {
+  const { AgentTool, spawnTeammate } = await importAgentToolWithSpawnMock()
+
+  const builtinAgent = {
+    agentType: 'code-reviewer',
+    source: 'built-in',
+    getSystemPrompt: () => 'review code',
+  } as unknown as AgentDefinition
+
+  await expect(
+    callTeammateAgentTool(
+      AgentTool,
+      { subagent_type: 'code-reviewer' },
+      { activeAgents: [builtinAgent] },
+    ),
+  ).rejects.toThrow(
+    "Built-in agent type 'code-reviewer' cannot be spawned as a teammate. Please omit name and team_name to use it as a standard subagent.",
+  )
+  expect(spawnTeammate).not.toHaveBeenCalled()
+})
+
+test('rejects built-in agents from being spawned as teammates even when built-ins are disabled', async () => {
+  const { AgentTool, spawnTeammate } = await importAgentToolWithSpawnMock()
+
+  const prevEnv = process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS
+  process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS = '1'
+  const { setIsInteractive, getIsNonInteractiveSession } = await import('../../bootstrap/state.js')
+  const { getAgentDefinitionsWithOverrides, clearAgentDefinitionsCache } = await import('./loadAgentsDir.js')
+
+  const prevInteractive = !getIsNonInteractiveSession()
+  setIsInteractive(false)
+  clearAgentDefinitionsCache()
+
+  try {
+    const definitions = await getAgentDefinitionsWithOverrides()
+
+    await expect(
+      callTeammateAgentTool(
+        AgentTool,
+        { subagent_type: 'code-reviewer' },
+        { activeAgents: definitions.activeAgents, allAgents: definitions.allAgents },
+      ),
+    ).rejects.toThrow(
+      "Built-in agent type 'code-reviewer' cannot be spawned as a teammate. Please omit name and team_name to use it as a standard subagent.",
+    )
+
+    await expect(
+      callTeammateAgentTool(
+        AgentTool,
+        { subagent_type: 'claude-code-guide' },
+        { activeAgents: definitions.activeAgents, allAgents: definitions.allAgents },
+      ),
+    ).rejects.toThrow(
+      "Built-in agent type 'claude-code-guide' cannot be spawned as a teammate. Please omit name and team_name to use it as a standard subagent.",
+    )
+    expect(spawnTeammate).not.toHaveBeenCalled()
+  } finally {
+    setIsInteractive(prevInteractive)
+    if (prevEnv !== undefined) {
+      process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS = prevEnv
+    } else {
+      delete process.env.CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS
+    }
+    clearAgentDefinitionsCache()
+  }
+
+})
+
+test('allows a custom agent to be spawned as a teammate even if it shadows a built-in name', async () => {
+  const { AgentTool, spawnTeammate } = await importAgentToolWithSpawnMock()
+
+  const customShadowAgent = {
+    agentType: 'code-reviewer',
+    source: 'projectSettings', // It shadows the name but has a different source
+  } as unknown as AgentDefinition
+
+  await callTeammateAgentTool(
+    AgentTool,
+    { subagent_type: 'code-reviewer' },
+    { activeAgents: [customShadowAgent] },
+  )
+
+  expect(spawnTeammate).toHaveBeenCalled()
 })
