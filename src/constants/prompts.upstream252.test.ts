@@ -168,3 +168,45 @@ test('autonomy_append present in non-interactive session', async () => {
     'check your last paragraph',
   )
 })
+
+// --------------------------------------------------------------------
+// Bonus: Intro wIt() three-state variant + Actions git-defensive clauses
+// (upstream GQn() / YQn() parity, env-gated, GB-free)
+// --------------------------------------------------------------------
+test('intro defaults to "with software engineering tasks" when no output style and no env', async () => {
+  const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+  expect(prompt).toContain('helps users with software engineering tasks.')
+  expect(prompt).not.toContain(
+    'working with the user toward their goals',
+  )
+  expect(prompt).not.toContain('according to your "Output Style"')
+})
+
+test('intro flips to TIt when CLAUDE_CODE_INTRO_FRAME env is set', async () => {
+  process.env.CLAUDE_CODE_INTRO_FRAME = '1'
+  try {
+    const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+    expect(prompt).toContain(
+      'helps users working with the user toward their goals, using your own judgment along the way',
+    )
+    expect(prompt).not.toContain('with software engineering tasks.')
+  } finally {
+    delete process.env.CLAUDE_CODE_INTRO_FRAME
+  }
+})
+
+test('actions section includes git stash / git status / commit audit clauses (upstream 2.1.252)', async () => {
+  const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+  expect(prompt).toContain(
+    "prefer a reversible step (move it aside, rename it, or stash it)",
+  )
+  expect(prompt).toContain(
+    'run `git status` before any command that could discard uncommitted work',
+  )
+  expect(prompt).toContain(
+    "review what's included (`git status` after a broad `git add`)",
+  )
+  expect(prompt).toContain(
+    "double-check the file's contents before pushing",
+  )
+})
