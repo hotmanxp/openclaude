@@ -58,8 +58,8 @@ describe('ULTRACODE_SUBAGENT_PROMPT (2.1.252 slim preamble)', () => {
     expect(ULTRACODE_SUBAGENT_PROMPT).toContain('workflow orchestration script')
   })
 
-  it('requires the FinalAnswer tool exactly once', () => {
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('FinalAnswer tool')
+  it('requires the StructuredOutput tool exactly once', () => {
+    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('StructuredOutput tool')
     expect(ULTRACODE_SUBAGENT_PROMPT).toContain('exactly once')
   })
 
