@@ -26,16 +26,16 @@ describe('getProjectMemoryPathForSelector', () => {
     ).toBe(join(repoDir, 'AGENTS.md'))
   })
 
-  test('uses the loaded repo-level CLAUDE.md fallback from a nested cwd', () => {
+  test('uses the loaded repo-level AGENTS.md from a nested cwd', () => {
     const repoDir = '/repo'
     const nestedDir = join(repoDir, 'packages', 'app')
 
     expect(
       getProjectMemoryPathForSelector(
-        [projectFile(join(repoDir, 'CLAUDE.md'))],
+        [projectFile(join(repoDir, 'AGENTS.md'))],
         nestedDir,
       ),
-    ).toBe(join(repoDir, 'CLAUDE.md'))
+    ).toBe(join(repoDir, 'AGENTS.md'))
   })
 
   test('prefers the closest loaded ancestor instruction file', () => {
@@ -46,11 +46,11 @@ describe('getProjectMemoryPathForSelector', () => {
       getProjectMemoryPathForSelector(
         [
           projectFile(join(repoDir, 'AGENTS.md')),
-          projectFile(join(nestedProjectDir, 'CLAUDE.md')),
+          projectFile(join(nestedProjectDir, 'AGENTS.md')),
         ],
         join(nestedProjectDir, 'src'),
       ),
-    ).toBe(join(nestedProjectDir, 'CLAUDE.md'))
+    ).toBe(join(nestedProjectDir, 'AGENTS.md'))
   })
 
   test('defaults to a new AGENTS.md in the current cwd when no project file is loaded', () => {

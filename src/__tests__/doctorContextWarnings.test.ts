@@ -89,7 +89,7 @@ describe('checkContextWarnings', () => {
     ])
   })
 
-  test('large CLAUDE.md warnings show file paths and sizes', async () => {
+  test('large AGENTS.md warnings show file paths and sizes', async () => {
     const warnings = await checkContextWarnings(
       [],
       null,
@@ -97,7 +97,7 @@ describe('checkContextWarnings', () => {
       {
         memoryFiles: [
           {
-            path: '/repo/CLAUDE.md',
+            path: '/repo/AGENTS.md',
             type: 'Project',
             content: 'x'.repeat(50_000),
           },
@@ -111,7 +111,7 @@ describe('checkContextWarnings', () => {
     )
 
     expect(warnings.claudeMdWarning?.details).toEqual([
-      '/repo/CLAUDE.md: 50,000 chars',
+      '/repo/AGENTS.md: 50,000 chars',
       '/repo/.claude/rules/backend.md: 45,000 chars',
     ])
   })
@@ -129,7 +129,7 @@ describe('checkContextWarnings', () => {
         {
           memoryFiles: [
             {
-              path: '/repo/CLAUDE.md',
+              path: '/repo/AGENTS.md',
               type: 'Project',
               content: 'x'.repeat(50_000),
             },
@@ -151,7 +151,7 @@ describe('checkContextWarnings', () => {
     }
   })
 
-  test('keeps CLAUDE.md warning when unreachable-rules diagnostics fail', async () => {
+  test('keeps AGENTS.md warning when unreachable-rules diagnostics fail', async () => {
     const warnings = await checkContextWarnings(
       [],
       null,
@@ -161,7 +161,7 @@ describe('checkContextWarnings', () => {
       {
         memoryFiles: [
           {
-            path: '/repo/CLAUDE.md',
+            path: '/repo/AGENTS.md',
             type: 'Project',
             content: 'x'.repeat(50_000),
           },
