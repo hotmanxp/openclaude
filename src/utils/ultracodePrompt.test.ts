@@ -1,32 +1,71 @@
 // @ts-nocheck
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { withUltracodePrompt, ULTRACODE_SUBAGENT_PROMPT } from './ultracodePrompt.js'
+import {
+  withUltracodePrompt,
+  ULTRACODE_OPT_IN_BLOCK,
+  ULTRACODE_SUBAGENT_PROMPT,
+} from './ultracodePrompt.js'
 
-describe('ULTRACODE_SUBAGENT_PROMPT', () => {
-  it('contains the ultracode opt-in rule', () => {
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('ultracode is on')
+// Upstream 2.1.252 reorganised the ultracode block: detailed Composing
+// patterns + Quality patterns + Scale live in the main-session OPT_IN
+// block, while SUBAGENT_PROMPT is just the 6-line "you are a subagent +
+// CRITICAL: call FinalAnswer tool once" preamble. This split lets the
+// LLM see the full pattern catalogue in the main session (where it
+// chooses how to compose) but only the mechanical constraint in
+// spawned subagents (where the patterns would just bloat context).
+//
+// 2.1.170/2.1.177 (opencc's prior verbatim) had the patterns in
+// SUBAGENT_PROMPT; 2.1.252 moves them up.
+
+describe('ULTRACODE_OPT_IN_BLOCK', () => {
+  it('starts with the Ultracode block marker', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('**Ultracode.**')
   })
 
-  it('mentions all 4 core quality patterns', () => {
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('Adversarial verify')
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('Multi-modal sweep')
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('Completeness critic')
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('loop-until-dry')
+  it('mentions all 4 core quality patterns (moved here from SUBAGENT in 2.1.252)', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Adversarial verify')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Multi-modal sweep')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Completeness critic')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('loop-until-dry')
   })
 
+  it('includes the perspective-diverse and judge-panel patterns', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Perspective-diverse verify')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Judge panel')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('No silent caps')
+  })
+
+  it('contains the Composing patterns exhaustive-review example', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Composing patterns')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('loop-until-dry')
+  })
+
+  it('points at the Workflow tool description (not "above")', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain(
+      'revert to the opt-in rule in the Workflow tool description',
+    )
+  })
+
+  it('documents script authoring (meta object + inline script pattern)', () => {
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('Pass the script inline')
+    expect(ULTRACODE_OPT_IN_BLOCK).toContain('export const meta =')
+  })
+})
+
+describe('ULTRACODE_SUBAGENT_PROMPT (2.1.252 slim preamble)', () => {
   it('is a workflow-orchestration script preamble', () => {
     expect(ULTRACODE_SUBAGENT_PROMPT).toContain('workflow orchestration script')
   })
 
-  it('starts with the Ultracode block marker', () => {
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('**Ultracode.**')
+  it('requires the FinalAnswer tool exactly once', () => {
+    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('FinalAnswer tool')
+    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('exactly once')
   })
 
-  it('includes the perspective-diverse and judge-panel patterns', () => {
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('Perspective-diverse verify')
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('Judge panel')
-    expect(ULTRACODE_SUBAGENT_PROMPT).toContain('No silent caps')
+  it('does NOT carry the full quality-pattern catalogue (moved to OPT_IN in 2.1.252)', () => {
+    expect(ULTRACODE_SUBAGENT_PROMPT).not.toContain('Adversarial verify')
+    expect(ULTRACODE_SUBAGENT_PROMPT).not.toContain('Multi-modal sweep')
   })
 })
 
