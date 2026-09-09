@@ -512,12 +512,12 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
   ])
 
   return [
-    ...bundledSkills,
-    ...builtinPluginSkills,
     ...skillDirCommands,
     ...workflowCommands,
     ...pluginCommands,
     ...pluginSkills,
+    ...bundledSkills,
+    ...builtinPluginSkills,
     ...COMMANDS(),
     codegraph(cwd),
   ]

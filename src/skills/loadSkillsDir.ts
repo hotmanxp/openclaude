@@ -51,6 +51,7 @@ import {
   getProjectDirsUpToHome,
   loadMarkdownFilesForSubdir,
   type MarkdownFile,
+  PROJECT_CONFIG_DIR_NAMES,
   parseSlashCommandToolsFromFrontmatter,
 } from '../utils/markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../utils/model/model.js'
@@ -84,12 +85,30 @@ export function getSkillsPath(
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `${CONFIG_DIRNAME}/${dir}`
+      return `.openclaude/${dir}`
     case 'plugin':
       return 'plugin'
     default:
       return ''
   }
+}
+
+export function getProjectSkillsPaths(dir: string): string[] {
+  return PROJECT_CONFIG_DIR_NAMES.map(configDirName =>
+    join(dir, configDirName, 'skills'),
+  )
+}
+
+function prefersOpenClaudeConfigDir(path: string): number {
+  return path.split(pathSep).includes('.openclaude') ? 0 : 1
+}
+
+function compareSkillDirPrecedence(a: string, b: string): number {
+  const depthDelta = b.split(pathSep).length - a.split(pathSep).length
+  if (depthDelta !== 0) {
+    return depthDelta
+  }
+  return prefersOpenClaudeConfigDir(a) - prefersOpenClaudeConfigDir(b)
 }
 
 /**
@@ -126,6 +145,24 @@ async function getFileIdentity(filePath: string): Promise<string | null> {
 type SkillWithPath = {
   skill: Command
   filePath: string
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+async function readSkillJsonMetadata(
+  skillDirPath: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const raw = await getFsImplementation().readFile(join(skillDirPath, 'skill.json'), {
+      encoding: 'utf-8',
+    })
+    const parsed = JSON.parse(raw) as unknown
+    return isPlainObject(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -282,6 +319,7 @@ export function createSkillCommand({
   userInvocable,
   source,
   baseDir,
+  skillFilePath,
   loadedFrom,
   hooks,
   executionContext,
@@ -289,6 +327,7 @@ export function createSkillCommand({
   paths,
   effort,
   shell,
+  skillTrust,
 }: {
   skillName: string
   displayName: string | undefined
@@ -305,6 +344,7 @@ export function createSkillCommand({
   userInvocable: boolean
   source: PromptCommand['source']
   baseDir: string | undefined
+  skillFilePath: string | undefined
   loadedFrom: LoadedFrom
   hooks: HooksSettings | undefined
   executionContext: 'inline' | 'fork' | undefined
@@ -312,6 +352,7 @@ export function createSkillCommand({
   paths: string[] | undefined
   effort: EffortValue | undefined
   shell: FrontmatterShell | undefined
+  skillTrust: string | undefined
 }): Command {
   return {
     type: 'prompt',
@@ -340,6 +381,8 @@ export function createSkillCommand({
     loadedFrom,
     hooks,
     skillRoot: baseDir,
+    skillFilePath,
+    skillTrust,
     async getPromptForCommand(args, toolUseContext) {
       let finalContent = baseDir
         ? `Base directory for this skill: ${baseDir}\n\n${markdownContent}`
@@ -502,7 +545,7 @@ async function findSkillMarkdownFiles(basePath: string): Promise<string[]> {
  * Loads skills from a /skills/ directory path.
  * Supports nested directory format: category/skill/SKILL.md
  */
-async function loadSkillsFromSkillsDir(
+export async function loadSkillsFromSkillsDir(
   basePath: string,
   source: SettingSource,
 ): Promise<SkillWithPath[]> {
@@ -532,6 +575,7 @@ async function loadSkillsFromSkillsDir(
           content,
           skillFilePath,
         )
+        const skillJsonMetadata = await readSkillJsonMetadata(skillDirPath)
 
         const skillName = getSkillCommandName(skillFilePath, basePath)
         const parsed = parseSkillFrontmatterFields(
@@ -548,8 +592,13 @@ async function loadSkillsFromSkillsDir(
             markdownContent,
             source,
             baseDir: skillDirPath,
+            skillFilePath,
             loadedFrom: 'skills',
             paths,
+            skillTrust:
+              typeof skillJsonMetadata.trust === 'string'
+                ? skillJsonMetadata.trust
+                : undefined,
           }),
           filePath: skillFilePath,
         }
@@ -689,8 +738,10 @@ async function loadSkillsFromCommandsDir(
             markdownContent: content,
             source,
             baseDir: skillDirectory,
+            skillFilePath: filePath,
             loadedFrom: 'commands_DEPRECATED',
             paths: undefined,
+            skillTrust: undefined,
           }),
           filePath,
         })
@@ -721,9 +772,12 @@ async function loadSkillsFromCommandsDir(
  */
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
-    const userSkillsDir = join(getUserAgentsDir(), 'skills')
-    const managedSkillsDir = join(getManagedFilePath(), CONFIG_DIRNAME, SKILLS_DIRNAME)
-    const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
+    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
+    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const projectSkillsDirs = getProjectDirsUpToHome(
+      'skills',
+      cwd,
+    ).sort(compareSkillDirPrecedence)
 
     logForDebugging(
       `Loading skills from: managed=${managedSkillsDir}, user=${userSkillsDir}, project=[${projectSkillsDirs.join(', ')}]`,
@@ -747,12 +801,10 @@ export const getSkillDirCommands = memoize(
         return []
       }
       const additionalSkillsNested = await Promise.all(
-        additionalDirs.map(dir =>
-          loadSkillsFromSkillsDir(
-            join(dir, CONFIG_DIRNAME, SKILLS_DIRNAME),
-            'projectSettings',
-          ),
-        ),
+        additionalDirs
+          .flatMap(getProjectSkillsPaths)
+          .sort(compareSkillDirPrecedence)
+          .map(dir => loadSkillsFromSkillsDir(dir, 'projectSettings')),
       )
       // No dedup needed — explicit dirs, user controls uniqueness.
       return additionalSkillsNested.flat().map(s => s.skill)
@@ -782,12 +834,10 @@ export const getSkillDirCommands = memoize(
         : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
-            additionalDirs.map(dir =>
-              loadSkillsFromSkillsDir(
-                join(dir, CONFIG_DIRNAME, SKILLS_DIRNAME),
-                'projectSettings',
-              ),
-            ),
+            additionalDirs
+              .flatMap(getProjectSkillsPaths)
+              .sort(compareSkillDirPrecedence)
+              .map(dir => loadSkillsFromSkillsDir(dir, 'projectSettings')),
           )
         : Promise.resolve([]),
       // Legacy commands-as-skills goes through markdownConfigLoader with
@@ -800,9 +850,9 @@ export const getSkillDirCommands = memoize(
     // Flatten and combine all skills
     const allSkillsWithPaths = [
       ...managedSkills,
-      ...userSkills,
       ...projectSkillsNested.flat(),
       ...additionalSkillsNested.flat(),
+      ...userSkills,
       ...legacyCommands,
     ]
 
@@ -957,30 +1007,30 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, CONFIG_DIRNAME, SKILLS_DIRNAME)
-
-      // Skip if we've already checked this path (hit or miss) — avoids
-      // repeating the same failed stat on every Read/Write/Edit call when
-      // the directory doesn't exist (the common case).
-      if (!dynamicSkillDirs.has(skillDir)) {
-        dynamicSkillDirs.add(skillDir)
-        try {
-          await fs.stat(skillDir)
-          // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
-          // loading silently. `git check-ignore` handles nested .gitignore,
-          // .git/info/exclude, and global gitignore. Fails open outside a
-          // git repo (exit 128 → false); the invocation-time trust dialog
-          // is the actual security boundary.
-          if (await isPathGitignored(currentDir, resolvedCwd)) {
-            logForDebugging(
-              `[skills] Skipped gitignored skills dir: ${skillDir}`,
-            )
-            continue
+      for (const skillDir of getProjectSkillsPaths(currentDir)) {
+        // Skip if we've already checked this path (hit or miss) — avoids
+        // repeating the same failed stat on every Read/Write/Edit call when
+        // the directory doesn't exist (the common case).
+        if (!dynamicSkillDirs.has(skillDir)) {
+          dynamicSkillDirs.add(skillDir)
+          try {
+            await fs.stat(skillDir)
+            // Skills dir exists. Before loading, check if the containing dir
+            // is gitignored — blocks e.g. node_modules/pkg/.openclaude/skills from
+            // loading silently. `git check-ignore` handles nested .gitignore,
+            // .git/info/exclude, and global gitignore. Fails open outside a
+            // git repo (exit 128 → false); the invocation-time trust dialog
+            // is the actual security boundary.
+            if (await isPathGitignored(currentDir, resolvedCwd)) {
+              logForDebugging(
+                `[skills] Skipped gitignored skills dir: ${skillDir}`,
+              )
+              continue
+            }
+            newDirs.push(skillDir)
+          } catch {
+            // Directory doesn't exist — already recorded above, continue
           }
-          newDirs.push(skillDir)
-        } catch {
-          // Directory doesn't exist — already recorded above, continue
         }
       }
 
@@ -992,9 +1042,7 @@ export async function discoverSkillDirsForPaths(
   }
 
   // Sort by path depth (deepest first) so skills closer to the file take precedence
-  return newDirs.sort(
-    (a, b) => b.split(pathSep).length - a.split(pathSep).length,
-  )
+  return newDirs.sort(compareSkillDirPrecedence)
 }
 
 /**
