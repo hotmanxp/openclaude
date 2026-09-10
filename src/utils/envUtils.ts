@@ -76,22 +76,38 @@ export function getClaudeConfigHomeDirOverrideForTesting(): string | undefined {
   return claudeConfigHomeDirOverride
 }
 
-// Memoized: 150+ callers, many on hot paths. Keyed off both override env
-// vars so tests that change either get a fresh value without explicit
-// cache.clear.
-export const getClaudeConfigHomeDir = memoize(
-  (): string => resolveClaudeConfigHomeDir({
-    configDirEnv: resolveConfigDirEnv({
+// Memoized for the default home-dir path: 150+ callers, many on hot paths.
+// Explicit env overrides and test overrides bypass this cache so runtime
+// overrides cannot be masked by a previously memoized default path.
+const getDefaultClaudeConfigHomeDir = memoize(
+  (): string => {
+    const homeDir = homedir()
+    return resolveClaudeConfigHomeDir({ homeDir })
+  },
+  () => homedir(),
+)
+
+export const getClaudeConfigHomeDir = Object.assign(
+  (): string => {
+    if (claudeConfigHomeDirOverride) {
+      return claudeConfigHomeDirOverride
+    }
+
+    const configDirEnv = resolveConfigDirEnv({
       openccConfigDir: process.env.OPENCC_CONFIG_DIR,
       legacyConfigDir: process.env.CLAUDE_CONFIG_DIR,
       warn: message => {
         // eslint-disable-next-line no-console
         console.warn(`[opencc] ${message}`)
       },
-    }),
-  }),
-  () =>
-    `${process.env.OPENCC_CONFIG_DIR ?? ''}\0${process.env.CLAUDE_CONFIG_DIR ?? ''}`,
+    })
+    if (configDirEnv) {
+      return resolveClaudeConfigHomeDir({ configDirEnv })
+    }
+
+    return getDefaultClaudeConfigHomeDir()
+  },
+  { cache: getDefaultClaudeConfigHomeDir.cache },
 )
 
 export function getTeamsDir(): string {

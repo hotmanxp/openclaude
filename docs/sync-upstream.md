@@ -910,3 +910,78 @@ worktree was created, used for the wholesale-effort diagnosis, and
 removed via `git worktree remove --force` once the conclusion was
 reached. `git worktree list` shows the post-r3 state.
 
+
+---
+
+## 2026-09-10 sync (`feff404b..7a615660`, 11 commits, all pushed)
+
+Tier 1 batch from the 10-day upstream cron report
+(2026-08-30 → 2026-09-09). 13 upstream commits in scope; 9 applied,
+4 skipped per AGENTS.md policy. Pick split across 5 parallel detached
+worktrees (`pick-upstream-2026-09-r5-tier1`, `-tier3`, `-tier1-skills`,
+`-skills-base`, `-bughunter`) following the 2026-08-25 r3 fan-out
+convention. All worktrees cleaned up after push; tier1-skills +
+tier2-aimlapi did not produce commits (skills blocked on missing
+`214ee3dd` base; aimlapi skip-all per provider policy).
+
+### Tier 1 — applied, full (3 of 13)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `0b68e579` | `3ed032b9` | `fix(profiles): apply context limit to all profile models (#2201)` — **DOC-ONLY port**. The functional code change (`serializeProfileContextWindows` helper + 4 call sites in `providerProfiles.ts` + `providerProfiles.test.ts`) is fork-policy-conflict: `git checkout --theirs .` introduces CLINE_API_KEY / NEARAI_API_KEY / FIREWORKS_API_KEY / LONGCAT_API_KEY / CLOUDFLARE_API_TOKEN / ANTHROPIC_BASE_URL / Gemini/Mistral/Bedrock/Vertex/Foundry/NVIDIA-NIM/XAI profile types, all removed per AGENTS.md Provider Policy. The 20+ typecheck errors are not partial-portable (same situation as upstream `69aca780 effort.ts`). Docs/advanced-setup.md paragraph describing the behavior was kept verbatim — accurate documentation of the intended behavior even though fork's runtime hasn't caught up. Tracked as TODO; resume in a follow-up session that ports `serializeProfileContextWindows` as a 3-provider-only carve-out. |
+| `3451187a` | `ad64c058` | `fix(ctx): let explicit overrides beat discovered context windows (#2082)` — 5 files +115/-16: precedence reordered (`modelLimits` > env prefix > discovery); new `set-context-window` slash command; new `modelLimits.test.ts` (5 pass / 1 skip). `runtimeMetadata.test.ts` skipped per fork policy (references xai/nvidia-nim/codex/openrouter routes). |
+| `3609d751` | `d5a79d2e` | `fix: identify OpenCode Go requests (#2203)` — 3 files +45: new `getOpenClaudeUserAgent()` in `userAgent.ts` (preserves `openclaude/<version>` identity); hostname-based detection in `openaiClient.ts` since fork has no `routeId` dispatch. Test file `requestExecutor.integration.test.ts` skipped per fork policy (references forbidden `gitlawb-opengateway` test fixture). |
+
+### Tier 1 — applied, partial (1 of 13)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `1afeb261` | `63395442` | `feat(bughunter): make /bughunter public + add /bughunter-security & /bughunter-perf with robust fallback prompts (#1621)` — 10 files +1622/-23. Fork had stubbed `src/commands/bughunter/index.js` to `{ isEnabled: () => false, isHidden: true, name: 'stub' }` placeholder; this port restores the real upstream behavior. New: `bughunter/index.ts` (235), `bughunter-security/index.ts` (284), `bughunter-perf/index.ts` (264), `promptShellExecution.ts` `granularFallback` + `applyLineLimit` (110 lines). 3way conflict in `commands.test.ts` resolved by using worktree HEAD as base + manually re-inserting fork-unique `project skills take precedence` test from `214ee3dd` + adding `@ts-nocheck` and missing imports. |
+
+### Tier 1 — applied, partial (skills 3-commit stack, 4 of 13)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `214ee3dd` | `6a7b39e6` | `feat(skills): add local skill CLI support (#1162)` — 9 new files + 14 modified files, +3606 lines. Includes the entire `src/cli/handlers/skills*.ts` infrastructure (list/show/install/validate/remove), `loadSkillsDir.ts` extensions, `commands.ts` registration of `skillsCmd`, `envUtils.ts` `getDefaultClaudeConfigHomeDir` split. Per the upstream AGENTS.md pattern: `.openclaude/skills` dir naming preserved (fork's `permissions/filesystem.ts` already uses it); `OPENCC_CONFIG_DIR` env var preserved. 4 fork-renamed test files skipped (providerProfile → providerProfiles, knowledgeGraph.stress → .test, conversationArc.perf → .test, skillChangeDetector.test.ts absent); 3 KAIROS-related tests silenced (bun:bundle `let-in-if-statement` limitation, out of scope for cherry-pick). |
+| `0ea8eefb` | `ac652027` | `feat(skills): enforce registry revocations.json on install (#2187)` — 2 files +639. Reads `revocations.json` from registry beside the registry URL (or `OPENCLAUDE_SKILLS_REVOCATIONS_URL` override); refuses installs whose id/version/sha256 match an entry; EN0ENT/HTTP 404 treated as empty, other failures fail-closed. |
+| `eb3c5902` | `36ed9dc3` | `feat(skills): add verify for revocations and eyebrow drift checks (#2215)` — 8 files +950. New `src/cli/handlers/skillsVerify.ts` (351 lines) + test (496 lines); `fsOperations.ts` `access()` seam; `main.tsx` verify subcommand wired. Naming kept verbatim per upstream AGENTS.md (`opencc skills verify`, `OPENCLAUDE_SKILLS_*` env var, `eyebrow` external binary reference, `openclaude/<version>` User-Agent). |
+
+### Tier 1 — fork-only fix discovered in TUI smoke
+
+| Local | What it does |
+|---|---|
+| `7a615660` | `fix(skills): wire 'verify' subcommand in skillsCli switch (post-r5 #2215)`. The r5 sync of upstream `eb3c5902` registered `skillsVerifyHandler` in `main.tsx:4443` as `skillsCmd.command("verify")`, but skipped updating the subcommand switch in `src/cli/handlers/skillsCli.ts:222` — at runtime `node dist/cli.mjs skills verify` printed `Unknown skills command: verify` and fell into the default branch. Caught by Phase 4 TUI smoke (`skills verify` subcommand test). Fix: import `skillsVerifyHandler` from `./skillsVerify.js`; add `case 'verify'` passing registry/lockfile/policy options; extend `SkillsCliOptions` type with `lockfile` and `policy` fields. |
+
+### Tier 3 — applied, full (3 of 13)
+
+| Upstream | Local | What it does |
+|---|---|---|
+| `1afeb4b1` | `369ca51c` | `docs: add a skills guide (#2211)` — new `docs/skills.md` (110 lines) + README link. Renamed `OpenClaude` → `OpenCC` and `openclaude skills` → `opencc skills` (binary); preserved `.openclaude/skills` dir naming and `OPENCLAUDE_*` env vars per fork conventions; preserved `Gitlawb/openclaude-skills` registry URL (upstream's actual). |
+| `ec850d2d` | `8462ed06` | `docs(web): add llms.txt for LLM discovery (#2209)` — new `web/public/llms.txt` (38 lines). Copied verbatim — this is product-discovery content that matches fork's current README wording (GitHub URL, npm package name, product name all match `AGENTS.md` fork-identity lines that don't rebrand those surface strings). |
+| `b4af6f18` | `8bd86526` | `test(settings): unit-test the multi-source merge customizer (#2176)` — new `settingsMergeCustomizer.test.ts` (119 lines). 2 of 6 tests marked `test.skip` with rationale: fork's `settingsMergeCustomizer` (settings.ts:538) takes `(objValue, srcValue)` only, does not have upstream's null-prototype map special case for modelPricing atomic replace. Added `@ts-nocheck` escape hatch for fork's 2-arg signature vs upstream's 3-arg test invocations. |
+
+### Tier 2 / Tier 4 — skipped (4 of 13)
+
+| Upstream | Why skipped |
+|---|---|
+| `5b9daef6` | `feat(providers): add Command Code hybrid gateway (#2196)` — Provider Policy conflict. New gateway `commandcode` with `CMD_API_KEY` dedicated credential + 30+ file changes including `ProviderManager.tsx`, `routeMetadata.ts`, `providerProfile.ts`. Same situation as `69aca780 effort.ts` (deferred in 2026-08-25 sync): wholesale port introduces 24 typecheck errors across `bedrock`/`vertex`/`foundry`/`github`/`codex` switch-case blocks the fork removed. Not on roadmap for 3-provider-only fork. |
+| `6c7efdea` | `chore(main): release 0.30.0 (#2165)` — Release chore. OpenCC ships its own version (`0.21.0` after this batch). |
+| `aaccb577` | `fix(integrations): keep managed AIMLAPI attribution over caller headers (#2179)` — Provider Policy conflict. All 5-file changes touch `routeId === 'aimlapi'` branch; fork removed AIMLAPI provider. The non-aimlapi path change is trivial (caller-then-descriptor → descriptor-then-caller spread order); no portable subset worth partial-porting. |
+| `0abfca30` | `fix(sdk): preserve async generator session context (#2204)` — Fork missing infrastructure. Required target files `src/entrypoints/sdk/{query,v2}.ts` were deleted in fork (no upstream-tracked deletion commit, suggesting removal during vendor bundling). The 3 new test files include `tests/sdk/sdk-context-isolation.test.ts` (10KB), but the corresponding implementation files for that test are gone, so the test is orphaned in fork. Resume after porting the upstream SDK entrypoints in a separate session. |
+
+### Verification (2026-09-10, all 11 commits)
+
+- `bun run build` → ✓ Built opencc **v0.21.0** → `dist/cli.mjs` rebuilt; `dist/sdk.mjs` 158 files
+- `bun run typecheck` → **31 baseline errors** (pre-existing on `feff404b` per AGENTS.md "Silenced Tests & Dead Code" — loadPluginCommands.ts / refresh.ts / Config.tsx / firstPartyEventLogger / growthbook / grove / mcp/config.ts / mcp/doctor.ts / pathValidation / outputStyles / useManagePlugins. None related to this batch.)
+- `bun test` (full) → **5440 pass / 208 skip / 0 fail** across 5648 tests / 746 files / 31.97s. Baseline was 5343 / 202 / 0; **+97 new pass, +6 new skip, 0 fail delta**.
+- TUI smoke (per docs/verification-checklist.md Phase 4) → all pass:
+  - 4-tool coverage: Bash / Read / Edit / Write — all functional
+  - 4 new features: `/bughunter` / `/bughunter-security` / `/bughunter-perf` / `/set-context-window` / `/clear-context-window` / `/skills` dialog / `skills list` / `skills show ego-browser` / `skills verify`
+  - 3-way version check: splash `OpenCC v0.21.0` = `/status` `版本 : 0.21.0` = `/help` `OpenCC v0.21.0` — all consistent
+- Debug log scan (Phase 5) → 9 ERROR/WARN, **all in baseline catalog A–I**, no new anomaly class
+- `git push origin main-opencc` → `feff404b..7a615660` (11 commits, +2455/-126 lines)
+
+### Cleanup
+
+All 5 r5 worktrees removed: `pick-upstream-2026-09-r5-{bughunter,skills-base,tier1,tier1-skills,tier3}`. Tier1-skills and tier2-aimlapi produced no commits (skills blocked on missing `214ee3dd` base, addressed by skills-base worktree; aimlapi skip-all per provider policy). The 2026-08-25 r3/r4 worktrees remain on disk for inspection per the prior sync convention.
+

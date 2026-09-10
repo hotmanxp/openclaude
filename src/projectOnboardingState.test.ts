@@ -20,23 +20,22 @@ afterEach(async () => {
 })
 
 describe('project onboarding completion', () => {
-  test('is incomplete when neither AGENTS.md nor CLAUDE.md exists', async () => {
+  test('is incomplete when no AGENTS.md exists', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'project-onboarding-'))
 
     await runWithCwdOverride(tempDir, async () => {
       expect(isProjectOnboardingComplete()).toBe(false)
       expect(getSteps()[1]?.text).toContain('/init')
       expect(getSteps()[1]?.text).toContain('AGENTS.md')
-      expect(getSteps()[1]?.text).toContain('CLAUDE.md')
     })
   })
 
-  test('is complete when only CLAUDE.md exists', async () => {
+  test('is incomplete when only CLAUDE.md exists (no fallback in 2.1.252)', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'project-onboarding-'))
     await writeFile(join(tempDir, 'CLAUDE.md'), '# CLAUDE.md\n')
 
     await runWithCwdOverride(tempDir, async () => {
-      expect(isProjectOnboardingComplete()).toBe(true)
+      expect(isProjectOnboardingComplete()).toBe(false)
     })
   })
 

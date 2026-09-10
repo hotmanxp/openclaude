@@ -62,6 +62,8 @@ import { shouldAttemptLocalToollessRetry } from './providerUtils.js'
 import { applyZhiniaoModelPrefix } from './providerUtils.js'
 import { convertToolsToResponsesTools } from '../codexShim.js'
 import { createCombinedAbortSignal } from '../../../utils/combinedAbortSignal.js'
+import { getSessionId } from '../../../bootstrap/state.js'
+import { getOpenClaudeUserAgent } from '../../../utils/userAgent.js'
 import { openaiStreamToAnthropic } from './openaiStreamToAnthropic.js'
 import { anthropicSsePassthrough } from './anthropicSsePassthrough.js'
 
@@ -123,6 +125,19 @@ function isMoonshotBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   try {
     return MOONSHOT_API_HOSTS.has(new URL(baseUrl).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+function isOpenCodeGoBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase()
+    // OpenCode Go is a fork-supported OpenAI-compatible route served from
+    // opencode.ai under the /zen/go/ path. Match by host so a deployer can
+    // self-host a Go-compatible endpoint at any subdomain of opencode.ai.
+    return host === 'opencode.ai' || host.endsWith('.opencode.ai')
   } catch {
     return false
   }
@@ -1220,6 +1235,24 @@ class OpenAIShimMessages {
     if (request.baseUrl?.includes('paic.com.cn')) {
       headers['client-code'] = 'Gemini'
       headers['plugin-version'] = 'Gemini'
+    }
+
+    // OpenCode Go requires a stable session header for prompt-cache affinity
+    // and a product-specific user agent for traffic attribution. Enforce the
+    // route contract after caller headers are merged so stale custom values
+    // cannot make otherwise valid Go traffic non-compliant.
+    if (isOpenCodeGoBaseUrl(request.baseUrl)) {
+      for (const name of Object.keys(headers)) {
+        const normalizedName = name.toLowerCase()
+        if (
+          normalizedName === 'x-opencode-session' ||
+          normalizedName === 'user-agent'
+        ) {
+          delete headers[name]
+        }
+      }
+      headers['x-opencode-session'] = getSessionId()
+      headers['User-Agent'] = getOpenClaudeUserAgent()
     }
 
     const buildChatCompletionsUrl = (baseUrl: string): string => {

@@ -112,7 +112,7 @@ function toolSearchTool(): Tool {
 }
 
 const largeMemoryFile: MemoryFileInfo = {
-  path: '/repo/CLAUDE.md',
+  path: '/repo/AGENTS.md',
   type: 'Project',
   content: 'x'.repeat(50_000),
 }
@@ -149,9 +149,9 @@ describe('buildLocalModelContextLoad', () => {
       agentWarning: warning('agent_descriptions', 16_500, 'Large agent descriptions', [
         'planner: ~9,000 tokens',
       ]),
-      claudeMdWarning: warning('claudemd_files', 2, 'Large CLAUDE.md files', [
-        '/repo/CLAUDE.md: 51,200 chars',
-        '/repo/.claude/CLAUDE.md: 44,000 chars',
+      claudeMdWarning: warning('claudemd_files', 2, 'Large AGENTS.md files', [
+        '/repo/AGENTS.md: 51,200 chars',
+        '/repo/.claude/AGENTS.md: 44,000 chars',
       ]),
       unreachableRulesWarning: warning('unreachable_rules', 1, 'Shadowed rule'),
     }
@@ -161,7 +161,7 @@ describe('buildLocalModelContextLoad', () => {
     expect(result?.lines).toEqual([
       'MCP tools: ~31.2k tokens',
       'Agent descriptions: ~16.5k tokens',
-      'CLAUDE.md: 2 large files',
+      'AGENTS.md: 2 large files',
     ])
     expect(result?.contributors[1]?.details).toEqual([
       'planner: ~9,000 tokens',
@@ -232,7 +232,7 @@ describe('checkLocalModelContextLoad', () => {
       null,
       [
         {
-          path: '/repo/CLAUDE.md',
+          path: '/repo/AGENTS.md',
           type: 'Project',
           content: 'x'.repeat(50_000),
         },
@@ -241,9 +241,9 @@ describe('checkLocalModelContextLoad', () => {
       'http://localhost:1234/v1',
     )
 
-    expect(result?.lines).toEqual(['CLAUDE.md: 1 large file'])
+    expect(result?.lines).toEqual(['AGENTS.md: 1 large file'])
     expect(result?.contributors[0]?.details).toEqual([
-      '/repo/CLAUDE.md: 50,000 chars',
+      '/repo/AGENTS.md: 50,000 chars',
     ])
   })
 
@@ -258,7 +258,7 @@ describe('checkLocalModelContextLoad', () => {
       'http://localhost:1234/v1',
     )
 
-    expect(result?.lines).toEqual(['CLAUDE.md: 1 large file'])
+    expect(result?.lines).toEqual(['AGENTS.md: 1 large file'])
   })
 
   test('does not suppress other context warnings when an MCP schema cannot be serialized', async () => {
@@ -270,7 +270,7 @@ describe('checkLocalModelContextLoad', () => {
       'http://localhost:1234/v1',
     )
 
-    expect(result?.lines).toEqual(['CLAUDE.md: 1 large file'])
+    expect(result?.lines).toEqual(['AGENTS.md: 1 large file'])
   })
 })
 
@@ -303,12 +303,12 @@ describe('startup status notices', () => {
         contributors: [
           {
             id: 'claudemd_files',
-            message: 'Large CLAUDE.md file detected',
-            details: ['/repo/CLAUDE.md: 50,000 chars'],
-            summary: 'CLAUDE.md: 1 large file',
+            message: 'Large AGENTS.md file detected',
+            details: ['/repo/AGENTS.md: 50,000 chars'],
+            summary: 'AGENTS.md: 1 large file',
           },
         ],
-        lines: ['CLAUDE.md: 1 large file'],
+        lines: ['AGENTS.md: 1 large file'],
       },
     } as StatusNoticeContext
 
