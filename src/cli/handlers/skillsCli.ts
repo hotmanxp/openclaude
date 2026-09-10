@@ -6,6 +6,8 @@ type SkillsCliOptions = {
   global?: boolean
   help?: boolean
   json?: boolean
+  lockfile?: string
+  policy?: string
   registry?: string
   sha256?: string
 }
@@ -217,6 +219,7 @@ export async function runSkillsCli(args: string[]): Promise<void> {
     skillsShowHandler,
     skillsValidateHandler,
   } = await import('./skills.js')
+  const { skillsVerifyHandler } = await import('./skillsVerify.js')
 
   await runSkillsCliAction(async () => {
     switch (subcommand) {
@@ -257,6 +260,14 @@ export async function runSkillsCli(args: string[]): Promise<void> {
           process.exit(1)
         }
         await skillsRemoveHandler(name, { global: options.global })
+        break
+      }
+      case 'verify': {
+        await skillsVerifyHandler({
+          registry: options.registry,
+          lockfile: options.lockfile,
+          policy: options.policy,
+        })
         break
       }
       default:
