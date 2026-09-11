@@ -114,7 +114,7 @@ function permissionContext(mode: ToolPermissionContext['mode']) {
   } satisfies ToolPermissionContext
 }
 
-describe('OpenClaude commit message temp file permissions', () => {
+describe('OpenCC commit message temp file permissions', () => {
   let originalCwd: string
   let projectDir: string
 
@@ -141,7 +141,7 @@ describe('OpenClaude commit message temp file permissions', () => {
     expect(result.behavior).toBe('allow')
     expect(result.decisionReason).toMatchObject({
       type: 'other',
-      reason: 'OpenClaude commit message file is allowed for writing',
+      reason: 'OpenCC commit message file is allowed for writing',
     })
   })
 
@@ -155,7 +155,7 @@ describe('OpenClaude commit message temp file permissions', () => {
     expect(result.behavior).toBe('allow')
     expect(result.decisionReason).toMatchObject({
       type: 'other',
-      reason: 'OpenClaude commit message file is allowed for writing',
+      reason: 'OpenCC commit message file is allowed for writing',
     })
   })
 
@@ -248,7 +248,7 @@ describe('nested Git worktree write permissions', () => {
     try {
       execFileSync('git', ['init', repository])
       execFileSync('git', ['-C', repository, 'config', 'user.email', 'test@example.com'])
-      execFileSync('git', ['-C', repository, 'config', 'user.name', 'OpenClaude Test'])
+      execFileSync('git', ['-C', repository, 'config', 'user.name', 'OpenCC Test'])
       await writeFile(join(repository, 'seed.txt'), 'seed\n')
       execFileSync('git', ['-C', repository, 'add', 'seed.txt'])
       execFileSync('git', ['-C', repository, 'commit', '-m', 'seed'])

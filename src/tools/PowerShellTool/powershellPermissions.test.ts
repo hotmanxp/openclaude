@@ -132,7 +132,7 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated with'] } },
       checkPowerShellCommitMessagePolicy => {
         const result = checkPowerShellCommitMessagePolicy(
-          'git -C ./repo commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'git -C ./repo commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
 
         expect(result?.behavior).toBe('ask')
@@ -150,7 +150,7 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated with'] } },
       checkPowerShellCommitMessagePolicy => {
         const result = checkPowerShellCommitMessagePolicy(
-          '& git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          '& git commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
 
         expectPowerShellAskMessage(result, 'Generated with')
@@ -163,16 +163,16 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated with'] } },
       checkPowerShellCommitMessagePolicy => {
         const quoted = checkPowerShellCommitMessagePolicy(
-          '& "git" commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          '& "git" commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
         const exe = checkPowerShellCommitMessagePolicy(
-          'git.exe commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'git.exe commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
         const quotedExe = checkPowerShellCommitMessagePolicy(
-          '& "git.exe" commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          '& "git.exe" commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
         const singleQuotedExe = checkPowerShellCommitMessagePolicy(
-          "& 'git.exe' commit -m \"fix: policy\n\nGenerated with OpenClaude\"",
+          "& 'git.exe' commit -m \"fix: policy\n\nGenerated with OpenCC\"",
         )
 
         expect(quoted?.behavior).toBe('ask')
@@ -188,7 +188,7 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated with'] } },
       checkPowerShellCommitMessagePolicy => {
         const result = checkPowerShellCommitMessagePolicy(
-          'Set-Location repo; git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'Set-Location repo; git commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
 
         expectPowerShellAskMessage(result, 'Generated with')
@@ -201,7 +201,7 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated with'] } },
       checkPowerShellCommitMessagePolicy => {
         const result = checkPowerShellCommitMessagePolicy(
-          'Write-Output ok && git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'Write-Output ok && git commit -m "fix: policy\n\nGenerated with OpenCC"',
         )
 
         expectPowerShellAskMessage(result, 'Generated with')
@@ -227,10 +227,10 @@ describe('PowerShell git commit governance policy', () => {
       { git: { forbiddenCommitMessagePatterns: ['Generated'] } },
       checkPowerShellCommitMessagePolicy => {
         const spaced = checkPowerShellCommitMessagePolicy(
-          'git commit --message "fix: policy\n\nGenerated with OpenClaude"',
+          'git commit --message "fix: policy\n\nGenerated with OpenCC"',
         )
         const equals = checkPowerShellCommitMessagePolicy(
-          'git commit --message="fix: policy\n\nGenerated with OpenClaude"',
+          'git commit --message="fix: policy\n\nGenerated with OpenCC"',
         )
         const unquoted = checkPowerShellCommitMessagePolicy(
           'git commit --message=Generated',
@@ -321,7 +321,7 @@ describe('PowerShell git commit governance policy', () => {
       { git: { addGeneratedWithFooter: false } },
       checkPowerShellCommitMessagePolicy => {
         const result = checkPowerShellCommitMessagePolicy(
-          'git commit -m "fix: policy\n\nCo-Authored-By: OpenClaude <openclaude@gitlawb.com>"',
+          'git commit -m "fix: policy\n\nCo-Authored-By: OpenCC <openclaude@gitlawb.com>"',
         )
 
         expect(result).toBeNull()

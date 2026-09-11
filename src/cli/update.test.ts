@@ -7,9 +7,9 @@ import { withMockMacro } from 'src/test/mockMacro.js'
 
 // describe('getGlobalUpdateFailureHint', () => {
 //   test('points npm-only builds at npm instead of the native installer', () => {
-//     withMockMacro({ PACKAGE_URL: '@gitlawb/openclaude' }, () => {
+//     withMockMacro({ PACKAGE_URL: '@zn-ai/opencc' }, () => {
 //       expect(getGlobalUpdateFailureHint(false)).toContain(
-//         'npm install -g @gitlawb/openclaude@latest',
+//         'npm install -g @zn-ai/opencc@latest',
 //       )
 //       expect(getGlobalUpdateFailureHint(false)).not.toContain(
 //         'openclaude install',
@@ -27,7 +27,7 @@ import { withMockMacro } from 'src/test/mockMacro.js'
 // describe('writePackageManagerUpdateGuidance', () => {
 //   test.each([
 //     ['@anthropic-ai/claude-code', true],
-//     ['@gitlawb/openclaude', false],
+//     ['@zn-ai/opencc', false],
 //     ['@example/custom-cli', false],
 //   ] as const)(
 //     'uses the runtime package identity for %s',
@@ -46,7 +46,7 @@ import { withMockMacro } from 'src/test/mockMacro.js'
 //       })
 //
 //       expect(output).toContain(
-//         'OpenClaude is managed by Homebrew. Use Homebrew to update OpenClaude.',
+//         'OpenCC is managed by Homebrew. Use Homebrew to update OpenCC.',
 //       )
 //       expect(output).toContain('Update available: 1.0.0 → 2.0.0')
 //       if (expectsUpstreamCommand) {

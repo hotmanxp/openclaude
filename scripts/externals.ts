@@ -69,6 +69,12 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   '@anthropic-ai/foundry-sdk',
   '@anthropic-ai/sandbox-runtime',
   '@anthropic-ai/vertex-sdk',
+  // GrowthBook feature-flag SDK — loaded via dynamic import() in
+  // src/services/analytics/growthbook.ts. Treated as optional: failure
+  // to resolve degrades gracefully (gates return defaults). Bundled
+  // so esbuild's static analysis does not need the package present
+  // and the dynamic-import site stays free of a hard module edge.
+  '@growthbook/growthbook',
   // CLI / TUI utilities
   '@alcalzone/ansi-tokenize',
   '@commander-js/extra-typings',

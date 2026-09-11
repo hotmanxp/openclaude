@@ -267,55 +267,55 @@ test('git commit governance policy runs through the production Bash permission p
     resetSettingsCache()
 
     const result = await bashToolHasPermission(
-      { command: 'git commit -m "fix: policy\n\nGenerated with OpenClaude"' },
+      { command: 'git commit -m "fix: policy\n\nGenerated with OpenCC"' },
       makeToolUseContext(),
     )
     const compoundResult = await bashToolHasPermission(
       {
         command:
-          'cd repo && git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'cd repo && git commit -m "fix: policy\n\nGenerated with OpenCC"',
       },
       makeToolUseContext(),
     )
     const safeCommitThenEchoResult = await bashToolHasPermission(
       {
         command:
-          'git commit -m "safe" && echo -m "Generated with OpenClaude"',
+          'git commit -m "safe" && echo -m "Generated with OpenCC"',
       },
       makeToolUseContext(),
     )
     const commandWrappedResult = await bashToolHasPermission(
       {
         command:
-          'command git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'command git commit -m "fix: policy\n\nGenerated with OpenCC"',
       },
       makeToolUseContext(),
     )
     const commandPathWrappedResult = await bashToolHasPermission(
       {
         command:
-          'command -p git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'command -p git commit -m "fix: policy\n\nGenerated with OpenCC"',
       },
       makeToolUseContext(),
     )
     const envWrappedResult = await bashToolHasPermission(
       {
         command:
-          'env git commit -m "fix: policy\n\nGenerated with OpenClaude"',
+          'env git commit -m "fix: policy\n\nGenerated with OpenCC"',
       },
       makeToolUseContext(),
     )
     const envSplitStringWrappedResult = await bashToolHasPermission(
       {
         command:
-          'env -S \'git commit -m "fix: policy\n\nGenerated with OpenClaude"\'',
+          'env -S \'git commit -m "fix: policy\n\nGenerated with OpenCC"\'',
       },
       makeToolUseContext(),
     )
     const envSplitStringAssignmentWrappedResult = await bashToolHasPermission(
       {
         command:
-          'env -S \'GIT_AUTHOR_NAME=bot git commit -m "fix: policy\n\nGenerated with OpenClaude"\'',
+          'env -S \'GIT_AUTHOR_NAME=bot git commit -m "fix: policy\n\nGenerated with OpenCC"\'',
       },
       makeToolUseContext(),
     )

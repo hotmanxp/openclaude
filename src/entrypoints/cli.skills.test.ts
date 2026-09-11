@@ -97,7 +97,7 @@ test('skills list bypasses provider startup validation after --setting-sources',
 
 test('skills list honors --add-dir before provider startup validation', async () => {
   const addDirRoot = mkdtempSync(join(tmpdir(), 'openclaude-skills-add-dir-'))
-  const skillDir = join(addDirRoot, '.openclaude', 'skills', 'addon')
+  const skillDir = join(addDirRoot, '.opencc', 'skills', 'addon')
   mkdirSync(skillDir, { recursive: true })
   writeFileSync(
     join(skillDir, 'SKILL.md'),
@@ -193,7 +193,7 @@ test('skills list accepts trailing global flags', async () => {
 
 test('skills list honors trailing --add-dir', async () => {
   const addDirRoot = mkdtempSync(join(tmpdir(), 'openclaude-skills-add-dir-'))
-  const skillDir = join(addDirRoot, '.openclaude', 'skills', 'addon')
+  const skillDir = join(addDirRoot, '.opencc', 'skills', 'addon')
   try {
     mkdirSync(skillDir, { recursive: true })
     writeFileSync(
