@@ -18,7 +18,7 @@ npm --version
 ## 2. Install OpenCC
 
 ```powershell
-npm install -g @hotmanxp/opencc
+npm install -g @zn-ai/opencc
 ```
 
 ## 3. Pick One Provider
@@ -146,13 +146,13 @@ Check the basics:
 ## 6. Updating OpenCC
 
 ```powershell
-npm install -g @hotmanxp/opencc@latest
+npm install -g @zn-ai/opencc@latest
 ```
 
 ## 7. Uninstalling OpenCC
 
 ```powershell
-npm uninstall -g @hotmanxp/opencc
+npm uninstall -g @zn-ai/opencc
 ```
 
 ## Need Advanced Setup?

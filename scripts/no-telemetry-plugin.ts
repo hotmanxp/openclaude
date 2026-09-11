@@ -13,7 +13,6 @@
  *   - 1P event logging (api.anthropic.com/api/event_logging/batch)
  *   - BigQuery metrics exporter (api.anthropic.com/api/claude_code/metrics)
  *   - Perfetto / OpenTelemetry session tracing
- *   - Auto-updater (storage.googleapis.com, npm registry)
  *   - Plugin fetch telemetry
  *   - Transcript / feedback sharing
  */
@@ -339,23 +338,6 @@ export function getCurrentSpan() { return null; }
 export async function executeInSpan(spanName, fn) { return fn(noopSpan); }
 export function startHookSpan() { return noopSpan; }
 export function endHookSpan() {}
-`,
-
-	// ─── Auto-updater (phones home to GCS + npm) ──────────────────
-
-	'utils/autoUpdater': `
-export async function assertMinVersion() {}
-export async function getMaxVersion() { return undefined; }
-export async function getMaxVersionMessage() { return undefined; }
-export function shouldSkipVersion() { return true; }
-export function getLockFilePath() { return '/tmp/opencc-update.lock'; }
-export async function checkGlobalInstallPermissions() { return { hasPermissions: false, npmPrefix: null }; }
-export async function getLatestVersion() { return null; }
-export async function getNpmDistTags() { return { latest: null, stable: null }; }
-export async function getLatestVersionFromGcs() { return null; }
-export async function getGcsDistTags() { return { latest: null, stable: null }; }
-export async function getVersionHistory() { return []; }
-export async function installGlobalPackage() { return 'success'; }
 `,
 
 	// ─── Plugin fetch telemetry (not the marketplace itself) ───────

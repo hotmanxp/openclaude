@@ -13,10 +13,5 @@ GEMINI.md
 CLAUDE.md
 .DS_Store
 package-lock.json
-/.claude/*.json
-/.claude/wiki
-/.claude/worktrees/
 coverage/
 agent.log
-.worktrees/
-.superpowers/

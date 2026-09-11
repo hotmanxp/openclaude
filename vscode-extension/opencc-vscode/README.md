@@ -28,7 +28,7 @@ A practical VS Code companion for OpenCC with a project-aware **Control Center**
 ## Requirements
 
 - VS Code `1.95+`
-- `opencc` available in your terminal PATH (`npm install -g @hotmanxp/opencc`)
+- `opencc` available in your terminal PATH (`npm install -g @zn-ai/opencc`)
 
 ## Commands
 

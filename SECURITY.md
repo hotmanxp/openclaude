@@ -60,7 +60,7 @@ This policy applies to:
 
 - the Open Claude source code in this repository
 - official release artifacts published from this repository
-- the `@hotmanxp/opencc` npm package
+- the `@zn-ai/opencc` npm package
 
 This policy does not cover:
 

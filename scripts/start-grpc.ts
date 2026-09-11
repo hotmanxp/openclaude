@@ -6,7 +6,7 @@ Object.assign(globalThis, {
   MACRO: {
     VERSION: '0.1.7',
     DISPLAY_VERSION: '0.1.7',
-    PACKAGE_URL: '@hotmanxp/opencc',
+    PACKAGE_URL: '@zn-ai/opencc',
   }
 })
 

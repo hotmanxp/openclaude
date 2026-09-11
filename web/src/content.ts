@@ -1,4 +1,4 @@
-export const installCommand = 'npm install -g @hotmanxp/opencc'
+export const installCommand = 'npm install -g @zn-ai/opencc'
 
 export const features = [
   {

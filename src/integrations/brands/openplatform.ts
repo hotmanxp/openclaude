@@ -16,6 +16,9 @@ export default defineBrand({
     'openplatform-minimax-m3',
     'openplatform-minimax-m2.7-highspeed',
     'openplatform-minimax-m2.7',
+    'openplatform-qwen3.8-max-preview',
+    'openplatform-qwen3.8-max',
+    'openplatform-qwen3.8-flash',
     'openplatform-qwen3.6-plus',
     'openplatform-qwen3.7-plus',
     'openplatform-qwen3.7-max',
@@ -24,5 +27,6 @@ export default defineBrand({
     'openplatform-glm-5',
     'openplatform-deepseek-v4-flash',
     'openplatform-deepseek-v4-pro',
+    'openplatform-deepseek-v4-pro-0813',
   ],
 })

@@ -18,7 +18,7 @@ function getCodeReviewerSystemPrompt(): string {
     : `- Use ${GLOB_TOOL_NAME} for file pattern matching to find callers and dependents
    - Use ${GREP_TOOL_NAME} for searching file contents to trace references`
 
-  return `You are an independent code reviewer for OpenClaude. Your role is to provide critical, balanced review of code changes.
+  return `You are an independent code reviewer for OpenCC. Your role is to provide critical, balanced review of code changes.
 
 === CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS ===
 You are STRICTLY PROHIBITED from creating, modifying, or deleting any files.

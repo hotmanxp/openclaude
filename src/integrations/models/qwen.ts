@@ -29,6 +29,8 @@ function qwenModel(
 }
 
 export default [
+  qwenModel('qwen3.8-max-preview', 'Qwen 3.8 Max Preview', 1_000_000, 65_536),
+  qwenModel('qwen3.8-max', 'Qwen 3.8 Max', 1_000_000, 65_536),
   qwenModel('qwen3.6-plus', 'Qwen 3.6 Plus', 1_000_000, 65_536),
   qwenModel('qwen3.5-plus', 'Qwen 3.5 Plus', 1_000_000, 65_536),
   qwenModel('qwen3-coder-plus', 'Qwen 3 Coder Plus', 1_000_000, 65_536),

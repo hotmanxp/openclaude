@@ -59,14 +59,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build
-        run: bun run build
-
       - name: Run unit tests
-        run: bun test --feature=UNATTENDED_RETRY --max-concurrency=1
+        run: bun test --max-concurrency=1
 
       - name: Smoke test
         run: bun run smoke
+
+      - name: Build
+        run: bun run build
 
       - name: Dry-run package
         run: npm pack --dry-run
@@ -84,7 +84,7 @@ jobs:
           {
             echo "## Released ${{ needs.release-please.outputs.tag_name }}"
             echo
-            echo "- npm: https://www.npmjs.com/package/@hotmanxp/opencc"
+            echo "- npm: https://www.npmjs.com/package/@gitlawb/openclaude"
             echo "- GitHub: https://github.com/Gitlawb/openclaude/releases/tag/${{ needs.release-please.outputs.tag_name }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
