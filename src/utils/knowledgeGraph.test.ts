@@ -77,6 +77,7 @@ async function setUpKnowledgeGraphTest(): Promise<void> {
   setGovernancePolicySettingsForSourceForTesting(() => ({
     memory: { requireApprovalBeforeWrite: false },
   }))
+  resetGlobalGraph()
   removeProjectArtifacts()
 }
 
