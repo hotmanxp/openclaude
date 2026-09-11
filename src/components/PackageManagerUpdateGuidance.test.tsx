@@ -39,13 +39,13 @@ describe('package-manager update surfaces', () => {
     ['winget', 'winget'],
     ['apk', 'apk'],
   ] as const)(
-    'slash and passive %s surfaces render the same safe OpenClaude guidance',
+    'slash and passive %s surfaces render the same safe OpenCC guidance',
     async (manager, managerName) => {
       const { slash, passive } = await renderSurfaces(
         manager,
-        '@gitlawb/openclaude',
+        '@zn-ai/opencc',
       )
-      const sharedGuidance = `OpenClaude is managed by ${managerName}. Use ${managerName} to update OpenClaude.`
+      const sharedGuidance = `OpenCC is managed by ${managerName}. Use ${managerName} to update OpenCC.`
 
       expect(slash).toContain(sharedGuidance)
       expect(passive).toContain(sharedGuidance)

@@ -274,7 +274,7 @@ async function detectMultipleInstallations(): Promise<
   }
 
   // Check for global npm installation
-  const packagesToCheck = [MACRO.PACKAGE_URL || '@gitlawb/openclaude']
+  const packagesToCheck = [MACRO.PACKAGE_URL || '@zn-ai/opencc']
   const npmResult = await execFileNoThrow('npm', [
     '-g',
     'config',
@@ -618,7 +618,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
     for (const install of npmInstalls) {
       if (install.type === 'npm-global') {
-        const uninstallPackageName = MACRO.PACKAGE_URL || '@gitlawb/openclaude'
+        const uninstallPackageName = MACRO.PACKAGE_URL || '@zn-ai/opencc'
         const uninstallCmd = `npm -g uninstall ${uninstallPackageName}`
         warnings.push({
           issue: `Leftover npm global installation at ${install.path}`,

@@ -1505,7 +1505,7 @@ test('ProviderManager first-run Codex OAuth switches the current session after l
     expect.objectContaining({
       action: 'saved',
       message:
-        'Codex OAuth configured. OpenClaude switched to it for this session.',
+        'Codex OAuth configured. OpenCC switched to it for this session.',
     }),
   )
 
@@ -1595,7 +1595,7 @@ test('ProviderManager first-run Codex OAuth surfaces credential storage warnings
     expect.objectContaining({
       action: 'saved',
       message:
-        'Codex OAuth configured. OpenClaude switched to it for this session with warnings: Warning: Storing credentials in plaintext.',
+        'Codex OAuth configured. OpenCC switched to it for this session with warnings: Warning: Storing credentials in plaintext.',
     }),
   )
 
