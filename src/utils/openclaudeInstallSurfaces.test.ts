@@ -159,34 +159,34 @@ async function mockEnvPlatform(platform: 'darwin' | 'win32') {
   }))
 }
 
-test('install command displays ~/.local/bin/openclaude on non-Windows', async () => {
+test('install command displays ~/.local/bin/opencc on non-Windows', async () => {
   await mockEnvPlatform('darwin')
 
   const { getInstallationPath } = await importFreshInstallCommand()
 
-  expect(getInstallationPath()).toBe('~/.local/bin/openclaude')
+  expect(getInstallationPath()).toBe('~/.local/bin/opencc')
 })
 
-test('install command displays openclaude.exe path on Windows', async () => {
+test('install command displays opencc.exe path on Windows', async () => {
   await mockEnvPlatform('win32')
 
   const { getInstallationPath } = await importFreshInstallCommand()
 
   expect(getInstallationPath()).toBe(
-    join(homedir(), '.local', 'bin', 'openclaude.exe').replace(/\//g, '\\'),
+    join(homedir(), '.local', 'bin', 'opencc.exe').replace(/\//g, '\\'),
   )
 })
 
-test('native installer uses openclaude launcher for OpenClaude package', async () => {
+test('native installer uses opencc launcher for OpenCC package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
   }
 
   const { getBinaryName, getExecutableName } = await importFreshInstaller()
 
   expect(getBinaryName('linux-x64')).toBe('claude')
-  expect(getExecutableName('linux-x64')).toBe('openclaude')
-  expect(getExecutableName('win32-x64')).toBe('openclaude.exe')
+  expect(getExecutableName('linux-x64')).toBe('opencc')
+  expect(getExecutableName('win32-x64')).toBe('opencc.exe')
 })
 
 test('native installer preserves claude launcher for Anthropic package', async () => {
@@ -200,23 +200,23 @@ test('native installer preserves claude launcher for Anthropic package', async (
   expect(getExecutableName('win32-x64')).toBe('claude.exe')
 })
 
-test('deep-link protocol resolver uses openclaude launcher for OpenClaude package', async () => {
+test('deep-link protocol resolver uses opencc launcher for OpenCC package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
   }
 
   const { getProtocolBinaryName } = await importFreshProtocolRegistration()
 
-  expect(getProtocolBinaryName('linux')).toBe('openclaude')
-  expect(getProtocolBinaryName('win32')).toBe('openclaude.exe')
+  expect(getProtocolBinaryName('linux')).toBe('opencc')
+  expect(getProtocolBinaryName('win32')).toBe('opencc.exe')
 })
 
 test('install command repairs launcher after npm cleanup before final check', async () => {
   // A native distribution must be configured for the native install flow to
   // run at all; without it the command short-circuits to the npm-only path.
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
-    NATIVE_PACKAGE_URL: '@gitlawb/openclaude-native',
+    PACKAGE_URL: '@zn-ai/opencc',
+    NATIVE_PACKAGE_URL: '@zn-ai/opencc-native',
     DISPLAY_VERSION: '0.0.0-test',
   }
 
@@ -269,7 +269,7 @@ test('install command repairs launcher after npm cleanup before final check', as
         target: '1.2.3',
         onDone: (result: string) => {
           try {
-            expect(result).toBe('OpenClaude installation completed successfully')
+            expect(result).toBe('OpenCC installation completed successfully')
             resolve()
           } catch (error) {
             reject(error)
@@ -299,19 +299,20 @@ test('install command repairs launcher after npm cleanup before final check', as
   ])
 })
 
-test('cleanupNpmInstallations removes only openclaude local install dir', async () => {
-  const testHome = await fsPromises.mkdtemp(join(tmpdir(), 'openclaude-cleanup-'))
-  const openClaudeLocalDir = join(testHome, '.openclaude', 'local')
+test('cleanupNpmInstallations removes only opencc local install dir', async () => {
+  const testHome = await fsPromises.mkdtemp(join(tmpdir(), 'opencc-cleanup-'))
+  const openccLocalDir = join(testHome, '.opencc', 'local')
   const claudeLocalDir = join(testHome, '.claude', 'local')
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
-    NATIVE_PACKAGE_URL: '@gitlawb/openclaude-native',
+    PACKAGE_URL: '@zn-ai/opencc',
+    NATIVE_PACKAGE_URL: '@zn-ai/opencc-native',
   }
   process.env.HOME = testHome
   process.env.USERPROFILE = testHome
-  process.env.OPENCLAUDE_CONFIG_DIR = join(testHome, '.openclaude')
+  process.env.OPENCC_CONFIG_DIR = join(testHome, '.opencc')
+  delete process.env.OPENCLAUDE_CONFIG_DIR
   delete process.env.CLAUDE_CONFIG_DIR
-  await fsPromises.mkdir(openClaudeLocalDir, { recursive: true })
+  await fsPromises.mkdir(openccLocalDir, { recursive: true })
   await fsPromises.mkdir(claudeLocalDir, { recursive: true })
 
   simulateNpmUninstallFailure = true
@@ -320,28 +321,28 @@ test('cleanupNpmInstallations removes only openclaude local install dir', async 
     const { cleanupNpmInstallations } = await importFreshInstaller()
     await cleanupNpmInstallations()
 
-    await expect(fsPromises.stat(openClaudeLocalDir)).rejects.toThrow()
+    await expect(fsPromises.stat(openccLocalDir)).rejects.toThrow()
     await expect(fsPromises.stat(claudeLocalDir)).resolves.toBeTruthy()
-    expect(npmUninstallPackages).toContain('@gitlawb/openclaude')
-    expect(npmUninstallPackages).not.toContain('@anthropic-ai/claude-code')
+    expect(npmUninstallPackages).toContain('@zn-ai/opencc')
   } finally {
     await fsPromises.rm(testHome, { recursive: true, force: true })
   }
 })
 
-test('cleanupNpmInstallations manual fallback removes openclaude npm shim', async () => {
+test('cleanupNpmInstallations manual fallback removes opencc npm shim', async () => {
   await mockEnvPlatform('darwin')
 
-  const testHome = join(process.cwd(), 'work', 'openclaude-install-home-test')
+  const testHome = join(process.cwd(), 'work', 'opencc-install-home-test')
   const npmPrefix = join(testHome, '.npm-global')
-  const shimPath = join(npmPrefix, 'bin', 'openclaude')
+  const shimPath = join(npmPrefix, 'bin', 'opencc')
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
-    NATIVE_PACKAGE_URL: '@gitlawb/openclaude-native',
+    PACKAGE_URL: '@zn-ai/opencc',
+    NATIVE_PACKAGE_URL: '@zn-ai/opencc-native',
   }
   process.env.HOME = testHome
   process.env.USERPROFILE = testHome
-  process.env.OPENCLAUDE_CONFIG_DIR = join(testHome, '.openclaude')
+  process.env.OPENCC_CONFIG_DIR = join(testHome, '.opencc')
+  delete process.env.OPENCLAUDE_CONFIG_DIR
   delete process.env.CLAUDE_CONFIG_DIR
   fakeNpmPrefix = npmPrefix
   simulateNpmUninstallEnotempty = true
@@ -369,7 +370,7 @@ test('cleanupNpmInstallations manual fallback removes openclaude npm shim', asyn
 
 test('installLatest is inert without a native distribution', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
   }
   recordedDownloadCalls = []
@@ -387,7 +388,7 @@ test('installLatest is inert without a native distribution', async () => {
 
 test('repairNativeLauncher is inert without a native distribution', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
   }
 
@@ -402,7 +403,7 @@ test('cleanupNpmInstallations keeps the npm install without a native distributio
   const testHome = await fsPromises.mkdtemp(join(tmpdir(), 'openclaude-npm-only-'))
   const openClaudeLocalDir = join(testHome, '.openclaude', 'local')
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
   }
   process.env.HOME = testHome
@@ -426,7 +427,7 @@ test('cleanupNpmInstallations keeps the npm install without a native distributio
 
 test('checkInstall reports nothing without a native distribution', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
   }
   delete process.env.DISABLE_INSTALLATION_CHECKS
@@ -438,7 +439,7 @@ test('checkInstall reports nothing without a native distribution', async () => {
 
 test('cleanupOldVersions leaves the shared versions directory alone without a native distribution', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
   }
 
@@ -477,7 +478,7 @@ test('cleanupOldVersions leaves the shared versions directory alone without a na
 
 test('install command skips the native installer without a native distribution', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
-    PACKAGE_URL: '@gitlawb/openclaude',
+    PACKAGE_URL: '@zn-ai/opencc',
     NATIVE_PACKAGE_URL: undefined,
     DISPLAY_VERSION: '0.0.0-test',
   }
@@ -527,7 +528,7 @@ test('install command skips the native installer without a native distribution',
       createElement(Install, {
         onDone: (result: string) => {
           try {
-            expect(result).toBe('OpenClaude installation completed successfully')
+            expect(result).toBe('OpenCC installation completed successfully')
             resolve()
           } catch (error) {
             reject(error)
