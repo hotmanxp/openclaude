@@ -42,11 +42,11 @@ import {
 function writeSkill(
   rootDir: string,
   skillPath: string,
-  options?: { configDirName?: '.claude' | '.openclaude'; description?: string },
+  options?: { description?: string },
 ): void {
   const skillDir = join(
     rootDir,
-    options?.configDirName ?? '.claude',
+    '.claude',
     'skills',
     ...skillPath.split('/'),
   )
@@ -190,54 +190,6 @@ test.serial('loads flat and nested skills with colon namespaces', async () => {
   }
 })
 
-test.serial('prefers .openclaude project skills over legacy .claude skills with the same name', async () => {
-  await acquireSharedMutationLock('loadSkillsDir.test.ts')
-  const configDir = mkdtempSync(join(tmpdir(), 'openclaude-skills-'))
-  const cwd = join(configDir, 'workspace')
-  const originalConfigDir = {
-    openClaudeConfigDir: process.env.OPENCLAUDE_CONFIG_DIR,
-    claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
-    configHomeOverride: getClaudeConfigHomeDirOverrideForTesting(),
-  }
-  const originalSettingsState = enableUserAndProjectSettingSources()
-  const originalFs = setRealFilesystemForTest()
-
-  try {
-    mkdirSync(cwd, { recursive: true })
-    writeSkill(cwd, 'shared', {
-      configDirName: '.claude',
-      description: 'legacy project skill',
-    })
-    writeSkill(cwd, 'shared', {
-      configDirName: '.openclaude',
-      description: 'native project skill',
-    })
-
-    setConfigDirEnv(configDir)
-    clearSkillAndConfigCaches()
-
-    const skills = await getSkillDirCommands(cwd)
-    const sharedSkills = skills.filter(
-      skill => skill.type === 'prompt' && skill.name === 'shared',
-    )
-
-    assert.equal(sharedSkills.length, 2)
-    assert.equal(sharedSkills[0]?.type, 'prompt')
-    assert.equal(sharedSkills[0]?.description, 'native project skill')
-    assert.match(sharedSkills[0]?.skillRoot ?? '', /\.openclaude/)
-  } finally {
-    restoreConfigDirEnv(originalConfigDir)
-    setFsImplementation(originalFs)
-    try {
-      clearSkillAndConfigCaches()
-      restoreSettingState(originalSettingsState)
-      rmSync(configDir, { recursive: true, force: true })
-    } finally {
-      releaseSharedMutationLock()
-    }
-  }
-})
-
 test.serial('loads persisted registry trust metadata from skill.json', async () => {
   await acquireSharedMutationLock('loadSkillsDir.test.ts')
   const configDir = mkdtempSync(join(tmpdir(), 'openclaude-skills-'))
@@ -252,7 +204,7 @@ test.serial('loads persisted registry trust metadata from skill.json', async () 
 
   try {
     mkdirSync(cwd, { recursive: true })
-    const skillDir = join(cwd, '.openclaude', 'skills', 'registry-skill')
+    const skillDir = join(cwd, '.claude', 'skills', 'registry-skill')
     mkdirSync(skillDir, { recursive: true })
     writeFileSync(
       join(skillDir, 'SKILL.md'),
@@ -304,7 +256,6 @@ test.serial('project skills are ordered before user skills with the same name', 
     const userConfigDir = getClaudeConfigHomeDir()
     writeUserSkill(userConfigDir, 'shared', 'user skill')
     writeSkill(cwd, 'shared', {
-      configDirName: '.openclaude',
       description: 'project skill',
     })
 
@@ -322,7 +273,7 @@ test.serial('project skills are ordered before user skills with the same name', 
       {
         description: 'project skill',
         source: 'projectSettings',
-        skillRoot: join(cwd, '.openclaude', 'skills', 'shared'),
+        skillRoot: join(cwd, '.claude', 'skills', 'shared'),
       },
       {
         description: 'user skill',
@@ -343,7 +294,7 @@ test.serial('project skills are ordered before user skills with the same name', 
   }
 })
 
-test.serial('dynamic discovery checks .openclaude skill directories', async () => {
+test.serial('dynamic discovery checks project skill directories', async () => {
   await acquireSharedMutationLock('loadSkillsDir.test.ts')
   const originalFs = setRealFilesystemForTest()
   const originalArgv = [...process.argv]
@@ -357,13 +308,11 @@ test.serial('dynamic discovery checks .openclaude skill directories', async () =
     delete process.env.CLAUDE_CODE_SIMPLE
     mkdirSync(featureDir, { recursive: true })
     execFileSync('git', ['init'], { cwd, stdio: 'ignore' })
-    writeSkill(featureDir, 'feature-skill', {
-      configDirName: '.openclaude',
-    })
+    writeSkill(featureDir, 'feature-skill')
 
     assert.deepEqual(getProjectSkillsPaths(featureDir), [
       join(featureDir, '.claude', 'skills'),
-      join(featureDir, '.openclaude', 'skills'),
+      join(featureDir, '.opencc', 'skills'),
     ])
   } finally {
     try {

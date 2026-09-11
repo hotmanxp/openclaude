@@ -63,6 +63,24 @@ export default defineGateway({
         modelDescriptorId: 'openplatform-minimax-m2.7',
       },
       {
+        id: 'zn-nova-qwen3.8-max-preview',
+        apiName: 'qwen3.8-max-preview',
+        label: 'Qwen 3.8 Max Preview (via 平安 novai)',
+        modelDescriptorId: 'openplatform-qwen3.8-max-preview',
+      },
+      {
+        id: 'zn-nova-qwen3.8-max',
+        apiName: 'qwen3.8-max',
+        label: 'Qwen 3.8 Max (via 平安 novai)',
+        modelDescriptorId: 'openplatform-qwen3.8-max',
+      },
+      {
+        id: 'zn-nova-qwen3.8-flash',
+        apiName: 'qwen3.8-flash',
+        label: 'Qwen 3.8 Flash (via 平安 novai)',
+        modelDescriptorId: 'openplatform-qwen3.8-flash',
+      },
+      {
         id: 'zn-nova-qwen3.6-plus',
         apiName: 'qwen3.6-plus',
         label: 'Qwen 3.6 Plus (via 平安 novai)',
@@ -109,6 +127,12 @@ export default defineGateway({
         apiName: 'deepseek-v4-pro',
         label: 'DeepSeek V4 Pro (via 平安 novai)',
         modelDescriptorId: 'openplatform-deepseek-v4-pro',
+      },
+      {
+        id: 'zn-nova-deepseek-v4-pro-0813',
+        apiName: 'deepseek-v4-pro-0813',
+        label: 'DeepSeek V4 Pro 0813 (via 平安 novai)',
+        modelDescriptorId: 'openplatform-deepseek-v4-pro-0813',
       },
     ],
   },

@@ -99,7 +99,7 @@ async function pathExists(path: string): Promise<boolean> {
 function installRoot(options: InstallOptions): string {
   return options.global
     ? join(getClaudeConfigHomeDir(), 'skills')
-    : join(options.projectDir ?? getCwd(), '.openclaude', 'skills')
+    : join(options.projectDir ?? getCwd(), '.claude', 'skills')
 }
 
 function normalizeRegistryEntries(parsed: unknown): SkillRegistryEntry[] {

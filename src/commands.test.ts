@@ -60,7 +60,7 @@ describe('builtInCommandNames', () => {
       },
     })
     try {
-      const skillDir = join(cwd, '.openclaude', 'skills', 'debug')
+      const skillDir = join(cwd, '.claude', 'skills', 'debug')
       await mkdir(skillDir, { recursive: true })
       await writeFile(
         join(skillDir, 'SKILL.md'),

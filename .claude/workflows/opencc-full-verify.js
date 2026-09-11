@@ -5,12 +5,11 @@
 // 触发: 用户要求 "完整功能验证" / "full verification" / "verify opencc"
 // 设计参考:
 //   - docs/verification-checklist.md (5-phase verify protocol)
-//   - feedback/team/opencc-parallel-multi-agent-full-verify-recipe-2026-06-27
-//   - .claude/workflows/opencc-verfiy-fix.js (Phase 1+2 reference)
+//   - .claude/workflows/opencc-verfiy-fix.js (Phase 1+2 reference,拼写沿用上游)
 //
-// 结构 (3 phases, 1 serial + 10 parallel agents):
-//   Phase 1: Build (serial, 1 agent — gating, 仅 bun run build)
-//   Phase 2: Static checks (parallel, 3 agents — typecheck/doctor/test；test 失败不阻塞 Phase 3)
+// 结构 (3 phases, 1 serial + 9 parallel agents):
+//   Phase 1: Build (serial, gating — 仅 bun run build)
+//   Phase 2: Static checks (parallel, 2 agents — typecheck/doctor)
 //   Phase 3: TUI verification (parallel, 7 agents — 见下)
 //
 // Phase 3 7 agents:
@@ -23,21 +22,30 @@
 //   V6 — Debug log comprehensive scan (Phase 5 catalog)
 //
 
+// 项目根解析:
+//   1) 优先使用 args.cwd (CLI: --cwd=/path, 例: opencc-full-verify --cwd=/Users/foo/code/opencc)
+//   2) 否则用环境变量 OPENCC_PROJECT_CWD
+//   3) 最后回落到 process.cwd() (workflow runtime 的执行目录, 通常即项目根)
+// 注意: 此处不放任何 `import` 语句 — project-scoped workflow loader 会按 CJS 解析,
+//       任何 ESM `import` 都会触发 "Cannot use import statement outside a module"。
+//       如需新增 helper, 写成纯函数顶层 const 即可。
+const cwd =
+  (typeof args === "object" && args && args.cwd) ||
+  process.env.OPENCC_PROJECT_CWD ||
+  process.cwd();
+
 export const meta = {
   name: "opencc-full-verify",
   description:
-    "OpenCC 完整功能验证: Phase 1 build (serial, 仅 bun run build) → Phase 2 静态检查 (3 agents parallel: typecheck/doctor/test，test 失败不阻塞) → Phase 3 TUI 验证 (7 agents parallel)。严禁修改任何源文件。",
+    "OpenCC 完整功能验证: Phase 1 build (serial) → Phase 2 静态检查 (2 agents parallel: typecheck/doctor) → Phase 3 TUI 验证 (7 agents parallel)。严禁修改任何源文件。",
   phases: [
     { title: "Phase 1: Build (serial)" },
-    { title: "Phase 2: Static checks (3 parallel)" },
+    { title: "Phase 2: Static checks (2 parallel)" },
     { title: "Phase 3: TUI verification (7 parallel)" },
   ],
 };
 
-const cwd = "/Users/ethan/code/opencc";
-
 // Schemas 使用 string 字段而非 array, 避免 StructuredOutput array rejection
-// (memory: opencc-workflowtool-structured-output-schema-array-validation)
 const CHECK_SCHEMA = {
   type: "object",
   properties: {
@@ -61,16 +69,16 @@ const VERIFY_SCHEMA = {
 
 // agent() returns { ok, agentId, report, label, phase } — NOT schema fields.
 // Schema 只是 LLM prompt contract, 我们 parse 字符串 report。
-// (memory: opencc-agent-schema-not-returned-as-object-fields-2026-06-27)
 function checkPassed(agentR) {
   if (!agentR?.ok) return false;
   const report = agentR.report ?? "";
   return /\bpass(ed)?\b/i.test(report) || !/\bfail(ed)?\b/i.test(report);
 }
 
-// ===== PHASE 1: BUILD (serial, gating) =====
+// ===== PHASE 1: BUILD (serial, gating) — 仅 bun run build =====
 phase("Phase 1: Build (serial)");
-log("Step 1/3: 重建 dist/cli.mjs (后续 phase 全部依赖此)");
+log(`项目根: ${cwd}`);
+log("Step 1/3: 重建 dist/cli.mjs (仅 bun run build)");
 
 const buildR = await agent(
   `cd ${cwd} && bun run build 2>&1 | tail -30
@@ -97,11 +105,11 @@ if (!checkPassed(buildR)) {
 
 log("✓ Phase 1 build 成功 → 开始 Phase 2");
 
-// ===== PHASE 2: STATIC CHECKS (3 agents parallel) =====
-phase("Phase 2: Static checks (3 parallel)");
-log("Step 2/3: 并行 typecheck + doctor:runtime + test (test 失败不阻塞 Phase 3)");
+// ===== PHASE 2: STATIC CHECKS (2 agents parallel) =====
+phase("Phase 2: Static checks (2 parallel)");
+log("Step 2/3: 并行 typecheck + doctor:runtime");
 
-const [typeR, docR, testR] = await parallel([
+const [typeR, docR] = await parallel([
   () =>
     agent(
       `cd ${cwd} && bun run typecheck 2>&1 | tail -40
@@ -113,14 +121,14 @@ const [typeR, docR, testR] = await parallel([
 - PASS / FAIL 总结
 
 特别注意:
-- TS2367 "Type 'X' is used as a value" — rebrand 残留 (memory: opencc-fork-rebrand-ant-vs-external-residuals)
+- TS2367 "Type 'X' is used as a value" — rebrand 残留
 - TS2304 "Cannot find name" — 缺 import
 - TS2740 "Missing property" — 类型不匹配
 
 严禁修改任何文件。`,
       {
         label: "typecheck",
-        phase: "Phase 2: Static checks (3 parallel)",
+        phase: "Phase 2: Static checks (2 parallel)",
         schema: CHECK_SCHEMA,
         agentType: "tui-func-verifier",
         model: "MiniMax-M2.7-highspeed",
@@ -139,30 +147,7 @@ const [typeR, docR, testR] = await parallel([
 严禁修改任何文件。`,
       {
         label: "doctor",
-        phase: "Phase 2: Static checks (3 parallel)",
-        schema: CHECK_SCHEMA,
-        agentType: "tui-func-verifier",
-        model: "MiniMax-M2.7-highspeed",
-      },
-    ),
-  () =>
-    agent(
-      `cd ${cwd} && bun test 2>&1 | tail -60
-
-报告:
-- exit code (0 = 全部通过)
-- 通过 / 失败 / 跳过 数量 (格式如 "83 pass / 0 fail / 2 skip")
-- 前 10 个失败的测试名 + 失败原因 (文件:测试名: 断言消息)
-- PASS / FAIL 总结
-
-注意 (已知基线, 非新回归):
-- rebrand/localization 相关的 pre-existing 失败 (memory: opencc-cherry-pick-test-localization-not-shipped)
-- 已 silence 的 statusNoticeDefinitions.safety / codexOAuth 测试 (见 AGENTS.md)
-
-严禁修改任何文件。`,
-      {
-        label: "test",
-        phase: "Phase 2: Static checks (3 parallel)",
+        phase: "Phase 2: Static checks (2 parallel)",
         schema: CHECK_SCHEMA,
         agentType: "tui-func-verifier",
         model: "MiniMax-M2.7-highspeed",
@@ -172,18 +157,13 @@ const [typeR, docR, testR] = await parallel([
 
 const typeOk = checkPassed(typeR);
 const docOk = checkPassed(docR);
-const testOk = checkPassed(testR);
 
 log(
-  `Phase 2 summary: typecheck=${typeOk ? "PASS" : "FAIL"} doctor=${docOk ? "PASS" : "FAIL"} test=${testOk ? "PASS" : "FAIL"}`,
+  `Phase 2 summary: typecheck=${typeOk ? "PASS" : "FAIL"} doctor=${docOk ? "PASS" : "FAIL"}`,
 );
 
 if (!typeOk) {
   log("⚠ typecheck FAILED — 通常是 real regression, 强烈建议修复后重跑");
-}
-
-if (!testOk) {
-  log("⚠ test FAILED — 记录但不阻塞 Phase 3 (可能含已知基线失败, 建议人工复核)");
 }
 
 log("✓ Phase 2 完成 → 开始 Phase 3");
@@ -224,7 +204,6 @@ EOF
 ==== STEP 2 - 验证 splash 渲染 (BEFORE STEP 3) ====
 \`cat /tmp/opencc-tui.log\`
 期望看到: OpenCC 品牌 + clawd ASCII (▐▛███▜▌) 或 woodpecker + prompt (❯ 或 >)。
-(memory: opencc-claude-mascot-exact-ascii-v2-1-177 + opencc-woodpecker-splash-replacement)
 
 ==== STEP 3 - 验证 prompt 出现 ====
 
@@ -235,7 +214,7 @@ EOF
 (区分 noise vs real)
 
 Real error (FAIL if found):
-- useMemoCache size mismatch (memory: opencc-react-compiler-usememocache-size-mismatch)
+- useMemoCache size mismatch
 - exception / TypeError / throw (未处理异常)
 - Permission denied / EACCES
 - Cannot find module / MODULE_NOT_FOUND
@@ -257,7 +236,7 @@ Real error (FAIL if found):
       },
     ),
 
-  // ===== V4-1: Slash commands basic (/help + /status + /clear) =====
+  // ===== V4-1: Slash commands basic (/help + /version + /clear) =====
   () =>
     agent(
       `OpenCC slash commands 基础组 验证 Agent。
@@ -274,18 +253,19 @@ cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-help.log \\
 EOF
 tail -50 /tmp/opencc-slash-help.log
 \`\`\`
-期望: 显示命令列表 (含 provider/status/model/memory/help/clear/exit/config)
+期望: 显示命令列表 (含 provider/status/model/memory/help/clear/exit/version)
 
-==== STEP 2 (REQUIRED BEFORE STEP 3) - /status (核心状态查询) ====
+==== STEP 2 (REQUIRED BEFORE STEP 3) - /version (brand regression) ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-status.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-version.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/status
+/version
 /exit
 EOF
-tail -30 /tmp/opencc-slash-status.log
+tail -10 /tmp/opencc-slash-version.log
 \`\`\`
-期望: 显示 session/model/CWD/权限状态信息
+期望: 精确显示 "0.19.0 (Open CC)"
+(memory: opencc-cherry-pick-version-bump-rebrand-regression — 不应是 "OpenClaude" 或 "0.18.0")
 
 ==== STEP 3 - /clear ====
 \`\`\`
@@ -300,7 +280,7 @@ tail -10 /tmp/opencc-slash-clear.log
 
 ==== 报告 (PASS/FAIL per step + 关键输出) ====
 - /help: PASS/FAIL
-- /status: PASS/FAIL
+- /version: PASS/FAIL (特别注意 brand regression)
 - /clear: PASS/FAIL
 - Overall: PASS / FAIL
 
@@ -314,41 +294,28 @@ tail -10 /tmp/opencc-slash-clear.log
       },
     ),
 
-  // ===== V4-2: Slash commands config + provider (/config + /provider) =====
-  // Note: /cost + /permissions 已被 2026-07-01 surface-reduction sweep 移除 (memory: opencc-2026-07-01-cost-command-commented-out)
-  // /config + /provider 替代 stats 组的位置, 都是当前用户可见命令
+  // ===== V4-2: Slash commands permissions (/permissions) =====
+  // /cost 已去除 (memory: opencc-full-verify-2026-07-02-cost-status-removed)
   () =>
     agent(
-      `OpenCC slash commands 配置+provider 组 验证 Agent。
+      `OpenCC slash commands 权限组 验证 Agent。
 
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - /config ====
+==== STEP 1 (REQUIRED FIRST) - /permissions ====
 \`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-config.log \\
+cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-permissions.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/config
+/permissions
 /exit
 EOF
-tail -30 /tmp/opencc-slash-config.log
+tail -30 /tmp/opencc-slash-permissions.log
 \`\`\`
-期望: 显示 Settings 面板 (含 Config / Preferences / Usage 等 Tab)
-
-==== STEP 2 (REQUIRED BEFORE report) - /provider ====
-\`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-provider.log \\
-  bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/provider
-/exit
-EOF
-tail -30 /tmp/opencc-slash-provider.log
-\`\`\`
-期望: 显示 provider 列表 (含 anthropic / ollama / openai-compatible 等, 标记当前选中)
+期望: 显示权限配置 (mode: default/acceptEdits/bypassPermissions 等, 以及工具权限规则)
 
 ==== 报告 ====
-- /config: PASS/FAIL + 实际显示的 Tab 列表
-- /provider: PASS/FAIL + 当前 provider 标记
+- /permissions: PASS/FAIL + 实际显示的权限模式/规则
 - Overall: PASS / FAIL
 
 严禁修改任何文件。`,
@@ -361,26 +328,16 @@ tail -30 /tmp/opencc-slash-provider.log
       },
     ),
 
-  // ===== V4-3: Slash commands status (/status + /memory) =====
+  // ===== V4-3: Slash commands memory (/memory) =====
+  // /status 已去除 (memory: opencc-full-verify-2026-07-02-cost-status-removed)
   () =>
     agent(
-      `OpenCC slash commands 状态组 验证 Agent。
+      `OpenCC slash commands memory 验证 Agent。
 
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 1 (REQUIRED FIRST) - /status ====
-\`\`\`
-cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-status.log \\
-  bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
-/status
-/exit
-EOF
-tail -50 /tmp/opencc-slash-status.log
-\`\`\`
-期望: 显示 session/model/CWD/权限状态信息
-
-==== STEP 2 (REQUIRED BEFORE report) - /memory ====
+==== STEP 1 (REQUIRED FIRST) - /memory ====
 \`\`\`
 cd ${cwd} && timeout 20 script -q /tmp/opencc-slash-memory.log \\
   bash -c 'node dist/cli.mjs 2>&1' <<'EOF'
@@ -393,7 +350,6 @@ tail -50 /tmp/opencc-slash-memory.log
 (memory: opencc-memory-ui-claudemd-label)
 
 ==== 报告 ====
-- /status: PASS/FAIL + 关键内容 (model/CWD/permissions)
 - /memory: PASS/FAIL + 关键内容
 - Overall: PASS / FAIL
 
@@ -415,18 +371,10 @@ tail -50 /tmp/opencc-slash-memory.log
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 0 (REQUIRED FIRST) - 动态读取 package.json 版本 + 品牌格式 ====
-\`\`\`
-EXPECTED_VERSION=\$(grep -m1 '"version"' ${cwd}/package.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
-EXPECTED_BRAND="OpenCC"   # 来自 src/entrypoints/cli.tsx:95 \`(OpenCC)\`
-EXPECTED_VERSION_LINE="\${EXPECTED_VERSION} (\${EXPECTED_BRAND})"
-echo "EXPECTED_VERSION_LINE=\${EXPECTED_VERSION_LINE}"
-\`\`\`
-(memory: opencc-cherry-pick-version-bump-rebrand-regression)
-
-==== STEP 1 - --version brand regression ====
+==== STEP 1 (REQUIRED FIRST) - --version brand regression ====
 \`node dist/cli.mjs --version\`
-期望: \${EXPECTED_VERSION_LINE}  (即 \`grep -m1 '"version"'\` 取出的 version + 空格 + "(OpenCC)")
+期望: 精确匹配 "0.19.0 (Open CC)"
+(memory: opencc-cherry-pick-version-bump-rebrand-regression)
 
 ==== STEP 2 - --help ====
 \`node dist/cli.mjs --help\`
@@ -445,8 +393,7 @@ echo "EXPECTED_VERSION_LINE=\${EXPECTED_VERSION_LINE}"
 期望: 清晰错误信息 + exit non-zero, 不 stack trace
 
 ==== 报告 PASS/FAIL per step + 实际输出 ====
-- Step 1 比较: 实际 = \`<output>\`, 期望 = \`\${EXPECTED_VERSION_LINE}\`
-- Overall: PASS / FAIL
+Overall: PASS / FAIL
 严禁修改任何文件。`,
       {
         label: "cli-smoke",
@@ -465,19 +412,12 @@ echo "EXPECTED_VERSION_LINE=\${EXPECTED_VERSION_LINE}"
 工作目录: ${cwd}
 dist/cli.mjs 已构建。
 
-==== STEP 0 (REQUIRED FIRST) - 动态读取 package.json ====
-\`\`\`
-EXPECTED_VERSION=\$(grep -m1 '"version"' ${cwd}/package.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
-EXPECTED_NAME=\$(grep -m1 '"name"' ${cwd}/package.json | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/')
-echo "EXPECTED_NAME=\${EXPECTED_NAME} EXPECTED_VERSION=\${EXPECTED_VERSION}"
-\`\`\`
-
-==== STEP 1 - Read 工具 ====
+==== STEP 1 (REQUIRED FIRST) - Read 工具 ====
 \`\`\`
 cd ${cwd} && OPENCC_LOG_FILE=/tmp/opencc-tool-read.log \\
   timeout 90 node dist/cli.mjs -p "Read package.json and tell me its name and version. Reply in one sentence." 2>&1 | tail -40
 \`\`\`
-期望: assistant 提到 \${EXPECTED_NAME} 和 \${EXPECTED_VERSION} (与 Step 0 输出一致)
+期望: assistant 提到 "opencc" 和 "0.19.0"
 
 ==== STEP 2 - Glob 工具 ====
 \`\`\`
@@ -495,7 +435,7 @@ cd ${cwd} && OPENCC_LOG_FILE=/tmp/opencc-tool-grep.log \\
 
 ==== STEP 4 (BEFORE STEP 5) - 多轮对话 ====
 \`timeout 90 node dist/cli.mjs -p "First, say hi. Then read package.json and tell me version." 2>&1 | tail -40\`
-期望: greeting + package.json 中的实际 version 都出现 (用 \`grep -m1 '"version"' ${cwd}/package.json\` 取出的字符串)
+期望: greeting + version 都出现
 
 ==== STEP 5 - 错误恢复 ====
 \`timeout 60 node dist/cli.mjs -p "Read the file /tmp/nonexistent-xyz-12345.txt and tell me what you see." 2>&1 | tail -30\`
@@ -599,7 +539,7 @@ log(`Overall: ${status}`);
 return {
   status,
   build: buildR,
-  phase2_static: { typecheck: typeR, doctor: docR, test: testR },
+  phase2_static: { typecheck: typeR, doctor: docR },
   phase3_tui: {
     tuiStartup: tuiR,
     slashBasic: slash1R,

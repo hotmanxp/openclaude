@@ -444,7 +444,7 @@ test.serial('installs a local skill directory into project skills by default', a
     await skillsInstallHandler(source, { projectDir: cwd })
 
     const installed = readFileSync(
-      join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md'),
+      join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md'),
       'utf8',
     )
     assert.equal(installed, VALID_SKILL)
@@ -504,7 +504,7 @@ test.serial('installs existing minimal local skill metadata format', async () =>
 
     assert.equal(
       readFileSync(
-        join(cwd, '.openclaude', 'skills', 'minimal-skill', 'SKILL.md'),
+        join(cwd, '.claude', 'skills', 'minimal-skill', 'SKILL.md'),
         'utf8',
       ),
       MINIMAL_EXISTING_FORMAT_SKILL,
@@ -524,13 +524,13 @@ test.serial('preserves namespaced names when installing local skill directories'
 
     const nestedPath = join(
       cwd,
-      '.openclaude',
+      '.claude',
       'skills',
       'git',
       'commit',
       'SKILL.md',
     )
-    const flatPath = join(cwd, '.openclaude', 'skills', 'commit', 'SKILL.md')
+    const flatPath = join(cwd, '.claude', 'skills', 'commit', 'SKILL.md')
     assert.equal(existsSync(flatPath), false)
     assert.equal(readFileSync(nestedPath, 'utf8'), NAMESPACED_SKILL)
   })
@@ -540,11 +540,11 @@ test.serial('refuses to overwrite installed skills without --force', async () =>
   await withTempDir(async tempDir => {
     const cwd = join(tempDir, 'project')
     const source = writeSkillDir(join(tempDir, 'source'))
-    mkdirSync(join(cwd, '.openclaude', 'skills', 'sample-skill'), {
+    mkdirSync(join(cwd, '.claude', 'skills', 'sample-skill'), {
       recursive: true,
     })
     writeFileSync(
-      join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md'),
+      join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md'),
       'existing skill content',
       'utf8',
     )
@@ -553,7 +553,7 @@ test.serial('refuses to overwrite installed skills without --force', async () =>
 
     assert.equal(process.exitCode, 1)
     const installed = readFileSync(
-      join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md'),
+      join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md'),
       'utf8',
     )
     assert.equal(installed, 'existing skill content')
@@ -588,7 +588,7 @@ test.serial('installs a registry skill by id from a local registry file', async 
 
     const installedMetadata = JSON.parse(
       readFileSync(
-        join(cwd, '.openclaude', 'skills', 'sample-skill', 'skill.json'),
+        join(cwd, '.claude', 'skills', 'sample-skill', 'skill.json'),
         'utf8',
       ),
     ) as {
@@ -630,7 +630,7 @@ test.serial('resolves relative registry skill sources from the registry file', a
     assert.equal(process.exitCode, 0)
     assert.equal(
       readFileSync(
-        join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md'),
+        join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md'),
         'utf8',
       ),
       VALID_SKILL,
@@ -659,7 +659,7 @@ test.serial('rejects registry skills without a sha256 pin', async () => {
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -688,7 +688,7 @@ test.serial('rejects registry skills that require a newer OpenClaude version', a
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -728,7 +728,7 @@ test.serial('rejects registry skills revoked by id and version', async () => {
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -760,7 +760,7 @@ test.serial('rejects registry skills revoked by digest alone', async () => {
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -791,7 +791,7 @@ test.serial('installs registry skills when a revocation targets another version'
     })
 
     assert.equal(
-      existsSync(join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md')),
+      existsSync(join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md')),
       true,
     )
   })
@@ -820,7 +820,7 @@ test.serial('rejects registry installs when revocations.json is malformed', asyn
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -857,7 +857,7 @@ test.serial('OPENCLAUDE_SKILLS_REVOCATIONS_URL takes precedence over the registr
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -899,7 +899,7 @@ test.serial('an inherited OPENCLAUDE_SKILLS_REVOCATIONS_URL cannot redirect sibl
 
       // The sibling list revoked the skill: the inherited override was not read.
       assert.equal(process.exitCode, 1)
-      assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+      assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     })
     // The fixture hands the host's value back once it is done.
     assert.equal(process.env.OPENCLAUDE_SKILLS_REVOCATIONS_URL, inheritedAbsentPath)
@@ -939,7 +939,7 @@ test.serial('rejects registry installs when a revocation entry is invalid', asyn
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -966,7 +966,7 @@ test.serial('rejects registry installs when revocations.json is not an array', a
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -995,7 +995,7 @@ test.serial('fails closed when the revocation list exists but cannot be read', a
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -1020,7 +1020,7 @@ test.serial('installs a non-revoked registry skill when the remote revocation li
     assert.equal(process.exitCode, 0)
     assert.equal(
       readFileSync(
-        join(cwd, '.openclaude', 'skills', 'sample-skill', 'SKILL.md'),
+        join(cwd, '.claude', 'skills', 'sample-skill', 'SKILL.md'),
         'utf8',
       ),
       VALID_SKILL,
@@ -1047,7 +1047,7 @@ test.serial('fails closed when the remote revocation list is HTTP 500', async ()
     // A list that exists but cannot be served is not an empty list.
     assert.ok(requested.includes(REMOTE_REVOCATIONS_URL))
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -1072,7 +1072,7 @@ test.serial('fails closed when the remote revocation list is unreachable', async
 
     assert.ok(requested.includes(REMOTE_REVOCATIONS_URL))
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -1089,7 +1089,7 @@ test.serial('rejects path-like skill names before installing raw markdown', asyn
     await skillsInstallHandler(sourceFile, { projectDir: cwd })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -1116,7 +1116,7 @@ test.serial('rejects registry names that would escape the install root', async (
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
   })
 })
 
@@ -1131,7 +1131,7 @@ test.serial('rejects direct HTTP URL installs without a sha256 pin', async () =>
     })
 
     assert.equal(process.exitCode, 1)
-    assert.equal(existsSync(join(cwd, '.openclaude', 'skills')), false)
+    assert.equal(existsSync(join(cwd, '.claude', 'skills')), false)
     assertNoNewStagedInstallDirs(stagedBefore)
   })
 })
@@ -1173,7 +1173,7 @@ test.serial('removes only the targeted project skill directory', async () => {
     })
     await withTempDir(async tempDir => {
       const cwd = join(tempDir, 'project')
-      const skillsRoot = join(cwd, '.openclaude', 'skills')
+      const skillsRoot = join(cwd, '.claude', 'skills')
       const targetName = 'remove-target-skill'
       const target = join(skillsRoot, targetName)
       const sibling = join(skillsRoot, 'sibling-skill')
@@ -1314,7 +1314,7 @@ test.serial('does not remove skills from --add-dir directories', async () => {
       const cwd = join(tempDir, 'project')
       const addDir = join(tempDir, 'additional-project')
       const targetName = 'add-dir-skill'
-      const target = join(addDir, '.openclaude', 'skills', targetName)
+      const target = join(addDir, '.claude', 'skills', targetName)
       const originalSettingsState = enableUserAndProjectSettingSources()
       mkdirSync(cwd, { recursive: true })
       mkdirSync(target, { recursive: true })

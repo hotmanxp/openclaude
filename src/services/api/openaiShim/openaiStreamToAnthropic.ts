@@ -125,13 +125,17 @@ async function* openaiStreamToAnthropic(
         }
         const trimmed = line.trim()
         if (!trimmed || trimmed === 'data: [DONE]') continue
-        if (!trimmed.startsWith('data: ')) {
+        // Accept both "data: " (with space, OpenAI spec) and "data:" (no space,
+        // emitted by paic.com.cn gateways like wizard-ai). The stream chunks
+        // themselves follow the standard; only the prefix separator varies.
+        if (!trimmed.startsWith('data:')) {
           continue
         }
 
         let chunk: OpenAIStreamChunk
         try {
-          chunk = JSON.parse(trimmed.slice(6))
+          // Skip the "data:" prefix (5 chars) plus optional single space.
+          chunk = JSON.parse(trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5))
         } catch {
           continue
         }

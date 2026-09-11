@@ -272,19 +272,9 @@ export function Usage(): React.ReactNode {
   if (provider === 'minimax') {
     return <MiniMaxUsage />;
   }
-  if (provider !== 'firstParty') {
-    const providerLabel = {
-      openai: 'this OpenAI-compatible provider',
-      gemini: 'Google Gemini',
-      github: 'GitHub Models',
-      mistral: 'Mistral',
-      'nvidia-nim': 'NVIDIA NIM',
-      bedrock: 'AWS Bedrock',
-      vertex: 'Google Vertex AI',
-      foundry: 'Microsoft Foundry'
-    }[provider] ?? 'this provider';
-    return <UnsupportedUsage providerLabel={providerLabel} />;
-  }
+  // Non-first-party providers have no Anthropic OAuth utilization endpoint;
+  // fall through to AnthropicUsage where the empty-utilization path renders
+  // a single formatTotalCost() line instead of "not supported" placeholder.
   return <AnthropicUsage />;
 }
 type ExtraUsageSectionProps = {

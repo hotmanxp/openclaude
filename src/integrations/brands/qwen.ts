@@ -13,6 +13,8 @@ export default defineBrand({
     supportsPreciseTokenCount: false,
   },
   modelIds: [
+    'qwen3.8-max-preview',
+    'qwen3.8-max',
     'qwen3.6-plus',
     'qwen3.5-plus',
     'qwen3-coder-plus',
