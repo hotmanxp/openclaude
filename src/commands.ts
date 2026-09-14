@@ -177,6 +177,8 @@ import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
+import skillDoctor from './commands/skill-doctor/index.js'
+import focus from './commands/focus/index.js'
 import remoteEnv from './commands/remote-env/index.js'
 import upgrade from './commands/upgrade/index.js'
 import {
@@ -326,6 +328,7 @@ const COMMANDS = memoize((): Command[] => [
   exit,
   fast,
   files,
+  focus,
   handoff,
   heapDump,
   help,
@@ -355,6 +358,7 @@ const COMMANDS = memoize((): Command[] => [
   session,
   setContextWindow,
   skills,
+  skillDoctor,
   status,
   statusline,
   stickers,

@@ -210,3 +210,57 @@ test('actions section includes git stash / git status / commit audit clauses (up
     "double-check the file's contents before pushing",
   )
 })
+
+// --------------------------------------------------------------------
+// Upstream 2.1.270 sync additions: # Harness section + 2 dynamic
+// sections (verified_vs_assumed, pronouns). # Harness sits between
+// intro and # System (upstream gRo sequence). verified_vs_assumed +
+// pronouns are emitted unconditionally per opencc's gate-free sync
+// rule (upstream gates verified_vs_assumed behind GB
+// tengu_verified_vs_assumed, default off).
+// --------------------------------------------------------------------
+test('# Harness section present with 5 bullets (upstream 2.1.270 sync)', async () => {
+  const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+  expect(prompt).toContain('# Harness')
+  expect(prompt).toContain(
+    'Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.',
+  )
+  expect(prompt).toContain(
+    "a denied call means the user declined it — adjust, don't retry verbatim",
+  )
+  expect(prompt).toContain(
+    'Hooks may intercept tool calls; treat hook output as user feedback',
+  )
+  expect(prompt).toContain(
+    'Prefer the dedicated file/search tools over shell commands when one fits',
+  )
+  expect(prompt).toContain(
+    "Reference code as `file_path:line_number` — it's clickable",
+  )
+})
+
+test('verified_vs_assumed section present (upstream 2.1.270 sync, gate-free)', async () => {
+  const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+  expect(prompt).toContain(
+    'When reporting results, be accurate about what you verified vs. what you assumed',
+  )
+  expect(prompt).toContain(
+    'Distinguish between what you confirmed (ran a command, read a file) and what you believe but did not check',
+  )
+  expect(prompt).toContain('Do not assert assumptions as facts.')
+})
+
+test('pronouns section present (upstream 2.1.270 sync, always-on)', async () => {
+  const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
+  expect(prompt).toContain(
+    "When you use a pronoun for someone — the user or anyone else you mention — and their pronouns haven't been stated, use they/them",
+  )
+  expect(prompt).toContain(
+    "never infer pronouns from a name",
+  )
+})
+
+// Note: getSystemRemindersSection is wired into the PROACTIVE-only prompt
+// path (feature-gated by bun:bundle, DCE in external builds). Not
+// reachable from regular getSystemPrompt calls — wording update is
+// verified manually in the proactive branch of prompts.ts.
