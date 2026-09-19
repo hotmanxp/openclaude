@@ -768,3 +768,81 @@ Scope: 1 commit surfaced after `origin/main-opencc` advanced to `bd299563` (bg-a
 - `git diff --stat` post-apply: empty (3way silent noop)
 - `git diff --cached --stat`: empty
 - `bun run typecheck` → **0 errors**
+
+---
+
+## 2026-09-20 sync — image resize-failure pipeline (`2e687df4`, partial port)
+
+Pick from the 2026-09-09 → 2026-09-19 window. Upstream shipped 4 commits;
+`2e687df4` ("fix(image): allow large/metadata-less screenshots through on
+resize failure", #1964 / #1970) is the only substantial one. The other
+three — xai OAuth state validation (#2228), Windows marketplace cache
+ENOENT (#2220), launcher heap-percentage (#2219) — touch providers and
+platform paths outside this fork's scope.
+
+### Applied — 16 of 18 files, `git apply --3way`, zero conflicts
+
+`src/utils/imageResizer.ts` (+517), `imageResizer.test.ts` (new, +842),
+`requestImageValidation.ts` (new, +117), `requestImageValidation.test.ts`
+(new, +184), `imagePaste.ts` (+129), `usePasteHandler.ts` (+30),
+`usePasteHandler.image-path-error.test.ts` (new, +150),
+`imagePaste.clipboard-error.test.ts` (new, +86),
+`imageMockLifecycle.consumer.test.ts` (new, +50), `imagePaste.win32.test.ts`
+(+60/-27), `apiLimits.ts` (+23), `claude.ts` (+16), `PromptInput.tsx`
+(+8/-1), `errors.ts` (+4/-1), `select-input-option.tsx` (+4/-1), `README.md`
+(+1/-1, rebranded `OpenClaude` → `OpenCC`).
+
+Clipboard screenshots the native image processor cannot resize no longer
+fall through to "No image found in clipboard". Magic-byte dimension parsing
+(PNG IHDR / WebP VP8 / VP8L / VP8X / JPEG SOF0-3 / GIF) now backs a 2000px
+many-image limit and an 8000px API hard edge; `prepareImagesForAnthropicRequest`
+enforces them at the request boundary (retained history and tool-result
+images included) and surfaces the real resize error instead of swallowing it.
+
+### Skipped — 2 of 18 files
+
+- `web/src/data/keybindings.ts` — the fork's `web/src/data/` carries only
+  `cliFlags.ts`; upstream's web data tree is not vendored here.
+- `src/services/api/claude.lifecycle.test.ts` — never existed in the fork
+  (`git log --diff-filter=D` is empty). Its new `test.each` block needs
+  `setClientTestEnv` + `makeErrorResponse`, both absent from the fork, and
+  2 of its 5 cases exercise bedrock/vertex — removed providers.
+
+### Fork-only fix — 3way silently dropped an import in a `@ts-nocheck` file
+
+The commit adds a `usesAnthropicImageLimits(...)` guard to `queryModel` that
+calls `isGithubNativeAnthropicMode(options.model)`. The 3way apply brought in
+the call site and the `requestImageValidation.js` import, but **not** the
+`isGithubNativeAnthropicMode` import — upstream's copy sits on a line the
+merged hunk context never reached.
+
+`bun run typecheck` stayed silent because `src/services/api/claude.ts:1` is
+`// @ts-nocheck` (a pre-existing fork escape hatch), so tsc never analyses
+the file. The break surfaced only at runtime as
+`isGithubNativeAnthropicMode is not defined`, which killed every `-p`
+invocation and 4 tests. Fixed by adding the symbol to the existing
+`src/utils/model/providers.js` import block.
+
+**Lesson for future syncs:** when a 3way apply lands on a `@ts-nocheck` file,
+"typecheck → 0 errors" proves nothing about the newly introduced references.
+Grep each new callee against the file's import block — or run a runtime
+smoke — before trusting it.
+
+### Verification (2026-09-20)
+
+- `bun run typecheck` → 1 error, byte-identical to the pre-change baseline
+  (`src/services/analytics/firstPartyEventLogger.ts(373,57)` TS2554). That
+  error comes from HEAD `f60877d4` (the release sync) and is unrelated to
+  this port — left alone.
+- `bun run build` → ✓ Built opencc v0.27.2 → `dist/cli.mjs`
+- New tests → **62 pass / 0 fail**: 57 across the five new/changed image
+  suites, plus 5 in `imagePaste.win32.test.ts`
+- Full suite, port vs. stashed baseline, back-to-back on the same machine:
+  **193 fails both ways — 0 new, 0 fixed.** The fork's pre-existing failure
+  set is untouched by this port.
+- TUI smoke (`tui-func-verifier`, tmux): `node bin/opencc --version` →
+  `0.27.2 (OpenCC)`; first screen renders prompt + status bar; the
+  clipboard-with-no-image path returns null and shows the friendly
+  "No image found in clipboard" message. The verifier is what caught the
+  `isGithubNativeAnthropicMode` crash; after the fix,
+  `node bin/opencc -p "say ok and stop"` → `ok`.
