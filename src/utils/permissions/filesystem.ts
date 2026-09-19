@@ -1755,7 +1755,7 @@ export function checkEditableInternalPath(
       updatedInput: input,
       decisionReason: {
         type: 'other',
-        reason: 'OpenCC commit message file is allowed for writing',
+        reason: 'OpenClaude commit message file is allowed for writing',
       },
     }
   }

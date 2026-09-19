@@ -3,17 +3,16 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
-  COMMON_EXTERNALS,
+  OPTIONAL_RUNTIME_EXTERNALS,
   INTENTIONALLY_BUNDLED,
 } from './externals.js'
 
 // Regression coverage for the provider load paths (Bedrock/Foundry/Vertex/Azure/
 // AWS): every package routed through importOptionalRuntimeModule MUST be a
-// declared external (so esbuild keeps it external rather than statically
-// inlining the dynamic-import site). A static scan is the right tool here —
+// declared optional runtime external. A static scan is the right tool here —
 // exercising createClient per provider needs heavy SDK/auth mocking, while the
 // thing this PR actually changed is the routing: which packages load on demand
-// vs are bundled. A specifier that is bundled (e.g. one left in
+// vs are bundled. A specifier that is NOT optional (e.g. one left in
 // INTENTIONALLY_BUNDLED) means esbuild can't see it through the Function
 // indirection, so it is neither bundled nor shipped and the feature would break
 // for every default install with no install hint.
@@ -56,12 +55,22 @@ function collectSpecifiers(): { specifier: string; file: string }[] {
 // total up. Adding/removing a provider load site is a deliberate change that
 // must update this list.
 const EXPECTED_SPECIFIERS = [
+  '@anthropic-ai/bedrock-sdk',
+  '@anthropic-ai/foundry-sdk',
+  '@aws-sdk/client-bedrock',
+  '@aws-sdk/client-bedrock-runtime',
+  '@aws-sdk/client-sts',
+  '@aws-sdk/credential-provider-node',
+  '@aws-sdk/credential-providers',
+  '@smithy/core',
+  '@smithy/node-http-handler',
+  '@azure/identity',
   'google-auth-library',
 ].sort()
 
 describe('importOptionalRuntimeModule call sites', () => {
   const sites = collectSpecifiers()
-  const externals = new Set(COMMON_EXTERNALS)
+  const optional = new Set(OPTIONAL_RUNTIME_EXTERNALS)
   const bundled = new Set(INTENTIONALLY_BUNDLED)
 
   test('the exact set of optionally-loaded packages is the expected one', () => {
@@ -69,11 +78,11 @@ describe('importOptionalRuntimeModule call sites', () => {
     expect(actual).toEqual(EXPECTED_SPECIFIERS)
   })
 
-  test('every optionally-loaded specifier is declared external in scripts/externals.ts', () => {
-    const offenders = sites.filter(s => !externals.has(s.specifier))
+  test('every optionally-loaded specifier is a declared OPTIONAL_RUNTIME_EXTERNAL', () => {
+    const offenders = sites.filter(s => !optional.has(s.specifier))
     expect(
       offenders,
-      `Loaded via importOptionalRuntimeModule but not in COMMON_EXTERNALS ` +
+      `Loaded via importOptionalRuntimeModule but not in OPTIONAL_RUNTIME_EXTERNALS ` +
         `(scripts/externals.ts): ${offenders.map(o => o.specifier).join(', ')}`,
     ).toEqual([])
   })

@@ -144,14 +144,8 @@ function getHooksSection(): string {
 }
 
 function getSystemRemindersSection(): string {
-  // Upstream 2.1.270 sync: # Context management 段措辞更新.
-  // Source: claude-code 2.1.270 var TRo. Was: "The conversation has
-  // unlimited context through automatic summarization." (opencc's 0.27.0
-  // form, byte-equal to upstream 2.1.252). New: emphasis that summarization
-  // happens mid-task and the model should keep working without wrapping
-  // up early.
   return `- Tool results and user messages may include <system-reminder> tags. <system-reminder> tags contain useful information and reminders. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear.
-- Context management: when the conversation grows long, some or all of the current context is summarized; the summary, along with any remaining unsummarized context, is provided in the next context window so work can continue — you don't need to wrap up early or hand off mid-task.`
+- The conversation has unlimited context through automatic summarization.`
 }
 
 function getAntModelOverrideSection(): string | null {
@@ -217,27 +211,6 @@ You are an interactive agent that helps users ${introVariant}. Use the instructi
 
 ${CYBER_RISK_INSTRUCTION}
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`
-}
-
-// Upstream 2.1.270 sync: # Harness 段.
-// Source: claude-code 2.1.270 (var gRo, upstream function emitted between
-// the intro and # System). New top-of-prompt section that supplements
-// (not replaces) # System. 5 bullets: markdown output, permission mode,
-// hooks / system-reminder lean guidance, dedicated tools vs Bash,
-// `file_path:line_number` references. The bullet 3 prefix from upstream's
-// `pyn(n,"lean")` resolves to the lean system-reminder phrasing (the user
-// sees a tight reminder, not the full explanation), which is correct for
-// the Harness section since # System already carries the long form.
-function getHarnessSection(): string {
-  const items = [
-    'Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.',
-    "Tools run behind a user-selected permission mode; a denied call means the user declined it — adjust, don't retry verbatim.",
-    '`<system-reminder>` tags in messages and tool results are injected by the harness, not the user. Hooks may intercept tool calls; treat hook output as user feedback.',
-    'Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.',
-    'Reference code as `file_path:line_number` — it\'s clickable.',
-  ]
-
-  return ['# Harness', ...prependBullets(items)].join(`\n`)
 }
 
 function getSimpleSystemSection(): string {
@@ -613,25 +586,6 @@ Subagents multiply cost and time: each one re-establishes context, re-explores, 
 - Keep spawn counts low. One well-briefed subagent for a large independent chunk is worth more than several loosely-briefed ones; brief it precisely the first time rather than launching, waiting, and re-briefing.
 Delegate for work that is genuinely independent, large enough to justify a fresh context, or naturally parallel. Otherwise, do it yourself.`
     }),
-    // --- Upstream 2.1.270 sync: verified_vs_assumed dynamic section ---
-    // Source: claude-code 2.1.270 (inline in cRo() # Doing tasks, gated by
-    // GB tengu_verified_vs_assumed, default off). Upstream gates it
-    // behind GrowthBook — opencc drops the gate per the same "gate-free
-    // sync" rule applied to the 5 dynamic sections above and emits
-    // unconditionally. Inline placement in # Doing tasks moved to a
-    // dedicated dynamic section so cacheability follows the existing
-    // systemPromptSection boundary instead of fragmenting the static
-    // # Doing tasks bullet list.
-    systemPromptSection('verified_vs_assumed', () =>
-      `When reporting results, be accurate about what you verified vs. what you assumed. Distinguish between what you confirmed (ran a command, read a file) and what you believe but did not check. Do not assert assumptions as facts.`,
-    ),
-    // --- Upstream 2.1.270 sync: pronouns dynamic section ---
-    // Source: claude-code 2.1.270 var ZAo. Always-on (no GB gate),
-    // compliance paragraph. Placed early in the dynamic section list
-    // alongside the other pre-boundary content per upstream order.
-    systemPromptSection('pronouns', () =>
-      `When you use a pronoun for someone — the user or anyone else you mention — and their pronouns haven't been stated, use they/them. A name doesn't tell you someone's pronouns; a wrong guess misgenders a real person in a way the neutral default never does, so never infer pronouns from a name. This applies to all user-visible text, including visible thinking.`,
-    ),
     // autonomy_append: non-interactive mode discipline — no "Want me to…?"
     //   blocking questions; finish plans instead of promising them
     //   (claude-code 2.1.252, function IQn; upstream gate Pte(e) || $Qn()
@@ -721,11 +675,6 @@ Before running a command that changes system state (such as restarts, deletes, o
   return [
     // --- Static content (cacheable) ---
     getSimpleIntroSection(outputStyleConfig),
-    // Upstream 2.1.270 sync: # Harness sits between intro and # System
-    // (upstream 2.1.270 var gRo sequence: intro → Harness → System → Doing
-    // tasks). Keep # System below unchanged — it's byte-equal to upstream
-    // lRo, and # Harness supplements rather than replaces it.
-    getHarnessSection(),
     getSimpleSystemSection(),
     outputStyleConfig === null ||
     outputStyleConfig.keepCodingInstructions === true

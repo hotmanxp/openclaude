@@ -117,10 +117,22 @@ export default defineGateway({
         modelDescriptorId: 'openplatform-glm-5.2',
       },
       {
+        id: 'zn-nova-glm-5.3',
+        apiName: 'glm-5.3',
+        label: 'GLM 5.3 (via 平安 novai)',
+        modelDescriptorId: 'openplatform-glm-5.3',
+      },
+      {
         id: 'zn-nova-deepseek-v4-flash',
         apiName: 'deepseek-v4-flash',
         label: 'DeepSeek V4 Flash (via 平安 novai)',
         modelDescriptorId: 'openplatform-deepseek-v4-flash',
+      },
+      {
+        id: 'zn-nova-deepseek-v4.1-flash',
+        apiName: 'deepseek-v4.1-flash',
+        label: 'DeepSeek V4.1 Flash (via 平安 novai)',
+        modelDescriptorId: 'openplatform-deepseek-v4.1-flash',
       },
       {
         id: 'zn-nova-deepseek-v4-pro',

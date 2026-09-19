@@ -3,7 +3,7 @@ import type { PackageManager } from './nativeInstaller/packageManagers.js'
 import { resolvePackageManagerUpdateGuidance } from './packageManagerUpdateGuidance.js'
 
 const UPSTREAM_PACKAGE_URL = '@anthropic-ai/claude-code'
-const OPENCLAUDE_PACKAGE_URL = '@zn-ai/opencc'
+const OPENCLAUDE_PACKAGE_URL = '@gitlawb/openclaude'
 
 describe('resolvePackageManagerUpdateGuidance', () => {
   test.each([
@@ -16,7 +16,7 @@ describe('resolvePackageManagerUpdateGuidance', () => {
       expect(
         resolvePackageManagerUpdateGuidance(manager, UPSTREAM_PACKAGE_URL),
       ).toEqual({
-        message: `OpenCC is managed by ${managerName}. Use ${managerName} to update OpenCC.`,
+        message: `OpenClaude is managed by ${managerName}. Use ${managerName} to update OpenClaude.`,
         managerName,
         command,
       })
@@ -24,7 +24,7 @@ describe('resolvePackageManagerUpdateGuidance', () => {
   )
 
   test.each(['homebrew', 'winget', 'apk'] as const)(
-    'does not guess an upstream command for an OpenCC %s install',
+    'does not guess an upstream command for an OpenClaude %s install',
     manager => {
       const guidance = resolvePackageManagerUpdateGuidance(
         manager,
@@ -32,7 +32,7 @@ describe('resolvePackageManagerUpdateGuidance', () => {
       )
 
       expect(guidance.command).toBeUndefined()
-      expect(guidance.message).toContain('OpenCC')
+      expect(guidance.message).toContain('OpenClaude')
       expect(guidance.message.toLowerCase()).toContain(manager === 'homebrew' ? 'homebrew' : manager)
       expect(JSON.stringify(guidance)).not.toContain('brew upgrade claude-code')
       expect(JSON.stringify(guidance)).not.toContain('Anthropic.ClaudeCode')
@@ -45,7 +45,7 @@ describe('resolvePackageManagerUpdateGuidance', () => {
       resolvePackageManagerUpdateGuidance('homebrew', '@example/custom-cli'),
     ).toEqual({
       message:
-        'OpenCC is managed by Homebrew. Use Homebrew to update OpenCC.',
+        'OpenClaude is managed by Homebrew. Use Homebrew to update OpenClaude.',
       managerName: 'Homebrew',
     })
   })
@@ -57,7 +57,7 @@ describe('resolvePackageManagerUpdateGuidance', () => {
         resolvePackageManagerUpdateGuidance(manager, OPENCLAUDE_PACKAGE_URL),
       ).toEqual({
         message:
-          'OpenCC is managed by a package manager. Use your package manager to update OpenCC.',
+          'OpenClaude is managed by a package manager. Use your package manager to update OpenClaude.',
       })
     },
   )

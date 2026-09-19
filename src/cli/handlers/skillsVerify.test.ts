@@ -42,7 +42,7 @@ async function withVerifyFixture(
   await acquireSharedMutationLock('skillsVerifyHandler')
   const tempDir = mkdtempSync(join(tmpdir(), 'openclaude-skill-verify-test-'))
   const projectDir = join(tempDir, 'project')
-  const projectSkills = join(projectDir, '.opencc', 'skills')
+  const projectSkills = join(projectDir, '.openclaude', 'skills')
   const userHome = join(tempDir, 'home')
   const userSkills = join(userHome, 'skills')
   const registryDir = join(tempDir, 'registry')
