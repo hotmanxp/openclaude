@@ -35,6 +35,7 @@ export default defineVendor({
     kind: 'credential-env',
     routing: {
       matchDefaultBaseUrl: true,
+      matchBaseUrlHosts: ['api.z.ai'],
     },
     credentialEnvVars: ['OPENAI_API_KEY'],
     missingCredentialMessage:
@@ -43,22 +44,6 @@ export default defineVendor({
   catalog: {
     source: 'static',
     models: [
-      {
-        id: 'glm-5.3-flash',
-        apiName: 'glm-5.3-flash',
-        label: 'GLM-5.3-Flash',
-        modelDescriptorId: 'glm-5.3-flash',
-        reasoning: {
-          mode: 'levels',
-          levels: ['low', 'high', 'xhigh'],
-          wireFormat: 'zai_compatible',
-        },
-        transportOverrides: {
-          openaiShim: {
-            enableToolStreaming: true,
-          },
-        },
-      },
       {
         id: 'GLM-5.1',
         apiName: 'GLM-5.1',

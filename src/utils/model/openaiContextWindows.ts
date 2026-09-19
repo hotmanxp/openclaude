@@ -256,6 +256,7 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   // as the same family for local budgeting until a dedicated public model card
   // lands.
   'deepseek-v4-flash':      1_048_576,
+  'deepseek-v4.1-flash':    1_048_576,
   'deepseek-v4-pro':        1_048_576,
   'deepseek-v4-pro-0813':   1_048_576,
   // Legacy DeepSeek API aliases documented in the public pricing/model pages.
@@ -402,11 +403,13 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'glm-4.7':                  202_752,
   'glm-5.1':                  202_745,
   'glm-5.2':                  1_048_576,
+  'glm-5.3':                  1_048_576,
   'glm-5-turbo':              202_745,
   'glm-4.5-air':              128_000,
   // Z.AI Coding Plan models (uppercase variants)
   'GLM-5.1':                  202_745,
   'GLM-5.2':                  1_048_576,
+  'GLM-5.3':                  1_048_576,
   'GLM-5-Turbo':              202_745,
   'GLM-5':                    202_745,
   'GLM-4.7':                  202_752,
@@ -508,6 +511,7 @@ const OPENAI_MAX_OUTPUT_TOKENS: Record<string, number> = {
 
   // DeepSeek V4 coding-agent models. See context-window note above.
   'deepseek-v4-flash':        262_144,
+  'deepseek-v4.1-flash':      262_144,
   'deepseek-v4-pro':          262_144,
   'deepseek-v4-pro-0813':     393_216,
   // Legacy DeepSeek API aliases documented in the public pricing/model pages.
@@ -620,11 +624,13 @@ const OPENAI_MAX_OUTPUT_TOKENS: Record<string, number> = {
   'glm-4.7':                   16_384,
   'glm-5.1':                    16_384,
   'glm-5.2':                   131_072,
+  'glm-5.3':                   131_072,
   'glm-5-turbo':                16_384,
   'glm-4.5-air':                16_384,
   'GLM-5':                     131_072,
   'GLM-5.1':                   131_072,
   'GLM-5.2':                   131_072,
+  'GLM-5.3':                   131_072,
   'GLM-5-Turbo':               131_072,
   'GLM-4.7':                   131_072,
   'GLM-4.5-Air':                65_536,

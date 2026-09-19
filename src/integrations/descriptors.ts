@@ -324,18 +324,6 @@ export interface ModelDescriptor {
   capabilities: CapabilityFlags
   contextWindow?: number
   maxOutputTokens?: number
-  /**
-   * Restrict shared runtime metadata to catalog entries that explicitly
-   * reference this descriptor. Omit for the legacy global model-name fallback.
-   *
-   * Fork note: field is declared for upstream parity with #2185 (GLM-5.3-Flash
-   * Coding Plan). Runtime logic to honor this scope was NOT ported — that
-   * requires porting upstream's `findModelDescriptorForApiName` +
-   * `resolveRouteOpenAIShimConfig` + xai/aimlapi/discoveryCache integration,
-   * which is out of scope for the DOC-ONLY path. Tracked as a TODO; resume
-   * when fork runtime reconciles with upstream main.
-   */
-  runtimeMetadataScope?: 'global' | 'catalog'
   cacheConfig?: CacheConfig
 }
 

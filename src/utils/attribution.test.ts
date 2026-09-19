@@ -223,7 +223,7 @@ describe('getDefaultCommitCoAuthorName', () => {
     ).toBe('Claude Opus 4.6')
   })
 
-  it('uses the OpenCC email for commit attribution across providers', () => {
+  it('uses the OpenClaude email for commit attribution across providers', () => {
     expect(getDefaultCommitCoAuthorEmail('openai')).toBe(
       'opencc@pingan.com.cn',
     )
