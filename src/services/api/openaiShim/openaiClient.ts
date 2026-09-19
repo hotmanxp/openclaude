@@ -33,6 +33,11 @@ import {
 } from '../thinkTagSanitizer.js'
 import { type AnthropicStreamEvent, type AnthropicUsage, type ShimCreateParams, convertAnthropicMessagesToResponsesInput } from '../codexShim.js'
 import { compressToolHistory } from '../compressToolHistory.js'
+import {
+  PREFIX_CACHING_HOSTNAMES,
+  PREFIX_CACHING_ROUTE_IDS,
+  providerUsesImplicitPrefixCaching,
+} from '../openaiShim.js'
 import { fetchWithProxyRetry } from '../fetchWithProxyRetry.js'
 import {
   isLocalProviderUrl,
@@ -1000,14 +1005,24 @@ class OpenAIShimMessages {
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): Promise<Response> {
-    const compressedMessages = compressToolHistory(
-      params.messages as Array<{
-        role: string
-        message?: { role?: string; content?: unknown }
-        content?: unknown
-      }>,
-      request.resolvedModel,
+    // Mirror the native-transport guard (shouldCompressNativeToolHistory):
+    // compressToolHistory's window is measured from the end of the conversation,
+    // so each turn rewrites tool results that were already sent verbatim. On
+    // providers with implicit prefix caching that mutates the middle of the
+    // request prefix and forfeits the entire cache downstream — costing far
+    // more than the compression saves. (port of upstream #2142)
+    const skipCompressionForPrefixCache = providerUsesImplicitPrefixCaching(
+      undefined,
+      request.baseUrl,
     )
+    const rawMessages = params.messages as Array<{
+      role: string
+      message?: { role?: string; content?: unknown }
+      content?: unknown
+    }>
+    const compressedMessages = skipCompressionForPrefixCache
+      ? rawMessages
+      : compressToolHistory(rawMessages, request.resolvedModel)
     const openaiMessages = convertMessages(compressedMessages, params.system, {
       // Moonshot requires every assistant tool-call message to carry
       // reasoning_content when its thinking feature is active. Echo it back

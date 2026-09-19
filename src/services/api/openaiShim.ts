@@ -80,6 +80,27 @@ const MOONSHOT_API_HOSTS = new Set([
   'api.moonshot.cn',
 ])
 
+// Providers documented to do implicit prefix caching on OpenAI-compatible
+// endpoints (see the stableStringifyJson rationale in utils/stableStringify.ts:
+// OpenAI, Kimi/Moonshot, DeepSeek — plus xAI). For these, a stable request
+// prefix is worth more than tool-history compression. (port of upstream
+// #2142)
+export const PREFIX_CACHING_ROUTE_IDS = new Set([
+  'openai',
+  'xai',
+  'deepseek',
+  'moonshot',
+  'kimi-code',
+])
+export const PREFIX_CACHING_HOSTNAMES = new Set([
+  'api.openai.com',
+  'api.x.ai',
+  'api.deepseek.com',
+  'api.moonshot.ai',
+  'api.moonshot.cn',
+  'api.kimi.com',
+])
+
 const SENSITIVE_URL_QUERY_PARAM_NAMES = [
   'api_key',
   'key',
@@ -152,6 +173,26 @@ function isMoonshotBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   try {
     return MOONSHOT_API_HOSTS.has(new URL(baseUrl).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+export function providerUsesImplicitPrefixCaching(
+  routeId: string | null | undefined,
+  baseUrl: string | undefined,
+): boolean {
+  if (routeId && PREFIX_CACHING_ROUTE_IDS.has(routeId)) {
+    return true
+  }
+  if (!baseUrl) {
+    return false
+  }
+  // Parse and compare hostnames rather than substring-matching the raw URL —
+  // a path-routed gateway like https://proxy.example/api.openai.com/v1 is not
+  // the provider itself and gets no implicit caching.
+  try {
+    return PREFIX_CACHING_HOSTNAMES.has(new URL(baseUrl).hostname.toLowerCase())
   } catch {
     return false
   }

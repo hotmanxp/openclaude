@@ -316,3 +316,60 @@ test('FIX: 32k window (Mistral tier) → recent=3 keeps last 3 only', async () =
     expect(toolMessages[i].content.length).toBe(3_000)
   }
 })
+
+
+// ============================================================================
+// FIX: implicit-prefix-caching hosts skip tool-history compression
+// (port of upstream #2142)
+// ============================================================================
+
+test('Kimi K3 256K selection keeps history uncompressed (implicit prefix caching) while sending the k3 API name', async () => {
+  mockState.enabled = true
+  process.env.OPENAI_BASE_URL = 'https://api.kimi.com/coding/v1'
+  const messages = buildLongConversation(50, 5_000)
+
+  const body = await captureRequestBody(messages, 'k3')
+  const toolMessages = getToolMessages(body)
+
+  expect(body.model).toBe('k3')
+  expect(toolMessages).toHaveLength(50)
+  // api.kimi.com does implicit prefix caching: compressToolHistory's
+  // end-relative window would rewrite already-sent tool results each turn
+  // and bust the cache, so compression is skipped for this host.
+  for (const m of toolMessages) {
+    expect(m.content).not.toContain('chars omitted')
+    expect(m.content).not.toContain('[…truncated')
+  }
+})
+
+test('implicit-prefix-caching host (api.deepseek.com) skips tool-history compression', async () => {
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000 // small window: would compress on a custom endpoint
+  process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
+  const messages = buildLongConversation(30, 5_000)
+
+  const body = await captureRequestBody(messages, 'deepseek-chat')
+  const toolMessages = getToolMessages(body)
+
+  expect(toolMessages).toHaveLength(30)
+  for (const m of toolMessages) {
+    expect(m.content.length).toBe(5_000)
+    expect(m.content).not.toContain('chars omitted')
+    expect(m.content).not.toContain('[…truncated')
+  }
+})
+
+test('non-caching custom endpoint still compresses tool history', async () => {
+  // Guard against the inverse regression: the prefix-caching skip must not
+  // disable compression for endpoints with no implicit caching. The default
+  // harness base URL (http://example.test/v1) is such an endpoint.
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000 // recent=12, mid=25
+  const messages = buildLongConversation(30, 5_000)
+
+  const body = await captureRequestBody(messages, 'gpt-4o')
+  const toolMessages = getToolMessages(body)
+
+  expect(toolMessages).toHaveLength(30)
+  expect(toolMessages[0].content).toContain('chars omitted')
+})
