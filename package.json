@@ -1,6 +1,6 @@
 {
   "name": "@zn-ai/opencc",
-  "version": "0.27.2",
+  "version": "0.27.3",
   "description": "OpenCC opens coding-agent workflows to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
