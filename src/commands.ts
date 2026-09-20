@@ -53,6 +53,7 @@ import session from './commands/session/index.js'
 import setContextWindow from './commands/set-context-window/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
+import skillDoctor from './commands/skill-doctor/index.js'
 import status from './commands/status/index.js'
 import setTicket from './commands/setTicket/index.js'
 import tasks from './commands/tasks/index.js'
@@ -124,6 +125,7 @@ import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
 import fast from './commands/fast/index.js'
+import focus from './commands/focus/index.js'
 import passes from './commands/passes/index.js'
 import privacySettings from './commands/privacy-settings/index.js'
 import provider from './commands/provider/index.js'
@@ -326,6 +328,7 @@ const COMMANDS = memoize((): Command[] => [
   exit,
   fast,
   files,
+  focus,
   handoff,
   heapDump,
   help,
@@ -354,6 +357,7 @@ const COMMANDS = memoize((): Command[] => [
   resume,
   session,
   setContextWindow,
+  skillDoctor,
   skills,
   status,
   statusline,

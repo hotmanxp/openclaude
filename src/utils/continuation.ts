@@ -118,6 +118,15 @@ export const UNFINISHED_SENTIMENT_SIGNALS = [
   /```[a-z]*\s*$/i,
 ]
 
+// Sentence-terminating punctuation, ASCII plus the full-width CJK equivalents
+// (。！？ and closing marks). Without the CJK entries a message ending in "吗？"
+// reads as unpunctuated, and the unpunctuated fallback nudges on any signal
+// match anywhere in the text.
+// Clause marks (; : , and their full-width forms) are deliberately absent: a
+// trailing one means "work pending" (see UNFINISHED_SENTIMENT_SIGNALS) and must
+// still be nudged.
+export const TERMINAL_PUNCTUATION = /[.!?"'`)\]。！？”’）】》」』〕]\s*$/
+
 /**
  * Analyzes assistant text to determine if a continuation nudge is required.
  */
@@ -174,7 +183,7 @@ export function analyzeContinuationIntent(
   if (hasLateContinuationSignal) {
     // If the sentence is punctuated but has a transition word, only nudge if 
     // it's a strong 1st person intent or open tasks are present.
-    const hasTerminalPunctuation = /[.!??"'`)\]]\s*$/.test(lastText) || lastText.endsWith('`')
+    const hasTerminalPunctuation = TERMINAL_PUNCTUATION.test(lastText) || lastText.endsWith('`')
     if (hasTerminalPunctuation) {
       const strongIntent = /\b(i (will|shall|need to|must|should|now)|let (me|us)|je (vais|reviens)|passons à|moving on to|continuing with|proceeding to|next step is to)\b/i.test(lowerText) || 
                            /je suis en train d'/i.test(lowerText) || /◻/.test(lastText)
@@ -203,7 +212,7 @@ export function analyzeContinuationIntent(
   }
 
   // Global fallback for unpunctuated signals (must be a clear transition)
-  const hasTerminalPunctuation = /[.!??"'`)\]]\s*$/.test(lastText) || lastText.endsWith('`')
+  const hasTerminalPunctuation = TERMINAL_PUNCTUATION.test(lastText) || lastText.endsWith('`')
   if (
     CONTINUATION_SIGNALS.some(re => re.test(lowerText)) && 
     !hasTerminalPunctuation
