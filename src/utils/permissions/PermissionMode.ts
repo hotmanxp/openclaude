@@ -69,6 +69,13 @@ const PERMISSION_MODE_CONFIG: Partial<
     color: 'error',
     external: 'bypassPermissions',
   },
+  fullAccess: {
+    title: 'Full Access',
+    shortTitle: 'Full',
+    symbol: '▶▶',
+    color: 'error',
+    external: 'fullAccess',
+  },
   dontAsk: {
     title: "Don't Ask",
     shortTitle: 'DontAsk',
@@ -141,6 +148,6 @@ export function getModeColor(mode: PermissionMode): ModeColorKey {
 
 export function isDangerousPermissionMode(
   mode: PermissionMode | undefined,
-): boolean {
-  return mode === 'bypassPermissions'
+): mode is 'bypassPermissions' | 'fullAccess' {
+  return mode === 'bypassPermissions' || mode === 'fullAccess'
 }
