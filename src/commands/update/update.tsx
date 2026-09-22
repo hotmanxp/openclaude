@@ -11,8 +11,12 @@ import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { detectGlobalPackageManager } from '../../utils/globalPackageManager.js'
 import { installOrUpdateClaudePackage } from '../../utils/localInstaller.js'
-import { installLatest as installLatestNative } from '../../utils/nativeInstaller/index.js'
+import { installLatest as installLatestNative, removeInstalledSymlink } from '../../utils/nativeInstaller/index.js'
+import { hasNativeDistribution } from '../../utils/nativeDistribution.js'
+import { getGlobalConfig, type InstallMethod } from '../../utils/config.js'
+import { shouldRemoveInstalledSymlinkForNpmUpdate } from '../../utils/autoUpdaterRouting.js'
 import type { PackageManager } from '../../utils/nativeInstaller/packageManagers.js'
+import { getPackageManagerUpdateGuidance } from '../../utils/packageManagerUpdateGuidance.js'
 import { resolveUpdateStrategy } from '../../utils/updateStrategy.js'
 
 const PACKAGE_URL = MACRO.PACKAGE_URL
@@ -49,6 +53,51 @@ function packageManagerHint(manager: PackageManager): string | null {
     default:
       return null
   }
+}
+
+// Slash-surface for the safe package-manager guidance (ported from upstream):
+// renders the PRODUCT_DISPLAY_NAME-aware guidance text without ever guessing
+// an upgrade command for the fork package.
+export function PackageManagerUpdateGuidance({
+  manager,
+}: {
+  manager: PackageManager
+}): React.ReactNode {
+  const guidance = getPackageManagerUpdateGuidance(manager)
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Box>
+        <StatusIcon status="warning" withSpace />
+        <Text color="warning">{guidance.message}</Text>
+      </Box>
+      {guidance.command && (
+        <Box marginLeft={2}>
+          <Text dimColor>To update, run: {guidance.command}</Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// Ported from upstream: before an npm-based update, drop a stale native
+// launcher symlink that a previous native install left behind. Only fires
+// when the running build is npm-only but the config still claims `native`.
+export async function removeStaleNativeLauncherForNpmUpdate(deps: {
+  getConfig?: () => { installMethod?: InstallMethod }
+  hasNativeDistribution?: () => boolean
+  removeInstalledSymlink?: () => Promise<void>
+} = {}): Promise<boolean> {
+  const config = (deps.getConfig ?? getGlobalConfig)()
+  if (
+    shouldRemoveInstalledSymlinkForNpmUpdate(
+      config.installMethod,
+      (deps.hasNativeDistribution ?? hasNativeDistribution)(),
+    )
+  ) {
+    await (deps.removeInstalledSymlink ?? removeInstalledSymlink)()
+    return true
+  }
+  return false
 }
 
 function Update({ onDone, force, target }: UpdateProps): React.ReactNode {
