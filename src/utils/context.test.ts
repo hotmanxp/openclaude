@@ -506,7 +506,7 @@ test('Z.AI uppercase GLM models use Coding Plan output caps', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
 
-  expect(getContextWindowForModel('GLM-5.1')).toBe(202_745)
+  expect(getContextWindowForModel('GLM-5.1')).toBe(202_752)
   expect(getModelMaxOutputTokens('GLM-5.1')).toEqual({
     default: 131_072,
     upperLimit: 131_072,

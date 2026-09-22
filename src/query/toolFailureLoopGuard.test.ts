@@ -175,7 +175,7 @@ test('persistent signature failures emit one advisory before the guard trips', (
 
   const advisory = update(state, [toolUse('b', 'Edit')], [
     toolResult('b', 'Error writing file: failed to replace text'),
-  ])
+  ], 3)
   if (advisory.tripped || !advisory.advisories) {
     throw new Error('Expected the penultimate persistent failure to advise')
   }
@@ -187,7 +187,7 @@ test('persistent signature failures emit one advisory before the guard trips', (
 
   const trip = update(state, [toolUse('c', 'Edit')], [
     toolResult('c', 'Error writing file: failed to replace text'),
-  ])
+  ], 3)
   expect(trip.tripped).toBe(true)
 })
 
@@ -204,6 +204,7 @@ test('a mixed success and persistent failure batch preserves its advisory', () =
       toolResult('b', 'Error writing file: failed to replace text'),
       toolResult('c', 'file contents', false),
     ],
+    3,
   )
 
   if (decision.tripped || !decision.advisories) {
@@ -233,6 +234,7 @@ test('simultaneous persistent signatures each emit an advisory', () => {
       toolResult('c', 'Error writing file: failed to replace text'),
       toolResult('d', 'InputValidationError: invalid command'),
     ],
+    3,
   )
 
   if (decision.tripped || !decision.advisories) {
@@ -287,7 +289,7 @@ test('advisories do not echo unrecognized tool error text', () => {
   update(state, [toolUse('a', 'McpTool')], [toolResult('a', untrustedError)])
   const decision = update(state, [toolUse('b', 'McpTool')], [
     toolResult('b', untrustedError),
-  ])
+  ], 3)
 
   if (decision.tripped || !decision.advisories) {
     throw new Error('Expected the penultimate persistent failure to advise')
@@ -305,7 +307,7 @@ test('advisories do not echo unsafe external tool names', () => {
   ])
   const decision = update(state, [toolUse('b', unsafeToolName)], [
     toolResult('b', 'InputValidationError: invalid request'),
-  ])
+  ], 3)
 
   if (decision.tripped || !decision.advisories) {
     throw new Error('Expected the penultimate persistent failure to advise')
@@ -335,14 +337,15 @@ test('trip messages do not echo unsafe tool names, error categories, or paths', 
   const pathState = createToolFailureLoopGuardState()
   update(pathState, [toolUse('c', 'Edit', { file_path: unsafePath })], [
     toolResult('c', 'Error writing file: failed to replace text'),
-  ])
+  ], 3)
   update(pathState, [toolUse('d', 'Edit', { file_path: unsafePath })], [
     toolResult('d', 'InputValidationError: invalid request'),
-  ])
+  ], 3)
   const pathTrip = update(
     pathState,
     [toolUse('e', 'Edit', { file_path: unsafePath })],
     [toolResult('e', 'No such tool available: Edit')],
+    3,
   )
   if (!pathTrip.tripped) {
     throw new Error('Expected unsafe path failures to trip the guard')
@@ -1279,7 +1282,7 @@ test('query loop forwards an advisory to the next model turn', async () => {
       async function* ({ messages }) {
         modelRequests.push(messages)
         modelCalls++
-        if (modelCalls <= 2) {
+        if (modelCalls <= 4) {
           yield createAssistantMessage({
             content: [
               {
@@ -1296,10 +1299,10 @@ test('query loop forwards an advisory to the next model turn', async () => {
       } as QueryDeps['callModel'],
     ),
   )) {
-    // Drain the generator so the third model call receives the second turn.
+    // Drain the generator so the fifth model call receives the fourth turn.
   }
 
-  const advisory = modelRequests[2]?.find(
+  const advisory = modelRequests[4]?.find(
     (message: any) =>
       message?.type === 'user' &&
       message.isMeta === true &&
@@ -1307,8 +1310,8 @@ test('query loop forwards an advisory to the next model turn', async () => {
       message.message.content.includes('Warning: repeated tool failures'),
   ) as { message: { content: string } | undefined } | undefined
 
-  expect(modelRequests).toHaveLength(3)
-  expect(advisory?.message?.content).toContain('`MissingTool` failed 2/3 times')
+  expect(modelRequests).toHaveLength(5)
+  expect(advisory?.message?.content).toContain('`MissingTool` failed 4/5 times')
 })
 
 test('query loop does not forward an advisory when maxTurns prevents a next turn', async () => {
@@ -1402,7 +1405,7 @@ test('query loop forwards a compacted advisory only once', async () => {
     async function* ({ messages }) {
       modelRequests.push(messages)
       modelCalls++
-      if (modelCalls <= 2) {
+      if (modelCalls <= 4) {
         yield createAssistantMessage({
           content: [
             {
@@ -1454,7 +1457,7 @@ test('query loop forwards a compacted advisory only once', async () => {
     // Drain the generator so the compacted third model call completes.
   }
 
-  const compactedRequest = modelRequests[2] ?? []
+  const compactedRequest = modelRequests[4] ?? []
   const advisoryCount = compactedRequest.filter(
     (message: any) =>
       message?.type === 'user' &&
@@ -1462,7 +1465,7 @@ test('query loop forwards a compacted advisory only once', async () => {
       typeof message.message?.content === 'string' &&
       message.message.content.includes('Warning: repeated tool failures'),
   ).length
-  expect(autocompactCalls).toBeGreaterThanOrEqual(3)
-  expect(modelRequests).toHaveLength(3)
+  expect(autocompactCalls).toBeGreaterThanOrEqual(5)
+  expect(modelRequests).toHaveLength(5)
   expect(advisoryCount).toBe(1)
 })

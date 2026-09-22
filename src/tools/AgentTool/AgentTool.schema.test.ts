@@ -33,18 +33,11 @@ afterAll(() => {
 })
 
 describe('AgentTool input schema model override', () => {
-  test('accepts aliases and custom provider-supported model IDs', () => {
+  test('accepts the 3-provider model aliases (fork scope)', () => {
     const acceptedModels = [
       'sonnet',
       'opus',
       'haiku',
-      'inherit',
-      'gpt-5.5',
-      'mimo-v2.5-pro',
-      'deepseek-v4-flash',
-      'deepseek/deepseek-v4-flash:nitro',
-      'qwen3-coder-next:cloud',
-      'custom_model-v1.2:fast',
     ]
 
     for (const model of acceptedModels) {
@@ -91,9 +84,7 @@ describe('AgentTool input schema model override', () => {
     expect(description).toContain('sonnet')
     expect(description).toContain('opus')
     expect(description).toContain('haiku')
-    expect(description).toContain('provider-supported model ID')
     expect(description).toContain('Takes precedence')
-    expect(description).toContain('inherit')
   })
 })
 
@@ -340,10 +331,10 @@ describe('AgentTool output status contract', () => {
   test('throws for unsupported output statuses', () => {
     expect(() =>
       AgentTool.mapToolResultToToolResultBlockParam(
-        { status: 'remote_launched' } as never,
+        { status: 'bogus_status' } as never,
         'toolu_1',
       ),
-    ).toThrow('Unexpected agent tool result status: remote_launched')
+    ).toThrow('Unexpected agent tool result status: bogus_status')
   })
 
   test('renders async-launched output as a backgrounded agent', async () => {
@@ -366,7 +357,7 @@ describe('AgentTool output status contract', () => {
     expect(output).toContain('Backgrounded agent')
   })
 
-  test('does not render the removed remote-launched status', async () => {
+  test('renders the remote-launched status (fork CCR flow)', async () => {
     const output = await renderToString(
       renderToolResultMessage(
         { status: 'remote_launched' } as never,
@@ -376,6 +367,6 @@ describe('AgentTool output status contract', () => {
       80,
     )
 
-    expect(output.trim()).toBe('')
+    expect(output).toContain('Remote agent launched')
   })
 })

@@ -84,7 +84,9 @@ describe('snip nudge policy', () => {
   test('keeps GLM-5.2 nudges out of mid-sized generic-model ranges', () => {
     useZaiGlmRuntime()
 
-    expect(getSnipNudgeStartThreshold('glm-5.2')).toBeGreaterThan(400_000)
+    // GLM-5.2 catalog window re-calibrated to 1_000_000 (was 1_048_576);
+    // 0.40 of the 98%-effective window floors at 392_000.
+    expect(getSnipNudgeStartThreshold('glm-5.2')).toBeGreaterThan(380_000)
     expect(getSnipNudgeRepeatInterval('glm-5.2')).toBeGreaterThan(50_000)
   })
 
