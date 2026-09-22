@@ -29,10 +29,15 @@ const installedLauncherPath = join(import.meta.dir, '../../bin/openclaude')
 describe('background session finalizer', () => {
   let configDir: string
   let sessionsRoot: string
+  // Sandboxed home for spawned fixture processes: os.homedir() in the child
+  // follows HOME, so pointing it at the temp configDir keeps any homedir()-
+  // derived path (backups, ~/.local/bin, ...) inside the test sandbox.
+  let sandboxHome: string
 
   beforeEach(async () => {
     configDir = await mkdtemp(join(tmpdir(), 'openclaude-bg-finalizer-'))
     sessionsRoot = join(configDir, 'bg-sessions')
+    sandboxHome = configDir
     _setBackgroundSessionsRootForTesting(sessionsRoot)
   })
 
@@ -320,7 +325,9 @@ describe('background session finalizer', () => {
     const child = spawn(process.execPath, [fixturePath, mode], {
       env: {
         ...process.env,
-        OPENCLAUDE_CONFIG_DIR: configDir,
+        OPENCC_CONFIG_DIR: configDir,
+        HOME: sandboxHome,
+        USERPROFILE: sandboxHome,
         [BACKGROUND_SESSION_ID_ENV]: id,
         [BACKGROUND_SESSION_LAUNCHER_PID_ENV]: String(process.pid),
         OPENCLAUDE_BG_FINALIZER_FIXTURE_READY: readyPath,
@@ -352,7 +359,9 @@ describe('background session finalizer', () => {
     const processMarker = 'c'.repeat(64)
     const processEnv: NodeJS.ProcessEnv = {
       ...process.env,
-      OPENCLAUDE_CONFIG_DIR: configDir,
+      OPENCC_CONFIG_DIR: configDir,
+        HOME: sandboxHome,
+        USERPROFILE: sandboxHome,
     }
     delete processEnv.OPENCLAUDE_DISABLE_CLI_ENTRYPOINT_AUTO_RUN
     const childConfig = buildBackgroundChildProcessConfig({
@@ -405,7 +414,9 @@ describe('background session finalizer', () => {
     const launcher = spawn(process.execPath, [fixturePath, 'launcher', mode], {
       env: {
         ...process.env,
-        OPENCLAUDE_CONFIG_DIR: configDir,
+        OPENCC_CONFIG_DIR: configDir,
+        HOME: sandboxHome,
+        USERPROFILE: sandboxHome,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -518,7 +529,7 @@ describe('background session finalizer', () => {
     ).toBe(1)
 
     const ps = spawn('node', [installedLauncherPath, 'ps'], {
-      env: { ...process.env, OPENCLAUDE_CONFIG_DIR: configDir },
+      env: { ...process.env, OPENCC_CONFIG_DIR: configDir, HOME: sandboxHome, USERPROFILE: sandboxHome },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
