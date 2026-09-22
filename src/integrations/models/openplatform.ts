@@ -155,7 +155,9 @@ export default [
     classification: ['chat', 'reasoning', 'coding'],
     defaultModel: 'glm-5.2',
     capabilities: openplatformTextOnlyCapabilities,
-    contextWindow: 1_048_576,
+    // Aligned with the verified Z.AI GLM-5.2 limits (1M window) so the
+    // shared `glm-5.2` default-model match does not surface a stale cap.
+    contextWindow: 1_000_000,
     maxOutputTokens: 131_072,
   }),
   defineModel({

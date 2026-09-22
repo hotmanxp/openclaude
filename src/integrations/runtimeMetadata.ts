@@ -46,7 +46,18 @@ function matchesCatalogEntryModel(
   entry: ModelCatalogEntry,
   modelApiName: string,
 ): boolean {
-  if (entry.apiName.trim().toLowerCase() === modelApiName) {
+  if (
+    entry.apiName.trim().toLowerCase() === modelApiName ||
+    entry.id.trim().toLowerCase() === modelApiName
+  ) {
+    return true
+  }
+
+  if (
+    (entry.aliases ?? []).some(
+      alias => normalizeModelApiName(alias) === modelApiName,
+    )
+  ) {
     return true
   }
 
@@ -256,8 +267,12 @@ export function resolveOpenAIShimRuntimeContext(options?: {
   })
   const baseUrlRouteId = resolveRouteIdFromBaseUrl(options?.baseUrl)
   const routeId =
-    baseUrlRouteId &&
-    (!activeRouteId || activeRouteId === 'anthropic' || activeRouteId === 'openai')
+    options?.preferBaseUrlRoute && options.baseUrl !== undefined
+      ? // Explicit "prefer the base URL's route" mode: an unrecognized base
+        // URL must NOT inherit the ambient env's route config.
+        baseUrlRouteId
+      : baseUrlRouteId &&
+        (!activeRouteId || activeRouteId === 'anthropic' || activeRouteId === 'openai')
       ? baseUrlRouteId
       : activeRouteId
   const descriptor =

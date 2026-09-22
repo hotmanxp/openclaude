@@ -44,7 +44,8 @@ export function modelSupportsEffort(model: string): boolean {
     return true
   }
   // Supported by a subset of Claude 4 models
-  if (m.includes('opus-4-6') || m.includes('sonnet-4-6') || m.includes('minimax-m3')) {
+  if (m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8') ||
+      m.includes('sonnet-4-6') || m.includes('minimax-m3')) {
     return true
   }
   // Exclude any other known legacy models (haiku, older opus/sonnet variants)
