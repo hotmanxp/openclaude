@@ -1,4 +1,7 @@
 import { logForDebugging } from '../../utils/debug.js'
+import { ensureIntegrationsLoaded } from '../../integrations/index.js'
+import { getCatalogEntriesForRoute } from '../../integrations/registry.js'
+import { resolveRouteIdFromBaseUrl } from '../../integrations/routeMetadata.js'
 
 const LOCALHOST_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1'])
 const warnedUndefinedEnvNames = new Set<string>()
@@ -144,6 +147,37 @@ export function resolveProviderRequest(options?: {
     asNamedEnvUrl(process.env.OPENAI_BASE_URL, 'OPENAI_BASE_URL') ??
     asNamedEnvUrl(process.env.OPENAI_API_BASE, 'OPENAI_API_BASE')
 
+  // Model-query suffix (`model?reasoning=high`, `model?thinking=disabled`):
+  // the requested model keeps the full user-facing string, while the resolved
+  // API model value carries only the base id plus any explicit defaults.
+  const queryIndex = requestedModel.indexOf('?')
+  const baseModel = queryIndex === -1 ? requestedModel : requestedModel.slice(0, queryIndex).trim()
+  let reasoning: { effort?: string } | undefined
+  let thinking: { type?: string } | undefined
+  if (queryIndex !== -1) {
+    for (const pair of requestedModel.slice(queryIndex + 1).split('&')) {
+      const [key, value] = pair.split('=', 2)
+      if (!key || value === undefined) continue
+      if (key === 'reasoning') {
+        reasoning = { effort: value }
+      } else if (key === 'thinking') {
+        thinking = { type: value }
+      }
+    }
+  }
+
+  // Route catalog alias resolution: when the base URL maps to a known route
+  // and the base model matches a catalog entry (id/apiName/alias), resolve to
+  // the entry's canonical apiName.
+  let resolvedModel = baseModel
+  const routeId = resolveRouteIdFromBaseUrl(rawBaseUrl)
+  if (routeId && routeId !== 'anthropic') {
+    const entry = findRouteCatalogEntry(routeId, baseModel)
+    if (entry) {
+      resolvedModel = entry.apiName
+    }
+  }
+
   // Determine transport based on OPENAI_API_FORMAT env var
   const apiFormat = parseOpenAICompatibleApiFormat(process.env.OPENAI_API_FORMAT)
   const transport: ProviderTransport = apiFormat === 'responses' ? 'responses' : 'chat_completions'
@@ -151,10 +185,28 @@ export function resolveProviderRequest(options?: {
   return {
     transport,
     requestedModel,
-    resolvedModel: requestedModel,
+    resolvedModel,
+    ...(reasoning ? { reasoning } : {}),
+    ...(thinking ? { thinking } : {}),
     baseUrl:
       rawBaseUrl?.replace(/\/+$/, '') ?? 'https://api.openai.com/v1',
   }
+}
+
+function findRouteCatalogEntry(
+  routeId: string,
+  baseModel: string,
+): { apiName: string } | undefined {
+  const normalized = baseModel.trim().toLowerCase()
+  if (!normalized) return undefined
+  ensureIntegrationsLoaded()
+  return getCatalogEntriesForRoute(routeId).find(entry => {
+    if (entry.apiName.trim().toLowerCase() === normalized) return true
+    if (entry.id.trim().toLowerCase() === normalized) return true
+    return (entry.aliases ?? []).some(
+      alias => alias.trim().toLowerCase() === normalized,
+    )
+  })
 }
 
 function isEnvTruthy(value: string | undefined): boolean {

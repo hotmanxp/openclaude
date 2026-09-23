@@ -3,6 +3,15 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import * as realAgentToolModule from '../tools/AgentTool/AgentTool.js'
+
+// Snapshot the real AgentTool exports BEFORE any mock.module() runs — bun's
+// mock.module() patches the namespace in place, so restoring from the live
+// namespace later would just restore the mock. Without this restore,
+// AgentTool.schema.test.ts (same process, later file) sees a stripped
+// AgentTool and fails with 'mapToolResultToToolResultBlockParam is not a
+// function'.
+const REAL_AGENT_TOOL_MODULE = { ...realAgentToolModule }
 
 type HookChainsModule = typeof import('./hookChains.js')
 
@@ -107,6 +116,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   mock.restore()
+  mock.module('../tools/AgentTool/AgentTool.js', () => REAL_AGENT_TOOL_MODULE)
 
   if (originalHookChainsEnabled === undefined) {
     delete process.env.CLAUDE_CODE_ENABLE_HOOK_CHAINS

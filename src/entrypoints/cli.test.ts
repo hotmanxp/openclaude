@@ -78,7 +78,24 @@ describe('Node 24 premature exit regression (issue #1678)', () => {
 
     const scriptPath = path.join(os.tmpdir(), `test-cli-startup-${Date.now()}.mjs`)
     const cliUrl = url.pathToFileURL(path.resolve(import.meta.dir, '../../dist/cli.mjs')).href
+
+    // SAFETY: the child process runs the REAL CLI, which performs startup
+    // config I/O. Without a sandboxed env it resolves its global config to the
+    // developer's actual ~/.claude.json (os.homedir() ignores runtime env
+    // changes only in-process; the child inherits whatever HOME we pass) and
+    // rewrites it plus ~/.claude/backups on every run. Redirect everything
+    // into a throwaway temp home.
+    const sandboxHome = await fs.mkdtemp(path.join(os.tmpdir(), 'opencc-cli-sandbox-'))
+    const sandboxEnv = {
+      ...process.env,
+      HOME: sandboxHome,
+      USERPROFILE: sandboxHome,
+      OPENCC_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
+      CLAUDE_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
+      OPENCLAUDE_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
+    }
     let proc
+    let reader
 
     try {
       await Bun.write(scriptPath, `
@@ -101,7 +118,10 @@ describe('Node 24 premature exit regression (issue #1678)', () => {
         });
       `)
 
-      proc = Bun.spawn(['node', scriptPath], { stdout: 'pipe' })
+      proc = Bun.spawn(['node', scriptPath], {
+        stdout: 'pipe',
+        env: sandboxEnv,
+      })
       const reader = proc.stdout.getReader()
 
       let gotOutput = false
@@ -144,6 +164,7 @@ describe('Node 24 premature exit regression (issue #1678)', () => {
         proc.kill()
       }
       await fs.unlink(scriptPath).catch(() => {})
+      await fs.rm(sandboxHome, { recursive: true, force: true }).catch(() => {})
     }
   })
 

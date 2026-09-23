@@ -29,6 +29,10 @@ function kimiModel(
 }
 
 export default [
+  // Local additions: the moonshot / kimi-code / hicap catalogs reference these
+  // two descriptors, but the synced upstream models/kimi.ts lags behind them.
+  kimiModel('k3', 'Kimi K3', 1_048_576, 32_768),
+  kimiModel('kimi-k2.7-code', 'Kimi K2.7 Code', 262_144, 32_768),
   kimiModel('kimi-for-coding', 'Kimi for Coding', 262_144, 32_768),
   kimiModel('kimi-k2.6', 'Kimi K2.6', 262_144, 32_768),
   kimiModel('kimi-k2.5', 'Kimi K2.5', 262_144, 32_768),

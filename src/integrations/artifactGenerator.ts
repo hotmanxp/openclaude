@@ -65,6 +65,18 @@ const ANTHROPIC_PROXY_DIR = 'anthropicProxies'
 const BRAND_DIR = 'brands'
 const MODEL_DIR = 'models'
 
+// Descriptor modules present in the repo but deliberately NOT registered in
+// the generated artifact. Registering them regresses bare default-model
+// lookups: e.g. `models/opencode.ts` shadows `models/qwen.ts` for
+// `qwen3.5-plus` (opencode sorts first), flipping getContextWindowForModel
+// from 1M to the opencode 256K cap (see src/utils/context.test.ts). The
+// minimax anthropic-proxy was likewise absent from the previously shipped
+// artifact; keep both out until default-model resolution is scoped by route.
+const EXCLUDED_RELATIVE_PATHS = new Set([
+  'models/opencode.ts',
+  'anthropicProxies/minimax.ts',
+])
+
 function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/g, '\n')
 }
@@ -126,6 +138,9 @@ async function loadDescriptorModules(
     const files = entries.filter(isDescriptorFile).sort()
 
     for (const fileName of files) {
+      if (EXCLUDED_RELATIVE_PATHS.has(`${spec.directory}/${fileName}`)) {
+        continue
+      }
       const absolutePath = path.join(directoryPath, fileName)
       const descriptor = await loadDefaultExport<RouteDescriptor>(absolutePath)
 
@@ -152,6 +167,9 @@ async function loadDescriptorModules(
   const modelDirectory = path.join(integrationsRoot, MODEL_DIR)
   const modelFiles = (await fs.readdir(modelDirectory)).filter(isDescriptorFile).sort()
   for (const fileName of modelFiles) {
+    if (EXCLUDED_RELATIVE_PATHS.has(`${MODEL_DIR}/${fileName}`)) {
+      continue
+    }
     const absolutePath = path.join(modelDirectory, fileName)
     modelModules.push({
       descriptors: await loadDefaultExport<ModelDescriptor[]>(absolutePath),

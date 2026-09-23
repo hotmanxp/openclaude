@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { PassThrough } from 'node:stream'
 import * as fsPromises from 'fs/promises'
 import { homedir, tmpdir } from 'os'
+import * as realOs from 'os'
 import { join } from 'path'
 import { createElement } from 'react'
 import {
@@ -39,6 +40,22 @@ const realExecFileNoThrowModule = { ...realExecFileNoThrow }
 // making them fail with a bogus "npm ERR! code E404". Install the override once
 // at module load and gate it on this flag so the persisted mock transparently
 // falls through to the real implementation whenever the flag is off.
+// SAFETY: bun's os.homedir() ignores runtime `process.env.HOME` changes, so
+// `cleanupNpmInstallations` (which rm's `join(homedir(), '.claude', 'local')`)
+// would hit the REAL home directory while these tests run — it already deleted
+// a real `~/.claude/local` once. The persisted 'os' mock below routes homedir()
+// through `fakeHomeDirOverride` so the cleanup tests are fully sandboxed.
+let fakeHomeDirOverride: string | undefined
+// Snapshot the real os module BEFORE mock.module installs (bun live-patches
+// the namespace; referencing `realOs.homedir()` inside the factory would
+// recurse into the mock itself and hang, same trap as execFileNoThrow above).
+const realOsSnapshot = { ...realOs, homedir: realOs.homedir.bind(realOs) }
+mock.module('os', () => ({
+  ...realOsSnapshot,
+  default: realOsSnapshot,
+  homedir: () => fakeHomeDirOverride ?? realOsSnapshot.homedir(),
+}))
+
 let simulateNpmUninstallFailure = false
 let simulateNpmUninstallEnotempty = false
 let fakeNpmPrefix: string | undefined
@@ -127,6 +144,7 @@ afterEach(() => {
     simulateNpmUninstallFailure = false
     simulateNpmUninstallEnotempty = false
     fakeNpmPrefix = undefined
+    fakeHomeDirOverride = undefined
     npmUninstallPackages.length = 0
     recordedDownloadCalls = null
     mock.restore()
@@ -159,25 +177,25 @@ async function mockEnvPlatform(platform: 'darwin' | 'win32') {
   }))
 }
 
-test('install command displays ~/.local/bin/openclaude on non-Windows', async () => {
+test('install command displays ~/.local/bin/opencc on non-Windows', async () => {
   await mockEnvPlatform('darwin')
 
   const { getInstallationPath } = await importFreshInstallCommand()
 
-  expect(getInstallationPath()).toBe('~/.local/bin/openclaude')
+  expect(getInstallationPath()).toBe('~/.local/bin/opencc')
 })
 
-test('install command displays openclaude.exe path on Windows', async () => {
+test('install command displays opencc.exe path on Windows', async () => {
   await mockEnvPlatform('win32')
 
   const { getInstallationPath } = await importFreshInstallCommand()
 
   expect(getInstallationPath()).toBe(
-    join(homedir(), '.local', 'bin', 'openclaude.exe').replace(/\//g, '\\'),
+    join(homedir(), '.local', 'bin', 'opencc.exe').replace(/\//g, '\\'),
   )
 })
 
-test('native installer uses openclaude launcher for OpenClaude package', async () => {
+test('native installer uses opencc launcher for the fork package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@gitlawb/openclaude',
   }
@@ -185,8 +203,8 @@ test('native installer uses openclaude launcher for OpenClaude package', async (
   const { getBinaryName, getExecutableName } = await importFreshInstaller()
 
   expect(getBinaryName('linux-x64')).toBe('claude')
-  expect(getExecutableName('linux-x64')).toBe('openclaude')
-  expect(getExecutableName('win32-x64')).toBe('openclaude.exe')
+  expect(getExecutableName('linux-x64')).toBe('opencc')
+  expect(getExecutableName('win32-x64')).toBe('opencc.exe')
 })
 
 test('native installer preserves claude launcher for Anthropic package', async () => {
@@ -200,15 +218,15 @@ test('native installer preserves claude launcher for Anthropic package', async (
   expect(getExecutableName('win32-x64')).toBe('claude.exe')
 })
 
-test('deep-link protocol resolver uses openclaude launcher for OpenClaude package', async () => {
+test('deep-link protocol resolver uses opencc launcher for the fork package', async () => {
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@gitlawb/openclaude',
   }
 
   const { getProtocolBinaryName } = await importFreshProtocolRegistration()
 
-  expect(getProtocolBinaryName('linux')).toBe('openclaude')
-  expect(getProtocolBinaryName('win32')).toBe('openclaude.exe')
+  expect(getProtocolBinaryName('linux')).toBe('opencc')
+  expect(getProtocolBinaryName('win32')).toBe('opencc.exe')
 })
 
 test('install command repairs launcher after npm cleanup before final check', async () => {
@@ -269,7 +287,7 @@ test('install command repairs launcher after npm cleanup before final check', as
         target: '1.2.3',
         onDone: (result: string) => {
           try {
-            expect(result).toBe('OpenClaude installation completed successfully')
+            expect(result).toBe('OpenCC installation completed successfully')
             resolve()
           } catch (error) {
             reject(error)
@@ -299,20 +317,23 @@ test('install command repairs launcher after npm cleanup before final check', as
   ])
 })
 
-test('cleanupNpmInstallations removes only openclaude local install dir', async () => {
-  const testHome = await fsPromises.mkdtemp(join(tmpdir(), 'openclaude-cleanup-'))
-  const openClaudeLocalDir = join(testHome, '.openclaude', 'local')
+test('cleanupNpmInstallations removes config-home and legacy local install dirs', async () => {
+  const testHome = await fsPromises.mkdtemp(join(tmpdir(), 'opencc-cleanup-'))
+  const openClaudeLocalDir = join(testHome, '.opencc', 'local')
   const claudeLocalDir = join(testHome, '.claude', 'local')
+  const unrelatedDir = join(testHome, '.unrelated', 'local')
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@gitlawb/openclaude',
     NATIVE_PACKAGE_URL: '@gitlawb/openclaude-native',
   }
   process.env.HOME = testHome
   process.env.USERPROFILE = testHome
-  process.env.OPENCLAUDE_CONFIG_DIR = join(testHome, '.openclaude')
+  fakeHomeDirOverride = testHome
+  process.env.OPENCC_CONFIG_DIR = join(testHome, '.opencc')
   delete process.env.CLAUDE_CONFIG_DIR
   await fsPromises.mkdir(openClaudeLocalDir, { recursive: true })
   await fsPromises.mkdir(claudeLocalDir, { recursive: true })
+  await fsPromises.mkdir(unrelatedDir, { recursive: true })
 
   simulateNpmUninstallFailure = true
 
@@ -321,27 +342,30 @@ test('cleanupNpmInstallations removes only openclaude local install dir', async 
     await cleanupNpmInstallations()
 
     await expect(fsPromises.stat(openClaudeLocalDir)).rejects.toThrow()
-    await expect(fsPromises.stat(claudeLocalDir)).resolves.toBeTruthy()
+    await expect(fsPromises.stat(claudeLocalDir)).rejects.toThrow()
+    await expect(fsPromises.stat(unrelatedDir)).resolves.toBeTruthy()
     expect(npmUninstallPackages).toContain('@gitlawb/openclaude')
-    expect(npmUninstallPackages).not.toContain('@anthropic-ai/claude-code')
+    // Fork behavior: the Anthropic package is ALWAYS uninstalled first.
+    expect(npmUninstallPackages).toContain('@anthropic-ai/claude-code')
   } finally {
     await fsPromises.rm(testHome, { recursive: true, force: true })
   }
 })
 
-test('cleanupNpmInstallations manual fallback removes openclaude npm shim', async () => {
+test('cleanupNpmInstallations manual fallback removes opencc npm shim', async () => {
   await mockEnvPlatform('darwin')
 
-  const testHome = join(process.cwd(), 'work', 'openclaude-install-home-test')
+  const testHome = join(process.cwd(), 'work', 'opencc-install-home-test')
   const npmPrefix = join(testHome, '.npm-global')
-  const shimPath = join(npmPrefix, 'bin', 'openclaude')
+  const shimPath = join(npmPrefix, 'bin', 'opencc')
   ;(globalThis as Record<string, unknown>).MACRO = {
     PACKAGE_URL: '@gitlawb/openclaude',
     NATIVE_PACKAGE_URL: '@gitlawb/openclaude-native',
   }
   process.env.HOME = testHome
   process.env.USERPROFILE = testHome
-  process.env.OPENCLAUDE_CONFIG_DIR = join(testHome, '.openclaude')
+  fakeHomeDirOverride = testHome
+  process.env.OPENCC_CONFIG_DIR = join(testHome, '.opencc')
   delete process.env.CLAUDE_CONFIG_DIR
   fakeNpmPrefix = npmPrefix
   simulateNpmUninstallEnotempty = true
@@ -407,7 +431,10 @@ test('cleanupNpmInstallations keeps the npm install without a native distributio
   }
   process.env.HOME = testHome
   process.env.USERPROFILE = testHome
-  process.env.OPENCLAUDE_CONFIG_DIR = join(testHome, '.openclaude')
+  // Sandbox os.homedir() too (bun ignores runtime HOME changes) so any
+  // homedir()-derived cleanup can never touch the real home, gate or not.
+  fakeHomeDirOverride = testHome
+  process.env.OPENCC_CONFIG_DIR = join(testHome, '.opencc')
   await fsPromises.mkdir(openClaudeLocalDir, { recursive: true })
   // If the gate regressed, uninstalls would run and surface as errors here
   // instead of hitting the machine's real npm prefix.
@@ -527,7 +554,7 @@ test('install command skips the native installer without a native distribution',
       createElement(Install, {
         onDone: (result: string) => {
           try {
-            expect(result).toBe('OpenClaude installation completed successfully')
+            expect(result).toBe('OpenCC installation completed successfully')
             resolve()
           } catch (error) {
             reject(error)

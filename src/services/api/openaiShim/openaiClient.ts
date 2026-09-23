@@ -25,6 +25,7 @@ import { logForDebugging } from '../../../utils/debug.js'
 import { isEnvTruthy } from '../../../utils/envUtils.js'
 import {
   normalizeZaiReasoningEffort,
+  supportsThinkingDisable,
   supportsZaiReasoningEffort,
 } from '../../../utils/effort.js'
 import {
@@ -1045,6 +1046,17 @@ class OpenAIShimMessages {
       stream: params.stream ?? false,
       store: false,
     }
+    // `model?thinking=disabled` turns reasoning off. Only routes whose wire
+    // protocol declares a reasoning-off directive (`thinking_type_disabled`)
+    // can honor it; elsewhere the flag is dropped rather than guessed at.
+    // While reasoning is disabled we also skip reasoning_effort — an effort
+    // level alongside a disabled-thinking flag contradicts itself.
+    const thinkingDisabled =
+      request.thinking?.type === 'disabled' &&
+      supportsThinkingDisable(request.resolvedModel ?? params.model)
+    if (thinkingDisabled) {
+      body.thinking = { type: 'disabled' }
+    }
     // Emit reasoning_effort for chat_completions when the resolved provider
      // request carries a reasoning effort (set via /effort, model alias default,
      // or `?reasoning=<level>` query on the model string). OpenAI, Codex, and
@@ -1056,7 +1068,7 @@ class OpenAIShimMessages {
      // normalizeZaiReasoningEffort so `low` / `medium` / `high` all become
      // `high` and `xhigh` / `max` / `ultracode` all become `max`.
      //@ts-ignore
-    if (request.reasoning) {
+    if (!thinkingDisabled && request.reasoning) {
       //@ts-ignore
       const resolvedModelForEffort = request.resolvedModel ?? params.model
       //@ts-ignore
@@ -1090,7 +1102,7 @@ class OpenAIShimMessages {
     // (`high` / `max`); the option value is OpenAI-shaped (`low` / `medium` /
     // `high` / `xhigh`), so normalize for allowlisted GLM ids before sending —
     // otherwise GLM 400s with "reasoning_effort must be one of ...".
-    if (this.reasoningEffort !== undefined && !body.reasoning_effort) {
+    if (!thinkingDisabled && this.reasoningEffort !== undefined && !body.reasoning_effort) {
       const fallbackModelForEffort = request.resolvedModel ?? params.model
       body.reasoning_effort = supportsZaiReasoningEffort(fallbackModelForEffort)
         ? normalizeZaiReasoningEffort(this.reasoningEffort)

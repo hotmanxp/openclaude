@@ -155,30 +155,6 @@ ${AGENT_TOOL_NAME}({
 </example>
 `
 
-  const currentExamples = `Example usage:
-
-<example_agent_descriptions>
-"claude-code-guide": use this agent when the user asks how OpenCC works or how to use its features
-"statusline-setup": use this agent to configure the user's OpenCC status line setting
-</example_agent_descriptions>
-
-<example>
-user: "How do I configure OpenCC hooks?"
-<commentary>
-This is an OpenCC usage question, so use the claude-code-guide agent
-</commentary>
-assistant: Uses the ${AGENT_TOOL_NAME} tool to launch the claude-code-guide agent
-</example>
-
-<example>
-user: "Set up my OpenCC status line"
-<commentary>
-This matches the statusline-setup agent, so use it to configure the setting
-</commentary>
-assistant: "I'm going to use the ${AGENT_TOOL_NAME} tool to launch the statusline-setup agent"
-</example>
-`
-
   // When the gate is on, the agent list lives in an agent_listing_delta
   // attachment (see attachments.ts) instead of inline here. This keeps the
   // tool description static across MCP/plugin/permission changes so the
@@ -261,11 +237,7 @@ Usage notes:
 - Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.)${forkEnabled ? '' : ", since it is not aware of the user's intent"}
 - If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
 - If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple ${AGENT_TOOL_NAME} tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
-- You can optionally set \`isolation: "worktree"\` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.${
-    process.env.USER_TYPE === 'ant'
-      ? `\n- You can set \`isolation: "remote"\` to run the agent in a remote CCR environment. This is always a background task; you'll be notified when it completes. Use for long-running tasks that need a fresh sandbox.`
-      : ''
-  }
+- You can optionally set \`isolation: "worktree"\` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.
 - When the current session is outside a git repository (for example a parent folder that contains multiple git repos), set \`cwd\` to the absolute path of the target child repository. You can combine \`cwd\` with \`isolation: "worktree"\` so the worktree is created from that child repo. If worktree creation fails only because no git repository is available, the agent still runs with that \`cwd\` override instead of failing, and the tool result notes that worktree isolation was unavailable.${
 
     isInProcessTeammate()
@@ -277,5 +249,5 @@ Usage notes:
         : ''
   }${whenToForkSection}${writingThePromptSection}
 
-${forkEnabled ? forkExamples : currentExamples}`
+${forkEnabled ? forkExamples : ''}`
 }

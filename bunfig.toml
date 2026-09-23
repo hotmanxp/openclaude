@@ -1,0 +1,5 @@
+# Bun configuration. The test preload sandboxes the config home (and child
+# process HOME) into a temp directory so tests can never touch the real
+# ~/.claude / ~/.opencc. See src/test/test-env-preload.ts for the rules.
+[test]
+preload = ["./src/test/test-env-preload.ts"]

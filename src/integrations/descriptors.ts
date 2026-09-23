@@ -4,7 +4,7 @@
 
 export type AuthMode = 'api-key' | 'oauth' | 'adc' | 'token' | 'none'
 
-export type ReasoningControlMode = 'levels' | 'always' | 'never'
+export type ReasoningControlMode = 'levels' | 'always' | 'always-on' | 'never'
 
 export type ReasoningEffortLevel =
   | 'low'
@@ -17,12 +17,17 @@ export type ReasoningWireFormat =
   | 'reasoning_effort'
   | 'zai_compatible'
   | 'deepseek_compatible'
+  | 'none'
+
+// Wire shape used to turn reasoning off when a model supports disabling it.
+export type ReasoningDisableFormat = 'thinking_type_disabled'
 
 export interface ReasoningControlSpec {
   mode: ReasoningControlMode
   levels?: ReasoningEffortLevel[]
   defaultLevel?: ReasoningEffortLevel
   wireFormat?: ReasoningWireFormat
+  disableFormat?: ReasoningDisableFormat
 }
 
 export type TransportKind =
@@ -325,6 +330,10 @@ export interface ModelDescriptor {
   contextWindow?: number
   maxOutputTokens?: number
   cacheConfig?: CacheConfig
+  reasoning?: ReasoningControlSpec
+  // Where this descriptor expects its runtime limits to come from. `catalog`
+  // means the route catalog entry is authoritative over the static tables.
+  runtimeMetadataScope?: 'catalog'
 }
 
 export interface RegistryValidationResult {

@@ -44,7 +44,8 @@ export function modelSupportsEffort(model: string): boolean {
     return true
   }
   // Supported by a subset of Claude 4 models
-  if (m.includes('opus-4-6') || m.includes('sonnet-4-6') || m.includes('minimax-m3')) {
+  if (m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8') ||
+      m.includes('sonnet-4-6') || m.includes('minimax-m3')) {
     return true
   }
   // Exclude any other known legacy models (haiku, older opus/sonnet variants)
@@ -134,6 +135,17 @@ export function supportsZaiReasoningEffort(model: string | undefined): boolean {
       || normalized === 'zhiniao-glm-5.1'
       || normalized.endsWith('/glm-5.2')
       || normalized.endsWith('/glm-5.3')
+}
+
+// Models whose wire protocol accepts an explicit reasoning-off directive,
+// `thinking: { type: 'disabled' }`. Mirrors the `disableFormat:
+// 'thinking_type_disabled'` declarations on the integration catalog entries:
+// the Z.AI-contract GLM reasoning models and Kimi K3 on the kimi-code route
+// (whose apiName is the bare `k3`; the moonshot route's `kimi-k3` does not
+// declare the disable format and is deliberately excluded).
+export function supportsThinkingDisable(model: string | undefined): boolean {
+  const normalized = normalizedBaseModel(model)
+  return supportsZaiReasoningEffort(model) || normalized === 'k3'
 }
 
 // Z.AI's wire protocol only accepts `high` or `max` for reasoning_effort.

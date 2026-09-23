@@ -18,7 +18,7 @@ import type {
   NormalizedMessage,
   NormalizedUserMessage,
 } from '../types/message.js'
-import { PERMISSION_MODES } from '../types/permissions.js'
+import { isDangerousPermissionMode } from './permissions/PermissionMode.js'
 import { suppressNextSkillListing } from './attachments.js'
 import {
   copyFileHistoryForResume,
@@ -253,14 +253,15 @@ export function deserializeMessagesWithInterruptDetection(
       return migratedMessage ? [migratedMessage] : []
     })
 
-    // Strip invalid permissionMode values from deserialized user messages.
+    // Strip dangerous permissionMode values from deserialized user messages.
     // The field is unvalidated JSON from disk and may contain modes from a different build.
-    const validModes = new Set<string>(PERMISSION_MODES)
+    // Dangerous modes (bypassPermissions / fullAccess) are stripped from rewindable
+    // user messages so a rewind cannot silently re-enable them.
     for (const msg of migratedMessages) {
       if (
         msg.type === 'user' &&
         msg.permissionMode !== undefined &&
-        !validModes.has(msg.permissionMode)
+        isDangerousPermissionMode(msg.permissionMode)
       ) {
         msg.permissionMode = undefined
       }

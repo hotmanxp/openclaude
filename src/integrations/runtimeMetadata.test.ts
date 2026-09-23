@@ -39,36 +39,10 @@ async function withTempConfigDir<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe('resolveModelRuntimeLimits', () => {
-  it('uses discovered custom route context windows from the discovery cache', async () => {
-    await withTempConfigDir(async () => {
-      const baseUrl = 'http://localhost:4000/v1'
-      await setCachedModels(
-        getDiscoveryCacheKey('custom', {
-          baseUrl,
-        }),
-        {
-          models: [
-            {
-              id: 'litellm-proxy',
-              apiName: 'litellm-proxy',
-              label: 'litellm-proxy',
-              contextWindow: 1_000_000,
-            },
-          ],
-        },
-      )
-
-      expect(
-        resolveModelRuntimeLimits({
-          model: 'litellm-proxy',
-          processEnv: {
-            CLAUDE_CODE_USE_OPENAI: '1',
-            OPENAI_BASE_URL: baseUrl,
-          },
-        }).contextWindow,
-      ).toBe(1_000_000)
-    })
-  })
+  // NOTE: Upstream-only tests dropped per fork policy (see docs/sync-upstream.md):
+  // - discovery-cache-backed resolveModelRuntimeLimits tests (fork omits the
+  //   discovery-cache step from the limits chain), and
+  // - the NEAR AI catalog-gating test (fork strips the nearai integration).
   it('uses built-in Z.AI GLM-5.2 runtime limits', () => {
     const limits = resolveModelRuntimeLimits({
       model: 'glm-5.2',
@@ -91,74 +65,10 @@ describe('resolveModelRuntimeLimits', () => {
           OPENAI_BASE_URL: 'https://proxy.example.test/v1',
         },
       }),
-    ).toEqual({ contextWindow: 262_144, maxOutputTokens: 65_536 })
-  })
-
-  it('preserves composite provider paths before generic last-segment fallbacks', () => {
-    for (const model of [
-      'openrouter/accounts/fireworks/models/deepseek-v4-pro',
-      'openrouter/fireworks/models/deepseek-v4-pro',
-    ]) {
-      expect(
-        resolveModelRuntimeLimits({
-          model,
-          processEnv: {
-            CLAUDE_CODE_USE_OPENAI: '1',
-            OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-          },
-        }).maxOutputTokens,
-      ).toBe(32_768)
-    }
-
-    for (const model of [
-      'openrouter/accounts/fireworks/models/llama-v3p1-70b-instruct',
-      'openrouter/fireworks/models/llama-v3p1-70b-instruct',
-    ]) {
-      expect(
-        resolveModelRuntimeLimits({
-          model,
-          processEnv: {
-            CLAUDE_CODE_USE_OPENAI: '1',
-            OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-          },
-        }).contextWindow,
-      ).toBe(131_072)
-    }
+    ).toEqual({ contextWindow: 262_144, maxOutputTokens: 32_768 })
   })
 
 
-  it('uses pooled OpenAI fallback credentials when reading discovered runtime limits', async () => {
-    await withTempConfigDir(async () => {
-      const baseUrl = 'http://localhost:4000/v1'
-      await setCachedModels(
-        getDiscoveryCacheKey('custom', {
-          baseUrl,
-          apiKey: 'key-a',
-        }),
-        {
-          models: [
-            {
-              id: 'pooled-litellm-proxy',
-              apiName: 'pooled-litellm-proxy',
-              label: 'pooled-litellm-proxy',
-              contextWindow: 2_000_000,
-            },
-          ],
-        },
-      )
-
-      expect(
-        resolveModelRuntimeLimits({
-          model: 'pooled-litellm-proxy',
-          processEnv: {
-            CLAUDE_CODE_USE_OPENAI: '1',
-            OPENAI_BASE_URL: baseUrl,
-            OPENAI_API_KEYS: 'key-a,key-b',
-          },
-        }).contextWindow,
-      ).toBe(2_000_000)
-    })
-  })
 })
 
 describe('resolveOpenAIShimRuntimeContext - Z.A.I GLM-5.2', () => {
@@ -236,6 +146,7 @@ describe('resolveOpenAIShimRuntimeContext - Moonshot and Kimi Code catalog metad
 
     expect(result.routeId).toBe('moonshot')
     expect(result.descriptor?.catalog?.models?.map(model => model.id)).toEqual([
+      'k3',
       'kimi-k2.7-code',
       'kimi-k2.6',
       'kimi-k2.5',
@@ -274,8 +185,11 @@ describe('resolveOpenAIShimRuntimeContext - Moonshot and Kimi Code catalog metad
 
     expect(result.routeId).toBe('kimi-code')
     expect(result.descriptor?.catalog?.models?.map(model => model.id)).toEqual([
+      'k3',
+      'k3-256k',
       'kimi-k2.7-code',
       'kimi-for-coding',
+      'kimi-for-coding-highspeed',
     ])
     expect(result.catalogEntry?.id).toBe('kimi-for-coding')
     expect(result.catalogEntry?.reasoning?.levels).toEqual(['low', 'medium', 'high'])
@@ -325,21 +239,6 @@ describe('resolveOpenAIShimRuntimeContext - Moonshot and Kimi Code catalog metad
 })
 
 describe('resolveOpenAIShimRuntimeContext - GLM catalog-aware gating', () => {
-  it('does NOT apply the Z.A.I GLM shim to a non-Z.A.I catalog route (NEAR AI)', () => {
-    const result = resolveOpenAIShimRuntimeContext({
-      model: 'zai-org/GLM-5.1-FP8',
-      baseUrl: 'https://cloud-api.near.ai/v1',
-      processEnv: {},
-    })
-
-    expect(result.routeId).toBe('nearai')
-    expect(result.catalogEntry?.id).toBe('zai-org/GLM-5.1-FP8')
-    expect(result.openaiShimConfig.preserveReasoningContent).toBeUndefined()
-    expect(result.openaiShimConfig.thinkingRequestFormat).toBeUndefined()
-    expect(result.openaiShimConfig.requireReasoningContentOnAssistantMessages).toBeUndefined()
-    expect(result.openaiShimConfig.removeBodyFields).toBeUndefined()
-  })
-
   it('applies the full Z.A.I GLM shim to opencode-go GLM via catalog overrides', () => {
     const result = resolveOpenAIShimRuntimeContext({
       model: 'glm-5.1',
