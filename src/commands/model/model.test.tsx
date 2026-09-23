@@ -135,21 +135,6 @@ function isModelAllowedForTest(model: string): boolean {
   )
 }
 
-function getConfiguredProfileModelOptionsForTest(profile: {
-  model: string
-  name: string
-}) {
-  return profile.model
-    .split(/[;,]/)
-    .map(model => model.trim())
-    .filter(Boolean)
-    .map(model => ({
-      value: model,
-      label: model,
-      description: `Provider: ${profile.name}`,
-    }))
-}
-
 function mockProviderProfiles(
   overrides: Partial<typeof import('../../utils/providerProfiles.js')> = {},
 ): void {
@@ -159,16 +144,7 @@ function mockProviderProfiles(
     clearActiveOpenAIModelOptionsCache: () => {},
     deleteProviderProfile: () => ({ removed: false }),
     getActiveOpenAIModelOptionsCache: () => [],
-    getActiveOpenAIRouteModelOptionsCache: () => {
-      const activeScope = getAdditionalModelOptionsCacheScope()
-      return activeScope?.startsWith('openai:') &&
-        scopedLocalOpenAIModelCacheState?.additionalModelOptionsCacheScope ===
-          activeScope
-        ? (scopedLocalOpenAIModelCacheState.additionalModelOptionsCache ?? [])
-        : []
-    },
     getActiveProviderProfile: () => undefined,
-    getConfiguredProfileModelOptions: getConfiguredProfileModelOptionsForTest,
     getProfileModelOptions: () => [],
     getProviderPresetDefaults: () => ({
       provider: 'openai',
@@ -178,17 +154,6 @@ function mockProviderProfiles(
       requiresApiKey: true,
     }),
     getProviderProfiles: () => [],
-    setActiveOpenAIRouteModelOptionsCache: (options: ModelOption[]) => {
-      const activeScope = getAdditionalModelOptionsCacheScope()
-      if (!activeScope?.startsWith('openai:')) {
-        return
-      }
-      scopedLocalOpenAIModelCacheState = {
-        ...(scopedLocalOpenAIModelCacheState ?? {}),
-        additionalModelOptionsCache: options,
-        additionalModelOptionsCacheScope: activeScope,
-      }
-    },
     setActiveOpenAIModelOptionsCache: () => {},
     setActiveProviderProfile: () => null,
     updateProviderProfile: () => null,

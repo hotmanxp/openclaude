@@ -137,6 +137,17 @@ export function supportsZaiReasoningEffort(model: string | undefined): boolean {
       || normalized.endsWith('/glm-5.3')
 }
 
+// Models whose wire protocol accepts an explicit reasoning-off directive,
+// `thinking: { type: 'disabled' }`. Mirrors the `disableFormat:
+// 'thinking_type_disabled'` declarations on the integration catalog entries:
+// the Z.AI-contract GLM reasoning models and Kimi K3 on the kimi-code route
+// (whose apiName is the bare `k3`; the moonshot route's `kimi-k3` does not
+// declare the disable format and is deliberately excluded).
+export function supportsThinkingDisable(model: string | undefined): boolean {
+  const normalized = normalizedBaseModel(model)
+  return supportsZaiReasoningEffort(model) || normalized === 'k3'
+}
+
 // Z.AI's wire protocol only accepts `high` or `max` for reasoning_effort.
 // Collapse all non-`max` levels (low / medium / high / xhigh) to `high`,
 // and treat `max` / `ultracode` (the deep-reasoning markers in opencc's

@@ -864,7 +864,7 @@ export function Config({
     onChange: onChangeMainModelConfig
   }, {
     id: 'compactModel',
-    label: 'Compaction model',
+    label: '压缩模型',
     value: compactModelDisplayString(globalConfig.compactModel),
     type: 'managedEnum' as const,
     onChange() {}
@@ -1038,6 +1038,72 @@ export function Config({
       setSettingsData(prev => ({
         ...prev,
         workflowKeywordTriggerEnabled
+      }));
+    }
+  }] : []),
+  // 自动记忆（auto-memory）三件套 — 与 zai 设置面板的三行开关一一对应，
+  // 直接写 vendor 原生键位（settings.json 的 memory.autoWrite /
+  // memory.requireApprovalBeforeWrite / autoDreamEnabled）。
+  //
+  // 三道门互相独立（读取点：memdir/paths.ts、utils/governancePolicy.ts、
+  // services/autoDream/config.ts）：
+  //   启用自动记忆 → memory.autoWrite=false 时不注入记忆行为指令、不读写记忆文件
+  //   自动写入记忆 → memory.requireApprovalBeforeWrite=false 免逐次审批，
+  //                  同时 isExtractModeActive() 成立（turn 末后台自动抽取）
+  //                  注意本行是语义反转行：磁盘始终存 vendor 原义（true = 需审批，
+  //                  fail-safe 默认），界面展示并控制的是"是否自动写入"
+  //   夜间整理记忆 → autoDreamEnabled=true 且免审批时才 fork 后台固化
+  //
+  // updateSettingsForSource 用 mergeWith() 深合并，传 { memory: { autoWrite } }
+  // 会保留同块的其他键（与上面 workflows 的写法同理）。
+  ...(true ? [{
+    id: 'memoryAutoWrite',
+    label: '启用自动记忆',
+    value: settingsData?.memory?.autoWrite !== false,
+    type: 'boolean' as const,
+    onChange(memoryAutoWrite: boolean) {
+      updateSettingsForSource('userSettings', {
+        memory: { autoWrite: memoryAutoWrite }
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        memory: {
+          ...(prev.memory ?? {}),
+          autoWrite: memoryAutoWrite
+        }
+      }));
+    }
+  }] : []), ...(true ? [{
+    id: 'memoryAutoWriteWithoutApproval',
+    label: '自动写入记忆',
+    value: settingsData?.memory?.requireApprovalBeforeWrite === false,
+    type: 'boolean' as const,
+    onChange(autoWriteWithoutApproval: boolean) {
+      // 反转只在界面层发生：打开本行 = 免审批 = 落盘 false。
+      const requireApprovalBeforeWrite = !autoWriteWithoutApproval;
+      updateSettingsForSource('userSettings', {
+        memory: { requireApprovalBeforeWrite }
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        memory: {
+          ...(prev.memory ?? {}),
+          requireApprovalBeforeWrite
+        }
+      }));
+    }
+  }] : []), ...(true ? [{
+    id: 'autoDreamEnabled',
+    label: '夜间整理记忆',
+    value: settingsData?.autoDreamEnabled === true,
+    type: 'boolean' as const,
+    onChange(autoDreamEnabled: boolean) {
+      updateSettingsForSource('userSettings', {
+        autoDreamEnabled
+      });
+      setSettingsData(prev => ({
+        ...prev,
+        autoDreamEnabled
       }));
     }
   }] : []),
@@ -1339,7 +1405,16 @@ export function Config({
       permissions: iu?.permissions === undefined ? undefined : {
         ...iu.permissions,
         defaultMode: iu.permissions.defaultMode
-      }
+      },
+      // auto-memory 三件套:与 permissions 同理 —— 显式列出两个键,未设置时
+      // undefined 会走 customizer 的删除分支(否则 revert 删不掉用户新写的键);
+      // 展开快照则保证只被改动单个键时不抹掉同块的其他键。
+      memory: iu?.memory === undefined ? undefined : {
+        ...iu.memory,
+        autoWrite: iu.memory.autoWrite,
+        requireApprovalBeforeWrite: iu.memory.requireApprovalBeforeWrite
+      },
+      autoDreamEnabled: iu?.autoDreamEnabled
     });
     // AppState: batch-restore all possibly-touched fields.
     const ia = initialAppState;

@@ -155,30 +155,6 @@ ${AGENT_TOOL_NAME}({
 </example>
 `
 
-  const currentExamples = `Example usage:
-
-<example_agent_descriptions>
-"claude-code-guide": use this agent when the user asks how OpenCC works or how to use its features
-"statusline-setup": use this agent to configure the user's OpenCC status line setting
-</example_agent_descriptions>
-
-<example>
-user: "How do I configure OpenCC hooks?"
-<commentary>
-This is an OpenCC usage question, so use the claude-code-guide agent
-</commentary>
-assistant: Uses the ${AGENT_TOOL_NAME} tool to launch the claude-code-guide agent
-</example>
-
-<example>
-user: "Set up my OpenCC status line"
-<commentary>
-This matches the statusline-setup agent, so use it to configure the setting
-</commentary>
-assistant: "I'm going to use the ${AGENT_TOOL_NAME} tool to launch the statusline-setup agent"
-</example>
-`
-
   // When the gate is on, the agent list lives in an agent_listing_delta
   // attachment (see attachments.ts) instead of inline here. This keeps the
   // tool description static across MCP/plugin/permission changes so the
@@ -273,5 +249,5 @@ Usage notes:
         : ''
   }${whenToForkSection}${writingThePromptSection}
 
-${forkEnabled ? forkExamples : currentExamples}`
+${forkEnabled ? forkExamples : ''}`
 }

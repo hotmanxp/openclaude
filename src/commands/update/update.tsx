@@ -41,20 +41,6 @@ type UpdateState =
   | { type: 'success'; version: string; via: string }
   | { type: 'error'; message: string }
 
-// Manager-specific upgrade command, mirroring src/cli/update.ts.
-function packageManagerHint(manager: PackageManager): string | null {
-  switch (manager) {
-    case 'homebrew':
-      return 'brew upgrade claude-code'
-    case 'winget':
-      return 'winget upgrade Anthropic.ClaudeCode'
-    case 'apk':
-      return 'apk upgrade claude-code'
-    default:
-      return null
-  }
-}
-
 // Slash-surface for the safe package-manager guidance (ported from upstream):
 // renders the PRODUCT_DISPLAY_NAME-aware guidance text without ever guessing
 // an upgrade command for the fork package.
@@ -164,6 +150,10 @@ function Update({ onDone, force, target }: UpdateProps): React.ReactNode {
         }
 
         // strategy.action === 'npm' — update the local or global npm install.
+        // Drop a stale native launcher symlink first (mirrors src/cli/update.ts);
+        // an npm-based update must not leave a native shim pointing at it.
+        await removeStaleNativeLauncherForNpmUpdate()
+
         const via =
           strategy.method === 'global'
             ? await detectGlobalPackageManager()
@@ -272,21 +262,7 @@ function Update({ onDone, force, target }: UpdateProps): React.ReactNode {
       )}
 
       {state.type === 'package-manager' && (
-        <Box flexDirection="column" gap={1}>
-          <Box>
-            <StatusIcon status="warning" withSpace />
-            <Text color="warning">
-              OpenCC is managed by a package manager ({state.manager}).
-            </Text>
-          </Box>
-          <Box marginLeft={2}>
-            <Text dimColor>
-              {packageManagerHint(state.manager)
-                ? `To update, run: ${packageManagerHint(state.manager)}`
-                : 'Please use your package manager to update.'}
-            </Text>
-          </Box>
-        </Box>
+        <PackageManagerUpdateGuidance manager={state.manager} />
       )}
 
       {state.type === 'no-package-manager' && (

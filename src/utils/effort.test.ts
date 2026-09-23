@@ -3,7 +3,31 @@ import {
   getEffortLevelDescription,
   getEffortSuffix,
   modelSupportsUltracode,
+  supportsThinkingDisable,
 } from './effort.js'
+
+describe('supportsThinkingDisable', () => {
+  test('returns true for Z.AI-contract GLM reasoning models', () => {
+    expect(supportsThinkingDisable('glm-5.2')).toBe(true)
+    expect(supportsThinkingDisable('zai-org/glm-5.3')).toBe(true)
+    expect(supportsThinkingDisable('zhiniao-glm-5.1')).toBe(true)
+  })
+
+  test('returns true for the kimi-code K3 apiName only', () => {
+    expect(supportsThinkingDisable('k3')).toBe(true)
+    expect(supportsThinkingDisable('kimi-k3')).toBe(false)
+  })
+
+  test('ignores the model-query suffix when matching', () => {
+    expect(supportsThinkingDisable('glm-5.2?thinking=disabled')).toBe(true)
+  })
+
+  test('returns false for models with no disable directive', () => {
+    expect(supportsThinkingDisable('gpt-4o')).toBe(false)
+    expect(supportsThinkingDisable('claude-opus-4-6')).toBe(false)
+    expect(supportsThinkingDisable(undefined)).toBe(false)
+  })
+})
 
 describe('ultracode effort level', () => {
   test('describes ultracode as xhigh + workflow orchestration', () => {

@@ -149,7 +149,9 @@ export default defineVendor({
       XAI_CREDENTIAL_SOURCE: ['oauth'],
     },
     missingCredentialMessage:
-      'XAI_API_KEY is required, or sign in with `openclaude auth xai login` (browser OAuth) or `openclaude auth xai device` (remote hosts).',
+      // Fork: xai OAuth is stubbed out (see src/utils/xaiCredentials.ts), so
+      // only the API-key path is actionable here.
+      'XAI_API_KEY is required for the xAI provider.',
   },
   catalog: {
     source: 'hybrid',
