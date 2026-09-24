@@ -1880,6 +1880,16 @@ export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
 
+// Focus mode: session-scoped, toggled by /focus, never persisted. The
+// focus_mode system prompt section reads this via isFocusModeEnabled().
+let focusModeState = false
+export function getFocusModeState(): boolean {
+  return focusModeState
+}
+export function setFocusModeState(value: boolean): void {
+  focusModeState = value
+}
+
 // Stub for feature-gated REPL bridge (not available in open build)
 export function isReplBridgeActive(): boolean {
   return false

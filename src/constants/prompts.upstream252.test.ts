@@ -182,12 +182,12 @@ test('intro defaults to "with software engineering tasks" when no output style a
   expect(prompt).not.toContain('according to your "Output Style"')
 })
 
-test('intro flips to TIt when CLAUDE_CODE_INTRO_FRAME env is set', async () => {
+test('intro flips to Amt when CLAUDE_CODE_INTRO_FRAME env is set', async () => {
   process.env.CLAUDE_CODE_INTRO_FRAME = '1'
   try {
     const prompt = (await getSystemPrompt(noTools, 'gpt-4o')).join('\n')
     expect(prompt).toContain(
-      'helps users working with the user toward their goals, using your own judgment along the way',
+      'You are an agent working with the user toward their goals, using your own judgment along the way.',
     )
     expect(prompt).not.toContain('with software engineering tasks.')
   } finally {

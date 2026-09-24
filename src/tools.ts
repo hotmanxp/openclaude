@@ -9,7 +9,6 @@ import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js'
 import { GlobTool } from './tools/GlobTool/GlobTool.js'
-import { NotebookEditTool } from './tools/NotebookEditTool/NotebookEditTool.js'
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js'
 import { TaskStopTool } from './tools/TaskStopTool/TaskStopTool.js'
 import { BriefTool } from './tools/BriefTool/BriefTool.js'
@@ -167,6 +166,11 @@ export function getToolsForDefaultPreset(): string[] {
  * Get the complete exhaustive list of all tools that could be available
  * in the current environment (respecting process.env flags).
  * This is the source of truth for ALL tools.
+ *
+ * NotebookEdit is deliberately excluded. The tool's source is retained at
+ * `src/tools/NotebookEditTool/` (and its unit tests still run), but it is not
+ * registered here so the model never receives its schema. To restore it, add
+ * `NotebookEditTool` back to the returned array below.
  */
 /**
  * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/claude_code_global_system_caching, in order to cache the system prompt across users.
@@ -198,7 +202,9 @@ export function getAllBaseTools(): Tools {
     FileReadTool,
     FileEditTool,
     FileWriteTool,
-    NotebookEditTool,
+    // NotebookEdit is intentionally NOT registered — see the note above
+    // `getAllBaseTools`. The implementation is retained at
+    // src/tools/NotebookEditTool/ but the model never sees the tool.
     WebFetchTool,
     TodoWriteTool,
     WebSearchTool,
