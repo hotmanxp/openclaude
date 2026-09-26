@@ -30,6 +30,7 @@ const RESTORED_KEYS = [
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_MODEL',
   'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
 ] as const
 
 type MockConfigState = {
@@ -312,6 +313,107 @@ describe('applyProviderProfileToProcessEnv', () => {
 
     expect(process.env.ANTHROPIC_MODEL).toBe('claude-sonnet-4-6')
     expect(process.env.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com')
+  })
+
+  test('anthropic profile clears the OpenAI transport left by the previous profile', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+
+    // A WB-shaped openai profile is active first.
+    applyProviderProfileToProcessEnv(
+      buildProfile({
+        id: 'provider_wb',
+        name: 'WB',
+        provider: 'openai',
+        baseUrl: 'https://copilot.tencent.com/v2',
+        model: 'hy3',
+        apiFormat: 'chat_completions',
+        authHeader: 'api-key',
+        authScheme: 'raw',
+        authHeaderValue: 'wb-header',
+        apiKey: 'wb-key',
+      }),
+    )
+    expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
+    expect(process.env.OPENAI_BASE_URL).toBe('https://copilot.tencent.com/v2')
+
+    // The user then picks a model owned by the anthropic profile.
+    applyProviderProfileToProcessEnv(
+      buildProfile({
+        id: 'provider_ds',
+        name: 'Anthropic-DS',
+        provider: 'anthropic',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        model: 'deepseek-flash',
+        apiKey: 'ds-key',
+      }),
+    )
+
+    expect(process.env.ANTHROPIC_MODEL).toBe('deepseek-flash')
+    expect(process.env.ANTHROPIC_BASE_URL).toBe(
+      'https://api.deepseek.com/anthropic',
+    )
+    expect(process.env.ANTHROPIC_API_KEY).toBe('ds-key')
+    // Regression: these used to survive the switch, so the request kept going
+    // to WB's endpoint and surfaced WB's quota error for a DeepSeek model.
+    expect(process.env.CLAUDE_CODE_USE_OPENAI).toBeUndefined()
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
+    expect(process.env.OPENAI_MODEL).toBeUndefined()
+    expect(process.env.OPENAI_API_FORMAT).toBeUndefined()
+    expect(process.env.OPENAI_AUTH_HEADER).toBeUndefined()
+    expect(process.env.OPENAI_AUTH_SCHEME).toBeUndefined()
+    expect(process.env.OPENAI_AUTH_HEADER_VALUE).toBeUndefined()
+  })
+
+  test('anthropic profile with its own key clears a stale ANTHROPIC_AUTH_TOKEN', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+
+    // Ambient token from settings.json env (e.g. a MiniMax endpoint token).
+    // configureApiKeyHeaders() would turn it into Authorization: Bearer and
+    // override the profile's key on the profile's own baseUrl.
+    process.env.ANTHROPIC_AUTH_TOKEN = 'ambient-token'
+
+    applyProviderProfileToProcessEnv(
+      buildProfile({
+        provider: 'anthropic',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        model: 'deepseek-flash',
+        apiKey: 'ds-key',
+      }),
+    )
+
+    expect(process.env.ANTHROPIC_API_KEY).toBe('ds-key')
+    expect(process.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+  })
+
+  test('anthropic profile without a key keeps the ambient ANTHROPIC_AUTH_TOKEN', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+
+    process.env.ANTHROPIC_AUTH_TOKEN = 'ambient-token'
+
+    applyProviderProfileToProcessEnv(
+      buildProfile({
+        provider: 'anthropic',
+        baseUrl: 'https://api.deepseek.com/anthropic',
+        model: 'deepseek-flash',
+      }),
+    )
+
+    expect(process.env.ANTHROPIC_AUTH_TOKEN).toBe('ambient-token')
+  })
+
+  test('openai profile clears a stale ANTHROPIC_AUTH_TOKEN', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+
+    process.env.ANTHROPIC_AUTH_TOKEN = 'ambient-token'
+
+    applyProviderProfileToProcessEnv(buildProfile({ apiKey: 'wb-key' }))
+
+    expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
+    expect(process.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
   })
 
 })

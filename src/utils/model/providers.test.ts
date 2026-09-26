@@ -60,3 +60,46 @@ test('detects openai provider from active providerProfile config', async () => {
   expect(getAPIProvider()).toBeDefined()
 })
 
+test('anthropic profile wins over a stale CLAUDE_CODE_USE_OPENAI flag', async () => {
+  clearProviderEnv()
+  // A previously-active openai profile left the transport flag behind.
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_BASE_URL = 'https://copilot.tencent.com/v2'
+
+  const { usesOpenAICompatibleTransport } = await importFreshProvidersModule()
+  expect(
+    usesOpenAICompatibleTransport({
+      id: 'provider_ds',
+      name: 'Anthropic-DS',
+      provider: 'anthropic',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      model: 'deepseek-flash',
+    }),
+  ).toBe(false)
+})
+
+test('openai profile routes over the shim even without the env flag', async () => {
+  clearProviderEnv()
+
+  const { usesOpenAICompatibleTransport } = await importFreshProvidersModule()
+  expect(
+    usesOpenAICompatibleTransport({
+      id: 'provider_wb',
+      name: 'WB',
+      provider: 'openai',
+      baseUrl: 'https://copilot.tencent.com/v2',
+      model: 'hy3',
+    }),
+  ).toBe(true)
+})
+
+test('no profile falls back to the CLAUDE_CODE_USE_OPENAI flag', async () => {
+  clearProviderEnv()
+  const { usesOpenAICompatibleTransport } = await importFreshProvidersModule()
+
+  expect(usesOpenAICompatibleTransport(undefined)).toBe(false)
+
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  expect(usesOpenAICompatibleTransport(undefined)).toBe(true)
+})
+
