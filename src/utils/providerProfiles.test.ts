@@ -930,3 +930,121 @@ describe('maybeResetMainLoopModel', () => {
       .toEqual({ reset: false })
   })
 })
+
+describe('providerModelTupleKey', () => {
+  test('round-trips providerId and model', async () => {
+    const { providerModelTupleKey, parseProviderModelTupleKey } =
+      await importFreshProviderProfileModules()
+
+    const key = providerModelTupleKey('provider_a', 'gpt-4o')
+    expect(key).toBe('provider_a::gpt-4o')
+    expect(parseProviderModelTupleKey(key)).toEqual({
+      providerId: 'provider_a',
+      model: 'gpt-4o',
+    })
+  })
+
+  test('parses a bare model name with an empty providerId', async () => {
+    const { parseProviderModelTupleKey } =
+      await importFreshProviderProfileModules()
+
+    expect(parseProviderModelTupleKey('gpt-4o')).toEqual({
+      providerId: '',
+      model: 'gpt-4o',
+    })
+  })
+
+  test('model names may themselves contain ::', async () => {
+    const { providerModelTupleKey, parseProviderModelTupleKey } =
+      await importFreshProviderProfileModules()
+
+    const key = providerModelTupleKey('p1', 'org/model::variant')
+    expect(parseProviderModelTupleKey(key)).toEqual({
+      providerId: 'p1',
+      model: 'org/model::variant',
+    })
+  })
+})
+
+describe('getProviderModelEntries', () => {
+  test('collects models from every registered profile in order', async () => {
+    const { getProviderModelEntries } =
+      await importFreshProviderProfileModules()
+
+    mockConfigState = {
+      ...createMockConfigState(),
+      providerProfiles: [
+        buildProfile({ id: 'provider_a', name: 'Alpha', model: 'gpt-4o, gpt-4o-mini' }),
+        buildProfile({ id: 'provider_b', name: 'Beta', model: 'llama3.1:8b' }),
+      ],
+    }
+
+    const entries = getProviderModelEntries()
+
+    expect(
+      entries.map(e => [e.providerId, e.providerName, e.model]),
+    ).toEqual([
+      ['provider_a', 'Alpha', 'gpt-4o'],
+      ['provider_a', 'Alpha', 'gpt-4o-mini'],
+      ['provider_b', 'Beta', 'llama3.1:8b'],
+    ])
+  })
+
+  test('keeps same-named models from different providers as separate entries', async () => {
+    const { getProviderModelEntries } =
+      await importFreshProviderProfileModules()
+
+    mockConfigState = {
+      ...createMockConfigState(),
+      providerProfiles: [
+        buildProfile({ id: 'provider_a', name: 'Alpha', model: 'gpt-4o' }),
+        buildProfile({ id: 'provider_b', name: 'Beta', model: 'gpt-4o' }),
+      ],
+    }
+
+    const entries = getProviderModelEntries()
+    expect(entries).toHaveLength(2)
+    expect(entries.map(e => e.providerId)).toEqual(['provider_a', 'provider_b'])
+  })
+
+  test('dedupes a model repeated within one profile', async () => {
+    const { getProviderModelEntries } =
+      await importFreshProviderProfileModules()
+
+    mockConfigState = {
+      ...createMockConfigState(),
+      providerProfiles: [
+        buildProfile({ id: 'provider_a', name: 'Alpha', model: 'gpt-4o, gpt-4o' }),
+      ],
+    }
+
+    expect(getProviderModelEntries()).toHaveLength(1)
+  })
+
+  test('appends discovered cache models after configured ones', async () => {
+    const { getProviderModelEntries } =
+      await importFreshProviderProfileModules()
+
+    mockConfigState = {
+      ...createMockConfigState(),
+      providerProfiles: [
+        buildProfile({ id: 'provider_a', name: 'Alpha', model: 'gpt-4o' }),
+      ],
+      openaiAdditionalModelOptionsCacheByProfile: {
+        provider_a: [{ value: 'gpt-5', label: 'gpt-5' }],
+      },
+    }
+
+    expect(getProviderModelEntries().map(e => e.model)).toEqual([
+      'gpt-4o',
+      'gpt-5',
+    ])
+  })
+
+  test('returns an empty list when no profiles are registered', async () => {
+    const { getProviderModelEntries } =
+      await importFreshProviderProfileModules()
+
+    expect(getProviderModelEntries()).toEqual([])
+  })
+})

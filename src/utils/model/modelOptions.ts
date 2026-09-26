@@ -37,6 +37,10 @@ import {
   getActiveOpenAIModelOptionsCache,
   getActiveProviderProfile,
   getProfileModelOptions,
+  getProviderModelEntries,
+  hasProviderProfiles,
+  providerModelTupleKey,
+  type ProviderModelEntry,
 } from '../providerProfiles.js'
 import { getCachedOllamaModelOptions, isOllamaProvider } from './ollamaModels.js'
 import { getAntModels } from './antModels.js'
@@ -637,4 +641,151 @@ function filterModelOptionsByAllowlist(options: ModelOption[]): ModelOption[] {
     seen.add(key)
     return true
   })
+}
+
+export type ModelPickerOption = ModelOption & {
+  providerId?: string
+  providerName?: string
+  rawModel?: string
+  /** Non-selectable section heading (per-provider grouping in the picker). */
+  disabled?: boolean
+}
+
+export type ModelPickerScope = 'all-providers' | 'active-only'
+
+/**
+ * Value prefix for the non-selectable per-provider heading rows. `Select`
+ * refuses to commit a `disabled` option, so headings render but can't be
+ * chosen with Enter or a number key.
+ */
+export const PROVIDER_GROUP_PREFIX = '__group__::'
+
+function isPickerOptionAllowed(opt: ModelPickerOption): boolean {
+  const settings = getSettings_DEPRECATED() || {}
+  if (!settings.availableModels) {
+    return true
+  }
+  const candidate = opt.rawModel ?? (typeof opt.value === 'string' ? opt.value : '')
+  return candidate === '' || isModelAllowed(candidate)
+}
+
+/**
+ * Re-tag a bare-model base list with (providerId, model) tuple keys and append
+ * any provider model the base list didn't already represent. Rows already
+ * produced by getModelOptions (the active provider's configured + discovered
+ * models) are re-tagged rather than duplicated.
+ *
+ * Exported for tests — it is pure apart from the providerProfiles tuple-key
+ * helpers.
+ */
+export function mergeProviderPickerOptions(
+  base: ModelOption[],
+  entries: ProviderModelEntry[],
+  activeProfileId: string | undefined,
+): ModelPickerOption[] {
+  const rawOf = (value: ModelSetting): string | undefined =>
+    value !== null && typeof value === 'string' ? value : undefined
+
+  // Index provider models by their bare model name.
+  const byModel = new Map<string, ProviderModelEntry[]>()
+  for (const entry of entries) {
+    const list = byModel.get(entry.model)
+    if (list) {
+      list.push(entry)
+    } else {
+      byModel.set(entry.model, [entry])
+    }
+  }
+
+  const merged: ModelPickerOption[] = []
+  const usedKeys = new Set<string>()
+
+  for (const opt of base) {
+    const raw = rawOf(opt.value)
+    if (raw === undefined) {
+      merged.push({ ...opt })
+      continue
+    }
+    // Prefer the active provider's entry; fall back to a unique owner so a
+    // built-in alias still lands in a group when exactly one provider serves it.
+    const candidates = (byModel.get(raw) ?? []).filter(
+      e => !usedKeys.has(providerModelTupleKey(e.providerId, e.model)),
+    )
+    const entry =
+      candidates.find(e => e.providerId === activeProfileId) ??
+      (candidates.length === 1 ? candidates[0] : undefined)
+    if (!entry) {
+      merged.push({ ...opt, rawModel: raw })
+      continue
+    }
+    usedKeys.add(providerModelTupleKey(entry.providerId, entry.model))
+    merged.push({
+      ...opt,
+      value: providerModelTupleKey(entry.providerId, entry.model),
+      rawModel: entry.model,
+      providerId: entry.providerId,
+      providerName: entry.providerName,
+    })
+  }
+
+  // Every remaining provider model not yet represented joins the list.
+  for (const entry of entries) {
+    const key = providerModelTupleKey(entry.providerId, entry.model)
+    if (usedKeys.has(key)) {
+      continue
+    }
+    usedKeys.add(key)
+    merged.push({
+      ...entry.option,
+      value: key,
+      rawModel: entry.model,
+      providerId: entry.providerId,
+      providerName: entry.providerName,
+    })
+  }
+
+  const seen = new Set<string>()
+  return merged.filter(opt => {
+    const key = String(opt.value)
+    if (seen.has(key) || !isPickerOptionAllowed(opt)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
+}
+
+/**
+ * Options for the interactive /model picker.
+ *
+ * `all-providers` (default) merges every registered provider's models into one
+ * grouped list keyed by (providerId, model), so picking a model also selects
+ * the provider that serves it — no manual /provider switch first.
+ *
+ * `active-only` keeps the historical behavior (only the active profile's
+ * models) for pickers that configure global model settings (teammate default,
+ * compaction) which always run on the current provider.
+ */
+export function getModelPickerOptions(
+  fastMode = false,
+  scope: ModelPickerScope = 'all-providers',
+): ModelPickerOption[] {
+  const base: ModelOption[] = getModelOptions(fastMode)
+  const rawOf = (value: ModelSetting): string | undefined =>
+    value !== null && typeof value === 'string' ? value : undefined
+
+  if (scope !== 'all-providers' || !hasProviderProfiles()) {
+    return base.map(opt => ({ ...opt, rawModel: rawOf(opt.value) }))
+  }
+
+  const entries = getProviderModelEntries()
+  if (entries.length === 0) {
+    return base.map(opt => ({ ...opt, rawModel: rawOf(opt.value) }))
+  }
+
+  return mergeProviderPickerOptions(
+    base,
+    entries,
+    getActiveProviderProfile()?.id,
+  )
 }

@@ -141,11 +141,25 @@ function mockProviderProfiles(
   const providerProfilesMock = {
     addProviderProfile: () => null,
     applyActiveProviderProfileFromConfig: () => undefined,
+    applySelectedProviderModel: () => {},
     clearActiveOpenAIModelOptionsCache: () => {},
     deleteProviderProfile: () => ({ removed: false }),
     getActiveOpenAIModelOptionsCache: () => [],
     getActiveProviderProfile: () => undefined,
     getProfileModelOptions: () => [],
+    getProviderModelEntries: () => [],
+    hasProviderProfiles: () => false,
+    parseProviderModelTupleKey: (key: string) => {
+      const separator = key.indexOf('::')
+      return separator < 0
+        ? { providerId: '', model: key }
+        : {
+            providerId: key.slice(0, separator),
+            model: key.slice(separator + 2),
+          }
+    },
+    providerModelTupleKey: (providerId: string, model: string) =>
+      `${providerId}::${model}`,
     getProviderPresetDefaults: () => ({
       provider: 'openai',
       name: 'OpenAI',

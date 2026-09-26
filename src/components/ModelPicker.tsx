@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { c as _c } from "react-compiler-runtime";
 import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
@@ -11,7 +10,8 @@ import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import { convertEffortValueToLevel, type EffortLevel, getDefaultEffortForModel, modelSupportsEffort, modelSupportsMaxEffort, resolvePickerEffortPersistence, toPersistableEffort } from '../utils/effort.js';
 import { getDefaultMainLoopModel, type ModelSetting, modelDisplayString, parseUserSpecifiedModel } from '../utils/model/model.js';
-import { getModelOptions } from '../utils/model/modelOptions.js';
+import { getModelPickerOptions, PROVIDER_GROUP_PREFIX, type ModelPickerScope } from '../utils/model/modelOptions.js';
+import { getActiveProviderProfile, parseProviderModelTupleKey, providerModelTupleKey } from '../utils/providerProfiles.js';
 import { getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
@@ -22,7 +22,12 @@ import { effortLevelToSymbol } from './EffortIndicator.js';
 export type Props = {
   initial: string | null;
   sessionModel?: ModelSetting;
-  onSelect: (model: string | null, effort: EffortLevel | undefined) => void;
+  /**
+   * `providerId` is set only when the chosen row belongs to a registered
+   * provider (all-providers scope); callers should activate that provider so
+   * the request routes there and the choice persists.
+   */
+  onSelect: (model: string | null, effort: EffortLevel | undefined, providerId?: string) => void;
   onCancel?: () => void;
   isStandaloneCommand?: boolean;
   showFastModeNotice?: boolean;
@@ -35,10 +40,17 @@ export type Props = {
    * install.ts) and should not leak to the user's global ~/.claude/settings.
    */
   skipSettingsWrite?: boolean;
+  /**
+   * 'all-providers' (default) merges every registered provider's models into
+   * one grouped list keyed by (providerId, model). 'active-only' restricts the
+   * list to the active provider — used by pickers that set global model
+   * settings (teammate default, compaction) that always run on the current
+   * provider.
+   */
+  scope?: ModelPickerScope;
 };
 const NO_PREFERENCE = '__NO_PREFERENCE__';
-export function ModelPicker(t0) {
-  const $ = _c(82);
+export function ModelPicker(props: Props) {
   const {
     initial,
     sessionModel,
@@ -47,387 +59,198 @@ export function ModelPicker(t0) {
     isStandaloneCommand,
     showFastModeNotice,
     headerText,
-    skipSettingsWrite
-  } = t0;
+    skipSettingsWrite,
+    scope = 'all-providers'
+  } = props;
   const setAppState = useSetAppState();
   const exitState = useExitOnCtrlCDWithKeybindings();
-  const initialValue = initial === null ? NO_PREFERENCE : initial;
-  const [focusedValue, setFocusedValue] = useState(initialValue);
-  const isFastMode = useAppState(_temp);
+  const isFastMode = useAppState(state => isFastModeEnabled() ? state.fastMode : false);
   const [hasToggledEffort, setHasToggledEffort] = useState(false);
-  const effortValue = useAppState(_temp2);
-  let t1;
-  if ($[0] !== effortValue) {
-    t1 = effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined;
-    $[0] = effortValue;
-    $[1] = t1;
-  } else {
-    t1 = $[1];
-  }
-  const [effort, setEffort] = useState(t1);
-  const t2 = isFastMode ?? false;
-  let t3;
-  if ($[2] !== t2) {
-    t3 = getModelOptions(t2);
-    $[2] = t2;
-    $[3] = t3;
-  } else {
-    t3 = $[3];
-  }
-  const modelOptions = t3;
-  let t4;
-  bb0: {
-    if (initial !== null && !modelOptions.some(opt => opt.value === initial)) {
-      let t5;
-      if ($[4] !== initial) {
-        t5 = modelDisplayString(initial);
-        $[4] = initial;
-        $[5] = t5;
-      } else {
-        t5 = $[5];
-      }
-      let t6;
-      if ($[6] !== initial || $[7] !== t5) {
-        t6 = {
-          value: initial,
-          label: t5,
-          description: "当前模型"
-        };
-        $[6] = initial;
-        $[7] = t5;
-        $[8] = t6;
-      } else {
-        t6 = $[8];
-      }
-      let t7;
-      if ($[9] !== modelOptions || $[10] !== t6) {
-        t7 = [...modelOptions, t6];
-        $[9] = modelOptions;
-        $[10] = t6;
-        $[11] = t7;
-      } else {
-        t7 = $[11];
-      }
-      t4 = t7;
-      break bb0;
+  const effortValue = useAppState(state => state.effortValue);
+  const [effort, setEffort] = useState(effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined);
+  const activeProfile = getActiveProviderProfile();
+  const activeProviderId = activeProfile?.id;
+  const baseOptions = useMemo(() => getModelPickerOptions(isFastMode ?? false, scope), [isFastMode, scope]);
+
+  // Keep the current selection visible even when it's absent from the merged
+  // list (custom --model value, or a model whose provider was deleted).
+  const modelOptions = useMemo(() => {
+    if (initial === null) {
+      return baseOptions;
     }
-    t4 = modelOptions;
-  }
-  const optionsWithInitial = t4;
-  let t5;
-  if ($[12] !== optionsWithInitial) {
-    t5 = optionsWithInitial.map(_temp3);
-    $[12] = optionsWithInitial;
-    $[13] = t5;
-  } else {
-    t5 = $[13];
-  }
-  const selectOptions = t5;
-  let t6;
-  if ($[14] !== initialValue || $[15] !== selectOptions) {
-    t6 = selectOptions.some(_ => _.value === initialValue) ? initialValue : selectOptions[0]?.value ?? undefined;
-    $[14] = initialValue;
-    $[15] = selectOptions;
-    $[16] = t6;
-  } else {
-    t6 = $[16];
-  }
-  const initialFocusValue = t6;
+    const tuple = activeProviderId ? providerModelTupleKey(activeProviderId, initial) : initial;
+    const isPresent = baseOptions.some(opt => opt.value === tuple) || baseOptions.some(opt => opt.value === initial) || baseOptions.some(opt => opt.rawModel === initial);
+    if (isPresent) {
+      return baseOptions;
+    }
+    return [...baseOptions, {
+      value: tuple,
+      rawModel: initial,
+      providerId: activeProviderId,
+      providerName: activeProfile?.name,
+      label: modelDisplayString(initial),
+      description: '当前模型'
+    }];
+  }, [baseOptions, initial, activeProviderId, activeProfile?.name]);
+
+  // Group rows by provider with a non-selectable heading per group. The
+  // heading carries `disabled: true` so Select refuses to commit it (Enter and
+  // number keys are no-ops) while arrow navigation still reaches it.
+  const groupedOptions = useMemo(() => {
+    const order = [];
+    const counts = new Map();
+    for (const opt of modelOptions) {
+      if (!opt.providerId) {
+        continue;
+      }
+      if (!counts.has(opt.providerId)) {
+        order.push({
+          id: opt.providerId,
+          name: opt.providerName ?? opt.providerId
+        });
+      }
+      counts.set(opt.providerId, (counts.get(opt.providerId) ?? 0) + 1);
+    }
+    if (order.length === 0) {
+      return modelOptions;
+    }
+    const rows = modelOptions.filter(opt => !opt.providerId);
+    for (const group of order) {
+      rows.push({
+        value: PROVIDER_GROUP_PREFIX + group.id,
+        label: group.name,
+        description: `共 ${counts.get(group.id)} 个模型`,
+        disabled: true
+      });
+      for (const opt of modelOptions) {
+        if (opt.providerId === group.id) {
+          rows.push(opt);
+        }
+      }
+    }
+    return rows;
+  }, [modelOptions]);
+  const selectOptions = useMemo(() => groupedOptions.map(opt => ({
+    ...opt,
+    value: opt.value === null ? NO_PREFERENCE : opt.value
+  })), [groupedOptions]);
+
+  // The value the picker treats as "current". Provider rows are identified by
+  // the (providerId, model) tuple; bare model names stay in play for built-in
+  // rows. When the active provider is unknown we fall back to a unique rawModel
+  // match rather than marking a wrong (or every) row.
+  const initialValue = useMemo(() => {
+    if (initial === null) {
+      return NO_PREFERENCE;
+    }
+    const tuple = activeProviderId ? providerModelTupleKey(activeProviderId, initial) : undefined;
+    if (tuple && selectOptions.some(opt => opt.value === tuple)) {
+      return tuple;
+    }
+    if (selectOptions.some(opt => opt.value === initial)) {
+      return initial;
+    }
+    const matches = selectOptions.filter(opt => opt.rawModel === initial);
+    return matches.length === 1 ? matches[0].value : initial;
+  }, [initial, activeProviderId, selectOptions]);
+  const [focusedValue, setFocusedValue] = useState(initialValue);
+  const initialFocusValue = selectOptions.some(opt => opt.value === initialValue) ? initialValue : selectOptions[0]?.value ?? undefined;
   const visibleCount = Math.min(10, selectOptions.length);
   const hiddenCount = Math.max(0, selectOptions.length - visibleCount);
-  let t7;
-  if ($[17] !== focusedValue || $[18] !== selectOptions) {
-    t7 = selectOptions.find(opt_1 => opt_1.value === focusedValue)?.label;
-    $[17] = focusedValue;
-    $[18] = selectOptions;
-    $[19] = t7;
-  } else {
-    t7 = $[19];
-  }
-  const focusedModelName = t7;
-  let focusedSupportsEffort;
-  let t8;
-  if ($[20] !== focusedValue) {
-    const focusedModel = resolveOptionModel(focusedValue);
-    focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
-    t8 = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
-    $[20] = focusedValue;
-    $[21] = focusedSupportsEffort;
-    $[22] = t8;
-  } else {
-    focusedSupportsEffort = $[21];
-    t8 = $[22];
-  }
-  const focusedSupportsMax = t8;
-  let t9;
-  if ($[23] !== focusedValue) {
-    t9 = getDefaultEffortLevelForOption(focusedValue);
-    $[23] = focusedValue;
-    $[24] = t9;
-  } else {
-    t9 = $[24];
-  }
-  const focusedDefaultEffort = t9;
+  const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
+  const focusedIsGroup = typeof focusedValue === 'string' && focusedValue.startsWith(PROVIDER_GROUP_PREFIX);
+  const focusedModel = resolveOptionModel(focusedValue);
+  const focusedSupportsEffort = !focusedIsGroup && focusedModel ? modelSupportsEffort(focusedModel) : false;
+  const focusedSupportsMax = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
+  const focusedDefaultEffort = getDefaultEffortLevelForOption(focusedValue);
   const displayEffort = effort === "max" && !focusedSupportsMax ? "high" : effort;
-  let t10;
-  if ($[25] !== effortValue || $[26] !== hasToggledEffort) {
-    t10 = value => {
-      setFocusedValue(value);
-      if (!hasToggledEffort && effortValue === undefined) {
-        setEffort(getDefaultEffortLevelForOption(value));
+  const handleFocus = useCallback(value => {
+    setFocusedValue(value);
+    if (!hasToggledEffort && effortValue === undefined) {
+      setEffort(getDefaultEffortLevelForOption(value));
+    }
+  }, [hasToggledEffort, effortValue]);
+  const handleCycleEffort = useCallback(direction => {
+    if (!focusedSupportsEffort) {
+      return;
+    }
+    setEffort(prev => cycleEffortLevel(prev ?? focusedDefaultEffort, direction, focusedSupportsMax));
+    setHasToggledEffort(true);
+  }, [focusedSupportsEffort, focusedDefaultEffort, focusedSupportsMax]);
+  useKeybindings({
+    "modelPicker:decreaseEffort": () => handleCycleEffort("left"),
+    "modelPicker:increaseEffort": () => handleCycleEffort("right")
+  }, {
+    context: "ModelPicker"
+  });
+  const handleSelect = useCallback(value => {
+    logEvent("tengu_model_command_menu_effort", {
+      effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+    });
+    if (!skipSettingsWrite) {
+      const effortLevel = resolvePickerEffortPersistence(effort, getDefaultEffortLevelForOption(value), getSettingsForSource("userSettings")?.effortLevel, hasToggledEffort);
+      const persistable = toPersistableEffort(effortLevel);
+      if (persistable !== undefined) {
+        updateSettingsForSource("userSettings", {
+          effortLevel: persistable
+        });
       }
-    };
-    $[25] = effortValue;
-    $[26] = hasToggledEffort;
-    $[27] = t10;
-  } else {
-    t10 = $[27];
-  }
-  const handleFocus = t10;
-  let t11;
-  if ($[28] !== focusedDefaultEffort || $[29] !== focusedSupportsEffort || $[30] !== focusedSupportsMax) {
-    t11 = direction => {
-      if (!focusedSupportsEffort) {
-        return;
-      }
-      setEffort(prev => cycleEffortLevel(prev ?? focusedDefaultEffort, direction, focusedSupportsMax));
-      setHasToggledEffort(true);
-    };
-    $[28] = focusedDefaultEffort;
-    $[29] = focusedSupportsEffort;
-    $[30] = focusedSupportsMax;
-    $[31] = t11;
-  } else {
-    t11 = $[31];
-  }
-  const handleCycleEffort = t11;
-  let t12;
-  if ($[32] !== handleCycleEffort) {
-    t12 = {
-      "modelPicker:decreaseEffort": () => handleCycleEffort("left"),
-      "modelPicker:increaseEffort": () => handleCycleEffort("right")
-    };
-    $[32] = handleCycleEffort;
-    $[33] = t12;
-  } else {
-    t12 = $[33];
-  }
-  let t13;
-  if ($[34] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = {
-      context: "ModelPicker"
-    };
-    $[34] = t13;
-  } else {
-    t13 = $[34];
-  }
-  useKeybindings(t12, t13);
-  let t14;
-  if ($[35] !== effort || $[36] !== hasToggledEffort || $[37] !== onSelect || $[38] !== setAppState || $[39] !== skipSettingsWrite) {
-    t14 = function handleSelect(value_0) {
-      logEvent("tengu_model_command_menu_effort", {
-        effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-      if (!skipSettingsWrite) {
-        const effortLevel = resolvePickerEffortPersistence(effort, getDefaultEffortLevelForOption(value_0), getSettingsForSource("userSettings")?.effortLevel, hasToggledEffort);
-        const persistable = toPersistableEffort(effortLevel);
-        if (persistable !== undefined) {
-          updateSettingsForSource("userSettings", {
-            effortLevel: persistable
-          });
-        }
-        setAppState(prev_0 => ({
-          ...prev_0,
-          effortValue: effortLevel
-        }));
-      }
-      const selectedModel = resolveOptionModel(value_0);
-      const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
-      if (value_0 === NO_PREFERENCE) {
-        onSelect(null, selectedEffort);
-        return;
-      }
-      onSelect(value_0, selectedEffort);
-    };
-    $[35] = effort;
-    $[36] = hasToggledEffort;
-    $[37] = onSelect;
-    $[38] = setAppState;
-    $[39] = skipSettingsWrite;
-    $[40] = t14;
-  } else {
-    t14 = $[40];
-  }
-  const handleSelect = t14;
-  let t15;
-  if ($[41] === Symbol.for("react.memo_cache_sentinel")) {
-    t15 = <Text color="remember" bold={true}>选择模型</Text>;
-    $[41] = t15;
-  } else {
-    t15 = $[41];
-  }
+      setAppState(prev => ({
+        ...prev,
+        effortValue: effortLevel
+      }));
+    }
+    const selectedModel = resolveOptionModel(value);
+    const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
+    if (value === NO_PREFERENCE) {
+      onSelect(null, selectedEffort);
+      return;
+    }
+    const selectedOption = selectOptions.find(opt => opt.value === value);
+    // Provider rows carry a tuple as their value; hand the caller the bare
+    // model name plus the provider it belongs to. Built-in rows keep passing
+    // their value through unchanged.
+    const modelForCallback = selectedOption?.providerId ? (selectedOption.rawModel ?? selectedModel ?? value) : value;
+    onSelect(modelForCallback, selectedEffort, selectedOption?.providerId);
+  }, [effort, hasToggledEffort, onSelect, setAppState, skipSettingsWrite, selectOptions]);
   const t16 = headerText ?? "在 OpenCC 模型之间切换。适用于当前会话和未来的 OpenCC 会话。对于其他/之前的模型名称，请使用 --model 指定。";
-  let t17;
-  if ($[42] !== t16) {
-    t17 = <Text dimColor={true}>{t16}</Text>;
-    $[42] = t16;
-    $[43] = t17;
-  } else {
-    t17 = $[43];
-  }
-  let t18;
-  if ($[44] !== sessionModel) {
-    t18 = sessionModel && <Text dimColor={true}>当前会话使用 {modelDisplayString(sessionModel)}（由计划模式设置）。选择模型将撤销此设置。</Text>;
-    $[44] = sessionModel;
-    $[45] = t18;
-  } else {
-    t18 = $[45];
-  }
-  let t19;
-  if ($[46] !== t17 || $[47] !== t18) {
-    t19 = <Box marginBottom={1} flexDirection="column">{t15}{t17}{t18}</Box>;
-    $[46] = t17;
-    $[47] = t18;
-    $[48] = t19;
-  } else {
-    t19 = $[48];
-  }
-  const t20 = onCancel ?? _temp4;
-  let t21;
-  if ($[49] !== handleFocus || $[50] !== handleSelect || $[51] !== initialFocusValue || $[52] !== initialValue || $[53] !== selectOptions || $[54] !== t20 || $[55] !== visibleCount) {
-    t21 = <Box flexDirection="column"><Select defaultValue={initialValue} defaultFocusValue={initialFocusValue} options={selectOptions} onChange={handleSelect} onFocus={handleFocus} onCancel={t20} visibleOptionCount={visibleCount} /></Box>;
-    $[49] = handleFocus;
-    $[50] = handleSelect;
-    $[51] = initialFocusValue;
-    $[52] = initialValue;
-    $[53] = selectOptions;
-    $[54] = t20;
-    $[55] = visibleCount;
-    $[56] = t21;
-  } else {
-    t21 = $[56];
-  }
-  let t22;
-  if ($[57] !== hiddenCount) {
-    t22 = hiddenCount > 0 && <Box paddingLeft={3}><Text dimColor={true}>还有 {hiddenCount} 个…</Text></Box>;
-    $[57] = hiddenCount;
-    $[58] = t22;
-  } else {
-    t22 = $[58];
-  }
-  let t23;
-  if ($[59] !== t21 || $[60] !== t22) {
-    t23 = <Box flexDirection="column" marginBottom={1}>{t21}{t22}</Box>;
-    $[59] = t21;
-    $[60] = t22;
-    $[61] = t23;
-  } else {
-    t23 = $[61];
-  }
-  let t24;
-  if ($[62] !== displayEffort || $[63] !== focusedDefaultEffort || $[64] !== focusedModelName || $[65] !== focusedSupportsEffort) {
-    t24 = <Box marginBottom={1} flexDirection="column">{focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffort} />{" "}{capitalize(displayEffort)} 投入度{displayEffort === focusedDefaultEffort ? "（默认）" : ""}{" "}<Text color="subtle">← → 调整</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> 此模型不支持投入度{focusedModelName ? `（${focusedModelName}）` : ""}</Text>}</Box>;
-    $[62] = displayEffort;
-    $[63] = focusedDefaultEffort;
-    $[64] = focusedModelName;
-    $[65] = focusedSupportsEffort;
-    $[66] = t24;
-  } else {
-    t24 = $[66];
-  }
-  let t25;
-  if ($[67] !== showFastModeNotice) {
-    t25 = isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>快速模式<Text bold={true}>已开启</Text>，仅适用于 {FAST_MODE_MODEL_DISPLAY}（/fast）。切换到其他模型将关闭快速模式。</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>使用 <Text bold={true}>/fast</Text> 开启快速模式（仅适用于 {FAST_MODE_MODEL_DISPLAY}）。</Text></Box> : null : null;
-    $[67] = showFastModeNotice;
-    $[68] = t25;
-  } else {
-    t25 = $[68];
-  }
-  let t26;
-  if ($[69] !== t19 || $[70] !== t23 || $[71] !== t24 || $[72] !== t25) {
-    t26 = <Box flexDirection="column">{t19}{t23}{t24}{t25}</Box>;
-    $[69] = t19;
-    $[70] = t23;
-    $[71] = t24;
-    $[72] = t25;
-    $[73] = t26;
-  } else {
-    t26 = $[73];
-  }
-  let t27;
-  if ($[74] !== exitState || $[75] !== isStandaloneCommand) {
-    t27 = isStandaloneCommand && <Text dimColor={true} italic={true}>{exitState.pending ? <>按 {exitState.keyName} 再次退出</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="确认" /><ConfigurableShortcutHint action="select:cancel" context="Select" fallback="Esc" description="退出" /></Byline>}</Text>;
-    $[74] = exitState;
-    $[75] = isStandaloneCommand;
-    $[76] = t27;
-  } else {
-    t27 = $[76];
-  }
-  let t28;
-  if ($[77] !== t26 || $[78] !== t27) {
-    t28 = <Box flexDirection="column">{t26}{t27}</Box>;
-    $[77] = t26;
-    $[78] = t27;
-    $[79] = t28;
-  } else {
-    t28 = $[79];
-  }
-  const content = t28;
+  const content = <Box flexDirection="column">
+      <Box marginBottom={1} flexDirection="column">
+        <Text color="remember" bold={true}>选择模型</Text>
+        <Text dimColor={true}>{t16}</Text>
+        {sessionModel && <Text dimColor={true}>当前会话使用 {modelDisplayString(sessionModel)}（由计划模式设置）。选择模型将撤销此设置。</Text>}
+      </Box>
+      <Box flexDirection="column" marginBottom={1}>
+        <Box flexDirection="column">
+          <Select defaultValue={initialValue} defaultFocusValue={initialFocusValue} options={selectOptions} onChange={handleSelect} onFocus={handleFocus} onCancel={onCancel ?? (() => {})} visibleOptionCount={visibleCount} />
+        </Box>
+        {hiddenCount > 0 && <Box paddingLeft={3}><Text dimColor={true}>还有 {hiddenCount} 个…</Text></Box>}
+      </Box>
+      <Box marginBottom={1} flexDirection="column">
+        {focusedIsGroup ? null : focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffort} />{" "}{capitalize(displayEffort)} 投入度{displayEffort === focusedDefaultEffort ? "（默认）" : ""}{" "}<Text color="subtle">← → 调整</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> 此模型不支持投入度{focusedModelName ? `（${focusedModelName}）` : ""}</Text>}
+      </Box>
+      {isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>快速模式<Text bold={true}>已开启</Text>，仅适用于 {FAST_MODE_MODEL_DISPLAY}（/fast）。切换到其他模型将关闭快速模式。</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>使用 <Text bold={true}>/fast</Text> 开启快速模式（仅适用于 {FAST_MODE_MODEL_DISPLAY}）。</Text></Box> : null : null}
+      {isStandaloneCommand && <Text dimColor={true} italic={true}>{exitState.pending ? <>按 {exitState.keyName} 再次退出</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="确认" /><ConfigurableShortcutHint action="select:cancel" context="Select" fallback="Esc" description="退出" /></Byline>}</Text>}
+    </Box>;
   if (!isStandaloneCommand) {
     return content;
   }
-  let t29;
-  if ($[80] !== content) {
-    t29 = <Pane color="permission">{content}</Pane>;
-    $[80] = content;
-    $[81] = t29;
-  } else {
-    t29 = $[81];
-  }
-  return t29;
-}
-function _temp4() {}
-function _temp3(opt_0) {
-  return {
-    ...opt_0,
-    value: opt_0.value === null ? NO_PREFERENCE : opt_0.value
-  };
-}
-function _temp2(s_0) {
-  return s_0.effortValue;
-}
-function _temp(s) {
-  return isFastModeEnabled() ? s.fastMode : false;
+  return <Pane color="permission">{content}</Pane>;
 }
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
-  return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
+  if (value === NO_PREFERENCE) return getDefaultMainLoopModel();
+  const { model } = parseProviderModelTupleKey(value);
+  return parseUserSpecifiedModel(model);
 }
 function EffortLevelIndicator(t0) {
-  const $ = _c(5);
   const {
     effort
   } = t0;
   const t1 = effort ? "claude" : "subtle";
   const t2 = effort ?? "low";
-  let t3;
-  if ($[0] !== t2) {
-    t3 = effortLevelToSymbol(t2);
-    $[0] = t2;
-    $[1] = t3;
-  } else {
-    t3 = $[1];
-  }
-  let t4;
-  if ($[2] !== t1 || $[3] !== t3) {
-    t4 = <Text color={t1}>{t3}</Text>;
-    $[2] = t1;
-    $[3] = t3;
-    $[4] = t4;
-  } else {
-    t4 = $[4];
-  }
-  return t4;
+  const t3 = effortLevelToSymbol(t2);
+  return <Text color={t1}>{t3}</Text>;
 }
 function cycleEffortLevel(current: EffortLevel, direction: 'left' | 'right', includeMax: boolean): EffortLevel {
   const levels: EffortLevel[] = includeMax ? ['low', 'medium', 'high', 'max'] : ['low', 'medium', 'high'];

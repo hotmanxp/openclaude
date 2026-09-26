@@ -17,7 +17,7 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1
 import type { ModelOption } from '../../utils/model/modelOptions.js';
 import { discoverOpenAICompatibleModelOptions } from '../../utils/model/openaiModelDiscovery.js';
 import { getAPIProvider } from '../../utils/model/providers.js';
-import { getActiveOpenAIModelOptionsCache, setActiveOpenAIModelOptionsCache } from '../../utils/providerProfiles.js';
+import { applySelectedProviderModel, getActiveOpenAIModelOptionsCache, setActiveOpenAIModelOptionsCache } from '../../utils/providerProfiles.js';
 import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
@@ -51,12 +51,15 @@ function ModelPickerWrapper(t0) {
   const handleCancel = t1;
   let t2;
   if ($[3] !== isFastMode || $[4] !== mainLoopModel || $[5] !== onDone || $[6] !== setAppState) {
-    t2 = function handleSelect(model, effort) {
+    t2 = function handleSelect(model, effort, providerId) {
       logEvent("tengu_model_command_menu", {
         action: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         from_model: mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         to_model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
+      // Picking a model from another provider activates it so the request
+      // routes there (baseUrl/apiKey) and the choice persists across restarts.
+      applySelectedProviderModel(providerId, model ?? undefined);
       setAppState(prev => ({
         ...prev,
         mainLoopModel: model,
