@@ -20,6 +20,7 @@ import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
 import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { applySelectedProviderModel } from '../../utils/providerProfiles.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
@@ -207,12 +208,15 @@ export function Config({
   const memoryFiles = React.use(getMemoryFiles(true));
   const shouldShowExternalIncludesToggle = hasExternalClaudeMdIncludes(memoryFiles);
   const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
-  function onChangeMainModelConfig(value: string | null): void {
+  function onChangeMainModelConfig(value: string | null, providerId?: string): void {
     const previousModel = mainLoopModel;
     logEvent('tengu_config_model_changed', {
       from_model: previousModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       to_model: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
+    // Picking a model from another provider activates it so the request routes
+    // there (baseUrl/apiKey) and the choice persists across restarts.
+    applySelectedProviderModel(providerId, value ?? undefined);
     setAppState(prev => ({
       ...prev,
       mainLoopModel: value,
@@ -1668,9 +1672,9 @@ export function Config({
             </Text>
           </Box>
         </> : showSubmenu === 'Model' ? <>
-          <ModelPicker initial={mainLoopModel} onSelect={(model_0, _effort) => {
+          <ModelPicker initial={mainLoopModel} onSelect={(model_0, _effort, providerId_0) => {
         isDirty.current = true;
-        onChangeMainModelConfig(model_0);
+        onChangeMainModelConfig(model_0, providerId_0);
         setShowSubmenu(null);
         setTabsHidden(false);
       }} onCancel={() => {
@@ -1684,7 +1688,7 @@ export function Config({
             </Byline>
           </Text>
         </> : showSubmenu === 'TeammateModel' ? <>
-          <ModelPicker initial={globalConfig.teammateDefaultModel ?? null} skipSettingsWrite headerText="Default model for newly spawned teammates. The leader can override via the tool call's model parameter." onSelect={(model_1, _effort_0) => {
+          <ModelPicker initial={globalConfig.teammateDefaultModel ?? null} skipSettingsWrite scope="active-only" headerText="Default model for newly spawned teammates. The leader can override via the tool call's model parameter." onSelect={(model_1, _effort_0) => {
         setShowSubmenu(null);
         setTabsHidden(false);
         // First-open-then-Enter from unset: picker highlights "Default"
@@ -1720,7 +1724,7 @@ export function Config({
             </Byline>
           </Text>
         </> : showSubmenu === 'CompactModel' ? <>
-          <ModelPicker initial={globalConfig.compactModel ?? null} skipSettingsWrite headerText="Model used for conversation compaction. Defaults to the main model when unset." onSelect={(model_2, _effort_1) => {
+          <ModelPicker initial={globalConfig.compactModel ?? null} skipSettingsWrite scope="active-only" headerText="Model used for conversation compaction. Defaults to the main model when unset." onSelect={(model_2, _effort_1) => {
         setShowSubmenu(null);
         setTabsHidden(false);
         if ((globalConfig.compactModel ?? null) === model_2) {

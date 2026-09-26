@@ -78,6 +78,7 @@ import { setAutoModeActive } from '../../utils/permissions/autoModeState.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { transitionPermissionMode } from '../../utils/permissions/permissionSetup.js';
 import { getPlatform } from '../../utils/platform.js';
+import { applySelectedProviderModel } from '../../utils/providerProfiles.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
 import { editPromptInEditor } from '../../utils/promptEditor.js';
 import { hasAutoModeOptIn } from '../../utils/settings/settings.js';
@@ -2123,7 +2124,10 @@ function PromptInput({
   // Memoized callbacks for model picker to prevent re-renders when unrelated
   // state (like notifications) changes. This prevents the inline model picker
   // from visually "jumping" when notifications arrive.
-  const handleModelSelect = useCallback((model: string | null, _effort: EffortLevel | undefined) => {
+  const handleModelSelect = useCallback((model: string | null, _effort: EffortLevel | undefined, providerId?: string) => {
+    // Picking a model from another provider activates it so the request routes
+    // there (baseUrl/apiKey) and the choice persists across restarts.
+    applySelectedProviderModel(providerId, model ?? undefined);
     let wasFastModeDisabled = false;
     setAppState(prev => {
       wasFastModeDisabled = isFastModeEnabled() && !isFastModeSupportedByModel(model) && !!prev.fastMode;

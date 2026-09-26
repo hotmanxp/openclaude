@@ -800,6 +800,93 @@ export function getProfileModelOptions(profile: ProviderProfile): ModelOption[] 
   }))
 }
 
+/**
+ * Canonical (providerId, model) tuple key. A bare model name is ambiguous
+ * once multiple providers can serve the same model, so picker rows use the
+ * tuple as their identity — mirrors opencc-web's entryTupleKey.
+ */
+export function providerModelTupleKey(
+  providerId: string,
+  model: string,
+): string {
+  return `${providerId}::${model}`
+}
+
+export function parseProviderModelTupleKey(key: string): {
+  providerId: string
+  model: string
+} {
+  const separator = key.indexOf('::')
+  if (separator < 0) {
+    return { providerId: '', model: key }
+  }
+  return {
+    providerId: key.slice(0, separator),
+    model: key.slice(separator + 2),
+  }
+}
+
+export type ProviderModelEntry = {
+  providerId: string
+  providerName: string
+  model: string
+  option: ModelOption
+}
+
+/**
+ * Collect every registered provider's models so the picker can show one
+ * merged list instead of only the active profile's. Per provider the models
+ * are the configured list (profile.model, comma-separated) followed by any
+ * discovered/cached entries, deduped by model id.
+ */
+export function getProviderModelEntries(
+  config = getGlobalConfig(),
+): ProviderModelEntry[] {
+  const entries: ProviderModelEntry[] = []
+
+  for (const profile of getProviderProfiles(config)) {
+    const seen = new Set<string>()
+    const options = [
+      ...getProfileModelOptions(profile),
+      ...getModelCacheByProfile(profile.id, config),
+    ]
+
+    for (const option of options) {
+      const model = typeof option.value === 'string' ? option.value.trim() : ''
+      if (!model || seen.has(model)) {
+        continue
+      }
+      seen.add(model)
+      entries.push({
+        providerId: profile.id,
+        providerName: profile.name,
+        model,
+        option,
+      })
+    }
+  }
+
+  return entries
+}
+
+/**
+ * Record the provider a user picked a model from: persists activeProviderProfileId
+ * and applies its baseUrl/apiKey routing to process.env, so the next request
+ * goes to the right endpoint without a manual /provider switch.
+ */
+export function applySelectedProviderModel(
+  providerId: string | undefined,
+  model: string | undefined,
+): void {
+  if (!providerId || !model) {
+    return
+  }
+  if (getActiveProviderProfile()?.id === providerId) {
+    return
+  }
+  setActiveProviderProfile(providerId)
+}
+
 function buildOpenAICompatibleStartupEnv(
   activeProfile: ProviderProfile,
 ): ProfileEnv | null {
