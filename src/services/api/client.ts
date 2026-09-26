@@ -18,6 +18,7 @@ import { shouldUseFirstPartyAnthropicAuth } from './authRouting.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
+  usesOpenAICompatibleTransport,
 } from '../../utils/model/providers.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
 import { getModelRouteOverride } from 'src/utils/providerProfiles.js'
@@ -164,7 +165,7 @@ export async function getAnthropicClient({
       reasoningEffort: shimReasoningEffort,
     }) as unknown as Anthropic
   }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
+  if (usesOpenAICompatibleTransport()) {
     const { createOpenAIShimClient } = await import('./openaiShim/index.js')
     return createOpenAIShimClient({
       defaultHeaders,
