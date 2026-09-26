@@ -28,6 +28,7 @@ export type ProviderProfileInput = {
   baseUrl: string
   model: string
   apiKey?: string
+  apiKeyEnv?: ProviderProfile['apiKeyEnv']
   apiFormat?: ProviderProfile['apiFormat']
   authHeader?: ProviderProfile['authHeader']
   authScheme?: ProviderProfile['authScheme']
@@ -67,6 +68,16 @@ function sanitizeAuthScheme(value: string | undefined): ProviderProfile['authSch
   return value === 'raw' || value === 'bearer' ? value : undefined
 }
 
+function sanitizeApiKeyEnvName(value: string | undefined): string | undefined {
+  const trimmed = trimOrUndefined(value)
+  if (!trimmed) {
+    return undefined
+  }
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)
+    ? trimmed
+    : undefined
+}
+
 function normalizeBaseUrl(value: string): string {
   return trimValue(value).replace(/\/+$/, '')
 }
@@ -93,6 +104,10 @@ function sanitizeProfile(profile: ProviderProfile): ProviderProfile | null {
     baseUrl,
     model,
     apiKey: trimOrUndefined(profile.apiKey),
+  }
+  const apiKeyEnv = sanitizeApiKeyEnvName(profile.apiKeyEnv)
+  if (apiKeyEnv) {
+    sanitized.apiKeyEnv = apiKeyEnv
   }
   if (provider === 'openai' && apiFormat) {
     sanitized.apiFormat = apiFormat
@@ -138,6 +153,7 @@ function toProfile(
     baseUrl: input.baseUrl,
     model: input.model,
     apiKey: input.apiKey,
+    apiKeyEnv: input.apiKeyEnv,
     apiFormat: input.apiFormat,
     authHeader: input.authHeader,
     authScheme: input.authScheme,
@@ -476,6 +492,25 @@ export function clearProviderProfileEnvFromProcessEnv(
   delete processEnv[PROFILE_ENV_APPLIED_ID]
 }
 
+/**
+ * Resolve the API key for a profile following the opencc-web zai chain:
+ * inline profile.apiKey → process.env[profile.apiKeyEnv] → undefined.
+ * The apiKeyEnv indirection lets a profile reference its own key (e.g.
+ * WB_API_KEY) without storing the secret in ~/.claude.json.
+ */
+function resolveProfileApiKey(profile: ProviderProfile): string | undefined {
+  if (profile.apiKey) {
+    return profile.apiKey
+  }
+  if (profile.apiKeyEnv) {
+    const envKey = process.env[profile.apiKeyEnv]?.trim()
+    if (envKey) {
+      return envKey
+    }
+  }
+  return undefined
+}
+
 export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void {
   // 已注释：切换 provider 时不清除其它 provider 的环境变量
   // clearProviderProfileEnvFromProcessEnv()
@@ -486,25 +521,10 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
     process.env.ANTHROPIC_MODEL = getPrimaryModel(profile.model)
     process.env.ANTHROPIC_BASE_URL = profile.baseUrl
 
-    if (profile.apiKey) {
-      process.env.ANTHROPIC_API_KEY = profile.apiKey
-      return
-    } else {
-      return
-      delete process.env.ANTHROPIC_API_KEY
+    const anthropicKey = resolveProfileApiKey(profile)
+    if (anthropicKey) {
+      process.env.ANTHROPIC_API_KEY = anthropicKey
     }
-
-    delete process.env.CLAUDE_CODE_USE_OPENAI
-    delete process.env.OPENAI_BASE_URL
-    delete process.env.OPENAI_API_BASE
-    delete process.env.OPENAI_MODEL
-    delete process.env.OPENAI_API_FORMAT
-    delete process.env.OPENAI_AUTH_HEADER
-    delete process.env.OPENAI_AUTH_SCHEME
-    delete process.env.OPENAI_AUTH_HEADER_VALUE
-    // Preserve OPENAI_API_KEY for cases where profile doesn't set it
-    // and user expects env var to be used
-
     return
   }
 
@@ -532,10 +552,11 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
     delete process.env.OPENAI_AUTH_HEADER_VALUE
   }
 
-  if (profile.apiKey) {
-    process.env.OPENAI_API_KEY = profile.apiKey
+  const openaiKey = resolveProfileApiKey(profile)
+  if (openaiKey) {
+    process.env.OPENAI_API_KEY = openaiKey
   }
-  // 不要删除 apiKey：如果 profile 没有 apiKey，保留当前环境的 apiKey
+  // 不要删除 apiKey：如果 profile 没有 apiKey/apiKeyEnv，保留当前环境的 apiKey
 
   delete process.env.ANTHROPIC_BASE_URL
   delete process.env.ANTHROPIC_API_KEY

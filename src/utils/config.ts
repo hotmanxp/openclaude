@@ -213,6 +213,13 @@ export type ProviderProfile = {
   baseUrl: string
   model: string
   apiKey?: string
+  /**
+   * Name of the env var to use as the API key for this profile (overrides
+   * the global OPENAI_API_KEY / ANTHROPIC_API_KEY fallback for profiles
+   * that need their own key). Resolution order: profile.apiKey →
+   * process.env[profile.apiKeyEnv] → ambient env fallback.
+   */
+  apiKeyEnv?: string
   apiFormat?: OpenAICompatibleApiFormat
   authHeader?: string
   authScheme?: OpenAICompatibleAuthScheme

@@ -225,6 +225,79 @@ describe('applyProviderProfileToProcessEnv', () => {
     expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
   })
 
+  test('openai profile resolves apiKeyEnv from process env', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+    const originalKey = process.env.WB_API_KEY
+    process.env.WB_API_KEY = 'wb-env-key'
+    try {
+      applyProviderProfileToProcessEnv(
+        buildProfile({
+          baseUrl: 'https://copilot.tencent.com/v2',
+          model: 'deepseek-v4.1-flash',
+          apiKeyEnv: 'WB_API_KEY',
+        }),
+      )
+
+      expect(process.env.OPENAI_API_KEY).toBe('wb-env-key')
+      expect(String(process.env.CLAUDE_CODE_USE_OPENAI)).toBe('1')
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.WB_API_KEY
+      } else {
+        process.env.WB_API_KEY = originalKey
+      }
+    }
+  })
+
+  test('openai profile prefers inline apiKey over apiKeyEnv', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+    const originalKey = process.env.WB_API_KEY
+    process.env.WB_API_KEY = 'wb-env-key'
+    try {
+      applyProviderProfileToProcessEnv(
+        buildProfile({
+          apiKey: 'inline-key',
+          apiKeyEnv: 'WB_API_KEY',
+        }),
+      )
+
+      expect(process.env.OPENAI_API_KEY).toBe('inline-key')
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.WB_API_KEY
+      } else {
+        process.env.WB_API_KEY = originalKey
+      }
+    }
+  })
+
+  test('anthropic profile resolves apiKeyEnv from process env', async () => {
+    const { applyProviderProfileToProcessEnv } =
+      await importFreshProviderProfileModules()
+    const originalKey = process.env.DS_TEST_KEY
+    process.env.DS_TEST_KEY = 'ds-env-key'
+    try {
+      applyProviderProfileToProcessEnv(
+        buildProfile({
+          provider: 'anthropic',
+          baseUrl: 'https://api.deepseek.com/anthropic',
+          model: 'deepseek-chat',
+          apiKeyEnv: 'DS_TEST_KEY',
+        }),
+      )
+
+      expect(process.env.ANTHROPIC_API_KEY).toBe('ds-env-key')
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.DS_TEST_KEY
+      } else {
+        process.env.DS_TEST_KEY = originalKey
+      }
+    }
+  })
+
   test('anthropic profile with multi-model string sets only first model in ANTHROPIC_MODEL', async () => {
     const { applyProviderProfileToProcessEnv } =
       await importFreshProviderProfileModules()
