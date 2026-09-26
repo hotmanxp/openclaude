@@ -33,14 +33,11 @@ afterAll(() => {
 })
 
 describe('AgentTool input schema model override', () => {
-  test('accepts the 3-provider model aliases and arbitrary custom model IDs', () => {
+  test('accepts the 3-provider model aliases (fork scope)', () => {
     const acceptedModels = [
       'sonnet',
       'opus',
       'haiku',
-      'hy4-preview',
-      'gpt-5',
-      'custom-model-v2',
     ]
 
     for (const model of acceptedModels) {
@@ -67,15 +64,17 @@ describe('AgentTool input schema model override', () => {
   })
 
   test('trims accepted model overrides', () => {
-    // Schema accepts any non-empty model string; trimming behavior preserved.
+    // OpenCC restricts `model` to the 3-provider scope (sonnet/opus/haiku),
+    // so the upstream deepseek/...:nitro test string is replaced with sonnet
+    // while preserving the whitespace-trim assertion.
     const result = inputSchema().safeParse({
       ...baseInput,
-      model: '  hy4-preview  ',
+      model: '  sonnet  ',
     })
 
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.model).toBe('hy4-preview')
+      expect(result.data.model).toBe('sonnet')
     }
   })
 
