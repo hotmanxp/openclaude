@@ -524,7 +524,29 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
     const anthropicKey = resolveProfileApiKey(profile)
     if (anthropicKey) {
       process.env.ANTHROPIC_API_KEY = anthropicKey
+      // The profile's key has to win. configureApiKeyHeaders() turns
+      // ANTHROPIC_AUTH_TOKEN into an Authorization: Bearer header, and the
+      // endpoint validates that ahead of the SDK's x-api-key — so an ambient
+      // token (e.g. from settings.json env) silently overrides the profile and
+      // the request 401s against the profile's baseUrl while looking correctly
+      // routed. Only clear it when the profile supplies its own key, mirroring
+      // the "no key configured" fallback kept for OPENAI_API_KEY below.
+      delete process.env.ANTHROPIC_AUTH_TOKEN
     }
+
+    // Drop the OpenAI-compatible transport selectors. applySelectedProviderModel
+    // switches to this profile when the user picks one of its models, so a stale
+    // CLAUDE_CODE_USE_OPENAI from a previously-active openai profile kept routing
+    // requests to that profile's OPENAI_BASE_URL — this profile was silently
+    // served by the old endpoint and surfaced the old provider's quota error.
+    delete process.env.CLAUDE_CODE_USE_OPENAI
+    delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_API_BASE
+    delete process.env.OPENAI_MODEL
+    delete process.env.OPENAI_API_FORMAT
+    delete process.env.OPENAI_AUTH_HEADER
+    delete process.env.OPENAI_AUTH_SCHEME
+    delete process.env.OPENAI_AUTH_HEADER_VALUE
     return
   }
 
@@ -560,6 +582,11 @@ export function applyProviderProfileToProcessEnv(profile: ProviderProfile): void
 
   delete process.env.ANTHROPIC_BASE_URL
   delete process.env.ANTHROPIC_API_KEY
+  // ANTHROPIC_AUTH_TOKEN becomes an Authorization: Bearer header on the
+  // Anthropic transport only, but it is a live credential — drop it so it can
+  // never be forwarded to this (third-party) endpoint nor leak back if the
+  // session later returns to an anthropic profile.
+  delete process.env.ANTHROPIC_AUTH_TOKEN
   // ANTHROPIC_MODEL is not deleted — it is not used when USE_OPENAI=1
 }
 

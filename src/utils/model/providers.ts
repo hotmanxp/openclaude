@@ -1,5 +1,5 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
-import { type Providers } from '../config.js'
+import { type ProviderProfile, type Providers } from '../config.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { getGlobalConfig } from '../config.js'
 import { getActiveProviderProfile } from '../providerProfiles.js'
@@ -52,6 +52,27 @@ export function getAPIProvider(): APIProvider {
     return 'openai'
   }
   return 'firstParty'
+}
+
+/**
+ * Whether this session's requests travel over the OpenAI-compatible shim.
+ *
+ * The active provider profile is authoritative — it is what the user picked and
+ * what every startup path force-applies — while CLAUDE_CODE_USE_OPENAI is a
+ * process-wide flag another profile (or an earlier session in the same shell)
+ * can leave behind. Mirroring getAPIProvider()'s profile-first order keeps the
+ * transport choice and the auth choice from disagreeing.
+ *
+ * Env stays the fallback for sessions with no profile configured, so
+ * env-only setups keep working unchanged.
+ */
+export function usesOpenAICompatibleTransport(
+  profile: ProviderProfile | undefined = getActiveProviderProfile(),
+): boolean {
+  if (profile) {
+    return profile.provider !== 'anthropic'
+  }
+  return isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
 }
 
 const API_KEY_ENV_KEYS = new Set([
