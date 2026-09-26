@@ -151,7 +151,7 @@ function presetToDraft(preset: ProviderPreset): ProviderDraft {
 
 function profileSummary(profile: ProviderProfile, isActive: boolean): string {
   const activeSuffix = isActive ? '（已激活）' : ''
-  const keyInfo = profile.apiKey ? '密钥已设置' : '无密钥'
+  const keyInfo = (profile.apiKey || profile.apiKeyEnv) ? '密钥已设置' : '无密钥'
   const providerKind =
     profile.provider === 'anthropic' ? 'anthropic' : 'openai-compatible'
   return `${providerKind} · ${profile.baseUrl} · ${profile.model} · ${keyInfo}${activeSuffix}`

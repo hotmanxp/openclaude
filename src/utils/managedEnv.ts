@@ -196,7 +196,13 @@ export function applyConfigEnvironmentVariables(): void {
 
   // Keep runtime provider/model env aligned with the active profile, except
   // when an explicit provider selection is already present in process.env.
-  applyActiveProviderProfileFromConfig()
+  // force is needed here: the Object.assign above may have just replayed
+  // stale provider-routing vars (e.g. OPENAI_BASE_URL from settings.json)
+  // over values the profile applied at startup. The non-force path sees
+  // that mismatch as "user override" and refuses to re-align, which left
+  // requests routed to the stale baseUrl (surfaced as 401 on profiles
+  // whose key comes from apiKeyEnv).
+  applyActiveProviderProfileFromConfig(undefined, { force: true })
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()
