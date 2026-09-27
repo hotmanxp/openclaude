@@ -25,6 +25,17 @@ const openplatformTextOnlyCapabilities = {
 
 export default [
   defineModel({
+    id: 'openplatform-m3.1-flash-preview',
+    label: 'M3.1 Flash Preview (Open Platform)',
+    brandId: 'openplatform',
+    vendorId: 'anthropic',
+    classification: ['chat', 'reasoning', 'vision', 'coding'],
+    defaultModel: 'M3.1-Flash-Preview',
+    capabilities: openplatformCapabilities,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 512_000,
+  }),
+  defineModel({
     id: 'openplatform-minimax-m3',
     label: 'MiniMax M3 (Open Platform)',
     brandId: 'openplatform',
