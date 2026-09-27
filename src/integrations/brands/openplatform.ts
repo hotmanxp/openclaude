@@ -13,6 +13,7 @@ export default defineBrand({
     supportsPreciseTokenCount: true,
   },
   modelIds: [
+    'openplatform-m3.1-flash-preview',
     'openplatform-minimax-m3',
     'openplatform-minimax-m2.7-highspeed',
     'openplatform-minimax-m2.7',
