@@ -191,17 +191,17 @@ test('MiniMax-M3 uses 1M context with 512K max output', () => {
   expect(getMaxOutputTokensForModel('MiniMax-M3')).toBe(512_000)
 })
 
-test('M3.1-Flash-Preview uses 1M context with 512K max output', () => {
+test('MiniMax-M3.1-Flash-Preview uses 1M context with 512K max output', () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   delete process.env.OPENAI_MODEL
 
-  expect(getContextWindowForModel('M3.1-Flash-Preview')).toBe(1_000_000)
-  expect(getModelMaxOutputTokens('M3.1-Flash-Preview')).toEqual({
+  expect(getContextWindowForModel('MiniMax-M3.1-Flash-Preview')).toBe(1_000_000)
+  expect(getModelMaxOutputTokens('MiniMax-M3.1-Flash-Preview')).toEqual({
     default: 512_000,
     upperLimit: 512_000,
   })
-  expect(getMaxOutputTokensForModel('M3.1-Flash-Preview')).toBe(512_000)
+  expect(getMaxOutputTokensForModel('MiniMax-M3.1-Flash-Preview')).toBe(512_000)
 })
 
 // Regression: 3P model served via anthropic-proxy (e.g. zn-nova) used to fall
