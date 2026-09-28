@@ -14,11 +14,12 @@ import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { clearFastModeCooldown, isFastModeAvailable, isFastModeEnabled, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1mAccess.js';
+import { getMainLoopModel } from '../../utils/model/model.js';
 import type { ModelOption } from '../../utils/model/modelOptions.js';
 import { discoverOpenAICompatibleModelOptions } from '../../utils/model/openaiModelDiscovery.js';
 import { getAPIProvider } from '../../utils/model/providers.js';
 import { applySelectedProviderModel, getActiveOpenAIModelOptionsCache, setActiveOpenAIModelOptionsCache } from '../../utils/providerProfiles.js';
-import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
+import { getMainLoopModel, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
 import { getAdditionalModelOptionsCacheScope } from '../../services/api/providerConfig.js';
@@ -331,6 +332,10 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   return <ModelPickerWrapper onDone={onDone} />;
 };
 function renderModelLabel(model: string | null): string {
-  const rendered = renderDefaultModelSetting(model ?? getDefaultMainLoopModelSetting());
+  // getMainLoopModel() honours settings.model; getDefaultMainLoopModelSetting()
+  // skips it and resolves to the pinned ANTHROPIC_DEFAULT_SONNET_MODEL tier,
+  // so a 3P user with an explicit model saw "Kept model as MiniMax-M3
+  // (default)" for a session that was actually running MiniMax-M3.1.
+  const rendered = renderDefaultModelSetting(model ?? getMainLoopModel());
   return model === null ? `${rendered} (default)` : rendered;
 }
