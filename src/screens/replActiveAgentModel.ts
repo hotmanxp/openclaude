@@ -1,6 +1,6 @@
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import {
-  getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   type ModelSetting,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -43,7 +43,6 @@ export function getActiveSessionAgentModelSelection({
 
   return {
     shouldUpdateModel: true,
-    mainLoopModelForSession:
-      baseMainLoopModel ?? getDefaultMainLoopModelSetting(),
+    mainLoopModelForSession: baseMainLoopModel ?? getMainLoopModel(),
   }
 }

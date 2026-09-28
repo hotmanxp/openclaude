@@ -21,7 +21,7 @@ import { getGlobalConfig, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
-  getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   isOpus1mMergeEnabled,
   type ModelSetting,
   parseUserSpecifiedModel,
@@ -186,7 +186,7 @@ export function isFastModeSupportedByModel(
   if (!isFastModeEnabled()) {
     return false
   }
-  const model = modelSetting ?? getDefaultMainLoopModelSetting()
+  const model = modelSetting ?? getMainLoopModel()
   const parsedModel = parseUserSpecifiedModel(model)
   return parsedModel.toLowerCase().includes('opus-4-6')
 }
