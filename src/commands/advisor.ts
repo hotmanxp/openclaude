@@ -6,7 +6,7 @@ import {
   modelSupportsAdvisor,
 } from '../utils/advisor.js'
 import {
-  getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -16,7 +16,7 @@ import { updateSettingsForSource } from '../utils/settings/settings.js'
 const call: LocalCommandCall = async (args, context) => {
   const arg = args.trim().toLowerCase()
   const baseModel = parseUserSpecifiedModel(
-    context.getAppState().mainLoopModel ?? getDefaultMainLoopModelSetting(),
+    context.getAppState().mainLoopModel ?? getMainLoopModel(),
   )
 
   if (!arg) {

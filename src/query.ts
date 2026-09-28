@@ -97,7 +97,7 @@ import {
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
-  getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
   renderModelName,
@@ -1034,10 +1034,15 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
+    // Fall back to getMainLoopModel() — NOT getDefaultMainLoopModelSetting().
+    // The latter skips settings.model entirely and resolves straight to the
+    // pinned ANTHROPIC_DEFAULT_SONNET_MODEL tier, so clearing the session model
+    // (picking "默认（推荐）" in the model picker writes mainLoopModel: null)
+    // would silently swap the whole session onto the pinned Sonnet tier.
     const appStateMainLoopModel =
       appState.mainLoopModelForSession ??
       appState.mainLoopModel ??
-      getDefaultMainLoopModelSetting()
+      getMainLoopModel()
     let currentModel = getRuntimeMainLoopModel({
       permissionMode,
       mainLoopModel: parseUserSpecifiedModel(appStateMainLoopModel),

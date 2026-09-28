@@ -2,14 +2,14 @@ import { useEffect, useReducer } from 'react'
 import { onGrowthBookRefresh } from '../services/analytics/growthbook.js'
 import { useAppState } from '../state/AppState.js'
 import {
-  getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   type ModelName,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
 
 // The value of the selector is a full model name that can be used directly in
-// API calls. Use this over getMainLoopModel() when the component needs to
-// update upon a model config change.
+// API calls. Use this over calling getMainLoopModel() directly when the
+// component needs to update upon a model config change.
 export function useMainLoopModel(): ModelName {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
@@ -28,10 +28,13 @@ export function useMainLoopModel(): ModelName {
   useEffect(() => onGrowthBookRefresh(forceRerender), [])
   useEffect(() => { forceRerender() }, [authVersion])
 
+  // getMainLoopModel() honours settings.model; getDefaultMainLoopModelSetting()
+  // skips it and resolves to the pinned ANTHROPIC_DEFAULT_SONNET_MODEL tier,
+  // which desynced this hook from the model query.ts actually sends.
   const model = parseUserSpecifiedModel(
     mainLoopModelForSession ??
       mainLoopModel ??
-      getDefaultMainLoopModelSetting(),
+      getMainLoopModel(),
   )
   return model
 }

@@ -24,6 +24,7 @@ import {
   getDefaultOpusModel,
   getDefaultHaikuModel,
   getDefaultMainLoopModelSetting,
+  getMainLoopModel,
   getMarketingNameForModel,
   getUserSpecifiedModelSetting,
   isOpus1mMergeEnabled,
@@ -100,7 +101,10 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   return {
     value: null,
     label: '默认（推荐）',
-    description: `使用默认模型（当前为 ${renderDefaultModelSetting(getDefaultMainLoopModelSetting())}）${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
+    // getMainLoopModel() is what picking this row actually resolves to —
+    // it honours settings.model. getDefaultMainLoopModelSetting() would
+    // advertise the pinned ANTHROPIC_DEFAULT_SONNET_MODEL tier instead.
+    description: `使用默认模型（当前为 ${renderDefaultModelSetting(getMainLoopModel())}）${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
   }
 }
 
