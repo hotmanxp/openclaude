@@ -95,6 +95,19 @@ test('openai profile routes over the shim even without the env flag', async () =
 
 test('no profile falls back to the CLAUDE_CODE_USE_OPENAI flag', async () => {
   clearProviderEnv()
+  // Passing `undefined` triggers the `profile = getActiveProviderProfile()`
+  // default parameter, and that helper reads the process-global mock registry —
+  // where providerFallback.test.ts leaves a phantom profile installed (bun's
+  // mock.module is not undone by mock.restore()). Pin the helper to "no active
+  // profile" so this test exercises the env-fallback branch it is named for
+  // instead of whatever profile happened to leak in.
+  const { mock } = await import('bun:test')
+  const realProviderProfiles = await import('../providerProfiles.js')
+  mock.module('../providerProfiles.js', () => ({
+    ...realProviderProfiles,
+    getActiveProviderProfile: () => undefined,
+  }))
+
   const { usesOpenAICompatibleTransport } = await importFreshProvidersModule()
 
   expect(usesOpenAICompatibleTransport(undefined)).toBe(false)
