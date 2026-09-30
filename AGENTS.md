@@ -71,6 +71,39 @@ Skipping the debug log scan is incomplete — runtime errors hide behind success
 
 **Functional verification**: dispatch `tui-func-verifier` subagent for any TUI/CLI flow check, new feature smoke, or UI regression. See Project Rule #7.
 
+### 测试：不要跑全量
+
+**禁止执行 `bun test`、`bun run test`、`bun run test:full`、`bun run test:coverage` 或任何不带文件路径的 `bun test`。** 只跑改动相关的单个测试文件。
+
+```
+✅ bun test src/utils/model/providers.test.ts
+✅ bun test src/components/Foo.test.tsx src/utils/bar.test.ts
+❌ bun test
+❌ bun test --feature=UNATTENDED_RETRY
+❌ bun run test / test:full / test:coverage
+```
+
+理由：仓库 772 个测试文件、6000 个用例，全量跑约 36 秒且**输出被 `test-env-preload` 预加载 + 大量 console 噪音淹没**（非 TTY 下 `bun test` 只打 `(fail)` 不打 `(pass)`，几千个通过用例零反馈，看着像卡死）。曾因此误判"测试没反应"并反复重跑，浪费大量时间与 token。
+
+配套硬性约束：
+- 跑测试**必须重定向到日志文件**再看：`bun test <file> > /tmp/t.log 2>&1; tail -5 /tmp/t.log`。**不要用管道 `| tail`**，管道缓冲到进程结束才落盘，同样表现为"没反应"。
+- 需要统计进度用 `grep -cE '^\(fail\)' /tmp/t.log`，不要 `tail -f` 实时盯。
+- 判断某个测试是否通过，用**隔离跑**（只传该文件）。全套跑下的失败可能是跨文件污染造成的假象，不代表产品有问题。
+
+### 跨文件 mock 污染（重要）
+
+`bun:test` 的 `mock.module` 写入**进程级全局注册表**，`mock.restore()` **不撤销** module-level mock。任何测试若在 `mock.module('./X.js', ...)` 后没有在 `afterEach` 里把真实实现装回去，就会污染**之后加载 `X.js` 的所有测试文件**，且只在全套跑里暴露、隔离跑全绿。
+
+已知的污染源与受害方（历史上反复踩坑，见 `betas.test.ts`、`compact.test.ts`、`providerProfiles.test.ts`、`modelOptions.picker.test.ts`、`config.backupRecovery.test.ts` 的注释）：
+- `providerFallback.test.ts` 最后一个测试的 `getActiveProviderProfile: () => a` → 污染 `model/providers.test.ts`（已在 `229daa63` 定点修复）
+- `providerProfiles.test.ts` 泄漏的 `providerProfiles[]` → 污染 `betas.test.ts` / `compact.test.ts` 的 firstParty 判定
+
+**不要用 `--isolate` / `--parallel` 绕开**（bun 1.3.14 支持，实测均已验证）：
+- `--isolate` 能消除污染（配对测试通过），但全量跑**挂死**在 `openclaudePaths.test.ts`，内存涨到 4.6GB
+- `--parallel=N` 同样挂死在 `tests/sdk/permissions.test.ts`，并新增 11 个失败
+
+根因：仓库里有测试**依赖同进程内的共享状态** —— SDK 权限回调的 IPC 时序（`tests/sdk/permissions.test.ts` 的 50ms 超时路径）、`runAutoFixCheck` 的子进程等待、配置损坏文件的恢复逻辑。进程隔离后这些依赖全部断裂，代价远大于收益。新增测试若引入 `mock.module`，**必须在 `afterEach` 里还原**，或按 `229daa63` 的模式在**被污染方**定点防护。
+
 ## Release
 
 `bun run release` — bumps patch version by default. Major/minor only on explicit request.
