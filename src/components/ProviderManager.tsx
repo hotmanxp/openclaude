@@ -728,7 +728,7 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
                 break
             }
           }}
-          onCancel={() => closeWithCancelled('Provider manager closed')}
+          onCancel={() => closeWithCancelled('提供商管理器已关闭')}
           visibleOptionCount={options.length}
         />
       </Box>

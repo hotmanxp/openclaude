@@ -59,8 +59,8 @@ export function buildProviderManagerCompletion(result?: ProviderManagerResult): 
   const message =
     result?.message ??
     (result?.action === 'saved'
-      ? 'Provider profile updated'
-      : 'Provider manager closed')
+      ? '提供商配置文件已更新'
+      : '提供商管理器已关闭')
   const metaMessages =
     result?.action === 'activated' && result.activeProviderName
       ? [
