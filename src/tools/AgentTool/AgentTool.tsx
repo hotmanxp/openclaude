@@ -93,7 +93,15 @@ const baseInputSchema = lazySchema(() => z.object({
   description: z.string().describe('A short (3-5 word) description of the task'),
   prompt: z.string().describe('The task for the agent to perform'),
   subagent_type: z.string().optional().describe('The type of specialized agent to use for this task'),
-  model: z.string().transform(value => value.trim()).pipe(z.enum(['sonnet', 'opus', 'haiku'])).optional().describe("Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent. OpenCC restricts this to the sonnet/opus/haiku aliases (leading/trailing whitespace is trimmed)."),
+  // zod v4 `.trim()` is a built-in transformation — equivalent to "strip
+  // leading/trailing whitespace", and natively expressible as a JSON Schema
+  // `pattern` via `toJSONSchema()`, so the model still sees the constraint.
+  // **Cannot use `.transform(v => v.trim())`**: that pattern throws
+  // "Transforms cannot be represented in JSON Schema" inside
+  // `toJSONSchema()` (utils/api.ts:208 runs every tool every LLM call;
+  // AgentTool is always present, so a transform-based round-trip 500s the
+  // entire turn).
+  model: z.string().trim().min(1).optional().describe("Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent. Accepts any non-empty model string (e.g., 'sonnet', 'opus', 'haiku', or custom model IDs from your provider). Leading/trailing whitespace is trimmed."),
   run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.')
 }));
 
