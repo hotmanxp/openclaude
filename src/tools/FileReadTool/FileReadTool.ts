@@ -1045,6 +1045,12 @@ async function callInner(
       timestamp: Math.floor(stats.mtimeMs),
       offset,
       limit,
+      // Model initiated the Read itself — model has a 1:1 view of `content`
+      // unless the cells string was truncated upstream. We don't currently
+      // token-cap notebooks, but flag the future-proofing hook so
+      // contentNotInModelContext stays accurate if validateContentTokens
+      // ever caps notebooks too.
+      contentNotInModelContext: false,
     })
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
@@ -1315,6 +1321,10 @@ async function callInner(
     // isPartialView gates dedup — a truncated read must NOT dedup because the
     // content the model saw is smaller than what's on disk.
     ...(truncatedByTokenCap && { isPartialView: true }),
+    // Model initiated this Read itself. contentNotInModelContext is true only
+    // when the model's view is NOT a 1:1 mirror of `content` — currently just
+    // the token-cap truncation path.
+    contentNotInModelContext: truncatedByTokenCap === true,
   })
   context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 

@@ -1833,6 +1833,14 @@ export function memoryFilesToAttachments(
         offset: undefined,
         limit: undefined,
         isPartialView: memoryFile.contentDiffersFromDisk,
+        // Auto-injection (CLAUDE.md/AGENTS.md/MEMORY.md warm-start) — the
+        // model did not request this Read; mark so Edit/Write can take the
+        // soft-recover stale-read path instead of erroring on mtime drift.
+        // contentNotInModelContext: false when content matches disk
+        // (model's view == raw bytes); true when contentDiffersFromDisk
+        // because the cached `content` is raw, not what model saw.
+        refreshedBehindModel: true,
+        contentNotInModelContext: memoryFile.contentDiffersFromDisk,
       })
 
 
@@ -2766,6 +2774,11 @@ export function filterDuplicateMemoryAttachments(
           timestamp: m.mtimeMs,
           offset: undefined,
           limit: m.limit,
+          // Relevant memories are speculatively injected by the relevance
+          // ranker, not model-initiated Reads. Mirror upstream's
+          // refreshedBehindModel semantics so Edit/Write self-heals on drift.
+          refreshedBehindModel: true,
+          contentNotInModelContext: false,
         })
       }
       return filtered.length > 0 ? { ...attachment, memories: filtered } : null

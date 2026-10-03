@@ -4166,7 +4166,12 @@ export function REPL({
         timestamp: Date.now(),
         offset: undefined,
         limit: undefined,
-        isPartialView: file.contentDiffersFromDisk
+        isPartialView: file.contentDiffersFromDisk,
+        // Cold-start AGENTS.md warm injection — not a model-initiated Read.
+        // Mirror upstream semantics so Edit/Write can take the soft-recover
+        // stale-read path on mtime drift.
+        refreshedBehindModel: true,
+        contentNotInModelContext: file.contentDiffersFromDisk
       });
     }
 

@@ -12,6 +12,19 @@ export type FileState = {
   // Edit/Write must require an explicit Read first. `content` here holds the
   // RAW disk bytes (for getChangedFiles diffing), not what the model saw.
   isPartialView?: boolean
+  // ── Upstream Claude Code 2.1.287 alignment (feat/sync-write-edit-2.1.287) ──
+  // True when this entry was populated outside the model's request flow
+  // (auto-injection, attachments, AGENTS.md warm-start). Mirrors upstream's
+  // `refreshedBehindModel`. Edit/Write uses this to allow a soft-recover
+  // path on mtime drift (stale-read self-healing) instead of an error.
+  refreshedBehindModel?: boolean
+  // True when the model's view of this file is NOT a complete 1:1 mirror
+  // of `content` here. Set true when the file was truncated by a token
+  // cap, defused through harness-tag stripping, or read in a way the
+  // model cannot reproduce exactly. Mirrors upstream's
+  // `contentNotInModelContext`. Edit/Write reports this back on its output
+  // schema so the model knows to re-Read before chained edits.
+  contentNotInModelContext?: boolean
 }
 
 // Default max entries for read file state caches
