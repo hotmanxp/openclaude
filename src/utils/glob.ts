@@ -9,6 +9,7 @@ import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
 import { parseNullSeparated } from './ripgrepOutput.js'
 import { ripGrep } from './ripgrep.js'
+import { type SearchSession, toLexicalPath } from './searchSession.js'
 
 /**
  * Extracts the static base directory from a glob pattern.
@@ -70,6 +71,7 @@ export async function glob(
   { limit, offset }: { limit: number; offset: number },
   abortSignal: AbortSignal,
   toolPermissionContext: ToolPermissionContext,
+  session?: SearchSession,
 ): Promise<{
   files: string[]
   truncated: boolean
@@ -88,6 +90,11 @@ export async function glob(
       searchPattern = relativePattern
     }
   }
+
+  // With a session, ripgrep runs pinned to the descriptor and reports paths
+  // relative to it — the session owns spawnCwd/target and the symlink recheck.
+  const spawnDir = session?.spawnCwd ?? searchDir
+  const rgTarget = session?.target ?? searchDir
 
   const ignorePatterns = normalizePatternsToPath(
     getFileReadIgnorePatterns(toolPermissionContext),
@@ -127,17 +134,21 @@ export async function glob(
     args.push('--glob', exclusion)
   }
 
-  const rawOutput = await ripGrep(args, searchDir, abortSignal, {
+  const rawOutput = await ripGrep(args, rgTarget, abortSignal, {
     rawLines: true,
     rejectOnInputError: true,
+    cwd: session?.spawnCwd,
+    beforeSpawn: session?.recheckBeforeSpawn,
   })
 
   const allPaths = parseNullSeparated(rawOutput, 'files')
 
-  // ripgrep returns relative paths, convert to absolute
-  const absolutePaths = allPaths.map(p =>
-    isAbsolute(p) ? p : join(searchDir, p),
-  )
+  // ripgrep returns paths relative to its cwd; map them back onto the spelling
+  // the user asked about, then make them absolute.
+  const absolutePaths = allPaths.map(p => {
+    const lexical = session ? toLexicalPath(p, session) : p
+    return isAbsolute(lexical) ? lexical : join(spawnDir, lexical)
+  })
 
   const truncated = absolutePaths.length > offset + limit
   const files = absolutePaths.slice(offset, offset + limit)

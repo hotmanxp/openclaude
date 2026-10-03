@@ -14,6 +14,7 @@ import { expandPath, toRelativePath } from '../../utils/path.js'
 import { checkReadPermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
+import { openSearchSession } from '../../utils/searchSession.js'
 import { DESCRIPTION, GLOB_TOOL_NAME } from './prompt.js'
 import {
   getToolUseSummary,
@@ -193,17 +194,43 @@ export const GlobTool = buildTool({
   extractSearchText({ filenames }) {
     return filenames.join('\n')
   },
-  async call(input, { abortController, getAppState, globLimits }) {
+  async call(input, { abortController, getAppState, globLimits, toolUseId }) {
     const start = Date.now()
     const appState = getAppState()
     const limit = globLimits?.maxResults ?? 100
-    const { files, truncated, totalMatches, countIsComplete } = await glob(
-      input.pattern,
-      GlobTool.getPath(input),
-      { limit, offset: 0 },
-      abortController.signal,
-      appState.toolPermissionContext,
-    )
+    const searchRoot = GlobTool.getPath(input)
+
+    // Pin the search root for the duration of the call: the symlink
+    // resolution is re-verified immediately before ripgrep spawns, so a path
+    // rewritten in between cannot redirect the search. See searchSession.ts.
+    const session = await openSearchSession(searchRoot, [searchRoot])
+    if (session === null) {
+      const output: Output = {
+        filenames: [],
+        durationMs: Date.now() - start,
+        numFiles: 0,
+        truncated: false,
+        totalMatches: 0,
+        countIsComplete: true,
+      }
+      return { data: output }
+    }
+
+    let result
+    try {
+      result = await glob(
+        input.pattern,
+        searchRoot,
+        { limit, offset: 0 },
+        abortController.signal,
+        appState.toolPermissionContext,
+        session,
+      )
+    } finally {
+      await session.close()
+    }
+
+    const { files, truncated, totalMatches, countIsComplete } = result
     // Relativize paths under cwd to save tokens (same as GrepTool)
     const filenames = files.map(toRelativePath)
     const output: Output = {
