@@ -427,12 +427,23 @@ export function renderToolUseTag(input: Partial<{
   prompt: string;
   subagent_type: string;
   model?: ModelAlias;
-}>): React.ReactNode {
+}>, context?: {
+  toolUseResult?: unknown;
+  progressMessages?: ProgressMessage<Progress>[];
+}): React.ReactNode {
   const tags: React.ReactNode[] = [];
-  if (input.model) {
-    const mainModel = getMainLoopModel();
+  const models = resolveAgentModelChain(input, context);
+  if (models.length > 1) {
+    tags.push(<Box key="model" flexWrap="nowrap" marginLeft={1}>
+        <Text dimColor>{models.map(renderModelName).join(' → ')}</Text>
+      </Box>);
+  } else if (models.length === 1 && models[0] !== parseUserSpecifiedModel(getMainLoopModel())) {
+    tags.push(<Box key="model" flexWrap="nowrap" marginLeft={1}>
+        <Text dimColor>{renderModelName(models[0])}</Text>
+      </Box>);
+  } else if (input.model) {
     const agentModel = parseUserSpecifiedModel(input.model);
-    if (agentModel !== mainModel) {
+    if (agentModel !== getMainLoopModel()) {
       tags.push(<Box key="model" flexWrap="nowrap" marginLeft={1}>
           <Text dimColor>{renderModelName(agentModel)}</Text>
         </Box>);
@@ -442,6 +453,47 @@ export function renderToolUseTag(input: Partial<{
     return null;
   }
   return <>{tags}</>;
+}
+
+/**
+ * Resolve the ordered list of models an AgentTool run touched, falling back to
+ * `input.model` if neither the result nor the progress messages carry one.
+ */
+function resolveAgentModelChain(
+  input: Partial<{ model?: ModelAlias }>,
+  context?: { toolUseResult?: unknown; progressMessages?: ProgressMessage<Progress>[] },
+): ModelAlias[] {
+  const fromResult = (() => {
+    const r = context?.toolUseResult as Partial<{
+      modelsUsed?: unknown;
+      resolvedModel?: unknown;
+      model?: unknown;
+    }> | null;
+    if (!r) return [];
+    if (Array.isArray(r.modelsUsed) && r.modelsUsed.length > 0) {
+      return r.modelsUsed.filter((m: unknown): m is string => typeof m === 'string');
+    }
+    if (typeof r.resolvedModel === 'string') return [r.resolvedModel];
+    if (typeof r.model === 'string') return [r.model];
+    return [];
+  })();
+  if (fromResult.length > 0) {
+    return fromResult.map(m => parseUserSpecifiedModel(m));
+  }
+  const fromProgress = (context?.progressMessages ?? [])
+    .map(pm => {
+      const data = pm.data as Partial<{ modelsUsed?: unknown }> | undefined;
+      return Array.isArray(data?.modelsUsed) ? data!.modelsUsed! : [];
+    })
+    .flat()
+    .filter((m): m is string => typeof m === 'string');
+  if (fromProgress.length > 0) {
+    return fromProgress.map(m => parseUserSpecifiedModel(m));
+  }
+  if (input.model) {
+    return [parseUserSpecifiedModel(input.model)];
+  }
+  return [];
 }
 const INITIALIZING_TEXT = 'Initializing…';
 export function renderToolUseProgressMessage(progressMessages: ProgressMessage<Progress>[], {
