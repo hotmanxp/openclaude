@@ -89,7 +89,153 @@ export function findActualString(
     return fileContent.substring(searchIndex, searchIndex + searchString.length)
   }
 
+  // ── Upstream Claude Code 2.1.287: \uXXXX escape fallbacks ──
+  //
+  // Models routinely hand back either textual spelling of the same non-ASCII
+  // character — the escape `\uXXXX` or the literal character. Refusing both
+  // is a coin flip on which one the model happened to emit, so upstream
+  // tries swapping in both directions before giving up.
+
+  // ① The model sent escapes; the file holds the decoded characters.
+  if (UNICODE_ESCAPE_RE.test(searchString)) {
+    const decoded = decodeUnicodeEscapes(searchString)
+    if (decoded !== searchString && fileContent.includes(decoded)) {
+      return decoded
+    }
+  }
+
+  // ② The model sent characters; the file holds the escapes. Only worth
+  //    attempting if the escaped spelling could plausibly fit, and the file
+  //    actually contains a backslash-u somewhere.
+  if (NON_ASCII_RE.test(searchString)) {
+    if (escapedLength(searchString) > fileContent.length) return null
+    if (!fileContent.includes('\\u')) return null
+    return matchEscapedForm(searchString, fileContent)
+  }
+
   return null
+}
+
+// A \uXXXX escape sequence in the search string.
+const UNICODE_ESCAPE_RE = /\\u[0-9a-fA-F]{4}/
+// Any character at or above U+0080 — the range a model might have chosen to
+// write as an escape rather than emit literally.
+const NON_ASCII_RE = /[-￿]/
+
+/** Decode `\uXXXX` (and doubled backslashes) to their characters. */
+function decodeUnicodeEscapes(s: string): string {
+  return s.replace(
+    /(\\\\)|\\u([0-9a-fA-F]{4})/g,
+    (_match, backslash: string | undefined, hex: string) =>
+      backslash !== undefined
+        ? backslash
+        : String.fromCharCode(parseInt(hex, 16)),
+  )
+}
+
+/**
+ * Upper bound on the length `s` would occupy once every non-ASCII character
+ * is written as a `\uXXXX` escape — each such character costs 6 instead of 1.
+ * If even this maximum exceeds the file, no escaped spelling can be present,
+ * so the regex search is skipped entirely.
+ */
+function escapedLength(s: string): number {
+  let nonAscii = 0
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) >= 128) nonAscii++
+  }
+  return s.length + 5 * nonAscii
+}
+
+/** Count the backslashes immediately preceding index `i` in `s`. */
+function backslashesBefore(s: string, i: number): number {
+  let n = 0
+  while (s[i - 1 - n] === '\\') n++
+  return n
+}
+
+/**
+ * Find the escaped spelling of `searchString` inside `fileContent`.
+ *
+ * Mirrors upstream's `L`: escape every non-ASCII character, build a regex,
+ * and take the first match whose non-ASCII positions all sit on an even
+ * backslash run — an odd run means the backslash is itself escaped, so what
+ * looks like a character is really a literal `\u` and the match is spurious.
+ * Returns null when the match is byte-identical to the search string, since
+ * that is not a rescue.
+ */
+function matchEscapedForm(
+  searchString: string,
+  fileContent: string,
+): string | null {
+  // A trailing odd backslash run means the string is malformed as an escape
+  // sequence — there is nothing coherent to search for.
+  if (backslashesBefore(searchString, searchString.length) % 2 === 1) {
+    return null
+  }
+  // Offsets, in the escaped spelling, of each non-ASCII character.
+  const nonAsciiOffsets: number[] = []
+  if (searchString[0] === '\\') nonAsciiOffsets.push(0)
+  let cursor = 0
+  for (let i = 0; i < searchString.length; i++) {
+    if (searchString.charCodeAt(i) >= 128) {
+      nonAsciiOffsets.push(cursor)
+      cursor += 6
+    } else {
+      cursor += 1
+    }
+  }
+
+  let pattern = ''
+  for (const ch of searchString) {
+    const code = ch.codePointAt(0)!
+    if (code >= 128) {
+      // Three characters, `\\` + `u`: a two-character `\u` would be read by
+      // the RegExp engine as the start of a unicode escape and degrade into
+      // matching a bare `u`.
+      //
+      // Upstream's other trick: emit a character class per hex LETTER so the
+      // pattern matches both `\u00E9` and `\u00e9`. Emitting a fixed case
+      // silently misses whichever spelling the file happens to use.
+      const hex = code.toString(16).padStart(4, '0')
+      pattern +=
+        '\\\\u' +
+        [...hex]
+          .map(h => (h >= 'a' && h <= 'f' ? `[${h}${h.toUpperCase()}]` : h))
+          .join('')
+    } else {
+      pattern += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+
+  try {
+    const re = new RegExp(pattern, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(fileContent)) !== null) {
+      const at = m.index
+      const allEven = nonAsciiOffsets.every(
+        off => backslashesBefore(fileContent, at + off) % 2 === 0,
+      )
+      if (!allEven) continue
+      return m[0] === searchString ? null : m[0]
+    }
+    return null
+  } catch {
+    // A pathological pattern is not worth failing the whole edit over;
+    // upstream logs and gives up here too.
+    return null
+  }
+}
+
+/**
+ * True when the search string carries a `\uXXXX` escape or a non-ASCII
+ * character, i.e. the escaped/literal duality was in play. Used to append
+ * upstream's explanatory note to the not-found error.
+ */
+export function triedEscapeSwapping(searchString: string): boolean {
+  return (
+    UNICODE_ESCAPE_RE.test(searchString) || NON_ASCII_RE.test(searchString)
+  )
 }
 
 /**

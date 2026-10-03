@@ -1,4 +1,8 @@
 import { dirname, isAbsolute, sep } from 'path'
+import {
+  clear as clearWritePermissionStash,
+  stash as stashWritePermission,
+} from '../../services/writePermissionStash/writePermissionStash.js'
 import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -53,6 +57,7 @@ import { validateInputForSettingsFileEdit } from '../../utils/settings/validateE
 import {
   FILE_EDIT_TOOL_NAME,
   FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+  stagedWriteMessage,
 } from './constants.js'
 import { getEditToolDescription } from './prompt.js'
 import {
@@ -60,6 +65,7 @@ import {
   type FileEditOutput,
   inputSchema,
   outputSchema,
+  outputSchemaAcrossProcesses,
 } from './types.js'
 import {
   getToolUseSummary,
@@ -74,6 +80,7 @@ import {
   findActualString,
   getPatchForEdit,
   preserveQuoteStyle,
+  triedEscapeSwapping,
 } from './utils.js'
 
 // V8/Bun string length limit is ~2^30 characters (~1 billion). For typical
@@ -86,10 +93,22 @@ const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB (stat bytes)
 export const FileEditTool = buildTool({
   name: FILE_EDIT_TOOL_NAME,
   searchHint: 'modify file contents in place',
+  // ── Upstream Claude Code 2.1.287 metadata ──
+  ruleContentField: 'file_path',
+  backgrounding: 'never',
+  remoteExecution: {
+    supported: true,
+    decidingInputFields: [
+      'file_path',
+      'old_string',
+      'new_string',
+      'replace_all',
+    ],
+  },
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
-    return 'Performs exact string replacements in files.'
+    return 'A tool for editing files'
   },
   async prompt() {
     return getEditToolDescription()
@@ -105,6 +124,52 @@ export const FileEditTool = buildTool({
   },
   get outputSchema() {
     return outputSchema()
+  },
+  outputSchemaAcrossProcesses() {
+    return outputSchemaAcrossProcesses()
+  },
+  fromAnotherProcess(output, input, opts) {
+    return {
+      data: {
+        ...(output as object),
+        filePath: String((input as { file_path?: string })?.file_path ?? ''),
+        userModified: opts?.userModified === true,
+      },
+    }
+  },
+  stripForStorage(output) {
+    const o = output as FileEditOutput
+    if (typeof o !== 'object' || o === null) return output
+    if ((o.originalFile ?? '') === '') return output
+    return { ...o, originalFile: '' }
+  },
+  coerceInput(input) {
+    // Upstream's `Rtn`: alias normalization for the four canonical fields.
+    const raw = input as Record<string, unknown> | null
+    if (!raw || typeof raw !== 'object') return null
+    const filePath = raw.file_path ?? raw.path
+    const oldString = raw.old_string ?? raw.old_str
+    const newString = raw.new_string ?? raw.new_str
+    const replaceAll = raw.replace_all ?? raw.replace_name
+    if (
+      typeof filePath !== 'string' ||
+      typeof oldString !== 'string' ||
+      typeof newString !== 'string'
+    ) {
+      return null
+    }
+    const next: Record<string, unknown> = {
+      ...raw,
+      file_path: filePath,
+      old_string: oldString,
+      new_string: newString,
+    }
+    if (replaceAll !== undefined) next.replace_all = replaceAll
+    delete next.path
+    delete next.old_str
+    delete next.new_str
+    delete next.replace_name
+    return { input: next, shapeClass: 'edit' }
   },
   toAutoClassifierInput(input) {
     return `${input.file_path}: ${input.new_string}`
@@ -124,6 +189,16 @@ export const FileEditTool = buildTool({
   },
   async checkPermissions(input, context): Promise<PermissionDecision> {
     const appState = context.getAppState()
+    const toolUseId = context.toolUseId
+    if (toolUseId) {
+      const fullFilePath = expandPath(input.file_path)
+      // Upstream records the write intent before deciding so the permission
+      // card can resolve the path even when the decision is a hard deny.
+      stashWritePermission(toolUseId, fullFilePath, [
+        input.file_path,
+        fullFilePath,
+      ])
+    }
     return checkWritePermissionForTool(
       FileEditTool,
       input,
@@ -136,6 +211,17 @@ export const FileEditTool = buildTool({
   renderToolUseErrorMessage,
   async validateInput(input: FileEditInput, toolUseContext: ToolUseContext) {
     const { file_path, old_string, new_string, replace_all = false } = input
+
+    // errorCode 2 — null bytes in file_path. Must run before expandPath;
+    // path.normalize itself rejects the NUL.
+    if (file_path.includes('\0')) {
+      return {
+        result: false,
+        message: `Edit file_path cannot contain null bytes (\0). Remove the null byte and try again.`,
+        errorCode: 2,
+      }
+    }
+
     // Use expandPath for consistent path normalization (especially on Windows
     // where "/" vs "\" can cause readFileState lookup mismatches)
     const fullFilePath = expandPath(file_path)
@@ -170,6 +256,26 @@ export const FileEditTool = buildTool({
         message:
           'File is in a directory that is denied by your permission settings.',
         errorCode: 2,
+      }
+    }
+
+    // errorCode 13 — a Read deny rule also blocks edits. A user who denied
+    // Reads on a secret file should not be able to authorize an Edit to it.
+    if (
+      matchingRuleForInput(
+        fullFilePath,
+        appState.toolPermissionContext,
+        'read',
+        'deny',
+      ) !== null
+    ) {
+      return {
+        result: false,
+        behavior: 'ask',
+        message:
+          'File is covered by a Read deny rule in your permission settings and cannot be edited.',
+        errorCode: 13,
+        deniedByPermissionRule: true,
       }
     }
 
@@ -287,6 +393,15 @@ export const FileEditTool = buildTool({
     }
 
     // Check if file exists and get its last modified time
+    //
+    // Upstream 2.1.287 turns a hard failure here into a *recovery*: when the
+    // file drifted (a linter reformatted it, a teammate edited elsewhere),
+    // the edit is still attempted against the fresh on-disk content, and only
+    // rejected if it genuinely no longer applies. `fileContent` below is read
+    // fresh from disk, so the match that follows IS the real verdict — we
+    // record the drift and let the match decide, then report staleRecovered
+    // on the result so the model knows its context is behind.
+    let staleDriftDetected = false
     if (readTimestamp) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
       if (lastWriteTime > readTimestamp.timestamp) {
@@ -299,13 +414,7 @@ export const FileEditTool = buildTool({
         if (isFullRead && fileContent === readTimestamp.content) {
           // Content unchanged, safe to proceed
         } else {
-          return {
-            result: false,
-            behavior: 'ask',
-            message:
-              'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-            errorCode: 7,
-          }
+          staleDriftDetected = true
         }
       }
     }
@@ -315,10 +424,27 @@ export const FileEditTool = buildTool({
     // Use findActualString to handle quote normalization
     const actualOldString = findActualString(file, old_string)
     if (!actualOldString) {
+      // Drift is the more useful diagnosis when the file changed under us:
+      // the string may well still be there, just not where the model read it.
+      if (staleDriftDetected) {
+        return {
+          result: false,
+          behavior: 'ask',
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 7,
+        }
+      }
       return {
         result: false,
         behavior: 'ask',
-        message: `String to replace not found in file.\nString: ${old_string}`,
+        message:
+          `String to replace not found in file.\nString: ${old_string}` +
+          // Upstream appends this only when the escaped/literal duality was
+          // actually attempted — otherwise it would be noise on every miss.
+          (triedEscapeSwapping(old_string)
+            ? '\n(note: Edit also tried swapping \\uXXXX escapes and their characters; neither form matched, so the mismatch is likely elsewhere in old_string. Re-read the file and copy the exact surrounding text.)'
+            : ''),
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
@@ -358,7 +484,12 @@ export const FileEditTool = buildTool({
       return settingsValidationResult
     }
 
-    return { result: true, meta: { actualOldString } }
+    // The edit applies cleanly against the fresh content even though the
+    // file drifted — surface that so `call` can report staleRecovered.
+    return {
+      result: true,
+      meta: { actualOldString, staleRecovered: staleDriftDetected || undefined },
+    }
   },
   inputsEquivalent(input1, input2) {
     return areFileEditsInputsEquivalent(
@@ -391,6 +522,7 @@ export const FileEditTool = buildTool({
       userModified,
       updateFileHistoryState,
       dynamicSkillDirTriggers,
+      toolUseId,
     },
     _,
     parentMessage,
@@ -400,6 +532,10 @@ export const FileEditTool = buildTool({
     // 1. Get current state
     const fs = getFsImplementation()
     const absoluteFilePath = expandPath(file_path)
+    if (toolUseId) clearWritePermissionStash(toolUseId)
+    // Set when the file drifted under us but the edit still resolved against
+    // the fresh content — reported back so the model re-reads before chaining.
+    let staleRecovered = false
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
@@ -463,7 +599,16 @@ export const FileEditTool = buildTool({
         const contentUnchanged =
           isFullRead && originalFileContents === lastRead.content
         if (!contentUnchanged) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          // Upstream 2.1.287 self-heals here: the file drifted, but if the
+          // edit still resolves against the fresh content below, applying it
+          // is correct and the model is told afterwards via staleRecovered.
+          // Only refuse when the anchor is genuinely gone.
+          if (
+            !findActualString(originalFileContents, old_string)
+          ) {
+            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          }
+          staleRecovered = true
         }
       }
     }
@@ -518,11 +663,17 @@ export const FileEditTool = buildTool({
     notifyVscodeFileUpdated(absoluteFilePath, originalFileContents, updatedFile)
 
     // 6. Update read timestamp, to invalidate stale writes
+    //
+    // The model's view is now behind disk whenever the user reshaped the
+    // edit in the permission dialog, or when the file had drifted and we
+    // recovered onto fresh content. Flag it so a chained Edit re-reads.
+    const contentNotInModelContext = userModified === true
     readFileState.set(absoluteFilePath, {
       content: updatedFile,
       timestamp: getFileModificationTime(absoluteFilePath),
       offset: undefined,
       limit: undefined,
+      contentNotInModelContext,
     })
 
     // 7. Log events
@@ -559,6 +710,9 @@ export const FileEditTool = buildTool({
     }
 
     // 8. Yield result
+    //
+    // staleRecovered rides along when validateInput let a drifted file
+    // through — the model needs to know its context predates the edit.
     const data = {
       filePath: file_path,
       oldString: actualOldString,
@@ -568,29 +722,55 @@ export const FileEditTool = buildTool({
       userModified: userModified ?? false,
       replaceAll: replace_all,
       ...(gitDiff && { gitDiff }),
+      ...(staleRecovered === true && { staleRecovered: true }),
+      ...(contentNotInModelContext && { contentNotInModelContext: true }),
     }
     return {
       data,
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll } = data
+    const {
+      filePath,
+      userModified,
+      replaceAll,
+      staleRecovered,
+      contentNotInModelContext,
+      staged,
+      stagedWording,
+    } = data
+    // staged wins outright — nothing was applied, so the success copy below
+    // would be a lie. Mirrors upstream's eKn.
+    if (staged) {
+      return {
+        tool_use_id: toolUseID,
+        type: 'tool_result',
+        content: stagedWriteMessage(filePath, stagedWording ?? 'review'),
+      }
+    }
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''
+    // Upstream's note leads with a space and explains that the edit landed
+    // but the model's copy of the rest of the file is stale.
+    const staleNote = staleRecovered
+      ? ' (note: the file had been modified on disk since you last read it — the edit applied cleanly, but the file contains other changes not in your context. Read it before edits that depend on surrounding content.)'
+      : userModified || contentNotInModelContext
+        ? ''
+        : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`,
+        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${staleNote}`,
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.`,
+      content: `The file ${filePath} has been updated successfully${modifiedNote}.${staleNote}`,
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)

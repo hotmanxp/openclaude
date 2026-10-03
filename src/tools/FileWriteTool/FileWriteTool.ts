@@ -1,4 +1,5 @@
-import { dirname, sep } from 'path'
+import { lstatSync, realpathSync } from 'fs'
+import { basename, dirname, sep } from 'path'
 import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
@@ -8,12 +9,13 @@ import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnost
 import { getLspServerManager } from '../../services/lsp/manager.js'
 import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js'
 import { checkTeamMemSecrets } from '../../services/teamMemorySync/teamMemSecretGuard.js'
+import { clear as clearWritePermissionStash, stash as stashWritePermission } from '../../services/writePermissionStash/writePermissionStash.js'
 import {
   activateConditionalSkillsForPaths,
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from '../../skills/loadSkillsDir.js'
-import type { ToolUseContext } from '../../Tool.js'
+import type { ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -77,14 +79,48 @@ const outputSchema = lazySchema(() =>
     content: z.string().describe('The content that was written to the file'),
     structuredPatch: z
       .array(hunkSchema())
-      .describe('Diff patch showing the changes'),
+      .describe(
+        'Diff patch showing the changes (empty when nothing changed, the diff timed out, or — with originalFile null on an update — the previous content was too large to diff)',
+      ),
     originalFile: z
       .string()
       .nullable()
       .describe(
-        'The original file content before the write (null for new files)',
+        'The original file content before the write (null for new files, or when the previous content was too large to include)',
       ),
     gitDiff: gitDiffSchema().optional(),
+    userModified: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the user edited the proposed content in the permission dialog before accepting',
+      ),
+    staged: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the write was held for the machine owner to review instead of written; the file is unchanged',
+      ),
+    stagedWording: z
+      .enum(['review', 'card', 'linked', 'policy'])
+      .optional()
+      .describe('How the machine owner was asked to review the staged write'),
+  }),
+)
+// Cross-process schema: adds the field upstream only serializes out of
+// process. `syncedSkillNext` comes from the shared $J() enum pair upstream.
+const outputSchemaAcrossProcesses = lazySchema(() =>
+  outputSchema().extend({
+    syncedSkillNext: z
+      .enum([
+        'save_tool',
+        'propose_tool',
+        'send_file',
+        'no_save_tool',
+        'report_unsaved',
+      ])
+      .optional()
+      .describe('Team-skill sync follow-up the model should be told about'),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -92,9 +128,86 @@ type OutputSchema = ReturnType<typeof outputSchema>
 export type Output = z.infer<OutputSchema>
 export type FileWriteToolInput = InputSchema
 
+// Mirrors upstream's `Agt`: a path covered by a **Read** deny rule cannot be
+// written either. opencc's existing Edit/Write checks only consulted the
+// 'edit' deny list, so a user who denied Reads on a path (e.g. a .env) could
+// still be asked to approve a Write against it. Upstream errorCode 13.
+function isCoveredByReadDenyRule(
+  fullFilePath: string,
+  toolPermissionContext: ToolPermissionContext,
+): boolean {
+  return (
+    matchingRuleForInput(fullFilePath, toolPermissionContext, 'read', 'deny') !==
+    null
+  )
+}
+
+// Mirrors upstream's `Tgt`: refuse to write through a symlink, and point the
+// model at the link target instead. errorCode surfaces via behavior:'deny'.
+function symlinkDenyDecision(
+  fullFilePath: string,
+): PermissionDecision | null {
+  try {
+    const stats = lstatSync(fullFilePath)
+    if (!stats.isSymbolicLink()) return null
+  } catch {
+    // ENOENT / EACCES / broken link — not a symlink we can report on.
+    return null
+  }
+  let landing: string
+  try {
+    landing = realpathSync(fullFilePath)
+  } catch {
+    // Dangling symlink: we know it IS a link but not where it lands.
+    return {
+      behavior: 'deny',
+      message: `Refusing to write ${fullFilePath}: it is a symbolic link. Write to the link's target path instead: a target that could not be determined.`,
+      decisionReason: {
+        type: 'other',
+        reason: 'Write target is a symbolic link',
+      },
+    }
+  }
+  return {
+    behavior: 'deny',
+    message: `Refusing to write ${fullFilePath}: it is a symbolic link. Write to the link's target path instead: ${landing}.`,
+    decisionReason: {
+      type: 'other',
+      reason: 'Write target is a symbolic link',
+    },
+  }
+}
+
+// Mirrors upstream's `eKn` (bundle @6290995). Each branch explains WHY the
+// machine owner's approval did not carry the change through, and every one
+// ends with the same imperative — retrying or routing around the approval is
+// exactly the behaviour the owner is being asked to prevent.
+export function stagedWriteMessage(
+  filePath: string,
+  wording: 'review' | 'card' | 'linked' | 'policy',
+): string {
+  switch (wording) {
+    case 'card':
+      return `Not applied: ${filePath} was NOT modified. In the Claude desktop app, a change to a Claude Code settings file applies only when the user approves that edit on its permission card. Tell the user what you meant to change. Do not retry the edit or try to make the same change another way.`
+    case 'linked':
+      return `Not applied: ${filePath} was NOT modified. The user approved this edit on its permission card, but this path reaches a Claude Code settings file through a symbolic link, so the approval does not apply it. Tell the user what you meant to change. Do not retry the edit or try to make the same change another way.`
+    case 'policy':
+      return `Not applied: ${filePath} was NOT modified. The user approved this edit on its permission card, but this path is, or may be, a managed policy settings file or the --settings file, so the approval does not apply it. Tell the user what you meant to change. Do not retry the edit or try to make the same change another way.`
+    case 'review':
+      return `Staged for review: ${filePath} was NOT modified. Changes to Claude Code settings files made without the owner of this computer approving them in person are held for their review; the owner applies or discards them, and the change takes effect only if they accept it. Do not retry the edit or try to make the same change another way.`
+  }
+}
+
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
   searchHint: 'create or overwrite files',
+  // ── Upstream Claude Code 2.1.287 metadata ──
+  ruleContentField: 'file_path',
+  backgrounding: 'never',
+  remoteExecution: {
+    supported: true,
+    decidingInputFields: ['file_path', 'content'],
+  },
   maxResultSizeChars: 100_000,
   strict: true,
   async description() {
@@ -117,6 +230,47 @@ export const FileWriteTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema()
   },
+  outputSchemaAcrossProcesses() {
+    return outputSchemaAcrossProcesses()
+  },
+  fromAnotherProcess(output, input, opts) {
+    return {
+      data: {
+        ...(output as object),
+        filePath: String((input as { file_path?: string })?.file_path ?? ''),
+        userModified: opts?.userModified === true,
+      },
+    }
+  },
+  stripForStorage(output) {
+    const o = output as Output
+    // Creates never carry original content worth shrinking.
+    if (o.type !== 'update') return output
+    if (o.content === '' && (o.originalFile ?? '') === '') return output
+    // Nothing actually changed and there is no prior content to keep — a
+    // no-op write carries no information worth persisting verbatim.
+    if (o.structuredPatch.length === 0 && o.originalFile === null) return output
+    return { ...o, content: '', originalFile: null }
+  },
+  coerceInputBeforePluginHooks: true,
+  coerceInput(input) {
+    // Upstream's `yut` also accepts file_text/file_content/new_text/body/
+    // text/contents aliases and strips a `description` field. opencc has no
+    // attached-machine subsystem, so the only consumer is the desktop SDK
+    // replay path; normalize the two most common aliases and drop the rest
+    // rather than porting the full table.
+    const raw = input as Record<string, unknown> | null
+    if (!raw || typeof raw !== 'object') return null
+    const filePath = raw.file_path ?? raw.path
+    const content = raw.content ?? raw.file_text ?? raw.file_content
+    if (typeof filePath !== 'string' || typeof content !== 'string') return null
+    const next: Record<string, unknown> = { ...raw, file_path: filePath, content }
+    delete next.path
+    delete next.file_text
+    delete next.file_content
+    delete next.description
+    return { input: next, shapeClass: 'write' }
+  },
   toAutoClassifierInput(input) {
     return `${input.file_path}: ${input.content}`
   },
@@ -135,6 +289,15 @@ export const FileWriteTool = buildTool({
   },
   async checkPermissions(input, context): Promise<PermissionDecision> {
     const appState = context.getAppState()
+    const toolUseId = context.toolUseId
+    const fullFilePath = expandPath(input.file_path)
+    if (toolUseId) {
+      // Upstream records the write intent before deciding so the permission
+      // card can resolve the path even when the decision is a hard deny.
+      stashWritePermission(toolUseId, fullFilePath, [input.file_path, fullFilePath])
+    }
+    const symlinkDeny = symlinkDenyDecision(fullFilePath)
+    if (symlinkDeny) return symlinkDeny
     return checkWritePermissionForTool(
       FileWriteTool,
       input,
@@ -152,7 +315,40 @@ export const FileWriteTool = buildTool({
     return ''
   },
   async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
+    // errorCode 2 — null bytes in file_path. A NUL truncates the path at the
+    // syscall layer, so `foo\0.txt` passes every string check below and then
+    // writes somewhere the model never named. Mirrors upstream's `uk`.
+    // MUST run before expandPath — normalize itself rejects the NUL.
+    if (file_path.includes('\0')) {
+      return {
+        result: false,
+        message: `Write file_path cannot contain null bytes (\0). Remove the null byte and try again.`,
+        errorCode: 2,
+      }
+    }
+
     const fullFilePath = expandPath(file_path)
+
+    // ── Upstream 2.1.287 additions, in upstream's evaluation order ──
+
+    // errorCode 5 — a subagent trying to dump findings into a report file.
+    // Findings belong in the final response text, not a file on disk.
+    // The regex is `^`-anchored, so it must see the BASENAME — matching it
+    // against the full path makes the guard unreachable.
+    if (
+      toolUseContext.agentId &&
+      /^(REPORT|SUMMARY|FINDINGS|ANALYSIS).*\.md$/i.test(basename(fullFilePath))
+    ) {
+      logEvent('tengu_subagent_md_report_blocked', {
+        contentBytes: Buffer.byteLength(content),
+      })
+      return {
+        result: false,
+        message:
+          'Subagents should return findings as text, not write report files. Include this content in your final response instead.',
+        errorCode: 5,
+      }
+    }
 
     // Reject writes to team memory files that contain secrets
     const secretError = checkTeamMemSecrets(fullFilePath, content)
@@ -177,6 +373,23 @@ export const FileWriteTool = buildTool({
       }
     }
 
+    // errorCode 13 — a Read deny rule also blocks writes. A user who denied
+    // Reads on a secret file should not be able to authorize a Write to it.
+    if (
+      isCoveredByReadDenyRule(
+        fullFilePath,
+        appState.toolPermissionContext,
+      )
+    ) {
+      return {
+        result: false,
+        message:
+          'File is covered by a Read deny rule in your permission settings and cannot be written.',
+        errorCode: 13,
+        deniedByPermissionRule: true,
+      }
+    }
+
     // SECURITY: Skip filesystem operations for UNC paths to prevent NTLM credential leaks.
     // On Windows, fs.existsSync() on UNC paths triggers SMB authentication which could
     // leak credentials to malicious servers. Let the permission check handle UNC paths.
@@ -189,6 +402,24 @@ export const FileWriteTool = buildTool({
     try {
       const fileStat = await fs.stat(fullFilePath)
       fileMtimeMs = fileStat.mtimeMs
+      // errorCode 17 — the path names a directory. Write cannot create the
+      // directory entry; the model has to name the file it wants inside.
+      if (fileStat.isDirectory()) {
+        return {
+          result: false,
+          message: `${file_path} is a directory, not a file. To create a file inside it, include the file name in file_path.`,
+          errorCode: 17,
+        }
+      }
+      // errorCode 18 — device / FIFO / socket. Writing here either hangs
+      // forever (FIFO) or writes to something that is not a file at all.
+      if (!fileStat.isFile()) {
+        return {
+          result: false,
+          message: `${file_path} exists but is not a regular file (a device, FIFO or socket). Write only creates or overwrites regular files.`,
+          errorCode: 18,
+        }
+      }
     } catch (e) {
       if (isENOENT(e)) {
         return { result: true }
@@ -223,7 +454,13 @@ export const FileWriteTool = buildTool({
   },
   async call(
     { file_path, content },
-    { readFileState, updateFileHistoryState, dynamicSkillDirTriggers },
+    {
+      readFileState,
+      updateFileHistoryState,
+      dynamicSkillDirTriggers,
+      userModified,
+      toolUseId,
+    },
     _,
     parentMessage,
   ) {
@@ -330,12 +567,19 @@ export const FileWriteTool = buildTool({
     // Notify VSCode about the file change for diff view
     notifyVscodeFileUpdated(fullFilePath, oldContent, content)
 
+    // The model approved a write, but if it edited the content in the
+    // permission dialog first, what it saw in the transcript is no longer
+    // what landed on disk. Flag it so a chained Edit re-reads.
+    const contentNotInModelContext =
+      userModified === true || (oldContent !== null && oldContent !== content)
+
     // Update read timestamp, to invalidate stale writes
     readFileState.set(fullFilePath, {
       content,
       timestamp: getFileModificationTime(fullFilePath),
       offset: undefined,
       limit: undefined,
+      contentNotInModelContext,
     })
 
     // Log when writing to AGENTS.md
@@ -358,6 +602,8 @@ export const FileWriteTool = buildTool({
       })
     }
 
+    if (toolUseId) clearWritePermissionStash(toolUseId)
+
     if (oldContent) {
       const patch = getPatchForDisplay({
         filePath: file_path,
@@ -378,6 +624,7 @@ export const FileWriteTool = buildTool({
         structuredPatch: patch,
         originalFile: oldContent,
         ...(gitDiff && { gitDiff }),
+        ...(userModified !== undefined && { userModified }),
       }
       // Track lines added and removed for file updates, right before yielding result
       countLinesChanged(patch)
@@ -401,6 +648,7 @@ export const FileWriteTool = buildTool({
       structuredPatch: [],
       originalFile: null,
       ...(gitDiff && { gitDiff }),
+      ...(userModified !== undefined && { userModified }),
     }
 
     // For creation of new files, count all lines as additions, right before yielding the result
@@ -417,19 +665,36 @@ export const FileWriteTool = buildTool({
       data,
     }
   },
-  mapToolResultToToolResultBlockParam({ filePath, type }, toolUseID) {
+  mapToolResultToToolResultBlockParam(
+    { filePath, type, userModified, staged, stagedWording },
+    toolUseID,
+  ) {
+    // staged wins over every other branch — nothing was written, so the
+    // success copy would be a lie. Upstream's `eKn`.
+    if (staged) {
+      return {
+        tool_use_id: toolUseID,
+        type: 'tool_result',
+        content: stagedWriteMessage(filePath, stagedWording ?? 'review'),
+      }
+    }
+    // Upstream folds the note into the same sentence rather than emitting it
+    // as a sibling line. The leading space is part of the note.
+    const userModifiedNote = userModified
+      ? ' The user modified your proposed content before accepting it.'
+      : ''
     switch (type) {
       case 'create':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: `File created successfully at: ${filePath}${userModifiedNote}`,
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: `The file ${filePath} has been updated successfully.${userModifiedNote}`,
         }
     }
   },
