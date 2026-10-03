@@ -67,7 +67,10 @@ const outputSchema = lazySchema(() =>
     newString: z.string().describe('The new string that replaced it'),
     originalFile: z
       .string()
-      .describe('The original file contents before editing'),
+      .nullable()
+      .describe(
+        'The original file contents before editing (null when the previous content was too large to include)',
+      ),
     structuredPatch: z
       .array(hunkSchema())
       .describe('Diff patch showing the changes'),
@@ -76,10 +79,49 @@ const outputSchema = lazySchema(() =>
       .describe('Whether the user modified the proposed changes'),
     replaceAll: z.boolean().describe('Whether all occurrences were replaced'),
     gitDiff: gitDiffSchema().optional(),
+    // ── Upstream Claude Code 2.1.287 ──
+    staleRecovered: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the file had changed on disk since it was read, but the edit still applied cleanly against the fresh content',
+      ),
+    contentNotInModelContext: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the file on disk is not what the model has in context, so it should re-Read before further edits',
+      ),
+    staged: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the edit was held for the machine owner to review instead of applied; the file is unchanged',
+      ),
+    stagedWording: z
+      .enum(['review', 'card', 'linked', 'policy'])
+      .optional()
+      .describe('How the machine owner was asked to review the staged edit'),
+  }),
+)
+// Cross-process schema: adds the field upstream only serializes out of
+// process. `syncedSkillNext` comes from the shared $J() enum pair upstream.
+const outputSchemaAcrossProcesses = lazySchema(() =>
+  outputSchema().extend({
+    syncedSkillNext: z
+      .enum([
+        'save_tool',
+        'propose_tool',
+        'send_file',
+        'no_save_tool',
+        'report_unsaved',
+      ])
+      .optional()
+      .describe('Team-skill sync follow-up the model should be told about'),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
 
 export type FileEditOutput = z.infer<OutputSchema>
 
-export { inputSchema, outputSchema }
+export { inputSchema, outputSchema, outputSchemaAcrossProcesses }
