@@ -7,6 +7,7 @@ import {
 } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
+import { parseNullSeparated } from './ripgrepOutput.js'
 import { ripGrep } from './ripgrep.js'
 
 /**
@@ -69,7 +70,12 @@ export async function glob(
   { limit, offset }: { limit: number; offset: number },
   abortSignal: AbortSignal,
   toolPermissionContext: ToolPermissionContext,
-): Promise<{ files: string[]; truncated: boolean }> {
+): Promise<{
+  files: string[]
+  truncated: boolean
+  totalMatches: number
+  countIsComplete: boolean
+}> {
   let searchDir = cwd
   let searchPattern = filePattern
 
@@ -90,6 +96,8 @@ export async function glob(
 
   // Use ripgrep for better memory performance
   // --files: list files instead of searching content
+  // --null: NUL-separate records. A filename may legally contain a newline;
+  //   without --null the newline splits one path into two bogus results.
   // --glob: filter by pattern
   // --sort=modified: sort by modification time (oldest first)
   // --no-ignore: don't respect .gitignore (default true, set CLAUDE_CODE_GLOB_NO_IGNORE=false to respect .gitignore)
@@ -99,6 +107,7 @@ export async function glob(
   const hidden = isEnvTruthy(process.env.CLAUDE_CODE_GLOB_HIDDEN || 'true')
   const args = [
     '--files',
+    '--null',
     '--glob',
     searchPattern,
     '--sort=modified',
@@ -106,9 +115,11 @@ export async function glob(
     ...(hidden ? ['--hidden'] : []),
   ]
 
-  // Add ignore patterns
+  // Add ignore patterns.
+  // --iglob, not --glob: deny rules must match case-insensitively, otherwise
+  // a rule for `secret` fails to exclude a directory named `Secret`.
   for (const pattern of ignorePatterns) {
-    args.push('--glob', `!${pattern}`)
+    args.push('--iglob', `!${pattern}`)
   }
 
   // Exclude orphaned plugin version directories
@@ -116,7 +127,12 @@ export async function glob(
     args.push('--glob', exclusion)
   }
 
-  const allPaths = await ripGrep(args, searchDir, abortSignal)
+  const rawOutput = await ripGrep(args, searchDir, abortSignal, {
+    rawLines: true,
+    rejectOnInputError: true,
+  })
+
+  const allPaths = parseNullSeparated(rawOutput, 'files')
 
   // ripgrep returns relative paths, convert to absolute
   const absolutePaths = allPaths.map(p =>
@@ -126,5 +142,14 @@ export async function glob(
   const truncated = absolutePaths.length > offset + limit
   const files = absolutePaths.slice(offset, offset + limit)
 
-  return { files, truncated }
+  // rg always walks the whole tree before we slice, so this count is exact.
+  // The field exists so Glob and Grep share a result contract: callers must be
+  // able to distinguish "exactly N" from "more than N" and decide whether
+  // narrowing the pattern is worth another round trip.
+  return {
+    files,
+    truncated,
+    totalMatches: absolutePaths.length,
+    countIsComplete: true,
+  }
 }

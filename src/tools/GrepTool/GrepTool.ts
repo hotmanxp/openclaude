@@ -430,7 +430,10 @@ export const GrepTool = buildTool({
       const rgIgnorePattern = ignorePattern.startsWith('/')
         ? `!${ignorePattern}`
         : `!**/${ignorePattern}`
-      args.push('--glob', rgIgnorePattern)
+      // --iglob, not --glob: deny rules must match case-insensitively, so a
+      // rule for `secret` also excludes a directory named `Secret`. With
+      // case-sensitive --glob the deny is silently bypassed by casing.
+      args.push('--iglob', rgIgnorePattern)
     }
 
     // Exclude orphaned plugin version directories
