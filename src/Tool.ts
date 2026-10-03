@@ -451,6 +451,59 @@ export type Tool<
   // Optional because TungstenTool doesn't define this. TODO: Make it required.
   // When we do that, we can also go through and make this a bit more type-safe.
   outputSchema?: z.ZodType<unknown>
+  // ── Upstream Claude Code 2.1.287 alignment (feat/sync-write-edit-2.1.287) ──
+  // Schema variant used when serializing results across process boundaries
+  // (gRPC / SDK / forked-agent). Allows adding internal-only fields
+  // (memdirStamped, staleRecovered, stagedWording, syncedSkillNext,
+  // contentNotInModelContext) without leaking them to the model's prompt.
+  outputSchemaAcrossProcesses?(): z.ZodType<unknown>
+  // Inverse of mapToolResultToToolResultBlockParam: rebuild a typed Output
+  // from a payload produced by another process. OpenCC: declared for type
+  // parity; only Write/Edit currently implement (no live remote consumer).
+  fromAnotherProcess?(
+    output: unknown,
+    input: Partial<z.infer<Input>> | undefined,
+    opts?: { userModified?: boolean },
+  ): { data: unknown }
+  // Strip large fields (content/originalFile) before persisting to session
+  // transcripts to keep disk usage bounded. Mirrors upstream's `stripForStorage`.
+  stripForStorage?(output: Output): unknown
+  // True when this tool is a write the user has reviewed but should be
+  // attributed to themselves (e.g. machine-owner approval). Currently no
+  // consumer in OpenCC; declared for parity.
+  suppressesAllPermissionUpdates?(input: z.infer<Input>): boolean
+  // Which input field carries the path/URL/command that permission rules
+  // match against. Defaults to `input.file_path` for file tools upstream.
+  // OpenCC has no live consumer; declared for parity.
+  ruleContentField?: string
+  // Declare this tool as runnable on a remote host. `decidingInputFields`
+  // names the inputs whose values must match on the remote side. OpenCC has
+  // no remote execution subsystem — declared for type parity only.
+  remoteExecution?: {
+    supported: boolean
+    decidingInputFields: readonly string[]
+  }
+  // 'never' = tool runs synchronously in the foreground; 'self' = tool may
+  // detach itself to the background. Mirrors upstream's `backgrounding`.
+  backgrounding?: 'never' | 'self'
+  // True if this tool's invocation may itself execute code (e.g. Bash with
+  // a script). OpenCC has no live consumer; declared for parity.
+  enablesCodeExecution?: boolean
+  // Upper bound on `maxResultSizeChars` even when persisted-to-disk is on.
+  // OpenCC has no live consumer; declared for parity.
+  persistenceThresholdCeiling?: number
+  // When true, `coerceInput` runs before plugin hooks (PreToolUse /
+  // PostToolUse) so they observe the canonical shape. Currently Write-only;
+  // no live consumer for the alias normalization; declared for parity.
+  coerceInputBeforePluginHooks?: boolean
+  // Normalize legacy/alternative input field names into the canonical
+  // schema. Returns null if the input is unrecoverable. Mirrors upstream's
+  // `coerceInput` (Yut for Write, Rtn for Edit). OpenCC: declared for type
+  // parity; behavior is gated on growthbook flags absent in OpenCC.
+  coerceInput?(input: unknown): {
+    input: Partial<z.infer<Input>> | null
+    shapeClass?: string
+  } | null
   inputsEquivalent?(a: z.infer<Input>, b: z.infer<Input>): boolean
   isConcurrencySafe(input: z.infer<Input>): boolean
   isEnabled(): boolean
