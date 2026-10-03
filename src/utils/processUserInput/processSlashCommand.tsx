@@ -170,7 +170,9 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
         availableTools: freshTools,
         override: {
           agentId
-        }
+        },
+        // Module 1551: tag slash-command spawns with the command name.
+        spawnedBySkill: commandName,
       })) {
         agentMessages.push(message);
       }

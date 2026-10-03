@@ -3,6 +3,7 @@ import {
   clear as clearWritePermissionStash,
   stash as stashWritePermission,
 } from '../../services/writePermissionStash/writePermissionStash.js'
+import { symlinkDenyDecision } from '../FileWriteTool/FileWriteTool.js'
 import { AGENT_INSTRUCTIONS_FILE } from '../../constants/product.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -199,6 +200,11 @@ export const FileEditTool = buildTool({
         fullFilePath,
       ])
     }
+    // Same guard FileWriteTool applies — an Edit that follows a link would
+    // otherwise write through it to the target, routing the edit past the
+    // check Write enforces on the same path.
+    const symlinkDeny = symlinkDenyDecision(expandPath(input.file_path))
+    if (symlinkDeny) return symlinkDeny
     return checkWritePermissionForTool(
       FileEditTool,
       input,

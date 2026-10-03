@@ -144,7 +144,9 @@ function isCoveredByReadDenyRule(
 
 // Mirrors upstream's `Tgt`: refuse to write through a symlink, and point the
 // model at the link target instead. errorCode surfaces via behavior:'deny'.
-function symlinkDenyDecision(
+// Shared with FileEditTool — an Edit that follows a link while Write refuses
+// one lets a link route a write past the check entirely.
+export function symlinkDenyDecision(
   fullFilePath: string,
 ): PermissionDecision | null {
   try {
