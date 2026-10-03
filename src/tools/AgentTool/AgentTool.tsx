@@ -63,6 +63,10 @@ import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
 import { runAgent } from './runAgent.js';
+import {
+  clearWorktreeFromAgentMetadata,
+  writeSubagentProgressToOutputSink,
+} from './runAgent.js'
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -850,6 +854,14 @@ export const AgentTool = buildTool({
       cwd,
       description,
       agentName: name,
+      // Module 1551 wiring: pass through the new params when the call site
+      // has them in scope.
+      ...(worktreeInfo?.worktreeBranch
+        ? { worktreeBranch: worktreeInfo.worktreeBranch }
+        : {}),
+      ...(name ? { name } : {}),
+      ...(toolUseID ? { toolUseId: toolUseID } : {}),
+      ...(extraMetadata ? { extraMetadata } : {}),
     };
 
     // Helper to wrap execution with a cwd override. Worktree wins if present;
@@ -887,11 +899,18 @@ export const AgentTool = buildTool({
           // Clear worktreePath from metadata so resume doesn't try to use
           // a deleted directory, but keep an explicit child-repo cwd when
           // present so resume can still land in the target repository.
-          void writeAgentMetadata(asAgentId(earlyAgentId), {
-            agentType: selectedAgent.agentType,
-            source: selectedAgent.source,
-            ...(cwd && { cwd }),
-            ...(description && { description }),
+          // Module 1551: use the dedicated helper which also writes
+          // `worktreeCleanlyRemoved: true` for downstream consumers.
+          void clearWorktreeFromAgentMetadata({
+            agentId: asAgentId(earlyAgentId),
+            removedWorktreePath: worktreePath,
+            spawnMetadata: {
+              agentType: selectedAgent.agentType,
+              source: selectedAgent.source,
+              ...(cwd && { cwd }),
+              ...(description && { description }),
+              ...(worktreeBranch && { worktreeBranch }),
+            },
           }).catch(_err => logForDebugging(`Failed to clear worktree metadata: ${_err}`));
           return {};
         }
