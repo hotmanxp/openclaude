@@ -78,6 +78,7 @@ import { readFileInRange } from '../../utils/readFileInRange.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
+import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
 import { FILE_READ_TOOL_NAME } from './constants.js'
 import { getDefaultFileReadingLimits } from './limits.js'
 import {
@@ -135,6 +136,27 @@ function isBlockedDevicePath(filePath: string): boolean {
 const THIN_SPACE = String.fromCharCode(8239)
 
 /**
+ * Returns true when a PDF with an unknown page count is *probably* safe to
+ * read whole. We only refuse whole reads when the file is large AND pdfinfo
+ * crashed with something other than a clean nonzero exit — a small PDF that
+ * pdfinfo happens not to parse doesn't need pages parameter.
+ *
+ * Ported from upstream Claude Code's `isUncountedPDFOverWholeReadCap`. The
+ * `tengu_immutable_tide` feature flag in upstream (default off) is dropped:
+ * opencc has no GrowthBook kill-switch for this, so the threshold is fixed at
+ * the same value upstream gates on (`PDF_EXTRACT_SIZE_THRESHOLD`, 3 MB).
+ */
+function isPDFSafeUnknownPageCount(
+  sizeBytes: number,
+  failure: { reason: 'nonzero_exit' | 'no_exit_status' | 'unknown' },
+): boolean {
+  if (sizeBytes <= PDF_EXTRACT_SIZE_THRESHOLD) return true
+  if (failure.reason === 'nonzero_exit' || failure.reason === 'no_exit_status')
+    return true
+  return false
+}
+
+/**
  * Resolves macOS screenshot paths that may have different space characters.
  * macOS uses either regular space or thin space (U+202F) before AM/PM in screenshot
  * filenames depending on the macOS version. This function tries the alternate space
@@ -190,6 +212,54 @@ export class MaxFileReadTokenExceededError extends Error {
 
 // Common image extensions
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+
+/**
+ * Returns the detected image media type, or `null` if the buffer's first
+ * bytes don't match any of the supported image formats. Unlike
+ * `detectImageFormatFromBuffer` (which defaults to `'image/png'` on
+ * unknown), this surfaces a definite "not an image" verdict — needed by
+ * the magic-bytes sniff and the "image ext but wrong content" guard.
+ */
+function detectImageMediaTypeOrNull(buffer: Buffer): string | null {
+  if (buffer.length < 4) return null
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return 'image/png'
+  }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg'
+  }
+
+  // GIF: GIF87a / GIF89a — first 3 bytes "GIF"
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+    return 'image/gif'
+  }
+
+  // WebP: RIFF....WEBP
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer.length >= 12 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return 'image/webp'
+  }
+
+  return null
+}
 
 /**
  * Detects if a file path is a session-related file for analytics logging.
@@ -269,6 +339,12 @@ const outputSchema = lazySchema(() => {
           .describe('Number of lines in the returned content'),
         startLine: z.number().describe('The starting line number'),
         totalLines: z.number().describe('Total number of lines in the file'),
+        truncatedByTokenCap: z
+          .boolean()
+          .optional()
+          .describe(
+            'True when content was trimmed to fit the token cap; a hint with offset/limit follow-up is appended',
+          ),
       }),
     }),
     z.object({
@@ -791,6 +867,111 @@ async function validateContentTokens(
   }
 }
 
+type TruncationResult = {
+  content: string
+  lineCount: number
+  limit: number
+  startLine: number
+  truncatedByTokenCap: boolean
+  hint: string
+}
+
+/**
+ * Try to fit a too-large text read under `maxTokens` by trimming. Ported
+ * from upstream Claude Code 2.1.287.
+ *
+ * Two passes, each up to 6 iterations of a ×0.7 shrink:
+ *   1. Line-level: keep the first N lines that fit. Preferred when lines
+ *      are reasonably short — preserves line structure so the model can
+ *      re-read with offset/limit.
+ *   2. Char-level: fall back to N characters. Triggered when line-fitting
+ *      still doesn't fit (very long lines) or yields only whitespace.
+ *
+ * Returns `null` when neither pass converges within the cap (caller should
+ * re-throw the original MaxFileReadTokenExceededError).
+ */
+export function fitContentToTokenCap(
+  content: string,
+  filePath: string,
+  maxTokens: number,
+  observedTokenCount: number,
+): TruncationResult | null {
+  // Estimated characters per token — used to translate byte lengths to
+  // approximate token counts. Floor at 0.5 so a 1-token estimate never
+  // claims to be 1000 chars wide.
+  const charsPerToken = Math.max(0.5, content.length / Math.max(1, observedTokenCount))
+  const lengthToTokens = (len: number) => len / charsPerToken
+
+  const lines = content.split('\n')
+  const totalLines = lines.length
+
+  // Initial line count: scale by observed token count vs cap, with 15%
+  // safety margin so we don't overshoot on the first try.
+  let fittedLineCount = Math.max(
+    1,
+    Math.min(
+      totalLines,
+      Math.floor((totalLines * maxTokens) / Math.max(1, observedTokenCount) * 0.85),
+    ),
+  )
+  let fitted = lines.slice(0, fittedLineCount).join('\n')
+
+  for (let i = 0; i < 6; i++) {
+    if (lengthToTokens(fitted.length) <= maxTokens || fittedLineCount <= 1) break
+    fittedLineCount = Math.max(1, Math.floor(fittedLineCount * 0.7))
+    fitted = lines.slice(0, fittedLineCount).join('\n')
+  }
+
+  let charTruncated = false
+  if (lengthToTokens(fitted.length) > maxTokens || fitted.trim() === '') {
+    // Lines are too long (or only whitespace) for line-level pagination.
+    // Fall back to character-level.
+    let chars = Math.max(1, Math.floor(maxTokens * charsPerToken * 0.85))
+    let charFitted = ''
+    for (let i = 0; i < 6; i++) {
+      charFitted = content.slice(0, chars)
+      if (lengthToTokens(charFitted.length) <= maxTokens) break
+      chars = Math.max(1, Math.floor(chars * 0.7))
+    }
+    // Don't leave a high surrogate without its low surrogate — that produces
+    // an invalid UTF-8 string downstream.
+    const last = charFitted.charCodeAt(charFitted.length - 1)
+    if (last >= 0xd800 && last <= 0xdbff) {
+      charFitted = charFitted.slice(0, -1)
+    }
+    if (lengthToTokens(charFitted.length) > maxTokens) {
+      return null
+    }
+    fitted = charFitted
+    charTruncated = true
+  }
+
+  const lineCount = charTruncated
+    ? countNewlines(fitted) + 1
+    : fittedLineCount
+
+  const hint = charTruncated
+    ? `[${filePath}: showing the first ${fitted.length} of ${content.length} characters (${observedTokenCount} tokens, cap ${maxTokens}); this file has very long lines and cannot be paginated by line. Use ${GREP_TOOL_NAME} to find a specific section, or ${BASH_TOOL_NAME} with offset/limit to page through it. Do NOT answer from this excerpt alone if the answer may be elsewhere in the file.]`
+    : `[${filePath}: showing lines 1-${lineCount} of ${totalLines} total (${observedTokenCount} tokens, cap ${maxTokens}). Call ${BASH_TOOL_NAME} with offset=${lineCount + 1} limit=${lineCount} for the next page, or ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]`
+
+  return {
+    content: fitted,
+    lineCount,
+    limit: lineCount,
+    startLine: 1,
+    truncatedByTokenCap: true,
+    hint,
+  }
+}
+
+function countNewlines(s: string): number {
+  let n = 0
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) === 0x0a) n++
+  }
+  return n
+}
+
 type ImageResult = {
   type: 'image'
   file: {
@@ -883,10 +1064,34 @@ async function callInner(
   }
 
   // --- Image (single read, no double-read) ---
-  if (IMAGE_EXTENSIONS.has(ext)) {
+  // Magic-bytes sniffing for files with no extension: a renamed file
+  // ("foo") that's actually a PNG/JPEG/GIF/WebP should still render. Ported
+  // from upstream Claude Code 2.1.287.
+  let isImageByContent = false
+  if (ext === '') {
+    try {
+      const fs = getFsImplementation()
+      const stats = await fs.stat(resolvedFilePath)
+      if (stats.isFile()) {
+        const head = await getFsImplementation().readFileBytes(
+          resolvedFilePath,
+          16,
+        )
+        isImageByContent = detectImageMediaTypeOrNull(head) !== null
+      }
+    } catch {
+      // stat/head failed — fall through to text read
+    }
+  }
+  if (IMAGE_EXTENSIONS.has(ext) || isImageByContent) {
     // Images have their own size limits (token budget + compression) —
     // don't apply the text maxSizeBytes cap.
-    const data = await readImageWithTokenBudget(resolvedFilePath, maxTokens)
+    const data = await readImageWithTokenBudget(
+      resolvedFilePath,
+      maxTokens,
+      undefined,
+      IMAGE_EXTENSIONS.has(ext) ? ext : undefined,
+    )
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
     logFileOperation({
@@ -965,7 +1170,7 @@ async function callInner(
       }
     }
 
-    const pageCount = await getPDFPageCount(resolvedFilePath)
+    const { pageCount, pdfinfoFailure } = await getPDFPageCount(resolvedFilePath)
     if (pageCount !== null && pageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
       throw new Error(
         `This PDF has ${pageCount} pages, which is too many to read at once. ` +
@@ -976,6 +1181,21 @@ async function callInner(
 
     const fs = getFsImplementation()
     const stats = await fs.stat(resolvedFilePath)
+    // page_count_unknown guard (ported from upstream): when pdfinfo can't
+    // determine the page count AND the file is large AND the failure wasn't
+    // a benign "PDF doesn't have Pages metadata" exit, refuse whole-file read
+    // — these files tend to be too long to read whole safely.
+    if (
+      pageCount === null &&
+      pdfinfoFailure !== undefined &&
+      !isPDFSafeUnknownPageCount(stats.size, pdfinfoFailure)
+    ) {
+      throw new Error(
+        `This PDF's page count is unknown. At ${formatFileSize(stats.size)} it may be too long to read whole. ` +
+          `Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). ` +
+          `Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
+      )
+    }
     const shouldExtractPages =
       !isPDFSupported() || stats.size > PDF_EXTRACT_SIZE_THRESHOLD
 
@@ -1038,39 +1258,81 @@ async function callInner(
 
   // --- Text file (single async read via readFileInRange) ---
   const lineOffset = offset === 0 ? 0 : offset - 1
-  const { content, lineCount, totalLines, totalBytes, readBytes, mtimeMs } =
-    await readFileInRange(
-      resolvedFilePath,
-      lineOffset,
-      limit,
-      limit === undefined ? maxSizeBytes : undefined,
-      context.abortController.signal,
-    )
+  const {
+    content,
+    lineCount,
+    totalLines,
+    totalBytes,
+    readBytes,
+    mtimeMs,
+  } = await readFileInRange(
+    resolvedFilePath,
+    lineOffset,
+    limit,
+    limit === undefined ? maxSizeBytes : undefined,
+    context.abortController.signal,
+  )
 
-  await validateContentTokens(content, ext, maxTokens)
+  // Auto-truncation by token cap. Ported from upstream Claude Code 2.1.287.
+  // When the read content exceeds maxTokens AND this is a whole-file read
+  // (offset<=1, no limit, no PDF pages), try to fit it under the cap by
+  // trimming lines first, then characters if the lines are too long.
+  // Otherwise propagate MaxFileReadTokenExceededError unchanged.
+  let finalContent = content
+  let finalLineCount = lineCount
+  let finalLimit: number | undefined = limit
+  let finalStartLine: number = offset
+  let truncatedByTokenCap = false
+  let truncationHint: string | undefined
+
+  const isFullViewRead = offset <= 1 && limit === undefined && pages === undefined
+  if (isFullViewRead) {
+    try {
+      await validateContentTokens(content, ext, maxTokens)
+    } catch (e) {
+      if (!(e instanceof MaxFileReadTokenExceededError)) throw e
+      const result = fitContentToTokenCap(content, file_path, maxTokens, e.tokenCount)
+      if (result !== null) {
+        finalContent = result.content
+        finalLineCount = result.lineCount
+        finalLimit = result.limit
+        finalStartLine = result.startLine
+        truncatedByTokenCap = result.truncatedByTokenCap
+        truncationHint = result.hint
+      } else {
+        throw e
+      }
+    }
+  } else {
+    await validateContentTokens(content, ext, maxTokens)
+  }
 
   readFileState.set(fullFilePath, {
-    content,
+    content: finalContent,
     timestamp: Math.floor(mtimeMs),
     offset,
-    limit,
+    limit: finalLimit,
+    // isPartialView gates dedup — a truncated read must NOT dedup because the
+    // content the model saw is smaller than what's on disk.
+    ...(truncatedByTokenCap && { isPartialView: true }),
   })
   context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
   // Snapshot before iterating — a listener that unsubscribes mid-callback
   // would splice the live array and skip the next listener.
   for (const listener of fileReadListeners.slice()) {
-    listener(resolvedFilePath, content)
+    listener(resolvedFilePath, finalContent)
   }
 
   const data = {
     type: 'text' as const,
     file: {
       filePath: file_path,
-      content,
-      numLines: lineCount,
-      startLine: offset,
+      content: finalContent,
+      numLines: finalLineCount,
+      startLine: finalStartLine,
       totalLines,
+      ...(truncatedByTokenCap && { truncatedByTokenCap: true }),
     },
   }
   if (isAutoMemFile(fullFilePath)) {
@@ -1081,14 +1343,14 @@ async function callInner(
     operation: 'read',
     tool: 'FileReadTool',
     filePath: fullFilePath,
-    content,
+    content: finalContent,
   })
 
   const sessionFileType = detectSessionFileType(fullFilePath)
   const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
   logEvent('tengu_session_file_read', {
     totalLines,
-    readLines: lineCount,
+    readLines: finalLineCount,
     totalBytes,
     readBytes,
     offset,
@@ -1102,6 +1364,12 @@ async function callInner(
     is_session_transcript: sessionFileType === 'session_transcript',
   })
 
+  if (truncationHint) {
+    return {
+      data,
+      newMessages: [createUserMessage({ content: truncationHint, isMeta: true })],
+    }
+  }
   return { data }
 }
 
@@ -1112,12 +1380,18 @@ async function callInner(
  *
  * @param filePath - Path to the image file
  * @param maxTokens - Maximum token budget for the image
+ * @param maxBytes - Optional raw byte cap for the read (avoids OOM on huge files)
+ * @param ext - Optional declared file extension (without dot). When set and
+ *   the buffer's magic bytes don't match a known image format, throws an
+ *   actionable error instead of silently producing a broken result. Ported
+ *   from upstream Claude Code 2.1.287.
  * @returns Image data with appropriate compression applied
  */
 export async function readImageWithTokenBudget(
   filePath: string,
   maxTokens: number = getDefaultFileReadingLimits().maxTokens,
   maxBytes?: number,
+  ext?: string,
 ): Promise<ImageResult> {
   // Read file ONCE — capped to maxBytes to avoid OOM on huge files
   const imageBuffer = await getFsImplementation().readFileBytes(
@@ -1131,6 +1405,17 @@ export async function readImageWithTokenBudget(
   }
 
   const detectedMediaType = detectImageFormatFromBuffer(imageBuffer)
+
+  // Magic-bytes sanity check when caller supplied an image extension. If the
+  // bytes don't look like an image, surface an actionable error rather than
+  // silently feeding an HTML/error page into the image pipeline.
+  if (ext !== undefined && detectImageMediaTypeOrNull(imageBuffer) === null) {
+    throw new Error(
+      `File has an image extension (.${ext}) but its content is not a valid PNG/JPEG/GIF/WebP. ` +
+        `This usually means a download saved an error or login page instead of the image. ` +
+        `Use \`file "${filePath}"\` to confirm, or read it as text with \`head -c 500\`.`,
+    )
+  }
   const detectedFormat = detectedMediaType.split('/')[1] || 'png'
 
   // Try standard resize
