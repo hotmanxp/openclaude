@@ -766,6 +766,7 @@ export async function* runAgent({
     options: agentOptions,
     agentId,
     agentType: agentDefinition.agentType,
+    isAsync,
     messages: initialMessages,
     readFileState: agentReadFileState,
     abortController: agentAbortController,
