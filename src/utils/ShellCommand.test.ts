@@ -123,3 +123,36 @@ test('interrupt does not kill keep-alive commands used by asyncRewake hooks', as
   expect(result.code).toBe(2)
   expect(result.interrupted).toBe(false)
 })
+
+// Regression: the timeout handler has two paths — kill, or hand the command to
+// the background. #timedOut used to be set only on the kill path, so a command
+// that timed out and was backgrounded reported neither abortReason nor
+// timedOutAfterMs, and the model could not tell the timeout had happened.
+
+test('timeout that backgrounds the command still reports timedOutAfterMs', async () => {
+  const child = createMockChildProcess()
+  const controller = new AbortController()
+  const command = wrapSpawn(
+    child as never,
+    controller.signal,
+    40,
+    new TaskOutput('shellcommand-test-bg-timeout', null),
+    true,
+  )
+
+  // Register the handler BashTool installs; without it the timeout kills
+  // instead of handing the command over.
+  command.onTimeout?.(() => {})
+
+  // Let the 40ms timeout fire and background the command.
+  await new Promise(resolve => setTimeout(resolve, 90))
+  expect(command.status).toBe('running')
+
+  child.emit('exit', 0, null)
+  const result = await command.result
+  expect(result.timedOutAfterMs).toBe(40)
+  expect(result.abortReason).toBe('tool-timeout')
+  // Backgrounded, not killed — must not be reported as an interruption.
+  expect(result.interrupted).toBe(false)
+  expect(result.isAbort).toBe(false)
+})
