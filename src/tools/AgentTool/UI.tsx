@@ -420,7 +420,7 @@ export function renderToolUseMessage({
   if (!description || !prompt) {
     return null;
   }
-  return description;
+  return description.replace(/\s+/g, ' ').trim();
 }
 export function renderToolUseTag(input: Partial<{
   description: string;
@@ -563,10 +563,13 @@ export function renderToolUseProgressMessage(progressMessages: ProgressMessage<P
           return <MessageComponent key={processed.message.uuid} message={processed.message.data.message} lookups={subagentLookups} addMargin={false} tools={tools} commands={[]} verbose={verbose} inProgressToolUseIDs={collapsedInProgressIDs} progressMessagesForMessage={[]} shouldAnimate={false} shouldShowDot={false} style="condensed" isTranscriptMode={false} isStatic={true} />;
         })}
         </SubAgentProvider>
-        {hiddenToolUseCount > 0 && <Text dimColor>
-            +{hiddenToolUseCount} more tool{' '}
-            {hiddenToolUseCount === 1 ? 'use' : 'uses'} <CtrlOToExpand />
-          </Text>}
+        {hiddenToolUseCount > 0 && (
+          <ToolUseCountOverflowMessage
+            count={hiddenToolUseCount}
+            unit="tool use"
+            expandable
+          />
+        )}
       </Box>
     </MessageResponse>;
 }
@@ -829,42 +832,52 @@ export function extractLastToolInfo(progressMessages: ProgressMessage<Progress>[
     return getSearchReadSummaryText(searchCount, readCount, true);
   }
 
-  // Find the last tool_result message
+  // Find the last tool_result message (excluding REPL tool uses, which would
+  // pollute the summary line with self-referential "play noise")
   const lastToolResult = progressMessages.findLast((msg): msg is ProgressMessage<AgentToolProgress> => {
     if (!hasProgressMessage(msg.data)) {
       return false;
     }
     const message = msg.data.message;
-    return message.type === 'user' && message.message.content.some(c => c.type === 'tool_result');
+    return message.type === 'user' && message.message.content.some(c => {
+      if (c.type !== 'tool_result') return false;
+      const use = toolUseByID.get(c.tool_use_id);
+      return !!use && getSearchOrReadFromContent(use, tools)?.isREPL !== true;
+    });
   });
-  if (lastToolResult?.data.message.type === 'user') {
-    const toolResultBlock = lastToolResult.data.message.message.content.find(c => c.type === 'tool_result');
-    if (toolResultBlock?.type === 'tool_result') {
-      // Look up the corresponding tool_use — already indexed above
-      const toolUseBlock = toolUseByID.get(toolResultBlock.tool_use_id);
-      if (toolUseBlock) {
-        const tool = findToolByName(tools, toolUseBlock.name);
-        if (!tool) {
-          return toolUseBlock.name; // Fallback to raw name
-        }
-        const input = toolUseBlock.input as Record<string, unknown>;
-        const parsedInput = tool.inputSchema.safeParse(input);
-
-        // Get user-facing tool name
-        const userFacingToolName = tool.userFacingName(parsedInput.success ? parsedInput.data : undefined);
-
-        // Try to get summary from the tool itself
-        if (tool.getToolUseSummary) {
-          const summary = tool.getToolUseSummary(parsedInput.success ? parsedInput.data : undefined);
-          if (summary) {
-            return `${userFacingToolName}: ${summary}`;
+  try {
+    if (lastToolResult?.data.message.type === 'user') {
+      const toolResultBlock = lastToolResult.data.message.message.content.find(c => c.type === 'tool_result');
+      if (toolResultBlock?.type === 'tool_result') {
+        // Look up the corresponding tool_use — already indexed above
+        const toolUseBlock = toolUseByID.get(toolResultBlock.tool_use_id);
+        if (toolUseBlock) {
+          const tool = findToolByName(tools, toolUseBlock.name);
+          if (!tool) {
+            return toolUseBlock.name; // Fallback to raw name
           }
-        }
+          const input = toolUseBlock.input as Record<string, unknown>;
+          const parsedInput = tool.inputSchema.safeParse(input);
 
-        // Default: just show user-facing tool name
-        return userFacingToolName;
+          // Get user-facing tool name
+          const userFacingToolName = tool.userFacingName(parsedInput.success ? parsedInput.data : undefined);
+
+          // Try to get summary from the tool itself
+          const summary = tool.getToolUseSummary?.(parsedInput.success ? parsedInput.data : undefined);
+          return summary ? `${userFacingToolName}: ${summary}` : userFacingToolName;
+        }
       }
     }
+  } catch {
+    // Any throw from userFacingName/getToolUseSummary/schema parse — fall
+    // back gracefully rather than crashing the whole AgentTool frame.
+    const toolResultBlock = lastToolResult?.data.message.type === 'user'
+      ? lastToolResult.data.message.message.content.find(c => c.type === 'tool_result')
+      : undefined;
+    const toolUseBlock = toolResultBlock?.type === 'tool_result'
+      ? toolUseByID.get(toolResultBlock.tool_use_id)
+      : undefined;
+    return toolUseBlock?.name ?? null;
   }
   return null;
 }
