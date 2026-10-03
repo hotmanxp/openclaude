@@ -242,7 +242,14 @@ export const agentToolResultSchema = lazySchema(() =>
       z.object({
         type: z.literal('text'),
         text: z.string(),
-        citations: z.array(z.unknown()).nullable().optional(),
+        // Pass-through for the SDK's TextBlockParam.citations
+        // (`Array<TextCitation> | null`). `unknown` here is *not* assignable
+        // to that, which makes the whole content element fail
+        // `satisfies ToolDef`'s `ToolResultBlockParam` return, so TS widens
+        // `mapToolResultToToolResultBlockParam`'s inferred return and breaks
+        // consumers that narrow on `.type`. `any` keeps the wire field intact
+        // while staying assignable.
+        citations: z.array(z.any()).nullable().optional(),
       }),
     ),
     totalToolUseCount: z.number(),
