@@ -2321,24 +2321,6 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // Check for pending agent memory snapshot updates (only for --agent mode, internal-only)
-      if (feature('AGENT_MEMORY_SNAPSHOT') && mainThreadAgentDefinition && isCustomAgent(mainThreadAgentDefinition) && mainThreadAgentDefinition.memory && mainThreadAgentDefinition.pendingSnapshotUpdate) {
-        const agentDef = mainThreadAgentDefinition;
-        const choice = await launchSnapshotUpdateDialog(root, {
-          agentType: agentDef.agentType,
-          scope: agentDef.memory!,
-          snapshotTimestamp: agentDef.pendingSnapshotUpdate!.snapshotTimestamp
-        });
-        if (choice === 'merge') {
-          const {
-            buildMergePrompt
-          } = await import('./components/agents/SnapshotUpdateDialog.js');
-          const mergePrompt = buildMergePrompt(agentDef.agentType, agentDef.memory!);
-          inputPrompt = inputPrompt ? `${mergePrompt}\n\n${inputPrompt}` : mergePrompt;
-        }
-        agentDef.pendingSnapshotUpdate = undefined;
-      }
-
       // Skip executing /login if we just completed onboarding for it
       if (onboardingShown && prompt?.trim().toLowerCase() === '/login') {
         prompt = '';
