@@ -73,6 +73,8 @@ import {
   recordSidechainTranscript,
   setAgentTranscriptSubdir,
   writeAgentMetadata,
+  readAgentMetadata,
+  type AgentMetadata,
 } from '../../utils/sessionStorage.js'
 import {
   isRestrictedToPluginOnly,
@@ -1085,4 +1087,123 @@ function resolveSkillName(
   }
 
   return null
+}
+
+/**
+ * Derive the API request shape + non-interactive flag for a subagent spawn.
+ *
+ * Pure helper ported from upstream module 1551 (`WLn`):
+ *   - async spawns always go through as background + non-interactive
+ *   - sync spawns preserve the caller's `isNonInteractiveSession` flag
+ *
+ * Used by `runAgent` to set `requestNonInteractive` on the request shape and
+ * by callers / consumers that need a single source of truth.
+ */
+export function spawnRequestShape(
+  isAsync: boolean,
+  isNonInteractiveSession: boolean | undefined,
+): { requestShape: 'foreground' | 'background'; requestNonInteractive: boolean } {
+  return isAsync
+    ? { requestShape: 'background', requestNonInteractive: true }
+    : {
+        requestShape: 'foreground',
+        requestNonInteractive: isNonInteractiveSession ?? false,
+      }
+}
+
+/**
+ * Forward a subagent's progress message into the parent's output sink
+ * (used by the bg-progress forwarding path in AgentTool.tsx).
+ *
+ * Ported from upstream module 1551 (`cst`). opencc does not currently
+ * expose an `outputSink` on `ToolUseContext.session` — when the sink is
+ * missing, this is a defensive no-op. The throttle is built into the
+ * sink itself in upstream, so we simply respect `forwardSubagentText`
+ * and skip structured-output messages unless forwarding is enabled.
+ *
+ * @param toolUseContext Parent's tool use context (only `options` is read).
+ * @param message        Message to forward (only used for progress shape).
+ * @param isStructuredOutput  True if `message` is a structured_output message.
+ */
+export function writeSubagentProgressToOutputSink(
+  toolUseContext: ToolUseContext,
+  message: Message,
+  isStructuredOutput?: boolean,
+): void {
+  // opencc does not have an outputSink abstraction on ToolUseContext.session.
+  // Probe the upstream shape; if absent, return early.
+  const sink = (toolUseContext as unknown as {
+    session?: { outputSink?: { active?: { writeAfterInit?: (msg: unknown) => void } } }
+  }).session?.outputSink?.active
+  if (!sink?.writeAfterInit) return
+
+  const forwardSubagentText: boolean =
+    (toolUseContext.options as { forwardSubagentText?: boolean })
+      .forwardSubagentText ?? false
+
+  if (isStructuredOutput && !forwardSubagentText) return
+
+  sink.writeAfterInit(message)
+}
+
+/**
+ * Mark a subagent's worktree as cleanly removed and persist updated metadata.
+ *
+ * Ported from upstream module 1551 (`Kbr`). Reads existing metadata, merges
+ * the caller-supplied `spawnMetadata` plus any preserved fields, and writes
+ * the result back with `worktreeCleanlyRemoved: true`. Also unregisters
+ * the agent from the perfetto trace.
+ *
+ * @param agentId            The subagent whose worktree was removed.
+ * @param removedWorktreePath The worktree path that was just removed.
+ * @param spawnMetadata      Metadata to merge into the persisted record.
+ */
+export async function clearWorktreeFromAgentMetadata({
+  agentId,
+  removedWorktreePath,
+  spawnMetadata,
+}: {
+  agentId: AgentId
+  removedWorktreePath: string
+  spawnMetadata: Partial<AgentMetadata>
+}): Promise<void> {
+  try {
+    unregisterPerfettoAgent(agentId)
+  } catch (err) {
+    logForDebugging(`clearWorktreeFromAgentMetadata: unregister perfetto failed: ${err}`)
+  }
+
+  let existing: AgentMetadata | null = null
+  try {
+    existing = await readAgentMetadata(agentId)
+  } catch (err) {
+    logForDebugging(`clearWorktreeFromAgentMetadata: read failed: ${err}`)
+  }
+
+  // Compute fallback cwd: keep the original cwd if it differs from the
+  // removed worktree path (multi-repo parent fallback).
+  const fallbackCwd =
+    existing?.cwd && existing.cwd !== removedWorktreePath ? existing.cwd : undefined
+
+  const merged: Partial<AgentMetadata> = {
+    ...spawnMetadata,
+    ...(fallbackCwd !== undefined ? { cwd: fallbackCwd } : {}),
+    ...(existing?.stoppedByUser ? { stoppedByUser: true } : {}),
+    ...(existing?.parentAgentId ? { parentAgentId: existing.parentAgentId } : {}),
+    ...(existing?.pluginSteered === true ? { pluginSteered: true } : {}),
+    ...(existing?.requestShape === 'foreground' ||
+    existing?.requestShape === 'background'
+      ? { requestShape: existing.requestShape }
+      : {}),
+    ...(typeof existing?.requestNonInteractive === 'boolean'
+      ? { requestNonInteractive: existing.requestNonInteractive }
+      : {}),
+    worktreeCleanlyRemoved: true,
+  }
+
+  try {
+    await writeAgentMetadata(agentId, merged as AgentMetadata)
+  } catch (err) {
+    logForDebugging(`clearWorktreeFromAgentMetadata: write failed: ${err}`)
+  }
 }
