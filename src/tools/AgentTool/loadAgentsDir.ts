@@ -209,7 +209,9 @@ export function getActiveAgentsFromList(
     }
   }
 
-  return Array.from(agentMap.values())
+  return Array.from(agentMap.values()).sort((a, b) =>
+    a.agentType.localeCompare(b.agentType),
+  )
 }
 
 /**
@@ -244,6 +246,44 @@ export function filterAgentsByMcpRequirements(
   availableServers: string[],
 ): AgentDefinition[] {
   return agents.filter(agent => hasRequiredMcpServers(agent, availableServers))
+}
+
+/**
+ * Returns the logical source label for an agent's MCP server definitions,
+ * distinguishing additional-directory agents from the canonical project set.
+ */
+export function agentMcpSource(agent: AgentDefinition): string {
+  return (agent as { fromAdditionalDirectory?: boolean }).fromAdditionalDirectory
+    ? 'additionalDirectory'
+    : agent.source
+}
+
+/**
+ * Convert agents into the trimmed info shape used for prompt listings.
+ */
+export function toAgentInfos(
+  agents: AgentDefinition[],
+): Array<{ name: string; description: string; model?: string }> {
+  return agents.map(a => ({
+    name: a.agentType,
+    description: a.whenToUse,
+    model: a.model,
+  }))
+}
+
+/**
+ * Recompute the active-agents view after the all-agents list has changed
+ * (e.g., a new file was added to the agents directory).
+ */
+export function rebuildAgentDefinitions(
+  previous: AgentDefinitionsResult,
+  allAgents: AgentDefinition[],
+): AgentDefinitionsResult {
+  return {
+    ...previous,
+    allAgents,
+    activeAgents: getActiveAgentsFromList(allAgents),
+  }
 }
 
 export const getAgentDefinitionsWithOverrides = memoize(
