@@ -1007,19 +1007,51 @@ export async function* runAgent({
     logForDebugging(`Failed to write agent metadata: ${_err}`)
   }
 
+  // (E) Resume-slicing: when `recordedUuids` is provided (the resume call
+  // site), slice initialMessages down to only the messages *after* the
+  // last already-recorded UUID. Already-persisted messages are skipped
+  // (both for the initial fire-and-forget record and for the inner loop).
+  // We compute the slice once, before the initial record write, so that
+  // `lastRecordedUuid` correctly anchors to the *last* message we
+  // actually wrote.
+  let messagesToRecord: Message[] = initialMessages
+  if (recordedUuids && recordedUuids.size > 0) {
+    // findLastIndex: scan backwards for the highest index whose uuid is in
+    // the already-recorded set. Anything strictly after that is new.
+    let lastRecordedIdx = -1
+    for (let i = initialMessages.length - 1; i >= 0; i--) {
+      const messageUuid = (initialMessages[i] as { uuid?: UUID }).uuid
+      if (typeof messageUuid === 'string' && recordedUuids.has(messageUuid)) {
+        lastRecordedIdx = i
+        break
+      }
+    }
+    if (lastRecordedIdx >= 0) {
+      messagesToRecord = initialMessages.slice(lastRecordedIdx + 1)
+    }
+  }
+
   // Record initial messages before the query loop starts.
   // Fire-and-forget — persistence failure shouldn't block the agent.
   // Only write the transcript if identity metadata was successfully persisted,
   // ensuring we never leave a transcript that would resume without its restricted identity.
   if (metadataWritten) {
-    void recordSidechainTranscript(initialMessages, agentId).catch(_err =>
-      logForDebugging(`Failed to record sidechain transcript: ${_err}`),
-    )
+    if (messagesToRecord.length > 0) {
+      void recordSidechainTranscript(messagesToRecord, agentId).catch(_err =>
+        logForDebugging(`Failed to record sidechain transcript: ${_err}`),
+      )
+    }
   } else {
     logForDebugging('Skipping initial transcript write because identity metadata persistence failed')
   }
-  // Track the last recorded message UUID for parent chain continuity
-  let lastRecordedUuid: UUID | null = initialMessages.at(-1)?.uuid ?? null
+  // Track the last recorded message UUID for parent chain continuity.
+  // When we sliced, anchor to the last message we *just wrote* (which may
+  // be earlier than the original initialMessages tail). When we didn't
+  // slice (no recordedUuids), preserve the previous behavior.
+  let lastRecordedUuid: UUID | null =
+    messagesToRecord.length > 0
+      ? (messagesToRecord.at(-1)?.uuid as UUID | undefined) ?? null
+      : initialMessages.at(-1)?.uuid ?? null
 
   try {
     let queryTerminal: Terminal | undefined
@@ -1109,9 +1141,19 @@ export async function* runAgent({
         }
 
         if (isRecordableMessage(message)) {
+          // (E) Resume continuation: skip re-recording messages whose uuid
+          // is already in `recordedUuids` (the resume call site already
+          // wrote them). Still update the chain anchor so newly-yielded
+          // messages attach to the right parent.
+          const alreadyRecorded =
+            recordedUuids !== undefined &&
+            recordedUuids.size > 0 &&
+            typeof message.uuid === 'string' &&
+            recordedUuids.has(message.uuid)
+
           // Record only the new message with correct parent (O(1) per message)
           // Only write if identity metadata was successfully persisted.
-          if (metadataWritten) {
+          if (metadataWritten && !alreadyRecorded) {
             await recordSidechainTranscript(
               [message],
               agentId,
