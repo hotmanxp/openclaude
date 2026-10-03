@@ -107,6 +107,7 @@ import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
 async function initializeAgentMcpServers(
   agentDefinition: AgentDefinition,
   parentClients: MCPServerConnection[],
+  onMcpServersBlocked?: (info: unknown) => void,
 ): Promise<{
   clients: MCPServerConnection[]
   tools: Tools
@@ -131,6 +132,14 @@ async function initializeAgentMcpServers(
     logForDebugging(
       `[Agent: ${agentDefinition.agentType}] Skipping MCP servers: strictPluginOnlyCustomization locks MCP to plugin-only (agent source: ${agentDefinition.source})`,
     )
+    // (G) Fire telemetry for dropped MCP servers. opencc does not currently
+    // expose mcpServerPolicy enforcement here, but when an external policy
+    // gate drops servers, surface the event for callers (e.g. Workflow UI).
+    onMcpServersBlocked?.({
+      agentType: agentDefinition.agentType,
+      reason: 'plugin-only-policy',
+      requestedServers: agentDefinition.mcpServers ?? [],
+    })
     return {
       clients: parentClients,
       tools: [],
@@ -633,6 +642,18 @@ export async function* runAgent({
         alwaysAllowRules: {
           // Preserve SDK-level permissions from --allowedTools
           cliArg: state.toolPermissionContext.alwaysAllowRules.cliArg,
+          // Preserve parent mcpServerPolicy if present (forward-compat — opencc
+          // doesn't read this today but upstream module 1551 threads it
+          // through so resuming subagents keep MCP gating).
+          ...(state.toolPermissionContext.alwaysAllowRules as {
+            mcpServerPolicy?: unknown
+          }).mcpServerPolicy
+            ? {
+                mcpServerPolicy: (state.toolPermissionContext.alwaysAllowRules as {
+                  mcpServerPolicy?: unknown
+                }).mcpServerPolicy,
+              }
+            : {},
           // Use the provided allowedTools as session-level permissions
           session: [...allowedTools],
         },
@@ -669,9 +690,30 @@ export async function* runAgent({
     ? availableTools
     : resolveAgentTools(agentDefinition, availableTools, isAsync).resolvedTools
 
-  const additionalWorkingDirectories = Array.from(
+  // (H) Zero-tool spawn refusal — match upstream's `Ft` guard. When
+  // resolveAgentTools returned no tools AND the caller had tools to choose
+  // from AND we are not in the resume path, refuse the spawn with the
+  // upstream error message so behavior parity is preserved.
+  if (
+    !useExactTools &&
+    resolvedTools.length === 0 &&
+    availableTools.length > 0
+  ) {
+    throw new Error(
+      `[Agent: ${agentDefinition.agentType}] subagent zero-tool spawn refused`,
+    )
+  }
+
+  let additionalWorkingDirectories = Array.from(
     appState.toolPermissionContext.additionalWorkingDirectories.keys(),
   )
+
+  // (C) Add worktree path to additionalWorkingDirectories when set so the
+  // subagent's prompt / system reminder sees the worktree as in-scope. Skip
+  // if already present (the parent may have added it explicitly).
+  if (worktreePath && !additionalWorkingDirectories.includes(worktreePath)) {
+    additionalWorkingDirectories = [...additionalWorkingDirectories, worktreePath]
+  }
 
   const agentSystemPrompt = override?.systemPrompt
     ? asSystemPrompt(withUltracodeReminder(withUltracodePrompt(override.systemPrompt)))
@@ -825,6 +867,7 @@ export async function* runAgent({
   } = await initializeAgentMcpServers(
     agentDefinition,
     toolUseContext.options.mcpClients,
+    onMcpServersBlocked,
   )
 
   // Merge agent MCP tools with resolved agent tools, deduplicating by name.
@@ -895,6 +938,32 @@ export async function* runAgent({
     agentToolUseContext.preserveToolUseResults = true
   }
 
+  // (L) Propagate worktree path onto the subagent context so downstream
+  // tools (e.g. Bash, Read) can resolve the correct cwd / git root. opencc
+  // does not have a typed `agentWorktree` slot on ToolUseContext — write
+  // defensively via a cast so future code can read it.
+  if (worktreePath) {
+    ;(agentToolUseContext as unknown as { agentWorktree?: string }).agentWorktree =
+      worktreePath
+  }
+
+  // (L-equivalent) thread parentToolUseID + name onto the subagent context
+  // so progress callbacks can attribute emissions back to the parent.
+  if (toolUseId) {
+    ;(agentToolUseContext as unknown as { parentToolUseID?: string }).parentToolUseID =
+      toolUseId
+  }
+  if (name) {
+    ;(agentToolUseContext as unknown as { name?: string }).name = name
+  }
+  if (persistedToolResultFiles) {
+    ;(
+      agentToolUseContext as unknown as {
+        persistedToolResultFiles?: string[]
+      }
+    ).persistedToolResultFiles = persistedToolResultFiles
+  }
+
   // Expose cache-safe params for background summarization (prompt cache sharing)
   if (onCacheSafeParams) {
     onCacheSafeParams({
@@ -919,6 +988,19 @@ export async function* runAgent({
       // to the child repo if the worktree is later removed.
       ...(cwd && { cwd }),
       ...(description && { description }),
+      ...(worktreeBranch && { worktreeBranch }),
+      ...(name && { name }),
+      ...(toolUseId && { toolUseId }),
+      ...(spawnedBySkill && { spawnedBySkill }),
+      ...(spawnedByForkedSkill && { spawnedByForkedSkill }),
+      ...(forkOrigin && { forkOrigin }),
+      ...(spawnedByWorkflowRunId && { spawnedByWorkflowRunId }),
+      ...(workflowPhase && { workflowPhase }),
+      ...(requestShape && { requestShape }),
+      ...(typeof requestNonInteractive === 'boolean' && {
+        requestNonInteractive,
+      }),
+      ...(extraMetadata ?? {}),
     })
     metadataWritten = true
   } catch (_err) {
@@ -984,7 +1066,33 @@ export async function* runAgent({
           message.ttftMs != null
         ) {
           toolUseContext.pushApiMetricsEntry?.(message.ttftMs)
+          // (K) Fire response_start hook for live spinner ETA display
+          if (onStreamTokenEstimate) {
+            onStreamTokenEstimate({ type: 'response_start' })
+          }
           continue
+        }
+
+        // (K) Token-rate forwarder — best-effort. Inspect the stream event
+        // for usage / token_delta fields; opencc's shape may vary. We don't
+        // have a stable contract yet, so emit a synthetic delta whenever a
+        // stream_event yields a non-zero usage block. This is forward-compat
+        // — when upstream lands a precise contract, replace this with the
+        // exact delta computation.
+        if (
+          onStreamTokenEstimate &&
+          message.type === 'stream_event' &&
+          (message.event as { type?: string }).type === 'message_delta'
+        ) {
+          const ev = message.event as { usage?: { output_tokens?: number } }
+          const delta =
+            typeof ev.usage?.output_tokens === 'number'
+              ? ev.usage.output_tokens
+              : 1
+          onStreamTokenEstimate({
+            type: 'tokens',
+            estimatedTokensDelta: delta,
+          })
         }
 
         // Yield attachment messages (e.g., structured_output) without recording them
