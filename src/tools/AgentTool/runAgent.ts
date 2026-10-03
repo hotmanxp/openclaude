@@ -283,6 +283,32 @@ export async function* runAgent({
   onQueryProgress,
   agentName,
   routingSubagentType,
+  // --- new module 1551 params (all optional, additive) ---
+  requestShape,
+  requestNonInteractive,
+  webFetchReadmissionAllowed,
+  persistedToolResultFiles,
+  stickyBetas,
+  worktreeBranch,
+  session,
+  spawnMode,
+  name,
+  toolUseId,
+  spawnedBySkill,
+  spawnedByForkedSkill,
+  forkOrigin,
+  spawnedByWorkflowRunId,
+  workflowPhase,
+  onStreamTokenEstimate,
+  onMcpServersBlocked,
+  onModelRestricted,
+  isTeammate,
+  teammateContext,
+  recordedUuids,
+  extraMetadata,
+  requiresStructuredOutput,
+  handbackOptIn,
+  handbackTool,
 }: {
   agentDefinition: AgentDefinition
   promptMessages: Message[]
@@ -354,6 +380,86 @@ export async function* runAgent({
    *  which drops the original subagent_type that agentRouting is keyed on. Pass
    *  the original subagent_type here so the configured route still resolves. */
   routingSubagentType?: string
+  // --- new module 1551 params (upstream module 1551 / 2.1.287) ---
+  /** API request shape — defaults to `isAsync ? 'background' : 'foreground'`. */
+  requestShape?: 'foreground' | 'background'
+  /** Explicit `isNonInteractiveSession` hint for the request. */
+  requestNonInteractive?: boolean
+  /** Allows web fetch tool back in when normally gated. Passed through to
+   * `resolveAgentTools`. opencc does not currently gate web fetch — kept
+   * as a forward-compat pass-through. */
+  webFetchReadmissionAllowed?: boolean
+  /** List of file paths whose tool result content is persisted on the
+   * agent context. opencc does not persist tool results; kept as a field
+   * for parity — assigned to the subagent context when provided. */
+  persistedToolResultFiles?: string[]
+  /** Pre-resolved beta configuration for the request; bypasses auto-decide
+   * inside runAgent. opencc does not have a beta-resolution ladder — kept
+   * for parity, currently no-op until betas land. */
+  stickyBetas?: unknown
+  /** Branch the worktree was checked out at. Persisted to metadata for
+   * resume / cleanup. */
+  worktreeBranch?: string
+  /** Explicit session override (default = parent's session). opencc does
+   * not currently consume a session override inside runAgent — kept for
+   * parity. */
+  session?: unknown
+  /** Permission mode override at spawn (vs. agent definition's
+   * `permissionMode`). opencc does not have a separate `spawnMode` field;
+   * kept for parity. */
+  spawnMode?: unknown
+  /** Agent name override for routing/UI; persisted in metadata. */
+  name?: string
+  /** The parent's tool-use ID this subagent was spawned from. Used by
+   * progress forwarding to attach to `parentToolUseID`. */
+  toolUseId?: string
+  /** Name of the skill that triggered the spawn. */
+  spawnedBySkill?: string
+  /** Name of the forked-skill spawn chain (if applicable). */
+  spawnedByForkedSkill?: string
+  /** Origin marker on the query (`'tool' | 'skill' | ...`). */
+  forkOrigin?: string
+  /** Workflow run id linking the subagent to a workflow (workflow subagents). */
+  spawnedByWorkflowRunId?: string
+  /** Current phase the workflow is in when spawning this subagent.
+   * Persisted to metadata. */
+  workflowPhase?: string
+  /** Token-rate callback fired during the stream so the UI spinner can
+   * show live output. opencc does not currently wire this — kept as a
+   * param. */
+  onStreamTokenEstimate?: (
+    e:
+      | { type: 'tokens'; estimatedTokensDelta: number }
+      | { type: 'response_start' },
+  ) => void
+  /** Telemetry callback for when MCP servers were dropped. opencc's
+   * `initializeAgentMcpServers` does not currently report this — kept as
+   * a param. */
+  onMcpServersBlocked?: (info: unknown) => void
+  /** Telemetry callback for when the requested model was restricted. */
+  onModelRestricted?: (info: unknown) => void
+  /** Hint that this is a teammate — changes model resolution and memory
+   * caller. Defaults to false. */
+  isTeammate?: boolean
+  /** Forwarded into the subagent's tool use context (backgrounded /
+   * foregrounded teammate shape). opencc does not currently forward
+   * teammateContext into `createSubagentContext` — kept for parity. */
+  teammateContext?: unknown
+  /** Set of UUIDs the resume caller has already recorded — used to slice
+   * messages for re-recording and avoid duplicates. */
+  recordedUuids?: Set<UUID>
+  /** Extra fields merged into persisted `AgentMetadata`. */
+  extraMetadata?: Record<string, unknown>
+  /** When true, the agent is required to emit a structured output via
+   * the `StructuredOutput` tool. */
+  requiresStructuredOutput?: boolean
+  /** When true, this subagent may opt in to the hand-back contract with
+   * its caller. opencc does not have a handback system — kept as a
+   * param. */
+  handbackOptIn?: boolean
+  /** The hand-back tool to register when `handbackOptIn` is active.
+   * opencc does not have a handback system — kept as a param. */
+  handbackTool?: unknown
 }): AsyncGenerator<Message, void> {
   // Track subagent usage for feature discovery
 
