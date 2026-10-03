@@ -194,7 +194,7 @@ export const GlobTool = buildTool({
   extractSearchText({ filenames }) {
     return filenames.join('\n')
   },
-  async call(input, { abortController, getAppState, globLimits, toolUseId }) {
+  async call(input, { abortController, getAppState, globLimits }) {
     const start = Date.now()
     const appState = getAppState()
     const limit = globLimits?.maxResults ?? 100
@@ -205,7 +205,7 @@ export const GlobTool = buildTool({
     // rewritten in between cannot redirect the search. See searchSession.ts.
     const session = await openSearchSession(searchRoot, [searchRoot])
     if (session === null) {
-      const output: Output = {
+      const empty: Output = {
         filenames: [],
         durationMs: Date.now() - start,
         numFiles: 0,
@@ -213,7 +213,7 @@ export const GlobTool = buildTool({
         totalMatches: 0,
         countIsComplete: true,
       }
-      return { data: output }
+      return { data: empty }
     }
 
     let result
