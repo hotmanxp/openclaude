@@ -72,17 +72,19 @@ describe('fitContentToTokenCap', () => {
     expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]))
   })
 
-  test('char-level hint does not advise line-based pagination', () => {
-    // offset/limit are strictly line-based ("The line number to start reading
-    // from" / "The number of lines to read"), so on a very-long-line file they
-    // can never return the omitted characters. Mirrors upstream's $Ce
-    // (@12015411): when the view cannot be paged by line, do not hand out a
-    // line-based paging call.
+  test('char-level hint advises a global byte-offset extractor, not per-line', () => {
+    // Regression: `cut -c` is per-line while the hint's N is a global file
+    // offset, so on a multi-line file `cut -c N-` silently drops every line
+    // after the truncation point with exit 0. Must point at a global tool
+    // (e.g. `tail -c +N`).
     const content = 'x'.repeat(10000)
     const r = fitContentToTokenCap(content, '/x', 100, 2000)
     expect(r).not.toBeNull()
+    // The two unfollowable / lossy suggestions must be gone.
     expect(r!.hint).not.toContain('offset/limit')
-    // Must still point at something the model can actually run.
+    expect(r!.hint).not.toContain('cut -c')
+    // The correct global tool must be named.
+    expect(r!.hint).toContain('tail -c')
     expect(r!.hint).toContain('Grep')
     expect(r!.hint).toContain('Bash')
   })
