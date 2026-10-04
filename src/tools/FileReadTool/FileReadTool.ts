@@ -79,7 +79,7 @@ import { semanticNumber } from '../../utils/semanticNumber.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
 import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
-import { FILE_READ_TOOL_NAME } from './constants.js'
+import { FILE_READ_TOOL_NAME, writeReadFileState } from './constants.js'
 import { getDefaultFileReadingLimits } from './limits.js'
 import {
   DESCRIPTION,
@@ -318,6 +318,16 @@ const inputSchema = lazySchema(() =>
 type InputSchema = ReturnType<typeof inputSchema>
 
 export type Input = z.infer<InputSchema>
+
+/**
+ * `call()`'s accepted input. Wider than the zod schema on purpose: `internal`
+ * is a caller-side signal for reads the model never requested and never sees
+ * (see `writeReadFileState`), so it must NOT appear in the zod schema — that
+ * schema is serialized into the model-facing tool definition, and a
+ * model-supplied `internal: true` would let the model suppress the cache
+ * bookkeeping that staleness detection depends on.
+ */
+type CallInput = Input & { internal?: boolean }
 
 const outputSchema = lazySchema(() => {
   // Define the media types supported for images
@@ -574,7 +584,13 @@ export const FileReadTool = buildTool({
     return { result: true }
   },
   async call(
-    { file_path, offset = 1, limit = undefined, pages },
+    {
+      file_path,
+      offset = 1,
+      limit = undefined,
+      pages,
+      internal,
+    }: CallInput,
     context,
     _canUseTool?,
     parentMessage?,
@@ -624,9 +640,17 @@ export const FileReadTool = buildTool({
     // by Read). Edit/Write store offset=undefined — their readFileState
     // entry reflects post-edit mtime, so deduping against it would wrongly
     // point the model at the pre-edit Read content.
+    //
+    // `refreshedBehindModel` additionally rules out entries rewritten by an
+    // internal read (see `writeReadFileState`). Those keep a Read-shaped
+    // offset only when a Read had genuinely produced them, but their content
+    // and mtime were refreshed outside the model's request flow — so the
+    // model has still never seen the current bytes, and deduping here would
+    // return a stub for a file that did change.
     if (
       existingState &&
       !existingState.isPartialView &&
+      !existingState.refreshedBehindModel &&
       existingState.offset !== undefined
     ) {
       const rangeMatch =
@@ -684,6 +708,7 @@ export const FileReadTool = buildTool({
         readFileState,
         context,
         parentMessage?.message.id,
+        internal === true,
       )
     } catch (error) {
       // Handle file-not-found: suggest similar files
@@ -707,6 +732,7 @@ export const FileReadTool = buildTool({
               readFileState,
               context,
               parentMessage?.message.id,
+              internal === true,
             )
           } catch (altError) {
             if (!isENOENT(altError)) {
@@ -1015,6 +1041,7 @@ async function callInner(
   readFileState: ToolUseContext['readFileState'],
   context: ToolUseContext,
   messageId: string | undefined,
+  isInternal: boolean,
 ): Promise<{
   data: Output
   newMessages?: ReturnType<typeof createUserMessage>[]
@@ -1040,18 +1067,23 @@ async function callInner(
 
     // Get mtime via async stat (single call, no prior existence check)
     const stats = await getFsImplementation().stat(resolvedFilePath)
-    readFileState.set(fullFilePath, {
-      content: cellsJson,
-      timestamp: Math.floor(stats.mtimeMs),
-      offset,
-      limit,
-      // Model initiated the Read itself — model has a 1:1 view of `content`
-      // unless the cells string was truncated upstream. We don't currently
-      // token-cap notebooks, but flag the future-proofing hook so
-      // contentNotInModelContext stays accurate if validateContentTokens
-      // ever caps notebooks too.
-      contentNotInModelContext: false,
-    })
+    writeReadFileState(
+      readFileState,
+      fullFilePath,
+      {
+        content: cellsJson,
+        timestamp: Math.floor(stats.mtimeMs),
+        offset,
+        limit,
+        // Model initiated the Read itself — model has a 1:1 view of `content`
+        // unless the cells string was truncated upstream. We don't currently
+        // token-cap notebooks, but flag the future-proofing hook so
+        // contentNotInModelContext stays accurate if validateContentTokens
+        // ever caps notebooks too.
+        contentNotInModelContext: false,
+      },
+      isInternal,
+    )
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
     const data = {
@@ -1313,19 +1345,24 @@ async function callInner(
     await validateContentTokens(content, ext, maxTokens)
   }
 
-  readFileState.set(fullFilePath, {
-    content: finalContent,
-    timestamp: Math.floor(mtimeMs),
-    offset,
-    limit: finalLimit,
-    // isPartialView gates dedup — a truncated read must NOT dedup because the
-    // content the model saw is smaller than what's on disk.
-    ...(truncatedByTokenCap && { isPartialView: true }),
-    // Model initiated this Read itself. contentNotInModelContext is true only
-    // when the model's view is NOT a 1:1 mirror of `content` — currently just
-    // the token-cap truncation path.
-    contentNotInModelContext: truncatedByTokenCap === true,
-  })
+  writeReadFileState(
+    readFileState,
+    fullFilePath,
+    {
+      content: finalContent,
+      timestamp: Math.floor(mtimeMs),
+      offset,
+      limit: finalLimit,
+      // isPartialView gates dedup — a truncated read must NOT dedup because the
+      // content the model saw is smaller than what's on disk.
+      ...(truncatedByTokenCap && { isPartialView: true }),
+      // Model initiated this Read itself. contentNotInModelContext is true only
+      // when the model's view is NOT a 1:1 mirror of `content` — currently just
+      // the token-cap truncation path.
+      contentNotInModelContext: truncatedByTokenCap === true,
+    },
+    isInternal,
+  )
   context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
   // Snapshot before iterating — a listener that unsubscribes mid-callback
