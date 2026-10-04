@@ -72,6 +72,21 @@ describe('fitContentToTokenCap', () => {
     expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]))
   })
 
+  test('char-level hint does not advise line-based pagination', () => {
+    // offset/limit are strictly line-based ("The line number to start reading
+    // from" / "The number of lines to read"), so on a very-long-line file they
+    // can never return the omitted characters. Mirrors upstream's $Ce
+    // (@12015411): when the view cannot be paged by line, do not hand out a
+    // line-based paging call.
+    const content = 'x'.repeat(10000)
+    const r = fitContentToTokenCap(content, '/x', 100, 2000)
+    expect(r).not.toBeNull()
+    expect(r!.hint).not.toContain('offset/limit')
+    // Must still point at something the model can actually run.
+    expect(r!.hint).toContain('Grep')
+    expect(r!.hint).toContain('Bash')
+  })
+
   test('falls back to char-level when lines are too long', () => {
     // Single line 10000 chars long; observed = 2000 tokens; cap = 100;
     // charsPerToken = 5. Initial line count = 1. 1 line of 10000 chars
