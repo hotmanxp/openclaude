@@ -131,6 +131,7 @@ import {
   type Output as FileReadToolOutput,
 } from '../tools/FileReadTool/FileReadTool.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../tools/SendMessageTool/constants.js'
+import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 import type { PermissionMode } from '../types/permissions.js'
@@ -2833,13 +2834,18 @@ You have exited auto mode. The user may now want to interact more directly. You 
         if (attachment.deltaSummary) {
           parts.push(`Progress: ${attachment.deltaSummary}`)
         }
+        const canSendMessage = isAgentSwarmsEnabled()
         if (attachment.outputFilePath) {
           parts.push(
-            `Do NOT spawn a duplicate. You will be notified when it completes. You can read partial output at ${attachment.outputFilePath} or send it a message with ${SEND_MESSAGE_TOOL_NAME}.`,
+            canSendMessage
+              ? `Do NOT spawn a duplicate. You will be notified when it completes. You can read partial output at ${attachment.outputFilePath} or send it a message with ${SEND_MESSAGE_TOOL_NAME}.`
+              : `Do NOT spawn a duplicate. You will be notified when it completes. You can read partial output at ${attachment.outputFilePath}.`,
           )
         } else {
           parts.push(
-            `Do NOT spawn a duplicate. You will be notified when it completes. Send it a message with ${SEND_MESSAGE_TOOL_NAME} to check on it.`,
+            canSendMessage
+              ? `Do NOT spawn a duplicate. You will be notified when it completes. Send it a message with ${SEND_MESSAGE_TOOL_NAME} to check on it.`
+              : `Do NOT spawn a duplicate. You will be notified when it completes.`,
           )
         }
         return [
