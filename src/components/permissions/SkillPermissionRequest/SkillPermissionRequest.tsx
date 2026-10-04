@@ -57,7 +57,11 @@ export function SkillPermissionRequest(props) {
   const originalCwd = t2;
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = shouldShowAlwaysAllowOptions();
+    const decision = toolUseConfirm.permissionResult;
+    // A third-party plugin skill must not be granted a persistent allow rule
+    // (see PermissionAskDecision.suppressAlwaysAllowRule). The single
+    // invocation can still be allowed — only "always allow" is withheld.
+    t3 = shouldShowAlwaysAllowOptions() && !(decision?.behavior === "ask" && decision.suppressAlwaysAllowRule === true);
     $[4] = t3;
   } else {
     t3 = $[4];

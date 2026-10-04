@@ -2,7 +2,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { Command } from '../../commands.js'
-import { SkillTool } from './SkillTool.js'
+import {
+  buildUnknownSkillMessage,
+  shouldBlockForkRecursion,
+  SkillTool,
+} from './SkillTool.js'
 import { renderToolUseMessage } from './UI.js'
 
 function createPromptCommand(
@@ -95,5 +99,91 @@ describe('SkillTool renderToolUseMessage', () => {
         },
       ),
     ).toBe('/legacy-command')
+  })
+})
+
+describe('buildUnknownSkillMessage', () => {
+  const commands = [
+    createPromptCommand('commit'),
+    createPromptCommand('apps/web:deploy'),
+    createPromptCommand('apps/api:deploy'),
+  ]
+
+  test('falls back to a bare message when nothing is close', () => {
+    expect(buildUnknownSkillMessage('zzzzzzzz', commands)).toBe(
+      'Unknown skill: zzzzzzzz',
+    )
+  })
+
+  test('suggests a single directory-scoped variant by full name', () => {
+    const single = [createPromptCommand('apps/web:deploy')]
+    expect(buildUnknownSkillMessage('deploy', single)).toBe(
+      'Unknown skill: deploy. Did you mean apps/web:deploy? Invoke it by that full name.',
+    )
+  })
+
+  test('lists every directory-scoped variant when ambiguous', () => {
+    const message = buildUnknownSkillMessage('deploy', commands)
+    expect(message).toContain('Several skills match that name')
+    expect(message).toContain('apps/web:deploy')
+    expect(message).toContain('apps/api:deploy')
+  })
+
+  test('does not treat an exact match as a scoped variant', () => {
+    // `commit` exists; asking for it should never produce a variant list.
+    expect(buildUnknownSkillMessage('commit', commands)).toBe(
+      'Unknown skill: commit',
+    )
+  })
+
+  test('falls back to a typo suggestion when no scoped variant exists', () => {
+    expect(buildUnknownSkillMessage('comnit', commands)).toBe(
+      'Unknown skill: comnit. Did you mean commit?',
+    )
+  })
+})
+
+describe('shouldBlockForkRecursion', () => {
+  const forkCtx = { spawnedBySkill: 'deploy', spawnedByForkedSkill: true }
+
+  test('blocks a fork skill re-invoking itself from inside its own fork', () => {
+    const command = {
+      ...createPromptCommand('deploy'),
+      context: 'fork',
+    } as Command
+
+    expect(shouldBlockForkRecursion(command, forkCtx as never)).toBe(true)
+  })
+
+  test('blocks even without the fork-context flag, purely from spawn provenance', () => {
+    // The skill is an inline one, but we were spawned by a fork: re-invoking
+    // the same name is still the runaway-recursion case.
+    const command = createPromptCommand('deploy')
+
+    expect(shouldBlockForkRecursion(command, forkCtx as never)).toBe(true)
+  })
+
+  test('allows a different skill from the same forked context', () => {
+    const command = {
+      ...createPromptCommand('rollback'),
+      context: 'fork',
+    } as Command
+
+    expect(shouldBlockForkRecursion(command, forkCtx as never)).toBe(false)
+  })
+
+  test('allows the same skill from the main conversation', () => {
+    const command = {
+      ...createPromptCommand('deploy'),
+      context: 'fork',
+    } as Command
+
+    expect(shouldBlockForkRecursion(command, {} as never)).toBe(false)
+  })
+
+  test('never blocks a non-prompt command', () => {
+    const local = { type: 'local', name: 'deploy' } as unknown as Command
+
+    expect(shouldBlockForkRecursion(local, forkCtx as never)).toBe(false)
   })
 })
