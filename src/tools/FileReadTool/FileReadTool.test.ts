@@ -72,21 +72,27 @@ describe('fitContentToTokenCap', () => {
     expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]))
   })
 
-  test('char-level hint advises a global byte-offset extractor, not per-line', () => {
-    // Regression: `cut -c` is per-line while the hint's N is a global file
-    // offset, so on a multi-line file `cut -c N-` silently drops every line
-    // after the truncation point with exit 0. Must point at a global tool
-    // (e.g. `tail -c +N`).
+  test('char-level hint hands the model no offset-bearing command', () => {
+    // Three successive attempts to name a character-range pager each created a
+    // new defect: `Read with offset/limit` (params are line-only) →
+    // `cut -c N-` (per-line, silently drops later lines) →
+    // `tail -c +N` (N is a character count, command is a byte offset; on
+    // non-ASCII the recovered segment re-delivers the excerpt and starts
+    // mid-codepoint). Upstream never hands over an offset in either of its
+    // char-level paths (bundle.js @8837713 and $Ce @12015411), so neither can
+    // hit the unit-mismatch class. Match that: Grep only, no offset anywhere.
     const content = 'x'.repeat(10000)
     const r = fitContentToTokenCap(content, '/x', 100, 2000)
     expect(r).not.toBeNull()
-    // The two unfollowable / lossy suggestions must be gone.
-    expect(r!.hint).not.toContain('offset/limit')
-    expect(r!.hint).not.toContain('cut -c')
-    // The correct global tool must be named.
-    expect(r!.hint).toContain('tail -c')
+    // No pager of any kind — line-based or byte-based.
+    expect(r!.hint).not.toMatch(/offset\/limit|tail -c|cut -c|\bdd \b|sed -n|awk/)
+    // Grep remains, and it takes no offset, so it is always safe to name.
     expect(r!.hint).toContain('Grep')
-    expect(r!.hint).toContain('Bash')
+    // The counts must be labelled so the model is not left guessing why no
+    // pager was offered.
+    expect(r!.hint).toContain('character counts rather than byte offsets')
+    // The safety instruction must survive the trim.
+    expect(r!.hint).toContain('Do NOT answer from this excerpt alone')
   })
 
   test('falls back to char-level when lines are too long', () => {
