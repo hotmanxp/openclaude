@@ -72,6 +72,19 @@ describe('fitContentToTokenCap', () => {
     expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]))
   })
 
+  test('char-level hint reports code points, not UTF-16 code units', () => {
+    // `.length` counts UTF-16 code units, so each astral char (surrogate
+    // pair) counts as 2. The hint labels the numbers "characters", so on
+    // emoji content a `.length`-based count overstates them ~2x — in a
+    // sentence whose whole point is that these are characters, not bytes.
+    const content = '🚀'.repeat(5000)
+    const r = fitContentToTokenCap(content, '/x', 100, 4000)
+    expect(r).not.toBeNull()
+    const total = Number(r!.hint.match(/of (\d+) characters/)![1])
+    // Real character count, not the 10000 code units `.length` would report.
+    expect(total).toBe(5000)
+  })
+
   test('char-level hint hands the model no offset-bearing command', () => {
     // Three successive attempts to name a character-range pager each created a
     // new defect: `Read with offset/limit` (params are line-only) →

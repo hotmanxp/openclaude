@@ -982,8 +982,14 @@ export function fitContentToTokenCap(
   // self-contradicting "(38195 tokens, cap 25000)".
   const fittedTokenCount = Math.round(lengthToTokens(fitted.length))
 
+  // `.length` counts UTF-16 code units, so astral chars (emoji) count as 2.
+  // The hint labels these numbers "characters", so they must be code points.
+  // Do NOT switch lengthToTokens to this — charsPerToken is calibrated against
+  // code units, and mixing the two would corrupt every token estimate.
+  const codePoints = (s: string) => [...s].length
+
   const hint = charTruncated
-    ? `[${filePath}: showing the first ${fitted.length} of ${content.length} characters (${fittedTokenCount} tokens, cap ${maxTokens}); this file has very long lines and cannot be paginated by line, and the counts above are character counts rather than byte offsets, so no character-range pager is given. Use ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this excerpt alone if the answer may be elsewhere in the file.]`
+    ? `[${filePath}: showing the first ${codePoints(fitted)} of ${codePoints(content)} characters (${fittedTokenCount} tokens, cap ${maxTokens}); this file has very long lines and cannot be paginated by line, and the counts above are character counts rather than byte offsets, so no character-range pager is given. Use ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this excerpt alone if the answer may be elsewhere in the file.]`
     : `[${filePath}: showing lines 1-${lineCount} of ${totalLines} total (${fittedTokenCount} tokens, cap ${maxTokens}). Call ${FILE_READ_TOOL_NAME} with offset=${lineCount + 1} limit=${lineCount} for the next page, or ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]`
 
   return {
