@@ -43,7 +43,6 @@ const SubscribePRTool = feature('KAIROS_GITHUB_WEBHOOKS')
   ? require('./tools/SubscribePRTool/SubscribePRTool.js').SubscribePRTool
   : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-import { TaskOutputTool } from './tools/TaskOutputTool/TaskOutputTool.js'
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js'
 import { TodoWriteTool } from './tools/TodoWriteTool/TodoWriteTool.js'
 import { ExitPlanModeV2Tool } from './tools/ExitPlanModeTool/ExitPlanModeV2Tool.js'
@@ -192,7 +191,6 @@ export function getAllBaseTools(): Tools {
   return [
     AgentTool,
     ...bgTools,
-    TaskOutputTool,
     BashTool,
     // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
     // trick as ripgrep). When available, find/grep in OpenCC's shell are aliased
