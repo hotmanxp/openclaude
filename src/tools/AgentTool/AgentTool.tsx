@@ -104,8 +104,8 @@ const baseInputSchema = lazySchema(() => z.object({
   // `toJSONSchema()` (utils/api.ts:208 runs every tool every LLM call;
   // AgentTool is always present, so a transform-based round-trip 500s the
   // entire turn).
-  model: z.string().trim().min(1).optional().describe("Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent. Accepts any non-empty model string (e.g., 'sonnet', 'opus', 'haiku', or custom model IDs from your provider). Leading/trailing whitespace is trimmed."),
-  run_in_background: z.boolean().optional().describe('Set to true to run this agent in the background. You will be notified when it completes.')
+  model: z.string().trim().min(1).optional().describe("Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent. Accepts any non-empty model string (e.g., 'sonnet', 'opus', 'haiku', or custom model IDs from your provider). Leading/trailing whitespace is trimmed. Ignored when forking (omit subagent_type to fork) — forks always inherit the parent model. Set this only when EXPLICITLY asked by the user for a specific model, never because the task seems small, simple, or cheap; otherwise omit it so the subagent uses the default."),
+  run_in_background: z.boolean().optional().describe('Agents run in the background by default; you will be notified when one completes. Set to false only when your very next action depends on this agent\'s result and nothing else could usefully happen while it runs — otherwise leave it in the background so the user can hand you other work.')
 }));
 
 // Full schema combining base + multi-agent params + isolation
