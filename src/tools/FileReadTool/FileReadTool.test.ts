@@ -45,6 +45,33 @@ describe('fitContentToTokenCap', () => {
     expect(r!.hint).toContain('offset=')
   })
 
+  test('hint reports the returned page token count, not the pre-truncation total', () => {
+    // Regression: the hint interpolated observedTokenCount (the SOURCE file's
+    // count) next to `cap`, yielding self-contradicting text like
+    // "(5000 tokens, cap 100)" for a page that actually fits under the cap.
+    const content = Array.from({ length: 1000 }, (_, i) => `line ${i}`).join('\n')
+    const r = fitContentToTokenCap(content, '/x', 100, 5000)
+    expect(r).not.toBeNull()
+    const m = r!.hint.match(/\((\d+) tokens, cap (\d+)\)/)
+    expect(m).not.toBeNull()
+    const reported = Number(m![1])
+    const cap = Number(m![2])
+    expect(cap).toBe(100)
+    // A page that was truncated to fit can never report more than the cap.
+    expect(reported).toBeLessThanOrEqual(cap)
+    // And it must not be echoing the 5000-token source total back.
+    expect(reported).toBeLessThan(5000)
+  })
+
+  test('char-level hint also reports the returned page token count', () => {
+    const content = 'x'.repeat(10000)
+    const r = fitContentToTokenCap(content, '/x', 100, 2000)
+    expect(r).not.toBeNull()
+    const m = r!.hint.match(/\((\d+) tokens, cap (\d+)\)/)
+    expect(m).not.toBeNull()
+    expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]))
+  })
+
   test('falls back to char-level when lines are too long', () => {
     // Single line 10000 chars long; observed = 2000 tokens; cap = 100;
     // charsPerToken = 5. Initial line count = 1. 1 line of 10000 chars

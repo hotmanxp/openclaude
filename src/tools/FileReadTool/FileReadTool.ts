@@ -976,9 +976,15 @@ export function fitContentToTokenCap(
     ? countNewlines(fitted) + 1
     : fittedLineCount
 
+  // The hint must describe the page being returned, not the source file.
+  // observedTokenCount is the pre-truncation total and belongs only in the
+  // fit ratio above — interpolating it next to `cap` produced a
+  // self-contradicting "(38195 tokens, cap 25000)".
+  const fittedTokenCount = Math.round(lengthToTokens(fitted.length))
+
   const hint = charTruncated
-    ? `[${filePath}: showing the first ${fitted.length} of ${content.length} characters (${observedTokenCount} tokens, cap ${maxTokens}); this file has very long lines and cannot be paginated by line. Use ${GREP_TOOL_NAME} to find a specific section, or ${BASH_TOOL_NAME} with offset/limit to page through it. Do NOT answer from this excerpt alone if the answer may be elsewhere in the file.]`
-    : `[${filePath}: showing lines 1-${lineCount} of ${totalLines} total (${observedTokenCount} tokens, cap ${maxTokens}). Call ${BASH_TOOL_NAME} with offset=${lineCount + 1} limit=${lineCount} for the next page, or ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]`
+    ? `[${filePath}: showing the first ${fitted.length} of ${content.length} characters (${fittedTokenCount} tokens, cap ${maxTokens}); this file has very long lines and cannot be paginated by line. Use ${GREP_TOOL_NAME} to find a specific section, or ${FILE_READ_TOOL_NAME} with offset/limit to page through it. Do NOT answer from this excerpt alone if the answer may be elsewhere in the file.]`
+    : `[${filePath}: showing lines 1-${lineCount} of ${totalLines} total (${fittedTokenCount} tokens, cap ${maxTokens}). Call ${FILE_READ_TOOL_NAME} with offset=${lineCount + 1} limit=${lineCount} for the next page, or ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]`
 
   return {
     content: fitted,
