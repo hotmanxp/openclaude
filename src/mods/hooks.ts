@@ -22,7 +22,7 @@ import {
   type LoadedMod,
 } from './registry.js'
 import { buildModHookMatchers } from './dispatch.js'
-import { createModContext, emitModsSystemNotice } from './engine.js'
+import { createModContext, clearModStatus, emitModsSystemNotice } from './engine.js'
 import {
   ModValidationError,
   validateEntryPath,
@@ -190,6 +190,8 @@ function ensureBreakerWired(): void {
 export async function unloadMod(name: string): Promise<boolean> {
   const removed = unregisterMod(name)
   if (!removed) return false
+  // Clear any persistent ui.status segment the mod left behind.
+  clearModStatus(name)
   swapRegisteredHooks()
   logForDebugging(`[mods] unloaded mod "${name}"`)
   return true

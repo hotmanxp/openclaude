@@ -162,6 +162,11 @@ function setModStatus(modName: string, text: string | undefined): void {
   for (const listener of statusListeners) listener()
 }
 
+/** Clear a mod's persistent status segment (unload path — gh status residue). */
+export function clearModStatus(modName: string): void {
+  setModStatus(modName, undefined)
+}
+
 // ---------------------------------------------------------------------------
 // ctx.fs — fenced filesystem API (P2 授权制). Only mods listed in settings
 // `mods.authorized` receive the API; allowed roots are the session cwd and
@@ -171,6 +176,9 @@ function setModStatus(modName: string, text: string | undefined): void {
 function isModFsAuthorized(modName: string): boolean {
   if (fsAuthOverrideForTesting) return fsAuthOverrideForTesting(modName)
   const authorized = getSettings_DEPRECATED()?.mods?.authorized
+  logForDebugging(
+    `[mods] fs auth check "${modName}": authorized=${JSON.stringify(authorized)}`,
+  )
   return Array.isArray(authorized) && authorized.includes(modName)
 }
 

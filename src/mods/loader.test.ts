@@ -16,6 +16,7 @@ import {
   getLoadedMods,
   resetModsRegistryForTesting,
 } from './registry.js'
+import { getModStatusSnapshot } from './engine.js'
 
 let modsDir: string
 let savedEnv: string | undefined
@@ -167,5 +168,18 @@ describe('loadMods', () => {
     expect(removed).toBe(true)
     expect(getRegisteredHooks()?.Stop).toBeUndefined()
     expect(getLoadedMods()).toHaveLength(0)
+  })
+
+  test('unloadMod clears the persistent status segment', async () => {
+    await setupModsDir()
+    await writeMod(
+      'statusful',
+      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })); ctx.ui.status("watching") }',
+    )
+    await loadMods()
+    expect(getModStatusSnapshot()).toEqual({ statusful: 'watching' })
+
+    await unloadMod('statusful')
+    expect(getModStatusSnapshot()).toEqual({})
   })
 })
