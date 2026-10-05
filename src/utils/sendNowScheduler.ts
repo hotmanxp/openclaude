@@ -50,11 +50,11 @@ const UNMOVABLE_GRACE_LIMIT = 2
  */
 const EMPTY_GRACE_POLLS = 8
 
-type Head = 'deliverable' | 'not_ready' | 'behind_earlier'
+export type Head = 'deliverable' | 'not_ready' | 'behind_earlier'
 
 type CandidateUuid = NonNullable<QueuedCommand['uuid']>
 
-type Candidate = {
+export type Candidate = {
   uuid: CandidateUuid
   /** The priority to restore if this candidate is promoted but not delivered. */
   raisedFrom: QueuedCommand['priority']
@@ -125,7 +125,7 @@ export function decide(evidence: {
  * becomes the head. Once the promoted one is dequeued it leaves the queue and
  * pruneCandidates() drops it — the queue advances that way.
  */
-function selectHead(
+export function selectHead(
   queue: readonly QueuedCommand[],
   candidates: Map<string, Candidate>,
 ): { head: Head; candidate: Candidate } | null {
@@ -234,6 +234,14 @@ function collectCandidates(): void {
   }
 }
 
+/** Whether any candidate is currently promoted and awaiting delivery. */
+function hasRaisedCandidate(): boolean {
+  for (const candidate of candidates.values()) {
+    if (candidate.raisedFrom !== undefined) return true
+  }
+  return false
+}
+
 function promoteAndRetry(candidate: Candidate): void {
   graceCount = 0
   // Record the pre-promotion priority before the call, since promoteToNow is
@@ -272,6 +280,16 @@ function evaluate(): void {
 
   const selected = selectHead(getCommandQueue(), candidates)
   if (selected === null) {
+    // No head left. This is expected right after a promote: the promoted
+    // command is now 'now', so selectHead deliberately skips it and there is
+    // nothing to select. Tearing down here would call restoreRaised() and
+    // demote that command straight back to 'next' while it is still queued —
+    // silently undoing the promotion that was supposed to let it jump the
+    // queue. Keep polling instead, and let the drain dequeue it.
+    if (hasRaisedCandidate() && getCurrentQueryGuard()?.isActive) {
+      schedule()
+      return
+    }
     teardown()
     return
   }
