@@ -460,6 +460,18 @@ export class QueryGuard {
     return this._status !== 'idle'
   }
 
+  /**
+   * Is the guard running (i.e. a query is genuinely in flight)?
+   *
+   * Narrower than isActive, which also covers 'dispatching' — the window
+   * between reserve() and tryStart() where nothing has actually started yet.
+   * The sendNow scheduler needs the distinction: interrupting a turn that has
+   * not started is pointless, so it waits out 'dispatching'.
+   */
+  get isRunning(): boolean {
+    return this._status === 'running'
+  }
+
   get generation(): number {
     return this._generation
   }

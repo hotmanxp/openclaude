@@ -11,6 +11,7 @@ import { type AppState, useAppState, useAppStateStore, useSetAppState } from 'sr
 import type { FooterItem } from 'src/state/AppStateStore.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { isQueuedCommandEditable, popAllEditable } from 'src/utils/messageQueueManager.js';
+import { sendQueuedNow } from 'src/utils/sendNowScheduler.js';
 import { stripVTControlCharacters as stripAnsi } from 'node:util';
 import { companionReservedColumns } from '../../buddy/CompanionSprite.js';
 import { isBuddyEnabled } from '../../buddy/feature.js';
@@ -1503,6 +1504,38 @@ function PromptInput({
     }
   }, [input, cursorOffset, stashedPrompt, trackAndSetInput, setStashedPrompt, pastedContents, setPastedContents]);
 
+  // Handler for chat:sendNow — deliver the pending message immediately
+  // instead of letting it wait for the current turn to finish.
+  //
+  // Typed text goes through the normal submit path first, which enqueues it
+  // (that path intentionally does not interrupt), and sendQueuedNow() then
+  // promotes it and lets the scheduler decide when the turn is safe to abort.
+  // Going through the queue rather than submitting directly is what reuses the
+  // existing abort-on-'now' hook in print.ts.
+  //
+  // The registration below is deliberately left ungated so the ctrl+x chord
+  // prefix is always consumed, but the body must respect the overlay gate the
+  // way every other Chat handler does: a permission dialog is up whenever a
+  // turn is active, so an ungated body would submit the buffer behind the
+  // dialog and tear down the very turn the dialog is blocking on.
+  const handleSendNow = useCallback(() => {
+    if (isModalOverlayActive) {
+      return;
+    }
+
+    const hasTypedContent =
+      input.trim() !== '' || Object.keys(pastedContents).length > 0;
+
+    if (hasTypedContent) {
+      void onSubmit(input);
+    }
+    if (isLoading) {
+      // The scheduler re-scans the queue each poll, so it picks up the
+      // enqueue above even though onSubmit is async.
+      sendQueuedNow();
+    }
+  }, [isLoading, input, pastedContents, onSubmit, isModalOverlayActive]);
+
   // Handler for chat:modelPicker - toggle model picker
   const handleModelPicker = useCallback(() => {
     setShowModelPicker(prev => !prev);
@@ -1798,6 +1831,15 @@ function PromptInput({
   useKeybindings(chatHandlers, {
     context: 'Chat',
     isActive: !isModalOverlayActive
+  });
+
+  // Registered separately, without the modal-overlay gate that the other Chat
+  // handlers carry. ctrl+x is the chord prefix (ctrl+x ctrl+e, ctrl+x ctrl+k),
+  // and an inactive registration would stop the prefix being consumed, leaking
+  // ctrl+s to the terminal. Same reasoning as chat:killAgents in
+  // useCancelRequest.ts:328 — the gate lives in the handler body instead.
+  useKeybinding('chat:sendNow', handleSendNow, {
+    context: 'Chat',
   });
 
   // Shift+↑ enters message-actions cursor. Separate isActive so ctrl+r search

@@ -577,6 +577,48 @@ describe('resolveOpenAIShimRuntimeContext - segment-boundary heuristic', () => {
     })
   })
 
+  describe('Anthropic models', () => {
+    // Anthropic rejects the OpenAI-only `store` field, so it must be stripped
+    // by model name rather than by matching proxy hosts one at a time (#2242).
+    it('strips store for Claude models on a custom OpenAI-compatible gateway', () => {
+      const processEnv = {
+        CLAUDE_CODE_USE_OPENAI: '1',
+        OPENAI_BASE_URL: 'https://litellm.example.test/v1',
+        OPENAI_API_KEY: 'test-key',
+      }
+      for (const model of [
+        'claude-sonnet-4-6',
+        'anthropic/claude-opus-4-1',
+        'openrouter/anthropic/claude-haiku-4-5',
+        'bedrock/us.anthropic.claude-sonnet-4-6',
+        // Bare family aliases are the common proxy naming convention.
+        'sonnet-4-6',
+        'opus-4-1',
+        'haiku-4-5',
+      ]) {
+        const result = resolveOpenAIShimRuntimeContext({ model, processEnv })
+        expect(result.openaiShimConfig.removeBodyFields).toContain('store')
+      }
+    })
+
+    it('keeps store for non-Anthropic models that merely mention a family name', () => {
+      const processEnv = {
+        CLAUDE_CODE_USE_OPENAI: '1',
+        OPENAI_BASE_URL: 'https://litellm.example.test/v1',
+        OPENAI_API_KEY: 'test-key',
+      }
+      for (const model of [
+        'gpt-4o',
+        'my-sonnet-rag',
+        'magnum-opus',
+        'Helsinki-NLP/opus-mt-en-de',
+      ]) {
+        const result = resolveOpenAIShimRuntimeContext({ model, processEnv })
+        expect(result.openaiShimConfig.removeBodyFields).toBeUndefined()
+      }
+    })
+  })
+
   describe('GLM models', () => {
     it('should NOT infer Z.A.I overrides for custom glm aliases', () => {
       for (const model of ['my-glm-assistant', 'glm-assistant', 'glm-router']) {

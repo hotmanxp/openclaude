@@ -1,6 +1,6 @@
 // @ts-ignore
 import React from 'react'
-import type { UUID } from 'crypto'
+import { randomUUID, type UUID } from 'crypto'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
 import { type Command, getCommandName, isCommandEnabled } from '../commands.js'
@@ -150,6 +150,13 @@ export async function handlePromptSubmit(
     uuid,
     skipSlashCommands,
   } = params
+
+  // Keyboard-originated input arrives without a uuid (REPL's onSubmit and
+  // executeQueuedInput both omit it), but the sendNow scheduler addresses queue
+  // entries by uuid — promoteToNow() returns false for an unknown uuid, so an
+  // un-tagged command would be silently un-promotable. Mint one here, at the
+  // single point both enqueue paths read from, instead of at each call site.
+  const commandUuid: UUID = uuid ?? (randomUUID() as UUID)
 
   const { setCursorOffset, clearBuffer, resetHistory } = helpers
 
@@ -359,7 +366,7 @@ export async function handlePromptSubmit(
       mode,
       pastedContents: hasImages ? pastedContents : undefined,
       skipSlashCommands,
-      uuid,
+      uuid: commandUuid,
     })
 
     onInputChange('')
@@ -382,7 +389,7 @@ export async function handlePromptSubmit(
     mode,
     pastedContents: hasImages ? pastedContents : undefined,
     skipSlashCommands,
-    uuid,
+    uuid: commandUuid,
   }
 
   await executeUserInput({

@@ -3,6 +3,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import type { Permutations } from 'src/types/utils.js'
 import { getSessionId } from '../bootstrap/state.js'
 import type { AppState } from '../state/AppState.js'
+import type { UUID } from '../types/message.js'
 import type {
   QueueOperation,
   QueueOperationMessage,
@@ -152,6 +153,44 @@ const PRIORITY_ORDER: Record<QueuePriority, number> = {
   now: 0,
   next: 1,
   later: 2,
+}
+
+/**
+ * Raise a queued command to 'now' priority.
+ *
+ * Mirrors upstream's messageQueue.promoteToNow: keyed on uuid, and a miss is a
+ * silent `false` rather than a throw — the sendNow scheduler polls this on
+ * every tick and treats `false` as "someone else already took it".
+ *
+ * A command already at 'now' is left alone (returns false, not an error) so
+ * repeated presses are idempotent instead of re-broadcasting.
+ */
+export function promoteToNow(uuid: UUID): boolean {
+  const cmd = commandQueue.find(c => c.uuid === uuid)
+  if (cmd === undefined || cmd.priority === 'now') {
+    return false
+  }
+  cmd.priority = 'now'
+  notifySubscribers()
+  logOperation('enqueue', typeof cmd.value === 'string' ? cmd.value : undefined)
+  return true
+}
+
+/**
+ * Lower a 'now' priority command back to `to`.
+ *
+ * The sendNow scheduler records the priority each command was raised from and
+ * restores it on teardown. Without this a command that never got delivered
+ * would stay pinned at 'now' and starve the rest of the queue.
+ */
+export function demoteFromNow(uuid: UUID, to: QueuePriority): boolean {
+  const cmd = commandQueue.find(c => c.uuid === uuid)
+  if (cmd === undefined || cmd.priority !== 'now') {
+    return false
+  }
+  cmd.priority = to
+  notifySubscribers()
+  return true
 }
 
 /**

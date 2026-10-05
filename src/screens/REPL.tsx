@@ -212,6 +212,8 @@ import exit from '../commands/exit/index.js';
 import { ExitFlow } from '../components/ExitFlow.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { popAllEditable, enqueue, type SetAppState, getCommandQueue, getCommandQueueLength, removeByFilter } from '../utils/messageQueueManager.js';
+import { publishInProgressToolUseIdsProvider, publishTurnHandles } from '../utils/turnAbortRegistry.js';
+import { setMainRequestInFlight } from '../utils/turnEvidence.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
@@ -1604,6 +1606,33 @@ export function REPL({
   const [spinnerColor, setSpinnerColor] = useState<keyof Theme | null>(null);
   const [spinnerShimmerColor, setSpinnerShimmerColor] = useState<keyof Theme | null>(null);
   const [compactProgressRatio, setCompactProgressRatio] = useState<number | null>(null);
+
+  // Publish the turn handles the sendNow scheduler polls on. That scheduler
+  // runs outside React, so it cannot read these through props or context —
+  // see turnAbortRegistry.ts. Kept in an effect (not during render) because
+  // the values feed a module-level registry that other modules read on a timer.
+  React.useEffect(() => {
+    publishTurnHandles({
+      abortController,
+      queryGuard,
+      isCompacting: compactProgressRatio !== null,
+    });
+  }, [abortController, queryGuard, compactProgressRatio]);
+
+  // The scheduler reads the live tool set, so hand it a getter rather than a
+  // value — this state is replaced (not mutated) on every update.
+  React.useEffect(() => {
+    publishInProgressToolUseIdsProvider(() => inProgressToolUseIDs);
+  }, [inProgressToolUseIDs]);
+
+  // A turn is in flight for the whole of the guard's 'running' window, not
+  // just while the API request is outstanding. Deriving this from streamMode
+  // ('requesting') left it false for most of a turn, so the sendNow scheduler
+  // sat in `wait not_ready` and never sent anything. The OR in readEvidence()
+  // covers the steady state; this effect is kept for the explicit signal.
+  React.useEffect(() => {
+    setMainRequestInFlight(isQueryActive);
+  }, [isQueryActive]);
   const [resumeCompactPending, setResumeCompactPending] = useState<{
     tokenCount: number;
     model: string;
