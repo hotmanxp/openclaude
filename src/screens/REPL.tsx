@@ -26,8 +26,12 @@ import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
 import { ResumeCompactPrompt } from '../components/ResumeCompactPrompt.js';
 import { CompactProgressBar } from '../components/CompactProgressBar.js';
 import * as React from 'react';
-import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, useLayoutEffect, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, useLayoutEffect, useSyncExternalStore, type RefObject } from 'react';
 import { useNotifications } from '../context/notifications.js';
+import { subscribeModNotices } from '../mods/engine.js';
+import { getLoadedMods, getModToolsVersion, subscribeModTools } from '../mods/registry.js';
+import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js';
+import { ModStatusLine } from '../components/ModStatusLine.js';
 import { sendNotification } from '../services/notifier.js';
 import { startPreventSleep, stopPreventSleep } from '../services/preventSleep.js';
 import { useTerminalNotification } from '../ink/useTerminalNotification.js';
@@ -815,6 +819,27 @@ export function REPL({
     removeNotification
   } = useNotifications();
 
+  // Mods (src/mods): re-render the tool pool when a mod registers/unregisters
+  // tools, and map ui.notice pushes onto the host notification queue.
+  const modToolsVersion = useSyncExternalStore(subscribeModTools, getModToolsVersion);
+  useEffect(() => {
+    return subscribeModNotices(notice => {
+      addNotification({
+        key: notice.key,
+        priority: 'medium',
+        text: notice.text
+      });
+    });
+  }, [addNotification]);
+  useEffect(() => {
+    // Mods may finish loading (during session-start hooks) BEFORE this effect
+    // subscribes to the skills-change signal — re-emit once so mod commands
+    // reach setLocalCommands (no-op when no mod registered commands).
+    if (getLoadedMods().some(m => m.commands.length > 0)) {
+      skillChangeDetector.notifyCommandsChanged();
+    }
+  }, []);
+
   // eslint-disable-next-line prefer-const
   let trySuggestBgPRIntercept = SUGGEST_BG_PR_NOOP;
   const mcpClients = useMergedClients(initialMcpClients, mcp?.clients);
@@ -899,7 +924,7 @@ export function REPL({
   useSwarmInitialization(setAppState, initialMessages, {
     enabled: !isRemoteSession
   });
-  const mergedTools = useMergedTools(combinedInitialTools, mcp.tools, toolPermissionContext);
+  const mergedTools = useMergedTools(combinedInitialTools, mcp.tools, toolPermissionContext, modToolsVersion);
 
   // Apply agent tool restrictions if mainThreadAgentDefinition is set
   const {
@@ -5311,7 +5336,7 @@ export function REPL({
             {/* Skill improvement survey - appears when improvements detected (internal-only) */}
             {isAntEmployee() && skillImprovementSurvey.suggestion && <SkillImprovementSurvey isOpen={skillImprovementSurvey.isOpen} skillName={skillImprovementSurvey.suggestion.skillName} updates={skillImprovementSurvey.suggestion.updates} handleSelect={skillImprovementSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} />}
             {showIssueFlagBanner && <IssueFlagBanner />}
-            { }
+            <ModStatusLine />
             <PromptInput debug={debug} ideSelection={ideSelection} hasSuppressedDialogs={!!hasSuppressedDialogs} isLocalJSXCommandActive={isShowingLocalJSXCommand} getToolUseContext={getToolUseContext} toolPermissionContext={toolPermissionContext} setToolPermissionContext={setToolPermissionContext} apiKeyStatus={apiKeyStatus} commands={renderCommands} agents={agentDefinitions.activeAgents} isLoading={isLoading} onExit={handleExit} verbose={verbose} messages={messages} onAutoUpdaterResult={setAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} input={inputValue} onInputChange={setInputValue} mode={inputMode} onModeChange={setInputMode} stashedPrompt={stashedPrompt} setStashedPrompt={setStashedPrompt} submitCount={submitCount} onShowMessageSelector={handleShowMessageSelector} onMessageActionsEnter={
               // Works during isLoading — edit cancels first; uuid selection survives appends.
               isFullscreenEnvEnabled() && !disableMessageActions ? enterMessageActions : undefined} mcpClients={mcpClients} pastedContents={pastedContents} setPastedContents={setPastedContents} vimMode={vimMode} setVimMode={setVimMode} showBashesDialog={showBashesDialog} setShowBashesDialog={setShowBashesDialog} onSubmit={onSubmit} onAgentSubmit={onAgentSubmit} isSearchingHistory={isSearchingHistory} setIsSearchingHistory={setIsSearchingHistory} helpOpen={isHelpOpen} setHelpOpen={setIsHelpOpen} insertTextRef={feature('VOICE_MODE') ? insertTextRef : undefined} voiceInterimRange={voice.interimRange} />

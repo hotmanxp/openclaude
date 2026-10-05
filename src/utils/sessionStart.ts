@@ -7,6 +7,7 @@ import { isBareMode } from './envUtils.js'
 import { updateWatchPaths } from './hooks/fileChangedWatcher.js'
 import { shouldAllowManagedHooksOnly } from './hooks/hooksConfigSnapshot.js'
 import { executeSessionStartHooks, executeSetupHooks } from './hooks.js'
+import { loadMods } from '../mods/hooks.js'
 import { logError } from './log.js'
 import { loadPluginHooks } from './plugins/loadPluginHooks.js'
 
@@ -123,6 +124,21 @@ export async function processSessionStartHooks(
 
       // Continue execution - plugin hooks won't be available, but project-level hooks
       // from .claude/settings.json (loaded via captureHooksConfigSnapshot) will still work
+    }
+
+    // Load mods (user JS extensions) before SessionStart hooks execute, so
+    // mod handlers registered via ctx.on() are visible to every event,
+    // including SessionStart itself. Memoized like loadPluginHooks; per-mod
+    // failures are attributed inside and never throw. Mods are untrusted
+    // external code — same managed-only policy gate as plugin hooks.
+    try {
+      await withDiagnosticsTiming('load_mods', () => loadMods())
+    } catch (error) {
+      logError(
+        error instanceof Error
+          ? error
+          : new Error(`Failed to load mods during ${source}: ${String(error)}`),
+      )
     }
   }
 

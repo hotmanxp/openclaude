@@ -26,6 +26,7 @@
 |------|---------|
 | `src/commands/` | Slash commands (`/help`, `/story-log`, `/set-ticket`, ...) |
 | `src/tools/` | Tool implementations (FileRead, Bash, Grep, Glob, ...) |
+| `src/mods/` | Mods 系统 —— 用户 JS 扩展（事件/工具/命令/UI 插槽）。**fork 自研，明确不进上游同步名单**（路线 B，见 `docs/mods-plan.md` §1.3；上游无同名文件，分叉不产生同步冲突） |
 | `src/services/api/` | API clients |
 | `src/components/` | Ink/React UI |
 | `src/hooks/`, `src/utils/` | React hooks, model utils |

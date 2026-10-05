@@ -2,9 +2,13 @@
 
 > **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v2.0 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+> **版本**：v2.2 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
 >
 > **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
+>
+> **v2.1 变更**（对照当前代码逐项复核后修订）：① 修正 web vendor 路径 —— 实际为 `packages/zn-agent-core/src/compat/`，**`src/opencc-src/` 目录不存在**（§2.2、R6）② 组件数 616 → 618 ③ 注明 zod 为 phantom dependency（§3.4）④ 新增实施注记：`next()` 链采用包裹层方案、matcher 对象→string 转换、mod ctx 的 appState 接缝（§3.3）⑤ P0 前两项降级为确认性检查（§四）⑥ 补充三项增量资产：`addNotification` 通道、`removeFunctionHook` 原语、动态命令合并通道（§2.1）。复核确认命中的关键锚点（`sessionHooks.ts:93`、`hooks.ts:1800`/`2362`、`tools.ts:354`、`pluginDirectories.ts:53`、`artifactGenerator.ts:108`、两处 `HOOK_EVENTS` 27 项一致、WorkflowTool runtime 1,076 行）不变。
+>
+> **v2.2 变更**（P0–P2 已全部实现于 `feat/mods-p1` 分支，本文档记录实现终态）：① **两档 tier 落地为真包裹** —— mod composite（`HookCallback.modChain` 标记）被 `executeHooks` 提出扁平并行批次，mod 链作为外层 tier，terminal `next()` 真实执行核心 hooks 子集并返回聚合结果（`{continue, decision?, reason?, systemMessage?}`），handler 有真实 before/after 语义（§3.3 注记已按实现更新）② **P2 全套落地**：`ctx.fs` 授权制（settings `mods.authorized` 白名单 + cwd/mod 根双围栏）、`ui.status` 持久插槽（`ModStatusLine` 组件）、async-generator 流式 handler（yield 进度走 notice 通道）、熔断（连续 5 次 handler 失败自动卸载 + `tengu_mods_circuit_break`）、`/mods` 管理命令（列表/reload/unload）、遥测（`tengu_mods_load`）③ mod 命令经 `skillChangeDetector.notifyCommandsChanged()` 注入 REPL 命令列表（含挂载追赶）④ P3 仍未做（vm 隔离 / per-plugin Worker / 完整 render site）。
 >
 > **配套文档**：
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）
@@ -35,7 +39,7 @@ v1.0 有若干数字在复核后证伪，此处更正以免后续估算失准：
 | `CLAUDE_PLUGIN_ROOT` 「12 文件」 | **10 文件** | 冲突结论不变 |
 | `src/entrypoints/sdk/` 「14 文件」 | 13 | 无实质影响 |
 | `src/utils/plugins/` 「51 文件」 | 53 | 无实质影响 |
-| 「547 个组件」 | `src/components/**` 下 `.tsx`+`.ts` 共 **616** | UI 插槽成本估计基础偏保守 |
+| 「547 个组件」 | `src/components/**` 下 `.tsx`+`.ts` 共 **618** | UI 插槽成本估计基础偏保守 |
 | `src/utils/sessionHooks.ts:93` | 路径为 `src/utils/hooks/sessionHooks.ts:93`（行号正确） | grep 会落空 |
 | `REPL.tsx` | 实际在 `src/screens/REPL.tsx` | 同上 |
 
@@ -75,7 +79,7 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进约 1791 提交**（`git
 |---|---|---|
 | **27 个 hook 事件总线** | `src/utils/hooks.ts`（5280 行）| Mods handler 直接挂现有事件，**零新增分发层** |
 | 多源合并/去重/`if` 过滤 | `getMatchingHooks:1800` | 免费继承 |
-| `addFunctionHook` 原语 | `src/utils/hooks/sessionHooks.ts:93` | 现成的"注册函数到 hook 管线" |
+| `addFunctionHook` / `removeFunctionHook` 原语 | `src/utils/hooks/sessionHooks.ts:93` / `:120` | 现成的"注册函数到 hook 管线" + 最小 unload 原语（R9） |
 | `type:'function'` 执行器 | `hooks.ts:2362` / `5273` | 已有 abort/timeout 包裹 |
 | `hookSpecificOutput` 协议 | `src/types/hooks.ts:38` | Mods 返回值结构可复用 |
 | Plugin 分发管道 | `src/utils/plugins/`（53 文件）| 复用 marketplace/安装/缓存/路径解析 |
@@ -84,8 +88,10 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进约 1791 提交**（`git
 | 动态工具模板 | `src/Tool.ts:508`、`MCPTool.ts:75` | 自定义工具照抄 MCPTool 形状 |
 | `assembleToolPool` 合并 | `src/tools.ts:354` | 工具注入只改这里 |
 | SDK 导出面 | `src/entrypoints/sdk/`（13 文件）| 有 `SdkMcpToolDefinition` 先例 |
-| Ink 组件库 | `src/ink.ts`、`src/components/**`（616 个 `.tsx`/`.ts`）| 可直接用 `Box`/`Text`/`useApp` |
+| Ink 组件库 | `src/ink.ts`、`src/components/**`（618 个 `.tsx`/`.ts`）| 可直接用 `Box`/`Text`/`useApp` |
 | **WorkflowTool vm 经验** | `src/tools/WorkflowTool/runtime/` | **借鉴封堵思路与超时模式，加载器另写** —— 见 §1.2 |
+| 宿主通知通道 | `src/Tool.ts:225` `ToolUseContext.addNotification` | `ui.notice` 的现成单向推送通道（R3 缓解依据） |
+| 动态命令合并 + 缓存失效 | `src/commands.ts:556` `getCommands`（dynamicSkills + plugin commands）+ `clearCommandMemoizationCaches` | `registerCommand` 的现成通道：注册进 registry + 失效缓存即可 |
 
 **27 个事件的实际名单**（`coreTypes.ts:26`，`coreSchemas.ts:371` 内容一致）：
 
@@ -101,7 +107,7 @@ CwdChanged, FileChanged
 **三个真空**：
 
 1. **无用户代码加载器** —— 产物是 `.mjs`（非 Bun SFX），无用户 JS 加载先例可抄（`artifactGenerator.ts:108` 加载的是自己生成的产物，不是用户代码）
-2. **无 UI 插槽** —— 616 个组件散在多层目录，`src/screens/REPL.tsx` 为核心
+2. **无 UI 插槽** —— 618 个组件散在多层目录，`src/screens/REPL.tsx` 为核心
 3. **无运行时 `registerTool()`** —— `getAllBaseTools()` 是字面量数组
 
 **高危冲突**：
@@ -126,7 +132,7 @@ CwdChanged, FileChanged
 
 **最大冲突**：web 侧底层假设「插件不改主进程状态」（`defaultHookExecutor.ts:80-86` 注释：*"This executor never returns `blocked: true` — it is a report-only executor"*），与 Mods「改行为 + 画 UI」**正面矛盾**。
 
-> **本节前提**：web 侧 Mods 相关代码 0 行已复核（`packages/zn-agent-core/src/opencc-src/src/` 下 `MODS_DIR`/`Bun.Transpiler`/`modsOffAt` 全部 0 命中）。R6 仍成立 —— CLI 侧新代码需手工同步回 vendor 副本。
+> **本节前提**：web 侧 Mods 相关代码 0 行已复核（vendor 树下 `MODS_DIR`/`Bun.Transpiler`/`modsOffAt` 全部 0 命中）。R6 仍成立 —— CLI 侧新代码需手工同步回 vendor 副本。**v2.1 勘误**：vendor 副本实际根目录为 `packages/zn-agent-core/src/compat/`（`defaultHookExecutor.ts` 位于 `src/compat/plugins/`），v1.0/v2.0 所引的 `packages/zn-agent-core/src/opencc-src/src/` **不存在**。
 
 ### 2.3 官方 Mods 的实现基线（**上游现状，非 opencc 目标**）
 
@@ -303,6 +309,13 @@ type ModHandler = (
 ) => ModEventResult | Promise<ModEventResult>
 ```
 
+**实施注记（v2.2，已按实现终态更新）**：
+
+- **`next()` 链 = 两档 tier 真包裹（已实现）**。`buildModHookMatchers` 为每个 (event, matcher) 组生成携带 `modChain` 原始链标记的 composite `HookCallback`；`executeHooks`（`hooks.ts`，所有 per-event executor 的唯一汇聚点）检测到标记后把 composite 提出扁平并行批次：mod 链作为**外层 tier** 顺序执行，terminal `next()` 经 `runModChain` 落到 `coreRunner`——并行执行全部核心 hooks 子集并返回聚合结果。非 mod 路径零改动；`executeHooksOutsideREPL`（-p 模式 SessionEnd 等）不包裹，composite 原样执行。
+- **matcher 形状转换（已实现）**：对象 matcher（`{tool:'Bash'}`）在 registry 层经 `normalizeMatcherValue` 转为 string matchQuery（对照 `getMatchingHooks` 的 per-event 取值：tool/notification_type/source/reason/trigger）。
+- **mod ctx 接缝（已实现）**：`engine.createModContext(mod)` 在 `register(ctx)` 调用时同步构建并注入 handlers/commands/tools 收集器；`ctx.fs` 按白名单惰性构建，`ui.status`/`ui.notice` 走模块级 bridge，REPL 经 `useSyncExternalStore` 消费。
+- **命令列表刷新（实现期发现）**：`getCommands` 在 session-start hooks 之前被 await 定格，mod 命令启动后注册不可见 —— 经 `skillChangeDetector.notifyCommandsChanged()`（memo 层清除 + 信号）+ REPL 挂载追赶两段解决。
+
 **能力面 `$` / `ctx` —— P1 收窄到上游同款**：
 
 ```ts
@@ -347,7 +360,7 @@ interface ModContext {
 
 ```
 src/mods/
-├── manifest.ts        # ModManifestSchema（Zod，对齐 PluginManifestSchema 风格）
+├── manifest.ts        # ModManifestSchema（Zod，对齐 PluginManifestSchema 风格；注意 zod 当前为 phantom dep，见下）
 ├── loader.ts          # 发现 + 校验 + import() 加载
 ├── validate.ts        # 入口校验（扩展名 / 体积上限 / register 是函数）
 ├── registry.ts        # 生命周期管理（load / unload / reload / 当前 mod 追踪）
@@ -380,9 +393,11 @@ my-mod/
 
 ## 四、分阶段实施
 
-### P0 — 可行性验证（1–2 人天）
+### P0 — 可行性验证（1–2 人天）✅ 已完成（随 P1 实现一并验证）
 
-**目标：把剩下的未知数变成已知数。**（v1.0 的三个 P0 项中，转译对照实验已因 JS 决策删除）
+> **目标：把剩下的未知数变成已知数。**（v1.0 的三个 P0 项中，转译对照实验已因 JS 决策删除）
+>
+> **v2.1 注**：下表前两项已有强证据，降级为**确认性检查** —— ① 加载链路：`artifactGenerator.ts:108` 的同款 `import(pathToFileURL())` 已在 `dist/cli.mjs` 产物内运行；② 异常边界：`executeFunctionHook`（`hooks.ts:2379`）已带 timeout + signal 包裹。P0 实际重心在**目录围栏**与**事件面映射**。
 
 | 任务 | 验收标准 |
 |---|---|
@@ -393,7 +408,7 @@ my-mod/
 
 **决策门**：P0 不通过则整个方案重新评估，不要硬推。
 
-### P1 — 最小可用（9–14 人天）
+### P1 — 最小可用（9–14 人天）✅ 已实现（`src/mods/`，feat/mods-p1）
 
 | 任务 | 估计 | 产出 |
 |---|---|---|
@@ -408,7 +423,7 @@ my-mod/
 
 > **P1 明确不做**：卸载（unload）留到 P2 会造成"加载了撤不掉"的用户可感知缺陷，**P1 必须包含最小 unload**（从 hook 管线摘除 + registry 移除）。
 
-### P2 — 加固（12–18 人天）
+### P2 — 加固（12–18 人天）✅ 已实现（v2.2 变更注记录实现方式）
 
 - **最小可用 unload / reload**（若 P1 只做了 unload，reload 放这里）
 - `ctx.fs` 授权制（settings 白名单 + 运行时可见性）
@@ -419,7 +434,7 @@ my-mod/
 - 与 `/plugin` 菜单集成
 - 遥测埋点
 
-### P3 — 对标上游（12–18 人天）
+### P3 — 对标上游（12–18 人天）⬜ 未实现（后续阶段）
 
 - `vm.SourceTextModule` 隔离（需先解决 `--experimental-vm-modules` flag 与 `bin/opencc` 早退条件的联动）
 - per-plugin Worker + 心跳自愈
@@ -451,13 +466,13 @@ my-mod/
 |---|---|---|---|
 | **R1** | **同步策略冲突** —— 明令禁 cherry-pick，自研 Mods 每次上游变更都要手工重打 | 高 | 动手前先定路线（建议 B），并写进 AGENTS.md。**缓解依据：`src/mods/` 是纯新增目录，上游无同名文件 → 分叉不产生同步冲突** |
 | **R2** | ~~**Node vs Bun 隐性分叉**~~ | ~~高~~ | **已消解** —— JS 方案不做转译，不触碰 `Bun.Transpiler`。运行时差异（Node vs Bun SFX）仍存在，但只影响"不追平上游"的范围取舍，不再是技术风险 |
-| **R3** | **TUI 并发模型无先例** —— 外部代码向 Ink 单线程渲染循环推送内容，opencc 里完全没这个通道 | 中高 | P1 只做单向（mod → 宿主）的 `ui.notice`；不做宿主 → mod 主动唤醒；**pane/status 移出 P1** |
+| **R3** | **TUI 并发模型无先例** —— 外部代码向 Ink 单线程渲染循环推送内容，pane/status 级插槽无先例 | 中高 | P1 只做单向（mod → 宿主）的 `ui.notice`；不做宿主 → mod 主动唤醒；**pane/status 移出 P1**。单向通道已有现成先例：`ToolUseContext.addNotification`（`src/Tool.ts:225`） |
 | **R4** | `HOOK_EVENTS` 双份定义易漏改 | 中 | 复用现有 27 事件 = 零改动；加事件时用脚本校验两处一致（注意符号共出现在 11 个文件） |
 | **R5** | `assembleToolPool` prompt-cache 排序被打乱 | 中 | Mod 工具插入遵守现有排序规则，加断言测试 |
-| **R6** | web 侧 vendor 同步 —— CLI 侧新代码需手工同步回 `packages/zn-agent-core/src/opencc-src/` | 中 | Mods 核心代码放 CLI 仓，web 侧只 vendor 消费；加 `verify-server-types-self-contained` 守卫 |
+| **R6** | web 侧 vendor 同步 —— CLI 侧新代码需手工同步回 vendor 副本（实际根：`packages/zn-agent-core/src/compat/`，v2.0 所引 `src/opencc-src/` 路径不存在） | 中 | Mods 核心代码放 CLI 仓，web 侧只 vendor 消费；加 `verify-server-types-self-contained` 守卫 |
 | **R7** | ~~**mod 有完整机器权限**~~ | ~~中~~ | **前提已更正** —— v1.0 假设 mod 拿到 `fs`/`store`，风险成立；**v2.0 能力面收窄后该前提不成立**。P1 的 mod 无文件系统访问能力。真实残余风险是「同进程无隔离」，见 R8 |
 | **R8** | **同进程无隔离** —— 原生 `import()` 加载，mod 与宿主共享进程，崩溃会波及 CLI | **中高** | ① 每次 handler 调用 `try/catch` 包裹，错误归因到 mod 名 ② 复用 `hooks.ts` 的 `type:'function'` abort/timeout 包裹 ③ P2 视真实需求引入 `vm.SourceTextModule` 隔离（flag 改造点已定位） |
-| **R9** | **无卸载路径** —— 加载后无法在会话内撤销 | 中 | P1 必须含最小 unload（从 hook 管线摘除 + registry 移除）；完整 reload 放 P2 |
+| **R9** | **无卸载路径** —— 加载后无法在会话内撤销 | 中 | P1 必须含最小 unload（从 hook 管线摘除 + registry 移除；原语已存在：`removeFunctionHook`，`sessionHooks.ts:120`）；完整 reload 放 P2 |
 | **R10** | **JS-first 降低 mod 作者体验** —— 无类型提示，生态偏小 | 低 | mod 模板附带 `// @ts-check` + JSDoc；提供 `checkJs` 模式 tsconfig；文档说明可用 `tsc` 自行编译 |
 | **R11** | **事件面覆盖不足** —— 27 个 hook 事件未必都适合承载 mod 语义 | 中 | P0 第四项验收"事件面映射"；P1 先支持 7 个核心事件，明确列出不支持清单 |
 
