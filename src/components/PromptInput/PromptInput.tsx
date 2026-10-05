@@ -89,7 +89,7 @@ import { findSlackChannelPositions, getKnownChannelsVersion, hasSlackMcpServer, 
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
 import { syncTeammateMode } from '../../utils/swarm/teamHelpers.js';
 import type { TeamSummary } from '../../utils/teamDiscovery.js';
-import { getTeammateColor } from '../../utils/teammate.js';
+import { getTeammateColor, getTeamName } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
@@ -97,6 +97,7 @@ import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import {
   findUltracodeTriggerPositions,
+  isUltracodeActive,
   isWorkflowKeywordTriggerEnabled,
 } from '../../utils/ultracode.js';
 import {
@@ -132,7 +133,7 @@ import { useMaybeTruncateInput } from './useMaybeTruncateInput.js';
 import { usePromptInputPlaceholder } from './usePromptInputPlaceholder.js';
 import { useShowFastIconHint } from './useShowFastIconHint.js';
 import { useSwarmBanner } from './useSwarmBanner.js';
-import { isNonSpacePrintable, isVimModeEnabled } from './utils.js';
+import { isNonSpacePrintable, isVimModeEnabled, resolvePromptBorderColor } from './utils.js';
 import { isAntEmployee } from '../../utils/buildConfig.js';
 type Props = {
   debug: boolean;
@@ -320,6 +321,7 @@ function PromptInput({
   // WebBrowser pill — visible when a browser is open
   const bagelFooterVisible = useAppState(s => false);
   const teamContext = useAppState(s => s.teamContext);
+  const standaloneAgentContext = useAppState(s => s.standaloneAgentContext);
   const queuedCommands = useCommandQueue();
   const promptSuggestionState = useAppState(s => s.promptSuggestion);
   const speculation = useAppState(s => s.speculation);
@@ -2371,28 +2373,16 @@ function PromptInput({
     inlineGhostText,
     inputFilter: lazySpaceInputFilter
   };
-  const getBorderColor = (): keyof Theme => {
-    const modeColors: Record<string, keyof Theme> = {
-      bash: 'bashBorder'
-    };
-
-    // Mode colors take priority, then teammate color, then default
-    if (modeColors[mode]) {
-      return modeColors[mode];
-    }
-
-    // In-process teammates run headless - don't apply teammate colors to leader UI
-    if (isInProcessTeammate()) {
-      return 'promptBorder';
-    }
-
-    // Check for teammate color from environment
-    const teammateColorName = getTeammateColor();
-    if (teammateColorName && AGENT_COLORS.includes(teammateColorName as AgentColorName)) {
-      return AGENT_COLOR_TO_THEME_COLOR[teammateColorName as AgentColorName];
-    }
-    return 'promptBorder';
-  };
+  const getBorderColor = (): keyof Theme =>
+    resolvePromptBorderColor({
+      mode,
+      inProcessTeammate: isInProcessTeammate(),
+      teammateColor: getTeammateColor(),
+      teamContext,
+      teamName: getTeamName(teamContext),
+      standaloneColor: standaloneAgentContext?.color,
+      ultracodeActive: isUltracodeActive()
+    });
   if (isExternalEditorActive) {
     return <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={getBorderColor()} borderStyle="round" borderLeft={false} borderRight={false} borderBottom width="100%">
         <Text dimColor italic>
