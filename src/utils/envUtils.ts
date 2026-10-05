@@ -118,9 +118,26 @@ export function getProjectsDir(): string {
   return join(getClaudeConfigHomeDir(), 'projects')
 }
 
+// User-level skills and commands live under ~/.agents/, not under the
+// config home (~/.claude). Tests must be able to redirect this or they would
+// read the developer's real ~/.agents tree.
+let userAgentsDirOverride: string | undefined
+
+export function setUserAgentsDirForTesting(
+  configDir: string | undefined,
+): void {
+  userAgentsDirOverride = configDir?.normalize('NFC')
+}
+
+export function getUserAgentsDirOverrideForTesting(): string | undefined {
+  return userAgentsDirOverride
+}
+
 export function getUserAgentsDir(): string {
-  const homeDir = homedir()
-  return join(homeDir, '.agents')
+  if (userAgentsDirOverride) {
+    return userAgentsDirOverride
+  }
+  return join(homedir(), '.agents')
 }
 
 /**

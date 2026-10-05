@@ -28,7 +28,6 @@ import {
   parseEffortValue,
 } from '../utils/effort.js'
 import {
-  getClaudeConfigHomeDir,
   getUserAgentsDir,
   isBareMode,
   isEnvTruthy,
@@ -83,7 +82,7 @@ export function getSkillsPath(
     case 'policySettings':
       return join(getManagedFilePath(), CONFIG_DIRNAME, dir)
     case 'userSettings':
-      return join(getClaudeConfigHomeDir(), dir)
+      return join(getUserAgentsDir(), dir)
     case 'projectSettings':
       return `.claude/${dir}`
     case 'plugin':
@@ -782,7 +781,7 @@ async function loadSkillsFromCommandsDir(
  */
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
-    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
+    const userSkillsDir = join(getUserAgentsDir(), 'skills')
     const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome(
       'skills',

@@ -25,7 +25,10 @@ import type { Command } from '../types/command.ts'
 import {
   getClaudeConfigHomeDir,
   getClaudeConfigHomeDirOverrideForTesting,
+  getUserAgentsDir,
+  getUserAgentsDirOverrideForTesting,
   setClaudeConfigHomeDirForTesting,
+  setUserAgentsDirForTesting,
 } from '../utils/envUtils.ts'
 import {
   getFsImplementation,
@@ -101,6 +104,11 @@ function setRealFilesystemForTest(): ReturnType<typeof getFsImplementation> {
 
 function setConfigDirEnv(configDir: string): void {
   setClaudeConfigHomeDirForTesting(undefined)
+  // Deliberately a DIFFERENT path from configDir. User-level skills and
+  // commands resolve via getUserAgentsDir() (~/.agents), which is independent
+  // of the config home. Pointing both at the same directory would let a
+  // regression back to getClaudeConfigHomeDir() pass unnoticed.
+  setUserAgentsDirForTesting(join(configDir, 'user-agents-home'))
   process.env.OPENCLAUDE_CONFIG_DIR = configDir
   process.env.CLAUDE_CONFIG_DIR = configDir
 }
@@ -109,8 +117,10 @@ function restoreConfigDirEnv(original: {
   openClaudeConfigDir: string | undefined
   claudeConfigDir: string | undefined
   configHomeOverride: string | undefined
+  userAgentsDirOverride: string | undefined
 }): void {
   setClaudeConfigHomeDirForTesting(original.configHomeOverride)
+  setUserAgentsDirForTesting(original.userAgentsDirOverride)
 
   if (original.openClaudeConfigDir === undefined) {
     delete process.env.OPENCLAUDE_CONFIG_DIR
@@ -133,6 +143,7 @@ test.serial('loads flat and nested skills with colon namespaces', async () => {
     openClaudeConfigDir: process.env.OPENCLAUDE_CONFIG_DIR,
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
     configHomeOverride: getClaudeConfigHomeDirOverrideForTesting(),
+    userAgentsDirOverride: getUserAgentsDirOverrideForTesting(),
   }
   const originalSettingsState = enableUserAndProjectSettingSources()
   const originalFs = setRealFilesystemForTest()
@@ -198,6 +209,7 @@ test.serial('loads persisted registry trust metadata from skill.json', async () 
     openClaudeConfigDir: process.env.OPENCLAUDE_CONFIG_DIR,
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
     configHomeOverride: getClaudeConfigHomeDirOverrideForTesting(),
+    userAgentsDirOverride: getUserAgentsDirOverrideForTesting(),
   }
   const originalSettingsState = enableUserAndProjectSettingSources()
   const originalFs = setRealFilesystemForTest()
@@ -246,6 +258,7 @@ test.serial('project skills are ordered before user skills with the same name', 
     openClaudeConfigDir: process.env.OPENCLAUDE_CONFIG_DIR,
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
     configHomeOverride: getClaudeConfigHomeDirOverrideForTesting(),
+    userAgentsDirOverride: getUserAgentsDirOverrideForTesting(),
   }
   const originalSettingsState = enableUserAndProjectSettingSources()
   const originalFs = setRealFilesystemForTest()
@@ -253,7 +266,7 @@ test.serial('project skills are ordered before user skills with the same name', 
   try {
     mkdirSync(cwd, { recursive: true })
     setConfigDirEnv(configDir)
-    const userConfigDir = getClaudeConfigHomeDir()
+    const userConfigDir = getUserAgentsDir()
     writeUserSkill(userConfigDir, 'shared', 'user skill')
     writeSkill(cwd, 'shared', {
       description: 'project skill',
