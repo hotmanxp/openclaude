@@ -7,10 +7,7 @@ import {
   promoteToNow,
   subscribeToCommandQueue,
 } from './messageQueueManager.js'
-import {
-  getCurrentQueryGuard,
-  interruptForSubmit,
-} from './turnAbortRegistry.js'
+import { getCurrentQueryGuard } from './turnAbortRegistry.js'
 import { isSendNowCandidate, readEvidence } from './turnEvidence.js'
 
 /**
@@ -81,7 +78,6 @@ export type Decision =
   | { action: 'wait'; reason: WaitReason }
   | { action: 'background' }
   | { action: 'interrupt' }
-  | { action: 'cancel' }
 
 /**
  * Upstream `Rs()` (bundle.js @26356584). The order of these checks is the
@@ -288,15 +284,6 @@ function promoteAndRetry(candidate: Candidate): void {
   schedule()
 }
 
-function cancel(): void {
-  if (interruptForSubmit()) {
-    // Interrupted: the turn is unwinding and the queue will drain naturally.
-    teardown()
-    return
-  }
-  teardown()
-}
-
 function evaluate(): void {
   if (disposed) return
   collectCandidates()
@@ -392,9 +379,6 @@ function evaluate(): void {
     case 'interrupt':
       promoteAndRetry(selected.candidate)
       return
-    case 'cancel':
-      cancel()
-      return
   }
 }
 
@@ -418,7 +402,15 @@ export function sendQueuedNow(): boolean {
   const guard = getCurrentQueryGuard()
   if (!guard?.isRunning) {
     // No turn in flight — the next drain will pick the message up on its own.
-    teardown()
+    // But a promoted candidate may still be awaiting that drain: this press
+    // can land in the reserve→tryStart 'dispatching' window of the very turn
+    // the first press bought, or just after it ended. Tearing down here would
+    // demote the candidate and undo that promotion, so only reset when nothing
+    // is raised. A raised candidate implies the scheduler is still polling, so
+    // its own drain/stand_by paths resolve the state.
+    if (!hasRaisedCandidate()) {
+      teardown()
+    }
     return false
   }
 
@@ -447,7 +439,15 @@ export function sendQueuedNow(): boolean {
   return true
 }
 
-/** Release timers and subscriptions. Safe to call more than once. */
+/**
+ * Full reset, leaving the scheduler reusable. Test-only: production code never
+ * calls this. An armed scheduler always terminates on its own via the
+ * empty-poll (EMPTY_GRACE_POLLS) and drain-poll (DRAIN_GRACE_POLLS) grace
+ * limits, so module state surviving a REPL unmount costs a few seconds of
+ * bounded polling rather than leaking a timer.
+ *
+ * Safe to call more than once.
+ */
 export function disposeSendNowScheduler(): void {
   disposed = true
   teardown()

@@ -294,6 +294,51 @@ describe('getAutoCompactThreshold', () => {
       restoreEnv()
     }
   })
+
+  test('session context-window override beats the auto-compact cap', async () => {
+    // The cap used to win unconditionally, pinning a freshly configured large
+    // window to the cap and making /set-context-window a no-op for compaction.
+    // Numbers are this fork's: effective window reserves 20k for the summary,
+    // and the threshold sits 13k below that (AUTOCOMPACT_BUFFER_TOKENS).
+    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '100000'
+    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '20000'
+    delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+    const { getAutoCompactThreshold, getEffectiveContextWindowSize } =
+      await importAutoCompact()
+
+    // Capped: 100k - 20k reserved = 80k effective, 80k - 13k buffer.
+    expect(getEffectiveContextWindowSize('claude-sonnet-4')).toBe(80_000)
+    expect(getAutoCompactThreshold('claude-sonnet-4')).toBe(67_000)
+    realContext.setSessionContextWindowOverride('claude-sonnet-4', 1_000_000)
+
+    try {
+      // Override wins: the 100k cap no longer applies.
+      expect(getEffectiveContextWindowSize('claude-sonnet-4')).toBe(980_000)
+      expect(getAutoCompactThreshold('claude-sonnet-4')).toBe(967_000)
+    } finally {
+      realContext.clearSessionContextWindowOverride('claude-sonnet-4')
+      restoreEnv()
+    }
+  })
+
+  test('internal context cap still wins over a session override', async () => {
+    process.env.USER_TYPE = 'ant'
+    process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '200000'
+    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '100000'
+    realContext.setSessionContextWindowOverride('claude-sonnet-4', 1_000_000)
+    const { getAutoCompactThreshold, getEffectiveContextWindowSize } =
+      await importAutoCompact()
+
+    try {
+      // The internal override suppresses the session one, so the cap applies
+      // and the window stays pinned at 100k.
+      expect(getEffectiveContextWindowSize('claude-sonnet-4')).toBe(80_000)
+      expect(getAutoCompactThreshold('claude-sonnet-4')).toBe(67_000)
+    } finally {
+      realContext.clearSessionContextWindowOverride('claude-sonnet-4')
+      restoreEnv()
+    }
+  })
 })
 
 describe('getAutoCompactFailureCooldownMs', () => {

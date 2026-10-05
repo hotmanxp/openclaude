@@ -6,11 +6,20 @@
 | Layer | Tech |
 |-------|------|
 | Language | TypeScript 5.9.3 (strict) |
-| Runtime | Bun |
+| **Build tool** | **Bun** — `bun run build` / `bun test` / `bun run dev` |
+| **Runtime** | **Node ≥22** — 产物 `dist/cli.mjs` 由 `bin/opencc`（`#!/usr/bin/env node`）执行；`package.json` `engines.node >= 22.0.0`；`scripts/build.ts` `target: 'node'` |
 | TUI | React 19.2.4 + Ink 7 |
 | Module | ESM only (`.js` import suffixes) |
-| Build | `bun run build` → `dist/cli.mjs` |
+| Build output | `dist/cli.mjs` (~22MB bundle) |
 | Test | `bun test` (co-located `*.test.ts`) |
+
+> **Bun vs Node —— 别搞混**：Bun 只是**构建/测试工具链**。运行时是 Node。`dist/cli.mjs` 里出现的 `Bun.*` 标识符是 `scripts/build.ts` 的 **bundler shim**（`bun-bundle-shim` 插件 + `target: 'node'`），不是真 Bun 全局。
+>
+> 推论（涉及运行时能力的决策都受此约束）：
+> - **没有 `Bun.Transpiler`** —— 需要转译只能用 npm 包（且 `typescript` 只在 devDependencies，生产依赖里无任何转译器）
+> - **没有 `Bun.embeddedFiles` / `/$bunfs/` SFX 内嵌文件解析**
+> - **`vm.SourceTextModule` 需要 `--experimental-vm-modules`**，Node 25 上不给 flag 直接抛错；且 `bin/opencc` 的 `relaunchWithLongSessionHeapIfNeeded()` 有早退条件，加 flag 必须连早退判定一起改
+> - 调试产物问题时用 `node dist/cli.mjs`，不是 `bun dist/cli.mjs`
 
 ## Repository Layout
 | Path | Purpose |

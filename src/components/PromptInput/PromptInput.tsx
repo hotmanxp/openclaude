@@ -89,7 +89,7 @@ import { findSlackChannelPositions, getKnownChannelsVersion, hasSlackMcpServer, 
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
 import { syncTeammateMode } from '../../utils/swarm/teamHelpers.js';
 import type { TeamSummary } from '../../utils/teamDiscovery.js';
-import { getTeammateColor } from '../../utils/teammate.js';
+import { getTeammateColor, getTeamName } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
@@ -97,6 +97,7 @@ import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import {
   findUltracodeTriggerPositions,
+  isUltracodeActive,
   isWorkflowKeywordTriggerEnabled,
 } from '../../utils/ultracode.js';
 import {
@@ -132,7 +133,7 @@ import { useMaybeTruncateInput } from './useMaybeTruncateInput.js';
 import { usePromptInputPlaceholder } from './usePromptInputPlaceholder.js';
 import { useShowFastIconHint } from './useShowFastIconHint.js';
 import { useSwarmBanner } from './useSwarmBanner.js';
-import { isNonSpacePrintable, isVimModeEnabled } from './utils.js';
+import { isNonSpacePrintable, isVimModeEnabled, resolvePromptBorderColor } from './utils.js';
 import { isAntEmployee } from '../../utils/buildConfig.js';
 type Props = {
   debug: boolean;
@@ -320,6 +321,7 @@ function PromptInput({
   // WebBrowser pill — visible when a browser is open
   const bagelFooterVisible = useAppState(s => false);
   const teamContext = useAppState(s => s.teamContext);
+  const standaloneAgentContext = useAppState(s => s.standaloneAgentContext);
   const queuedCommands = useCommandQueue();
   const promptSuggestionState = useAppState(s => s.promptSuggestion);
   const speculation = useAppState(s => s.speculation);
@@ -1513,13 +1515,24 @@ function PromptInput({
   // Going through the queue rather than submitting directly is what reuses the
   // existing abort-on-'now' hook in print.ts.
   //
-  // The registration below is deliberately left ungated so the ctrl+x chord
-  // prefix is always consumed, but the body must respect the overlay gate the
-  // way every other Chat handler does: a permission dialog is up whenever a
-  // turn is active, so an ungated body would submit the buffer behind the
-  // dialog and tear down the very turn the dialog is blocking on.
+  // The registration is deliberately left ungated (see the useKeybinding call
+  // below), but the body respects the overlay gate the way every other Chat
+  // handler does: a permission dialog is up whenever a turn is active, so an
+  // ungated body would submit the buffer behind the dialog and tear down the
+  // very turn the dialog is blocking on.
   const handleSendNow = useCallback(() => {
     if (isModalOverlayActive) {
+      return;
+    }
+
+    // Mirror onSubmit's suggestions gate: with the dropdown open Enter does
+    // not submit (the user is still composing), so sendNow must neither
+    // enqueue the buffer nor promote/interrupt for an older queued message.
+    // Directory suggestions stay exempt, as in onSubmit (Tab completes them).
+    const hasDirectorySuggestions =
+      suggestionsState.suggestions.length > 0 &&
+      suggestionsState.suggestions.every(s => s.description === 'directory');
+    if (suggestionsState.suggestions.length > 0 && !hasDirectorySuggestions) {
       return;
     }
 
@@ -1534,7 +1547,7 @@ function PromptInput({
       // enqueue above even though onSubmit is async.
       sendQueuedNow();
     }
-  }, [isLoading, input, pastedContents, onSubmit, isModalOverlayActive]);
+  }, [isLoading, input, pastedContents, suggestionsState, onSubmit, isModalOverlayActive]);
 
   // Handler for chat:modelPicker - toggle model picker
   const handleModelPicker = useCallback(() => {
@@ -1834,10 +1847,11 @@ function PromptInput({
   });
 
   // Registered separately, without the modal-overlay gate that the other Chat
-  // handlers carry. ctrl+x is the chord prefix (ctrl+x ctrl+e, ctrl+x ctrl+k),
-  // and an inactive registration would stop the prefix being consumed, leaking
-  // ctrl+s to the terminal. Same reasoning as chat:killAgents in
-  // useCancelRequest.ts:328 — the gate lives in the handler body instead.
+  // handlers carry. Chord-prefix consumption does not actually depend on this
+  // registration — the always-mounted CancelRequestHandler registers an
+  // ungated chat:killAgents in the same Chat context (useCancelRequest.ts:329),
+  // so ctrl+x is consumed as a prefix either way. Ungated simply mirrors
+  // chat:killAgents: the gate lives in the handler body (see handleSendNow).
   useKeybinding('chat:sendNow', handleSendNow, {
     context: 'Chat',
   });
@@ -2359,28 +2373,16 @@ function PromptInput({
     inlineGhostText,
     inputFilter: lazySpaceInputFilter
   };
-  const getBorderColor = (): keyof Theme => {
-    const modeColors: Record<string, keyof Theme> = {
-      bash: 'bashBorder'
-    };
-
-    // Mode colors take priority, then teammate color, then default
-    if (modeColors[mode]) {
-      return modeColors[mode];
-    }
-
-    // In-process teammates run headless - don't apply teammate colors to leader UI
-    if (isInProcessTeammate()) {
-      return 'promptBorder';
-    }
-
-    // Check for teammate color from environment
-    const teammateColorName = getTeammateColor();
-    if (teammateColorName && AGENT_COLORS.includes(teammateColorName as AgentColorName)) {
-      return AGENT_COLOR_TO_THEME_COLOR[teammateColorName as AgentColorName];
-    }
-    return 'promptBorder';
-  };
+  const getBorderColor = (): keyof Theme =>
+    resolvePromptBorderColor({
+      mode,
+      inProcessTeammate: isInProcessTeammate(),
+      teammateColor: getTeammateColor(),
+      teamContext,
+      teamName: getTeamName(teamContext),
+      standaloneColor: standaloneAgentContext?.color,
+      ultracodeActive: isUltracodeActive()
+    });
   if (isExternalEditorActive) {
     return <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={getBorderColor()} borderStyle="round" borderLeft={false} borderRight={false} borderBottom width="100%">
         <Text dimColor italic>

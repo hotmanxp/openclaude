@@ -372,6 +372,10 @@ const prStatus = usePrStatus(isLoading, active && isPrStatusEnabled());
   // Match the same logic as TeamStatus to avoid trailing separator
   // In-process mode uses Shift+Down/Up navigation, not footer teams menu
   const hasTeams = isAgentSwarmsEnabled() && !isInProcessEnabled() && teamContext !== undefined && count(Object.values(teamContext.teammates), t_0 => t_0.name !== 'team-lead') > 0;
+  // Must stay above the bash-mode early return below: a hook below it is
+  // skipped in bash mode and runs again once the mode changes back, which is
+  // React error #300 ("Rendered more hooks than during the previous render").
+  const workflows = useAppState(s_5 => s_5.workflows);
   if (mode === 'bash') {
     return <Text color="bashBorder">! for bash mode</Text>;
   }
@@ -418,7 +422,6 @@ const prStatus = usePrStatus(isLoading, active && isPrStatusEnabled());
   // it returns null otherwise, but `parts.length > 0` below would still see
   // the element and emit a leading " · " separator next to the branch,
   // producing a lonely empty middot (空白点) in the rendered footer.
-  const workflows = useAppState(s_5 => s_5.workflows);
   const hasRunningWorkflow = workflows !== undefined && Object.values(workflows).some(w => w.status === 'running');
   const parts = [
   // Remote session indicator

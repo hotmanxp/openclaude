@@ -14,6 +14,7 @@ export type Theme = {
   ide: string
   promptBorder: string
   promptBorderShimmer: string // Lighter version of promptBorder color for shimmer effect
+  ultracode: string // Cyan-blue border for ultracode mode
   text: string
   inverseText: string
   inactive: string
@@ -127,6 +128,7 @@ const lightTheme: Theme = {
   ide: 'rgb(71,130,200)', // Muted blue
   promptBorder: 'rgb(153,153,153)', // Medium gray
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer effect
+  ultracode: 'rgb(0,180,216)', // Cyan-blue for ultracode mode
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
   inactive: 'rgb(102,102,102)', // Dark gray
@@ -210,6 +212,7 @@ const lightAnsiTheme: Theme = {
   ide: 'ansi:blueBright',
   promptBorder: 'ansi:white',
   promptBorderShimmer: 'ansi:whiteBright',
+  ultracode: 'ansi:cyanBright',
   text: 'ansi:black',
   inverseText: 'ansi:white',
   inactive: 'ansi:blackBright',
@@ -292,6 +295,7 @@ const darkAnsiTheme: Theme = {
   ide: 'ansi:blue',
   promptBorder: 'ansi:white',
   promptBorderShimmer: 'ansi:whiteBright',
+  ultracode: 'ansi:cyanBright',
   text: 'ansi:whiteBright',
   inverseText: 'ansi:black',
   inactive: 'ansi:white',
@@ -374,6 +378,7 @@ const lightDaltonizedTheme: Theme = {
   ide: 'rgb(71,130,200)', // Muted blue
   promptBorder: 'rgb(153,153,153)', // Medium gray
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer
+  ultracode: 'rgb(0,180,216)', // Cyan-blue for ultracode mode
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
   inactive: 'rgb(102,102,102)', // Dark gray
@@ -456,6 +461,7 @@ const darkTheme: Theme = {
   ide: 'rgb(71,130,200)', // Muted blue
   promptBorder: 'rgb(136,136,136)', // Medium gray
   promptBorderShimmer: 'rgb(166,166,166)', // Lighter gray for shimmer
+  ultracode: 'rgb(0,180,216)', // Cyan-blue for ultracode mode
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
   inactive: 'rgb(153,153,153)', // Light gray
@@ -538,6 +544,7 @@ const darkDaltonizedTheme: Theme = {
   ide: 'rgb(71,130,200)', // Muted blue
   promptBorder: 'rgb(136,136,136)', // Medium gray
   promptBorderShimmer: 'rgb(166,166,166)', // Lighter gray for shimmer
+  ultracode: 'rgb(0,180,216)', // Cyan-blue for ultracode mode
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
   inactive: 'rgb(153,153,153)', // Light gray

@@ -1606,6 +1606,13 @@ export function REPL({
   const [spinnerColor, setSpinnerColor] = useState<keyof Theme | null>(null);
   const [spinnerShimmerColor, setSpinnerShimmerColor] = useState<keyof Theme | null>(null);
   const [compactProgressRatio, setCompactProgressRatio] = useState<number | null>(null);
+  // True for the whole compaction phase, including the PreCompact/PostCompact
+  // hooks. compactProgressRatio alone misses the pre-hook window: hooks_start
+  // (pre_compact) fires before compact_start sets the ratio (compact.ts:439-462),
+  // and during that gap the sendNow scheduler would read isCompacting=false and
+  // interrupt the turn mid-compaction. compact_end always fires after the
+  // PostCompact hooks (compact.ts:770-810), so it is the single clear point.
+  const [compactionPhaseActive, setCompactionPhaseActive] = useState(false);
 
   // Publish the turn handles the sendNow scheduler polls on. That scheduler
   // runs outside React, so it cannot read these through props or context —
@@ -1615,9 +1622,9 @@ export function REPL({
     publishTurnHandles({
       abortController,
       queryGuard,
-      isCompacting: compactProgressRatio !== null,
+      isCompacting: compactionPhaseActive || compactProgressRatio !== null,
     });
-  }, [abortController, queryGuard, compactProgressRatio]);
+  }, [abortController, queryGuard, compactionPhaseActive, compactProgressRatio]);
 
   // The scheduler reads the live tool set, so hand it a getter rather than a
   // value — this state is replaced (not mutated) on every update.
@@ -2751,16 +2758,25 @@ export function REPL({
             setSpinnerColor('claudeBlue_FOR_SYSTEM_SPINNER');
             setSpinnerShimmerColor('claudeBlueShimmer_FOR_SYSTEM_SPINNER');
             setSpinnerMessage(event.hookType === 'pre_compact' ? 'Running PreCompact hooks\u2026' : event.hookType === 'post_compact' ? 'Running PostCompact hooks\u2026' : 'Running SessionStart hooks\u2026');
+            // PreCompact hooks run before compact_start; session hooks are
+            // unrelated to compaction. PostCompact hooks are already covered
+            // by compact_start, but re-arming is harmless and covers callers
+            // that fire post hooks without a preceding compact_start.
+            if (event.hookType === 'pre_compact' || event.hookType === 'post_compact') {
+              setCompactionPhaseActive(true);
+            }
             break;
           case 'compact_start':
             setSpinnerMessage('Compacting conversation');
             setCompactProgressRatio(0);
+            setCompactionPhaseActive(true);
             break;
           case 'compact_progress':
             setCompactProgressRatio(event.ratio);
             break;
           case 'compact_end':
             setCompactProgressRatio(null);
+            setCompactionPhaseActive(false);
             setSpinnerMessage(null);
             setSpinnerColor(null);
             setSpinnerShimmerColor(null);
