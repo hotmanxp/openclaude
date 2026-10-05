@@ -175,7 +175,6 @@ function clearTimer(): void {
     clearTimeout(timer)
     timer = null
   }
-  graceCount = 0
 }
 
 /**
@@ -195,6 +194,12 @@ function restoreRaised(): void {
 
 function teardown(): void {
   clearTimer()
+  // Reset here rather than in clearTimer(): schedule() calls clearTimer() on
+  // every re-arm, and doing it there wiped the grace counter immediately after
+  // evaluate() incremented it, so `graceCount >= UNMOVABLE_GRACE_LIMIT` could
+  // never be true and a turn running a tool pinned the scheduler at
+  // `wait unmovable_grace` forever.
+  graceCount = 0
   emptyPolls = 0
   for (const unsubscribe of unsubscribers) unsubscribe()
   unsubscribers = []

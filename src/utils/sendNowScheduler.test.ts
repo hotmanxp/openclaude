@@ -326,3 +326,53 @@ describe('readEvidence isMainRequestInFlight', () => {
     expect(readEvidence().isMainRequestInFlight).toBe(false)
   })
 })
+
+describe('sendNowScheduler grace counter', () => {
+  const UUID_A = '11111111-1111-1111-1111-111111111111'
+
+  it('eventually interrupts once a tool has held the turn past the grace limit', async () => {
+    // Regression: clearTimer() used to reset graceCount, and schedule() calls
+    // clearTimer() on every re-arm — so the increment in the `wait` branch was
+    // wiped before the next poll ever read it. `graceCount >= 2` was
+    // unreachable, and any turn running a tool sat at `wait unmovable_grace`
+    // forever. sendNow simply never fired in the most common case.
+    const { QueryGuard } = await import('./QueryGuard.js')
+    const {
+      publishTurnHandles,
+      resetTurnHandles,
+      publishInProgressToolUseIdsProvider,
+    } = await import('./turnAbortRegistry.js')
+    const { setMainRequestInFlight } = await import('./turnEvidence.js')
+    const scheduler = await import('./sendNowScheduler.js')
+    const queue = await import('./messageQueueManager.js')
+
+    resetTurnHandles()
+    queue.resetCommandQueue()
+    scheduler.disposeSendNowScheduler()
+
+    const guard = new QueryGuard()
+    guard.reserve()
+    guard.tryStart()
+    publishTurnHandles({
+      abortController: new AbortController(),
+      queryGuard: guard,
+      isCompacting: false,
+    })
+    // A tool is running and never finishes: the case that used to hang.
+    publishInProgressToolUseIdsProvider(() => new Set(['toolu_stuck']))
+    setMainRequestInFlight(true)
+
+    try {
+      queue.enqueue({ value: 'send me', mode: 'prompt', uuid: UUID_A })
+      expect(scheduler.sendQueuedNow()).toBe(true)
+
+      // Two grace waits at 200ms, then the decision must flip to interrupt.
+      await Bun.sleep(900)
+
+      const cmd = queue.getCommandQueue().find(c => c.uuid === UUID_A)
+      expect(cmd?.priority).toBe('now')
+    } finally {
+      scheduler.disposeSendNowScheduler()
+    }
+  })
+})
