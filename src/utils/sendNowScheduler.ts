@@ -40,6 +40,15 @@ import { isSendNowCandidate, readEvidence } from './turnEvidence.js'
 const POLL_INTERVAL_MS = 200
 /** Upstream `Ao` — how many unmovable_grace waits before forcing a decision. */
 const UNMOVABLE_GRACE_LIMIT = 2
+/**
+ * How many consecutive empty polls to tolerate before giving up.
+ *
+ * Not an upstream constant: it covers the window between the shortcut being
+ * pressed and its message actually landing in the queue. At POLL_INTERVAL_MS
+ * this is ~1.5s, comfortably longer than a submit round-trip, and short enough
+ * that pressing the shortcut with nothing queued stops promptly.
+ */
+const EMPTY_GRACE_POLLS = 8
 
 type Head = 'deliverable' | 'not_ready' | 'behind_earlier'
 
@@ -157,6 +166,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let unsubscribers: Array<() => void> = []
 let candidates = new Map<CandidateUuid, Candidate>()
 let graceCount = 0
+let emptyPolls = 0
 let lastDecision: string | null = null
 let disposed = false
 
@@ -185,6 +195,7 @@ function restoreRaised(): void {
 
 function teardown(): void {
   clearTimer()
+  emptyPolls = 0
   for (const unsubscribe of unsubscribers) unsubscribe()
   unsubscribers = []
   restoreRaised()
@@ -246,9 +257,18 @@ function evaluate(): void {
   collectCandidates()
   pruneCandidates()
   if (candidates.size === 0) {
+    // The shortcut can outrun the enqueue it triggers. Poll for a short grace
+    // window before concluding there is genuinely nothing to send, otherwise
+    // the first empty poll would abandon a message that is still in flight.
+    if (emptyPolls < EMPTY_GRACE_POLLS) {
+      emptyPolls++
+      schedule()
+      return
+    }
     teardown()
     return
   }
+  emptyPolls = 0
 
   const selected = selectHead(getCommandQueue(), candidates)
   if (selected === null) {
@@ -305,7 +325,11 @@ function evaluate(): void {
 
 function schedule(): void {
   clearTimer()
-  if (disposed || candidates.size === 0) return
+  // Note: deliberately does NOT bail on an empty candidate set. The shortcut
+  // can be pressed a moment before the message reaches the queue, and bailing
+  // here would leave that message queued forever. evaluate() re-collects and
+  // tears itself down once there is genuinely nothing left to send.
+  if (disposed) return
   timer = setTimeout(evaluate, POLL_INTERVAL_MS)
 }
 
@@ -325,8 +349,17 @@ export function sendQueuedNow(): boolean {
 
   collectCandidates()
   if (candidates.size === 0) {
-    teardown()
-    return false
+    // Nothing queued yet. Keep polling briefly: handleSendNow submits first and
+    // that reaches the queue asynchronously, so an empty snapshot here is not
+    // proof there is nothing to send.
+    if (unsubscribers.length === 0) {
+      unsubscribers = [
+        subscribeToCommandQueue(() => schedule()),
+        guard.subscribe(() => schedule()),
+      ]
+    }
+    schedule()
+    return true
   }
 
   if (unsubscribers.length === 0) {
