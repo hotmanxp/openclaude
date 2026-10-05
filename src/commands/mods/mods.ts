@@ -2,6 +2,7 @@ import {
   getLoadedMods,
   getModFailureCount,
 } from '../../mods/registry.js'
+import { isBuiltinMod } from '../../mods/builtin.js'
 import {
   reloadMods,
   unloadMod,
@@ -44,8 +45,9 @@ export async function call(args: string): Promise<{ type: 'text'; value: string 
     for (const mod of mods) {
       const failures = getModFailureCount(mod.manifest.name)
       const failureHint = failures > 0 ? ` · ${failures} recent failures` : ''
+      const origin = isBuiltinMod(mod) ? ' · builtin' : ''
       lines.push(
-        `  ${mod.manifest.name}${mod.manifest.version ? `@${mod.manifest.version}` : ''} — ${mod.handlers.length} handlers, ${mod.tools.length} tools, ${mod.commands.length} commands${failureHint}`,
+        `  ${mod.manifest.name}${mod.manifest.version ? `@${mod.manifest.version}` : ''} — ${mod.handlers.length} handlers, ${mod.tools.length} tools, ${mod.commands.length} commands${origin}${failureHint}`,
       )
     }
     lines.push('', 'Actions: /mods reload · /mods unload <name>')

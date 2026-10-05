@@ -65,12 +65,13 @@ async function setupModsDir(): Promise<void> {
 }
 
 describe('loadMods', () => {
-  test('empty/missing mods dir yields no results and no hooks', async () => {
+  test('empty/missing mods dir still registers built-in mods', async () => {
     modsDir = join(tmpdir(), `opencc-mods-missing-${Date.now()}`)
     process.env[OPENCC_MODS_DIR_ENV] = modsDir
     const results = await loadMods()
-    expect(results).toEqual([])
-    expect(getRegisteredHooks()).toBeNull()
+    // The built-in diff mod registers even without a mods dir.
+    expect(results.map(r => r.name)).toContain('diff')
+    expect(getRegisteredHooks()?.PostToolUse).toHaveLength(2)
   })
 
   test('loads a valid mod end-to-end into the global hook registry', async () => {
@@ -102,13 +103,18 @@ describe('loadMods', () => {
     )
 
     const results = await loadMods()
-    expect(results).toEqual([{ name: 'greeter', ok: true }])
-    expect(getLoadedMods()).toHaveLength(1)
+    const greeter = results.find(r => r.name === 'greeter')!
+    expect(greeter.ok).toBe(true)
+    // built-in diff is always present alongside disk mods
+    expect(results.map(r => r.name)).toContain('diff')
+    expect(getLoadedMods().length).toBeGreaterThanOrEqual(2)
 
     // Composite registered into the global registry under Stop + PostToolUse
+    // PostToolUse = greeter's {tool:Bash} + the built-in diff's
+    // {tool:FileEdit}/{tool:FileWrite} matchers.
     const registered = getRegisteredHooks()
     expect(registered?.Stop).toHaveLength(1)
-    expect(registered?.PostToolUse).toHaveLength(1)
+    expect(registered?.PostToolUse).toHaveLength(3)
     expect(registered?.Stop![0]!.pluginName).toBe('mod:greeter')
 
     // Composite callback is invocable and chains to terminal continue
@@ -130,7 +136,8 @@ describe('loadMods', () => {
     await writeMod('healthy', 'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }')
 
     const results = await loadMods()
-    expect(results).toHaveLength(2)
+    // broken + healthy disk mods + built-in diff
+    expect(results).toHaveLength(3)
     const broken = results.find(r => r.name === 'broken')!
     const healthy = results.find(r => r.name === 'healthy')!
     expect(broken.ok).toBe(false)
@@ -150,9 +157,10 @@ describe('loadMods', () => {
     )
     const results = await loadMods()
     expect(results[0]!.ok).toBe(false)
-    // register() threw BEFORE registerLoadedMod — nothing in the registry
-    expect(getRegisteredHooks()).toBeNull()
-    expect(getLoadedMods()).toHaveLength(0)
+    // register() threw BEFORE registerLoadedMod — no Stop hook from halfway
+    // (the built-in diff mod registers its own PostToolUse hooks regardless)
+    expect(getRegisteredHooks()?.Stop).toBeUndefined()
+    expect(getLoadedMods().some(m => m.manifest.name === 'halfway')).toBe(false)
   })
 
   test('unloadMod removes the composite from the global registry', async () => {
@@ -167,7 +175,9 @@ describe('loadMods', () => {
     const removed = await unloadMod('removable')
     expect(removed).toBe(true)
     expect(getRegisteredHooks()?.Stop).toBeUndefined()
-    expect(getLoadedMods()).toHaveLength(0)
+    expect(getLoadedMods().some(m => m.manifest.name === 'removable')).toBe(
+      false,
+    )
   })
 
   test('unloadMod clears the persistent status segment', async () => {

@@ -2,13 +2,15 @@
 
 > **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v2.2 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+> **版本**：v2.3 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
 >
 > **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
 >
 > **v2.1 变更**（对照当前代码逐项复核后修订）：① 修正 web vendor 路径 —— 实际为 `packages/zn-agent-core/src/compat/`，**`src/opencc-src/` 目录不存在**（§2.2、R6）② 组件数 616 → 618 ③ 注明 zod 为 phantom dependency（§3.4）④ 新增实施注记：`next()` 链采用包裹层方案、matcher 对象→string 转换、mod ctx 的 appState 接缝（§3.3）⑤ P0 前两项降级为确认性检查（§四）⑥ 补充三项增量资产：`addNotification` 通道、`removeFunctionHook` 原语、动态命令合并通道（§2.1）。复核确认命中的关键锚点（`sessionHooks.ts:93`、`hooks.ts:1800`/`2362`、`tools.ts:354`、`pluginDirectories.ts:53`、`artifactGenerator.ts:108`、两处 `HOOK_EVENTS` 27 项一致、WorkflowTool runtime 1,076 行）不变。
 >
 > **v2.2 变更**（P0–P2 已全部实现于 `feat/mods-p1` 分支，本文档记录实现终态）：① **两档 tier 落地为真包裹** —— mod composite（`HookCallback.modChain` 标记）被 `executeHooks` 提出扁平并行批次，mod 链作为外层 tier，terminal `next()` 真实执行核心 hooks 子集并返回聚合结果（`{continue, decision?, reason?, systemMessage?}`），handler 有真实 before/after 语义（§3.3 注记已按实现更新）② **P2 全套落地**：`ctx.fs` 授权制（settings `mods.authorized` 白名单 + cwd/mod 根双围栏）、`ui.status` 持久插槽（`ModStatusLine` 组件）、async-generator 流式 handler（yield 进度走 notice 通道）、熔断（连续 5 次 handler 失败自动卸载 + `tengu_mods_circuit_break`）、`/mods` 管理命令（列表/reload/unload）、遥测（`tengu_mods_load`）③ mod 命令经 `skillChangeDetector.notifyCommandsChanged()` 注入 REPL 命令列表（含挂载追赶）④ P3 仍未做（vm 隔离 / per-plugin Worker / 完整 render site）。
+>
+> **v2.3 变更**（内置 mod 通道落地 = P3 首项，上游 §4.3/§九 对标）：① **in-memory 内置通道** `src/mods/builtin.ts` —— `registerBuiltinMod(spec)` + 固定清单（上游 `wCe()`/`Ne.registerScan()`/`plugin_bundled_register` 对标），内置 mod 绕过磁盘发现与安全围栏（first-party 代码），进入同一 registry/dispatch//mods 面板（标记 `· builtin`）；同名录 disk mod 可遮蔽内置版（disk 优先）② **`diff` 内置 mod**（对标上游 `cc-plugin-diff`，其 /diff = "changed files and their hunks beside the transcript, refreshed as Claude edits"）：PostToolUse 监听 `Edit`/`Write` 工具（注意 opencc 工具名，非 FileEdit/FileWrite），读取 `tool_response.structuredPatch`（宿主已算好 hunk，mod 只读事件数据）；命令为 **`/session-diff`** 而非 `/diff` —— 主仓已有宿主 `/diff`（git diff + 每轮差异面板，`src/commands/diff`），内置 mod 命令裸名会在 dedupe 中被宿主吞掉，故命名避让；输出 unified diff 文本（`MAX_DIFF_OUTPUT_CHARS` 16KB 上限 = 上游 `MAX_DIFF_BYTES` 对标，空态 "No changes yet." 同上游）③ 内置 mod 命令**顶级裸名**（无 `<mod>:` 前缀，上游一致），disk mod 命令保持 `<mod>:` 前缀 ④ 修复 `reloadMods` 重复注册（loadMods 开头清 registry 旧实例）。
 >
 > **配套文档**：
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）

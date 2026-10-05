@@ -53,6 +53,9 @@ export type LoadedMod = {
 
 let loadedMods: LoadedMod[] = []
 
+/** Marker for in-memory built-in mods (src/mods/builtin.ts). */
+export const BUILTIN_ORIGIN = '(builtin)'
+
 export function registerLoadedMod(mod: LoadedMod): void {
   loadedMods.push(mod)
   notifyModToolsChanged()

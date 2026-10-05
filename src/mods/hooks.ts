@@ -22,6 +22,7 @@ import {
   type LoadedMod,
 } from './registry.js'
 import { buildModHookMatchers } from './dispatch.js'
+import { loadBuiltinMods, isBuiltinMod } from './builtin.js'
 import { createModContext, clearModStatus, emitModsSystemNotice } from './engine.js'
 import {
   ModValidationError,
@@ -124,13 +125,22 @@ function swapRegisteredHooks(): void {
 export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
   ensureBreakerWired()
   const dir = getModsDirectory()
+  // Drop previous instances first — /mods reload must not duplicate
+  // handlers (disk and built-in mods alike).
+  for (const mod of [...getLoadedMods()]) {
+    unregisterMod(mod.manifest.name)
+  }
   let roots: string[]
   try {
     roots = await discoverModRoots(dir)
   } catch {
-    return [] // mods dir missing/unreadable — mods are optional
+    // mods dir missing/unreadable — disk mods are optional; built-ins
+    // still load below (they have no dependency on the mods directory).
+    roots = []
   }
-  if (roots.length === 0) return []
+  if (roots.length === 0) {
+    logForDebugging(`[mods] no disk mods found in ${dir}; built-ins still register`)
+  }
 
   const results: ModLoadResult[] = []
   for (const root of roots) {
@@ -148,20 +158,40 @@ export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
       results.push({ name: fallbackName, ok: false, error: message })
     }
   }
+  // Built-in mods (in-memory channel, upstream registerScan parity) —
+  // registered after disk mods so a disk mod can shadow a built-in name.
+  const builtins = await loadBuiltinMods()
+  for (const mod of builtins.loaded) {
+    results.push({ name: mod.manifest.name, ok: true })
+    logForDebugging(
+      `[mods] built-in "${mod.manifest.name}" registered (${mod.handlers.length} handlers, ${mod.commands.length} commands)`,
+    )
+  }
+  for (const failure of builtins.failed) {
+    results.push({ name: failure.name, ok: false, error: failure.error })
+  }
   swapRegisteredHooks()
 
   const loaded = results.filter(r => r.ok)
   const failed = results.filter(r => !r.ok)
+  const builtinCount = loaded.filter(name => isBuiltinLoadedName(name.name)).length
   const meta = (v: string) =>
     v as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
   logEvent(`tengu_mods_load`, {
     loaded: meta(String(loaded.length)),
     failed: meta(String(failed.length)),
+    builtin: meta(String(builtinCount)),
     names: meta(jsonStringify(loaded.map(r => r.name))),
   })
 
   return results
 })
+
+function isBuiltinLoadedName(name: string): boolean {
+  return getLoadedMods().some(
+    m => m.manifest.name === name && isBuiltinMod(m),
+  )
+}
 
 // --- Circuit breaker (P2): consecutive handler failures auto-unload a mod --
 let breakerWired = false

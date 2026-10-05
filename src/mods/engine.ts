@@ -11,7 +11,11 @@ import type {
   ModHandler,
   ModToolSpec,
 } from './registry.js'
-import { getLoadedMods, getModToolsVersion } from './registry.js'
+import {
+  BUILTIN_ORIGIN,
+  getLoadedMods,
+  getModToolsVersion,
+} from './registry.js'
 import {
   isModSupportedEvent,
   MOD_SUPPORTED_EVENTS,
@@ -420,15 +424,21 @@ export function getModTools(): Tool[] {
 
 // ---------------------------------------------------------------------------
 // Mod commands — LocalCommand-shaped (docs/mods-plan.md §2.1: registerCommand
-// 现成通道). Runtime command name is `<modName>:<name>`, mirroring the plugin
-// `<plugin>:<command>` convention, so a mod can never shadow built-ins.
+// 现成通道). Disk mod commands are namespaced `<modName>:<name>` (plugin
+// convention, cannot shadow built-ins). Built-in mods are first-party and
+// register top-level commands (upstream cc-plugin-diff parity: /diff is a
+// top-level command) — the caller (appendModCommands) dedupes against
+// existing names so a built-in can never shadow a host command.
 // ---------------------------------------------------------------------------
 
 export function buildModCommands(): Command[] {
   const commands: Command[] = []
   for (const mod of getLoadedMods()) {
+    const isBuiltin = mod.root === BUILTIN_ORIGIN
     for (const spec of mod.commands) {
-      const runtimeName = `${mod.manifest.name}:${spec.name}`
+      const runtimeName = isBuiltin
+        ? spec.name
+        : `${mod.manifest.name}:${spec.name}`
       commands.push({
         name: runtimeName,
         description:
