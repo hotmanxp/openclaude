@@ -9,11 +9,13 @@ import type { QueryGuard } from './QueryGuard.js'
  * live in REPL-local refs today (`REPL.tsx:963` and `:999`), which are
  * unreachable from module scope.
  *
- * This is a one-writer / many-reader registry: REPL publishes on every render
- * and on the compaction transitions; the scheduler reads. Publishing during
- * render (rather than in an effect) matches how `abortControllerRef.current`
- * is already kept current at `REPL.tsx:964`, so there is no window where the
- * registry trails the ref it mirrors.
+ * This is a one-writer / many-reader registry: REPL publishes from a
+ * useSyncExternalStore-driven effect on every relevant state change
+ * (REPL.tsx, the publishTurnHandles effect); the scheduler reads. Because
+ * publishing happens in an effect, the registry can trail the render-local
+ * `abortControllerRef.current` by one commit. That window is benign: the
+ * scheduler polls at 200ms, so a stale read costs at most one poll before the
+ * effect lands.
  */
 
 let currentAbortController: AbortController | null = null
@@ -44,23 +46,6 @@ export function publishInProgressToolUseIdsProvider(
   provider: () => ReadonlySet<string>,
 ): void {
   toolUseIdsProvider = provider
-}
-
-/**
- * Abort the running turn for a new submit, the way upstream's
- * turn.interruptForSubmit does.
- *
- * Returns false when there is nothing to interrupt — no controller, or the
- * controller already aborted. The scheduler treats false as "this round is
- * already moot" and moves on rather than retrying.
- */
-export function interruptForSubmit(): boolean {
-  const controller = currentAbortController
-  if (!controller || controller.signal.aborted) {
-    return false
-  }
-  controller.abort('interrupt')
-  return true
 }
 
 export function getCurrentAbortController(): AbortController | null {

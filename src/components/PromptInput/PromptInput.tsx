@@ -1513,13 +1513,24 @@ function PromptInput({
   // Going through the queue rather than submitting directly is what reuses the
   // existing abort-on-'now' hook in print.ts.
   //
-  // The registration below is deliberately left ungated so the ctrl+x chord
-  // prefix is always consumed, but the body must respect the overlay gate the
-  // way every other Chat handler does: a permission dialog is up whenever a
-  // turn is active, so an ungated body would submit the buffer behind the
-  // dialog and tear down the very turn the dialog is blocking on.
+  // The registration is deliberately left ungated (see the useKeybinding call
+  // below), but the body respects the overlay gate the way every other Chat
+  // handler does: a permission dialog is up whenever a turn is active, so an
+  // ungated body would submit the buffer behind the dialog and tear down the
+  // very turn the dialog is blocking on.
   const handleSendNow = useCallback(() => {
     if (isModalOverlayActive) {
+      return;
+    }
+
+    // Mirror onSubmit's suggestions gate: with the dropdown open Enter does
+    // not submit (the user is still composing), so sendNow must neither
+    // enqueue the buffer nor promote/interrupt for an older queued message.
+    // Directory suggestions stay exempt, as in onSubmit (Tab completes them).
+    const hasDirectorySuggestions =
+      suggestionsState.suggestions.length > 0 &&
+      suggestionsState.suggestions.every(s => s.description === 'directory');
+    if (suggestionsState.suggestions.length > 0 && !hasDirectorySuggestions) {
       return;
     }
 
@@ -1534,7 +1545,7 @@ function PromptInput({
       // enqueue above even though onSubmit is async.
       sendQueuedNow();
     }
-  }, [isLoading, input, pastedContents, onSubmit, isModalOverlayActive]);
+  }, [isLoading, input, pastedContents, suggestionsState, onSubmit, isModalOverlayActive]);
 
   // Handler for chat:modelPicker - toggle model picker
   const handleModelPicker = useCallback(() => {
@@ -1834,10 +1845,11 @@ function PromptInput({
   });
 
   // Registered separately, without the modal-overlay gate that the other Chat
-  // handlers carry. ctrl+x is the chord prefix (ctrl+x ctrl+e, ctrl+x ctrl+k),
-  // and an inactive registration would stop the prefix being consumed, leaking
-  // ctrl+s to the terminal. Same reasoning as chat:killAgents in
-  // useCancelRequest.ts:328 — the gate lives in the handler body instead.
+  // handlers carry. Chord-prefix consumption does not actually depend on this
+  // registration — the always-mounted CancelRequestHandler registers an
+  // ungated chat:killAgents in the same Chat context (useCancelRequest.ts:329),
+  // so ctrl+x is consumed as a prefix either way. Ungated simply mirrors
+  // chat:killAgents: the gate lives in the handler body (see handleSendNow).
   useKeybinding('chat:sendNow', handleSendNow, {
     context: 'Chat',
   });
