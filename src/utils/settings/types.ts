@@ -496,6 +496,20 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('OpenCC Dynamic Workflows configuration (opt-in)'),
+      mods: z
+        .object({
+          authorized: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Mod names granted ctx.fs filesystem access (P2 authorization ' +
+                'model, docs/mods-plan.md §3.3). Unauthorized mods see ' +
+                'ctx.fs === undefined. Paths are fenced to the session cwd ' +
+                'and the mod root.',
+            ),
+        })
+        .optional()
+        .describe('OpenCC Mods configuration (user JS extensions)'),
       worktree: z
         .object({
           symlinkDirectories: z

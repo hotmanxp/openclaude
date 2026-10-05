@@ -1,5 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
+import { buildModCommands } from './mods/engine.js'
+import modsCommand from './commands/mods/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
@@ -342,6 +344,7 @@ const COMMANDS = memoize((): Command[] => [
   mcp,
   memory,
   mobile,
+  modsCommand,
   model,
   outputStyle,
   remoteEnv,
@@ -573,7 +576,7 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   })
 
   if (dynamicSkills.length === 0) {
-    return baseCommands
+    return appendModCommands(baseCommands)
   }
 
   // Dedupe dynamic skills - only add if not already present
@@ -586,7 +589,7 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   )
 
   if (uniqueDynamicSkills.length === 0) {
-    return baseCommands
+    return appendModCommands(baseCommands)
   }
 
   // Insert dynamic skills after plugin skills but before built-in commands
@@ -594,14 +597,27 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   const insertIndex = baseCommands.findIndex(c => builtInNames.has(c.name))
 
   if (insertIndex === -1) {
-    return [...baseCommands, ...uniqueDynamicSkills]
+    return appendModCommands([...baseCommands, ...uniqueDynamicSkills])
   }
 
-  return [
+  return appendModCommands([
     ...baseCommands.slice(0, insertIndex),
     ...uniqueDynamicSkills,
     ...baseCommands.slice(insertIndex),
-  ]
+  ])
+}
+
+/**
+ * Append mod-contributed commands (src/mods) after everything else. Mod
+ * commands are namespaced `<modName>:<name>` so they can't shadow built-ins,
+ * custom commands or plugin commands; dedupe here is a defensive no-op.
+ */
+function appendModCommands(commands: Command[]): Command[] {
+  const modCommands = buildModCommands()
+  if (modCommands.length === 0) return commands
+  const names = new Set(commands.map(c => c.name))
+  const unique = modCommands.filter(c => !names.has(c.name))
+  return unique.length > 0 ? [...commands, ...unique] : commands
 }
 
 /**
@@ -724,6 +740,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   statusline, // Status line toggle
   stickers, // Stickers
   mobile, // Mobile QR code
+  modsCommand, // Mods management (src/mods)
 ])
 
 /**

@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
+import { getModTools } from './mods/engine.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { BackgroundAgentTool } from './tools/BackgroundAgentTool/index.js'
 import { BackgroundAgentResultTool } from './tools/BackgroundAgentResultTool/index.js'
@@ -370,8 +371,15 @@ export function assembleToolPool(
   // Avoid Array.toSorted (Node 20+) — we support Node 18. builtInTools is
   // readonly so copy-then-sort; allowedMcpTools is a fresh .filter() result.
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
+  // Mod tools join the MCP partition (after the built-in prefix) and are
+  // sorted within it — the prompt-cache invariant (built-ins contiguous)
+  // is preserved. Names are prefixed mods_<mod>_<tool> so built-ins always
+  // win the uniqBy on collision.
+  const modTools = getModTools()
   return uniqBy(
-    [...builtInTools].sort(byName).concat(allowedMcpTools.sort(byName)),
+    [...builtInTools]
+      .sort(byName)
+      .concat(allowedMcpTools.sort(byName), modTools),
     'name',
   )
 }
