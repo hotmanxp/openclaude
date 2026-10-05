@@ -1625,9 +1625,14 @@ export function REPL({
     publishInProgressToolUseIdsProvider(() => inProgressToolUseIDs);
   }, [inProgressToolUseIDs]);
 
+  // A turn is in flight for the whole of the guard's 'running' window, not
+  // just while the API request is outstanding. Deriving this from streamMode
+  // ('requesting') left it false for most of a turn, so the sendNow scheduler
+  // sat in `wait not_ready` and never sent anything. The OR in readEvidence()
+  // covers the steady state; this effect is kept for the explicit signal.
   React.useEffect(() => {
-    setMainRequestInFlight(streamMode === 'requesting');
-  }, [streamMode]);
+    setMainRequestInFlight(isQueryActive);
+  }, [isQueryActive]);
   const [resumeCompactPending, setResumeCompactPending] = useState<{
     tokenCount: number;
     model: string;

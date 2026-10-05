@@ -275,3 +275,54 @@ describe('sendQueuedNow end-to-end', () => {
     }
   })
 })
+
+describe('readEvidence isMainRequestInFlight', () => {
+  it('stays true for the whole turn, not just the request window', async () => {
+    // Regression: this was derived from `streamMode === 'requesting'`, which
+    // streaming.ts sets only at request start before moving to 'tool-use' /
+    // 'responding' for the rest of the turn. With holders=0 the decision then
+    // fell through to `wait not_ready` forever and the message was never sent
+    // — the feature looked wired up and did nothing.
+    const { QueryGuard } = await import('./QueryGuard.js')
+    const {
+      publishTurnHandles,
+      resetTurnHandles,
+    } = await import('./turnAbortRegistry.js')
+    const { readEvidence, setMainRequestInFlight } = await import('./turnEvidence.js')
+
+    resetTurnHandles()
+    const guard = new QueryGuard()
+    guard.reserve()
+    guard.tryStart()
+    publishTurnHandles({
+      abortController: new AbortController(),
+      queryGuard: guard,
+      isCompacting: false,
+    })
+    setMainRequestInFlight(false) // even if the stream signal says "not now"
+
+    const evidence = readEvidence()
+    expect(evidence.isLocalTurnRunning).toBe(true)
+    // A running turn is doing work regardless of which stream phase it is in.
+    expect(evidence.isMainRequestInFlight).toBe(true)
+  })
+
+  it('is false once no turn is running', async () => {
+    const { QueryGuard } = await import('./QueryGuard.js')
+    const {
+      publishTurnHandles,
+      resetTurnHandles,
+    } = await import('./turnAbortRegistry.js')
+    const { readEvidence, setMainRequestInFlight } = await import('./turnEvidence.js')
+
+    resetTurnHandles()
+    publishTurnHandles({
+      abortController: null,
+      queryGuard: new QueryGuard(),
+      isCompacting: false,
+    })
+    setMainRequestInFlight(false)
+
+    expect(readEvidence().isMainRequestInFlight).toBe(false)
+  })
+})

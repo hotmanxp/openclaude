@@ -43,19 +43,25 @@ export type TurnEvidence = {
 }
 
 /**
- * Whether the main loop is waiting on a network request, as opposed to running
- * tools locally.
+ * Whether the main loop is mid-request, as opposed to running tools locally.
  *
  * Upstream reads this off its own request journal (`oGo("api_call") && que()>0`).
- * opencc has no such journal, so this is derived from stream mode: the spinner
- * sits in 'requesting' exactly while the API call is outstanding. Treated as
- * advisory — the scheduler's grace counter bounds how long a wrong answer here
- * can delay delivery.
+ * opencc has no such journal.
+ *
+ * Do NOT derive this from stream mode. An earlier version used
+ * `streamMode === 'requesting'`, which looked right but is a brief transient:
+ * streaming.ts sets 'requesting' at request start and then moves to
+ * 'tool-use' / 'responding' / 'thinking' for the rest of the turn. So during
+ * most of a turn the flag reads false, decide() returns `wait not_ready`, and
+ * the message is never sent — the exact "looks wired, never fires" failure.
+ *
+ * The guard is the authoritative "a turn is under way" signal, and a turn that
+ * is running is by definition doing work worth interrupting.
  */
-let isRequestingStream = false
+let isMainRequestInFlightOverride = false
 
 export function setMainRequestInFlight(inFlight: boolean): void {
-  isRequestingStream = inFlight
+  isMainRequestInFlightOverride = inFlight
 }
 
 export function readEvidence(): TurnEvidence {
@@ -83,7 +89,10 @@ export function readEvidence(): TurnEvidence {
     // holder is treated as unmovable. That makes the 'background' branch
     // unreachable rather than wrong — see the approximation note in the plan.
     unmovableHolderCount: inProgressToolUseIds.size,
-    isMainRequestInFlight: isRequestingStream,
+    // A running turn is doing work, whatever phase it is in. Using the guard
+    // rather than the stream mode keeps this true across the whole turn — see
+    // the note on setMainRequestInFlight.
+    isMainRequestInFlight: isMainRequestInFlightOverride || isLocalTurnRunning,
   }
 }
 
