@@ -36,12 +36,32 @@ describe('PromptInputQueuedCommands', () => {
 
     const output = await renderToString(
       <AppStateProvider>
-        <PromptInputQueuedCommands />
+        <PromptInputQueuedCommands isLoading={false} />
       </AppStateProvider>,
       100,
     )
 
     expect(output).toContain('1 message queued for next turn')
     expect(output).toContain('Use another library')
+  })
+
+  it('hints the send-now chord only while a turn is running', async () => {
+    const { PromptInputQueuedCommands } = await import('./PromptInputQueuedCommands.js')
+
+    const render = (isLoading: boolean) =>
+      renderToString(
+        <AppStateProvider>
+          <PromptInputQueuedCommands isLoading={isLoading} />
+        </AppStateProvider>,
+        100,
+      )
+
+    // A turn is in flight and the message is waiting: interrupting it early is
+    // exactly what the chord is for, so the hint must be there.
+    expect(await render(true)).toContain('press ctrl+x ctrl+s to send now')
+
+    // No turn running — the queue drains on its own, so there is nothing to
+    // interrupt and the hint would only be noise.
+    expect(await render(false)).not.toContain('send now')
   })
 })

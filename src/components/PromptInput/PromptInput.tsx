@@ -2392,7 +2392,7 @@ function PromptInput({
   }
   const textInputElement = isVimModeEnabled() ? <VimTextInput {...baseProps} initialMode={vimMode} onModeChange={setVimMode} /> : <TextInput {...baseProps} />;
   return <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
-      {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
+      {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands isLoading={isLoading} />}
       <PromptInputStashNotice hasStash={stashedPrompt !== undefined} />
       {swarmBanner ? <>
           <Text color={swarmBanner.bgColor}>

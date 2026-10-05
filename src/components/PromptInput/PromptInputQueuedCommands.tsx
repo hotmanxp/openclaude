@@ -31,6 +31,17 @@ function isIdleNotification(value: string): boolean {
 const MAX_VISIBLE_NOTIFICATIONS = 3;
 
 /**
+ * The chord that sends the queue now, shown under the queued banner.
+ *
+ * Deliberately not resolved through getBindingDisplayText(): that returns the
+ * last binding for an action, and chat:sendNow has two defaults — the chord and
+ * `ctrl+enter`. The latter is inert on a legacy terminal, which sends it as a
+ * bare \r that ink parses as a plain 'enter', so advertising it would point the
+ * user at a key that does nothing. The chord is the one that works everywhere.
+ */
+const SEND_NOW_CHORD = 'ctrl+x ctrl+s';
+
+/**
  * Create a synthetic overflow notification message for capped task notifications.
  */
 function createOverflowNotificationMessage(count: number): string {
@@ -69,7 +80,18 @@ function processQueuedCommands(queuedCommands: QueuedCommand[]): QueuedCommand[]
   };
   return [...otherCommands, ...visibleNotifications, overflowCommand];
 }
-function PromptInputQueuedCommandsImpl(): React.ReactNode {
+type Props = {
+  /**
+   * Whether a turn is currently in flight. The sendNow hint only appears while
+   * one is: with no turn running, the queue drains on its own and there is
+   * nothing for the chord to interrupt. Passed in rather than read from the
+   * guard so the hint and handleSendNow's own `if (isLoading)` gate cannot
+   * drift apart.
+   */
+  isLoading: boolean;
+};
+
+function PromptInputQueuedCommandsImpl({ isLoading }: Props): React.ReactNode {
   const queuedCommands = useCommandQueue();
   const viewingAgent = useAppState((s: AppState) => !!s.viewingAgentTaskId);
   // Brief layout: dim queue items + skip the paddingX (brief messages
@@ -117,10 +139,13 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
     return null;
   }
   return <Box marginTop={1} flexDirection="column">
-      {queuedPromptCount > 0 && <Box marginLeft={2} marginBottom={1}>
+      {queuedPromptCount > 0 && <Box marginLeft={2} marginBottom={1} flexDirection="column">
           <Text dimColor>
             {queuedPromptCount === 1 ? '1 message queued for next turn' : `${queuedPromptCount} messages queued for next turn`}
           </Text>
+          {isLoading && <Text dimColor>
+            press {SEND_NOW_CHORD} to send now
+          </Text>}
         </Box>}
       {messages.map((message, i) => <QueuedMessageProvider key={i} isFirst={i === 0} useBriefLayout={useBriefLayout}>
           <Message message={message} lookups={EMPTY_LOOKUPS} addMargin={false} tools={[]} commands={[]} verbose={false} inProgressToolUseIDs={EMPTY_SET} progressMessagesForMessage={[]} shouldAnimate={false} shouldShowDot={false} isTranscriptMode={false} isStatic={true} />
