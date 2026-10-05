@@ -438,6 +438,36 @@ describe('sendQueuedNow teardown paths', () => {
     }
   })
 
+  it('leaves a promoted message promoted while waiting for the drain to run', async () => {
+    // The success path: promotion fires, REPL aborts the turn, the turn ends.
+    // The single candidate is now at 'now' so selectHead returns null, and the
+    // guard has just gone idle. An earlier version required the guard to still
+    // be isActive before it would wait for the drain — which is backwards,
+    // because the guard goes idle exactly when the interrupt succeeded. That
+    // sent the success path straight to teardown, whose restoreRaised() demoted
+    // the message the promotion had just raised.
+    const { scheduler, queue, guard, dispose } = await drive({ turnRunning: true })
+    try {
+      // One candidate only, so the drain branch is the one under test.
+      queue.enqueue({ value: 'send me', mode: 'prompt', uuid: UUID_A })
+      scheduler.sendQueuedNow()
+
+      // The first poll promotes it.
+      await Bun.sleep(450)
+      expect(queue.getCommandQueue()[0]?.priority).toBe('now')
+
+      // The turn ends — the outcome the promotion was buying.
+      guard.end(guard.generation)
+      await Bun.sleep(700)
+
+      // Still promoted: the drain has not run yet, and nothing may un-promote
+      // it in the meantime. The give-up path below is what bounds this.
+      expect(queue.getCommandQueue()[0]?.priority).toBe('now')
+    } finally {
+      dispose()
+    }
+  })
+
   it('gives up polling when a promoted message is never drained', async () => {
     // Bounded so a queue the drain never reaches cannot spin for the session.
     const { scheduler, queue, dispose } = await drive({ turnRunning: true })

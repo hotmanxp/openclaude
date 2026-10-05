@@ -499,8 +499,14 @@ const MCP_REQUEST_TIMEOUT_MS = 60000
 const MCP_STREAMABLE_HTTP_ACCEPT = 'application/json, text/event-stream'
 
 /**
- * Keep fetch timeout and cancellation resources alive until a streaming
- * response is consumed or cancelled, not merely until response headers arrive.
+ * Hold the *caller's* abort listener alive until a streaming response is
+ * consumed or cancelled, not merely until response headers arrive.
+ *
+ * Note what this does NOT keep alive: the per-request timeout timer. The
+ * callers below clearTimeout() before wrapping, so MCP_REQUEST_TIMEOUT_MS
+ * bounds only time-to-headers. That is deliberate — a 60s cap on an MCP body
+ * would sever legitimate long-lived streams — but it means a body that stalls
+ * after headers is bounded by the caller's signal, not by the timeout.
  */
 function wrapResponseBodyWithCleanup(
   response: Response,

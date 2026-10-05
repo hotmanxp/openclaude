@@ -164,6 +164,12 @@ const PRIORITY_ORDER: Record<QueuePriority, number> = {
  *
  * A command already at 'now' is left alone (returns false, not an error) so
  * repeated presses are idempotent instead of re-broadcasting.
+ *
+ * Deliberately does not call logOperation(). Queue operations are a
+ * lifecycle record — an entry or exit of the queue — and a promote is neither:
+ * the command is already queued and stays queued. Recording it as 'enqueue'
+ * made the transcript read as though the user had just submitted the message
+ * a second time. demoteFromNow() is likewise unlogged.
  */
 export function promoteToNow(uuid: UUID): boolean {
   const cmd = commandQueue.find(c => c.uuid === uuid)
@@ -172,7 +178,6 @@ export function promoteToNow(uuid: UUID): boolean {
   }
   cmd.priority = 'now'
   notifySubscribers()
-  logOperation('enqueue', typeof cmd.value === 'string' ? cmd.value : undefined)
   return true
 }
 

@@ -313,7 +313,14 @@ function evaluate(): void {
     // Bounded, unlike the wait branch: a drain that never runs (a queued slash
     // or bash command can stall the processor indefinitely) would otherwise
     // poll every 200ms for the rest of the session.
-    if (hasRaisedCandidate() && getCurrentQueryGuard()?.isActive) {
+    //
+    // The condition is deliberately only hasRaisedCandidate(). An earlier
+    // version also required the guard to be isActive, which was backwards: a
+    // promotion is followed by an abort, so the guard goes idle precisely when
+    // the promoted command is about to be drained. That check made the success
+    // path fall through to teardown, and teardown's restoreRaised() demoted the
+    // message the promotion had just raised.
+    if (hasRaisedCandidate()) {
       if (drainPolls < DRAIN_GRACE_POLLS) {
         drainPolls++
         schedule()
