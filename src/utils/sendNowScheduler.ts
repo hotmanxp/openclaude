@@ -177,6 +177,7 @@ let candidates = new Map<CandidateUuid, Candidate>()
 let graceCount = 0
 let emptyPolls = 0
 let drainPolls = 0
+let hasPromoted = false
 let lastDecision: string | null = null
 let disposed = false
 
@@ -212,6 +213,7 @@ function teardown(): void {
   graceCount = 0
   emptyPolls = 0
   drainPolls = 0
+  hasPromoted = false
   for (const unsubscribe of unsubscribers) unsubscribe()
   unsubscribers = []
   restoreRaised()
@@ -234,12 +236,24 @@ function pruneCandidates(): void {
 /**
  * Add newly-queued commands to the candidate set.
  *
- * Re-run on every poll, not just at the entry point: handleSendNow calls
- * onSubmit() first, which reaches the queue asynchronously, so a single scan
- * at the moment the shortcut is pressed would race the enqueue and see an
- * empty queue.
+ * Re-run on every poll until the first promote (see below), not just at the
+ * entry point: handleSendNow calls onSubmit() first, which reaches the queue
+ * asynchronously, so a single scan at the moment the shortcut is pressed would
+ * race the enqueue and see an empty queue.
  */
 function collectCandidates(): void {
+  // Stop adopting once something has been promoted. Upstream collects its
+  // candidate set once at the press and never widens it; continuing to re-scan
+  // would let a message the user later submitted with a plain `enter` enter
+  // this run. selectHead's `priority !== 'now'` filter already stops the
+  // promoted message itself from being re-selected, so this is belt-and-braces
+  // rather than the only thing preventing that — but it keeps the candidate
+  // set meaning "what this press was about" instead of "whatever showed up".
+  //
+  // The re-scan before the first promote is load-bearing: handleSendNow
+  // submits first, and that reaches the queue asynchronously, so the press
+  // itself can look like it had nothing to send.
+  if (hasPromoted) return
   for (const cmd of getCommandQueueSnapshot()) {
     if (cmd.uuid === undefined || candidates.has(cmd.uuid)) continue
     if (!isSendNowCandidate(cmd)) continue
@@ -270,6 +284,7 @@ function promoteAndRetry(candidate: Candidate): void {
     candidate.raisedFrom = current?.priority ?? 'next'
   }
   promoteToNow(candidate.uuid)
+  hasPromoted = true
   schedule()
 }
 
