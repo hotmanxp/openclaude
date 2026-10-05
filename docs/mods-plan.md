@@ -1,8 +1,14 @@
 # opencc 接入 Mods 系统 —— 规划文档
 
-> **目标**：让 opencc 支持 Claude Code v2.1.287 引入的 Mods 机制 —— 用户写 TypeScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
+> **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v1.0 ｜ **日期**：2026-10-05 ｜ **依据**：三份代码审计 + 官方 Mods 深度调研
+> **版本**：v2.0 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+>
+> **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
+>
+> **配套文档**：
+> - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）
+> - 本文件 —— opencc 方案决策（§2.3 摘要上游基线并标注分叉点）
 
 ---
 
@@ -14,15 +20,40 @@
 
 | 判断 | 依据 |
 |---|---|
-| **这是大功能，不是小改动** | 官方 Mods 在 50.5MB bundle 中占 **7.97MB**（8 模块，核心单个 4.5MB），16 个遥测事件，含 per-plugin Worker 心跳自愈、command/agent/tool 三类注册、六类自绘 UI |
-| **opencc 零实现** | 源码与 22.6MB `dist/cli.mjs` 双向验证：`Bun.Transpiler` / `MODS_DIR` / `modsOffAt` / `plugin_function_hooks_worker` 全部 0 命中 |
-| **沙箱已有现成实现** | fork 自有资产 `src/tools/WorkflowTool/runtime/`（10,334 行）已跑通 `node:vm` 真沙箱，**上游 Claude Code 该目录只有 4 文件、无 runtime** |
+| **这是大功能，不是小改动** | 官方 Mods 实现横跨加载器 + 静态分析器 + Worker 运行时，含拒斥式 AST 校验、单插件崩溃归因、熔断、五层 tier 调度、三件套 dispatch（同步/流式/链式） |
+| **opencc 零实现** | 源码与 22MB `dist/cli.mjs` 双向验证：`Bun.Transpiler` / `MODS_DIR` / `modsOffAt` / `plugin_function_hooks_worker` 全部 0 命中；web 侧 vendor 副本同样 0 命中 |
+| **沙箱思路可借鉴，实现需重写** | fork 自有资产 `src/tools/WorkflowTool/runtime/`（**7 个非测试文件、1,076 行**）跑通了 `node:vm` 上下文，但**其 API 面是 workflow 专用 DSL，不是通用宿主 API 注入器** —— 详见 §1.2 |
 
-### 必须先拍的决策
+### 1.1 v1.0 数字勘误（全部经实测复核）
 
-opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进 1602 提交，落后上游 696 提交**，同步方式是 per-file `git apply --3way`，`AGENTS.md` **明令禁 cherry-pick**。
+v1.0 有若干数字在复核后证伪，此处更正以免后续估算失准：
 
-在这个策略下自己实现 Mods，意味着**上游 Mods 后续每次变更都要手工重做一遍**（涉及 8 个模块 + UI/Worker/加载器三层，跨文件耦合极重）。
+| v1.0 说法 | 实测 | 影响 |
+|---|---|---|
+| WorkflowTool runtime「10,334 行」 | **1,076 行**（非测试）/ 2,432（含测试）/ 10,064（整个 `WorkflowTool/` 含测试） | 沙箱从「直接复用」降级为「借鉴思路重写」，P1 估时需上调 |
+| 「31 个 hook 事件」 | **27 个** | 事件面比预期小，但 §3.3 的 Mod 事件模型未必覆盖全部 27 个 |
+| `CLAUDE_PLUGIN_ROOT` 「12 文件」 | **10 文件** | 冲突结论不变 |
+| `src/entrypoints/sdk/` 「14 文件」 | 13 | 无实质影响 |
+| `src/utils/plugins/` 「51 文件」 | 53 | 无实质影响 |
+| 「547 个组件」 | `src/components/**` 下 `.tsx`+`.ts` 共 **616** | UI 插槽成本估计基础偏保守 |
+| `src/utils/sessionHooks.ts:93` | 路径为 `src/utils/hooks/sessionHooks.ts:93`（行号正确） | grep 会落空 |
+| `REPL.tsx` | 实际在 `src/screens/REPL.tsx` | 同上 |
+
+**`HOOK_EVENTS` 双份定义**（v1.0 说法成立，但需补充）：`src/entrypoints/sdk/coreTypes.ts:26` 与 `src/entrypoints/sdk/coreSchemas.ts:371` 各有一份，实测**当前内容完全一致（均 27 项）**。但 `HOOK_EVENTS` 符号在 **11 个文件**中出现（多数为 import 转发），排查"加事件要改哪"时应按 11 个文件而非 2 个核查。
+
+### 1.2 关于「沙箱复用」的更正
+
+v1.0 把 `src/tools/WorkflowTool/runtime/` 列为「**直接复用**」，实测 `vmContext.ts` 后不成立：
+
+- `createWorkflowVmContext(api)` 的 API 面是**写死的** `agent`/`parallel`/`pipeline`/`workflow`/`budget`/`log`/`phase` —— 是 workflow 专用 DSL，不是通用注入器
+- `runWorkflowScript` 走 `vm.runInContext` 跑**裸字符串**，显式封死 `importModuleDynamically`，无 `SourceTextModule`
+- 结论：可借鉴 `codeGeneration:{strings:false,wasm:false}` 的封堵思路与 `vmRunner` 的超时/中止模式，**但通用加载器要新写**
+
+### 1.3 必须先拍的决策
+
+opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进约 1791 提交**（`git log --oneline | wc -l`），同步方式是 per-file `git apply --3way`，`AGENTS.md` **明令禁 cherry-pick**。
+
+在这个策略下自己实现 Mods，意味着**上游 Mods 后续每次变更都要手工重做一遍**。
 
 | 路线 | 长期维护成本 | 获得能力 |
 |---|---|---|
@@ -30,7 +61,7 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进 1602 提交，落后上
 | **B. fork 自研，明确不进名单** | 只付一次成本，永久分叉 | 同上，但跟上游 Mods 彻底分家 |
 | **C. 等上游同步** | 零成本 | 滞后，且丢 fork 特色 |
 
-**建议 B**：opencc 已经用 WorkflowTool 证明了「fork 自有扩展机制」这条路可行，Mods 属于同一类资产。**但必须在动手前把这条写进 AGENTS.md**，否则半年后没人记得为什么不同步。
+**建议 B**：`src/mods/` 是纯新增目录，上游无同名文件，分叉不产生同步冲突。**必须在动手前把这条写进 AGENTS.md**，否则半年后没人记得为什么不同步。
 
 ---
 
@@ -42,31 +73,44 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进 1602 提交，落后上
 
 | 资产 | 位置 | 复用方式 |
 |---|---|---|
-| **31 个 hook 事件总线** | `src/utils/hooks.ts`（5280 行）| Mods handler 直接挂现有事件，**零新增分发层** |
+| **27 个 hook 事件总线** | `src/utils/hooks.ts`（5280 行）| Mods handler 直接挂现有事件，**零新增分发层** |
 | 多源合并/去重/`if` 过滤 | `getMatchingHooks:1800` | 免费继承 |
-| `addFunctionHook` 原语 | `sessionHooks.ts:93` | 现成的"注册 TS 函数到 hook 管线" |
-| `type:'function'` 执行器 | `hooks.ts:4996` | 已有 abort/timeout 包裹 |
+| `addFunctionHook` 原语 | `src/utils/hooks/sessionHooks.ts:93` | 现成的"注册函数到 hook 管线" |
+| `type:'function'` 执行器 | `hooks.ts:2362` / `5273` | 已有 abort/timeout 包裹 |
 | `hookSpecificOutput` 协议 | `src/types/hooks.ts:38` | Mods 返回值结构可复用 |
-| Plugin 分发管道 | `src/utils/plugins/`（51 文件）| 复用 marketplace/安装/缓存/热重载 |
+| Plugin 分发管道 | `src/utils/plugins/`（53 文件）| 复用 marketplace/安装/缓存/路径解析 |
+| 插件目录解析先例 | `pluginDirectories.ts:53` `getPluginsDirectory()` | Mods 目录沿用同样的 env 覆盖模式 |
+| 动态 `import()` 先例 | `src/integrations/artifactGenerator.ts:108` | **本方案加载路径的直接模板** |
 | 动态工具模板 | `src/Tool.ts:508`、`MCPTool.ts:75` | 自定义工具照抄 MCPTool 形状 |
 | `assembleToolPool` 合并 | `src/tools.ts:354` | 工具注入只改这里 |
-| SDK 导出面 | `src/entrypoints/sdk/`（14 文件）| 有 `SdkMcpToolDefinition` 先例 |
-| Ink 组件库 | `src/ink.ts`、`src/components/`（547 个）| 可直接用 `Box`/`Text`/`useApp` |
-| **WorkflowTool 沙箱** | `src/tools/WorkflowTool/runtime/` | **`vm.createContext` + 封死 `eval`/WASM，直接复用** |
+| SDK 导出面 | `src/entrypoints/sdk/`（13 文件）| 有 `SdkMcpToolDefinition` 先例 |
+| Ink 组件库 | `src/ink.ts`、`src/components/**`（616 个 `.tsx`/`.ts`）| 可直接用 `Box`/`Text`/`useApp` |
+| **WorkflowTool vm 经验** | `src/tools/WorkflowTool/runtime/` | **借鉴封堵思路与超时模式，加载器另写** —— 见 §1.2 |
+
+**27 个事件的实际名单**（`coreTypes.ts:26`，`coreSchemas.ts:371` 内容一致）：
+
+```
+PreToolUse, PostToolUse, PostToolUseFailure, Notification, UserPromptSubmit,
+SessionStart, SessionEnd, Stop, StopFailure, SubagentStart, SubagentStop,
+PreCompact, PostCompact, PermissionRequest, PermissionDenied, Setup,
+TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult,
+ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded,
+CwdChanged, FileChanged
+```
 
 **三个真空**：
 
-1. **无用户代码加载器** —— 产物是 `.mjs` 非 Bun SFX，无 TS 转译运行时（`tsx`/`esbuild` 只在 devDeps）
-2. **无 UI 插槽** —— 547 个组件全硬编码，`REPL.tsx` 5372 行
+1. **无用户代码加载器** —— 产物是 `.mjs`（非 Bun SFX），无用户 JS 加载先例可抄（`artifactGenerator.ts:108` 加载的是自己生成的产物，不是用户代码）
+2. **无 UI 插槽** —— 616 个组件散在多层目录，`src/screens/REPL.tsx` 为核心
 3. **无运行时 `registerTool()`** —— `getAllBaseTools()` 是字面量数组
 
 **高危冲突**：
 
 | 冲突 | 说明 | 严重度 |
 |---|---|---|
-| `CLAUDE_PLUGIN_ROOT` 已被 12 文件占用 | Mods 复用会污染 MCP/插件路径解析 | **高** |
-| `HOOK_EVENTS` 双份定义 | `coreTypes.ts:26` + `coreSchemas.ts`，加事件要同步两处 | **高** |
-| `getMatchingHooks` 硬编码 switch | `hooks.ts:1812-1858` 每事件写死 matchQuery | **高** |
+| `CLAUDE_PLUGIN_ROOT` 已被 10 文件占用 | Mods 复用会污染 MCP/插件路径解析 | **高** |
+| `HOOK_EVENTS` 双份定义 | `coreTypes.ts:26` + `coreSchemas.ts:371`，加事件要同步两处（符号共出现在 11 个文件） | **高** |
+| `getMatchingHooks` 硬编码 switch | 每事件写死 matchQuery | **高** |
 | `assembleToolPool` 保 prompt-cache 排序 | `tools.ts:366-372`，插入工具会打乱 cache key | 中 |
 
 ### 2.2 opencc-web 侧
@@ -76,23 +120,84 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进 1602 提交，落后上
 2. `compat/plugins/` —— 子集重写，四个 loader 是空壳
 3. 前端 PluginModal —— 纯管理 UI
 
-**可搬**：vm 沙箱、路径围栏（`manifest.ts:148-205`）、事件名、manifest 形状、`buildTool`/`MainAgentLoadContext` 注册契约。
+**可搬**：路径围栏（`manifest.ts:148-205`）、事件名、manifest 形状、`buildTool`/`MainAgentLoadContext` 注册契约。
 
-**用不上**：PluginModal、HTTP 路由层、marketplaceManager。
+**用不上**：PluginModal、HTTP 路由层、marketplaceManager、vm 沙箱（v2.0 已改用原生 `import()`，见 §3.2②）。
 
 **最大冲突**：web 侧底层假设「插件不改主进程状态」（`defaultHookExecutor.ts:80-86` 注释：*"This executor never returns `blocked: true` — it is a report-only executor"*），与 Mods「改行为 + 画 UI」**正面矛盾**。
 
-### 2.3 官方 Mods 的实现基线
+> **本节前提**：web 侧 Mods 相关代码 0 行已复核（`packages/zn-agent-core/src/opencc-src/src/` 下 `MODS_DIR`/`Bun.Transpiler`/`modsOffAt` 全部 0 命中）。R6 仍成立 —— CLI 侧新代码需手工同步回 vendor 副本。
+
+### 2.3 官方 Mods 的实现基线（**上游现状，非 opencc 目标**）
+
+> ⚠️ 本节记录的是 Claude Code v2.1.289 的**实测事实**，用于判断"哪些能借鉴、哪些必须分叉"。**opencc 已在 §3.1 明确有意分叉**（JS 而非 TS、原生 `import()` 而非 vm、窄能力面）。
+>
+> 核验方式：`strings -n 6` 全量抽取 229MB 二进制 → 53MB / 400,517 行 → 定位 Mods 实现所在的两个 chunk（加载器+静态分析器、Worker 运行时）。
 
 ```
 主进程 → 每插件一个 Worker → 每插件一个 vm realm
 ```
-- TS：`Bun.Transpiler.transformSync`（`macro:false`，全 bundle 仅一处，不做类型检查）
-- 加载前：acorn 完整 AST 扫描，提取事件注册/`$` 调用面/`next.to` tier
-- 通信：五层 tier 链 `prepend > user > append > builtin > core`，**不走 MCP**
-- `$` 的 60 个方法**本身也是可拦截事件** —— mod 间调用可被上游审查
-- UI：15 个 render site，权限弹窗**引擎独占绘制**
-- 内建 6 个 mod（`cc-plugin-diff` 等），**官方自己的功能就是 mod**
+
+**语言与加载**：
+- mod 用 **TypeScript**（opencc 有意分叉为 JS）
+- `Bun.Transpiler.transformSync`，`{loader, macro:false}`，**不做类型检查**；`.js` 直接返回不转译，仅 `.ts`/`.tsx` 走转译
+- 带完整**行列错误映射**（把 `position.line/column` 拼回用户可见报错，并补偿前缀偏移）
+- **跑在 Bun SFX 上** —— opencc 产物是 `.mjs`，运行时是 **Node ≥22**（`bin/opencc` shebang `#!/usr/bin/env node`；`build.ts` `target: 'node'`），`Bun` 全局在产物里只是 bundler shim。**这是无法复制的结构性差异。**
+
+**静态扫描 —— 是"拒绝"而非"提取"**（v1.0 描述有误）：
+- acorn 完整 AST 遍历，逐节点**抛异常拒斥**，实测规则：
+
+| 类别 | 规则 |
+|---|---|
+| 动态 `import()` | 拒绝 —— 只允许 `import` 声明 |
+| import 白名单 | 仅裸模块 `claude-code` + 相对路径；越界报 `resolves outside the plugin's folder` |
+| `$.catch()` | 只能在调用点 `.catch(handler)`；一旦被赋值/传参/从嵌套函数返回即拒绝 |
+| top-level await | **非 entry 文件**中出现即拒绝（entry 单独作为 async module 链接） |
+| 体积上限 | 单文件 1MB / 总计 8MB / 扫描每 32 文件让出事件循环 |
+| 提示 | `ScanRefusal` 异常带插件名、文件、编译行号、80 字符源码摘录 |
+
+**注册契约**（**不是** `register(on)` 导出式，而是调用点扫描）：
+
+```js
+on("<event>", hook)                          // 简写
+on("command.run", { command: "x" }, hook)    // matcher 必须是对象字面量
+on("<event>", { to: "<tier>" }, hook)        // tier
+```
+
+`ScanRefusal` 默认消息写死了这条契约：
+> `$ is always spelled $.noun.event(...) at the call site, on is always on("<event>", hook), and next.to always next.to(e, "<tier>")`
+
+**`$` 实际能力面**（从 42 处调用点还原，**仅 4 个顶层命名空间**）：
+
+```
+agent.spawn          command.run        process.run / process.spawn
+prompt.compose / prompt.read            turn.abort
+ui.ask / copy / invalidate / log / notice
+```
+
+**没有 `fs`、没有 `store`、没有 `clock`、没有 `tools.register`。** 上游 mod **拿不到宿主文件系统**；mod 间协调靠 `telemetry` 流 + tier 下钻，不是共享 KV。
+
+**tier 链**（实测，含下钻图谱）：
+
+```
+顺序:  prepend > user > append > builtin > core
+下钻:  prepend:["append","builtin","core"]   user:[]
+        append:["core"]   builtin:[]   core:[]
+```
+
+**dispatch 是三件套**：`dispatch`（同步）/ `dispatchStream`（流式，async iterable）/ `linkStreams`（链接）。`next()` 参数与 `next.to()` 楼层**运行时校验**，传错类型才炸。
+
+**UI（`Client`）契约极严**：模块路径必须**字符串字面量**、必须**相对**、必须**在 plugin 目录内**（realpath + 相对路径双重校验）、`spread` 必须排在 `module` **之前**、组件必须 default 或单个 PascalCase 导出。
+
+**Worker 隔离**：
+- 崩溃是一等公民事件：`plugin_function_hooks_worker` / `respawned` / `crashed_worker`
+- **单插件归因**：`culprit.plugin` + `evidence` 栈 → 只卸载肇事者，`workerDeaths++`
+- 崩溃后追问该 mod 拦截了什么：`$.xxx` 拼成人话提示
+- 熔断：`unattendedCrashes >= 阈值` → 批量 disable
+- 心跳：`SIGKILL` 500ms / 宽限 2000ms
+- **官方提供同线程逃生舱**：`CLAUDE_CODE_HOOKS_SAME_THREAD` 环境变量
+
+**内置 6 个 mod**（`cc-plugin-diff` 等）—— 官方自己的功能就是 mod，走 in-memory 预编译通道（`registerScan`）绕过磁盘。
 
 ---
 
@@ -100,151 +205,243 @@ opencc 从 2026-04-30 的 0.20.x 分叉，**独立演进 1602 提交，落后上
 
 ### 3.1 总体策略
 
-**只做 CLI 侧刚需，不追平上游全部 7.97MB。**
+**只做 CLI 侧刚需，且在四个维度上明确分叉出上游。**
 
 具体地：
-- ✅ 事件拦截 / 改写 / 阻断（复用现有 31 事件，**不新增**）
-- ✅ 运行时注册 command / tool / agent
+- ✅ 事件拦截 / 改写 / 阻断（复用现有 27 事件，**不新增**）
+- ✅ 运行时注册 command / tool / agent（**上游不支持，是 opencc 净增能力**）
 - ✅ 基础 UI 插槽（toast / status / pane 三种）
+- ✅ **mod 写纯 JavaScript**（上游写 TypeScript）—— 见 §3.2①
+- ✅ **原生 `import()` 加载，无隔离**（上游用 vm realm + Worker）—— 见 §3.2②
+- ✅ **能力面收窄到上游同款**（`fs`/`store`/`clock` 延后到 P2 授权制）—— 见 §3.3
 - ❌ 不做五层 tier（简化为两档：`mod` < `core`）
-- ❌ 不做 per-plugin Worker 心跳自愈
-- ❌ 不做 15 个 render site（只做 3 个）
-- ❌ 不做 Client 60fps 重绘循环
+- ❌ 不做 per-plugin Worker 与崩溃归因（列入 P2）
+- ❌ 不做完整 render site 体系（只做 3 个）
+- ❌ 不做流式事件（`dispatchStream` / `linkStreams`）—— **P1 取舍，代价见 §六 R8**
+
+> **P1 保持克制是被运行时差异强制的**，不只是主动取舍：上游 mod 跑在 Bun SFX 上，opencc 跑 Node ≥22，`Bun` 全局、`/$bunfs/root/chunk-*.js` 内嵌文件解析、`Bun.embeddedFiles` 在 node 侧全部不存在。
 
 ### 3.2 关键技术决策
 
-**① TS 转译：用 `typescript@5.9.3`（已在依赖树）替代 `Bun.Transpiler`**
+**① 语言：mod 写纯 JavaScript，不做 TS 转译**
+
+**决策：mod 源码即 `.js`/`.mjs`，运行时不做任何转译。**
+
+理由：
+- **消除一整个依赖问题** —— 生产依赖里现无可用转译器（`typescript@5.9.3` 只在 devDependencies；`esbuild`/`sucrase`/`@swc/core` 均 absent）。走 JS 路线则**不需要新增生产依赖、不需要改 `scripts/externals.ts`、不需要往 22MB 产物里塞编译器**。
+- **消除错误定位问题** —— 上游 `Bun.Transpiler` 最麻烦的不是转译本身，而是要把 `position.line/column` 拼回用户可见报错（`Jo()` + 前缀偏移补偿 `Xo`）。原生 JS 由 node 直接抛出，无此负担。
+- **消除 Node/Bun 风险项 R2** —— 不再需要"用 `typescript` 替代 `Bun.Transpiler`"这个高危替代。
+
+代价：
+- mod 作者失去 TS 类型提示。建议在 mod 模板里附带 `// @ts-check` + JSDoc，或提供 `tsconfig.json` 用 `checkJs` 模式。
+- 无法用 TS 特有语法（enum / namespace / 装饰器 / 参数属性）。JS-first 是 mod 生态常态（VSCode extension 早期、Figma plugin、Obsidian plugin 均为 JS）。
+
+> **仍然保留的一条上游约束**（与转译器选谁无关，直接抄）：`.js` 文件**直接加载不处理**，只对显式声明的其他扩展名做处理；`macro:false` 等价的"不做类型检查/不做宏展开"语义。
+
+**② 加载：原生 `import()`，不用 `node:vm`**
 
 ```ts
-import ts from 'typescript'
-const out = ts.transpileModule(src, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
-}).outputText
+// 模板取自 src/integrations/artifactGenerator.ts:108
+const mod = await import(pathToFileURL(entryPath).href)
 ```
 
-**风险**：`Bun.Transpiler` 不只是转译，还决定 import 解析语义与错误定位。官方 bundle 里虽只出现 2 处，但背后是整个加载契约。**必须在 P0 阶段做对照实验**（见下）。
+理由：
+- **零启动 flag 改动**。实测 `vm.SourceTextModule` 在 Node 25.6 上**不给 `--experimental-vm-modules` 直接抛错**；而 `bin/opencc` 的 `relaunchWithLongSessionHeapIfNeeded()` 有早退条件（已有 heap+gc flag 即 `return`），加 flag 必须连早退判定一起改，否则加了/没加 flag 的进程行为分叉。这是一处确定性成本。
+- **窄能力面下，隔离的边际收益小**。§3.3 已把 API 面砍到上游同款（无 `fs`/`store`），危险操作压根不在 API 面上；`node:vm` 本身也**不是安全边界**（`codeGeneration:false` 挡得住 `eval`，挡不住 `this.constructor.constructor('return process')()` 这类逃逸 —— 只要注入了宿主函数对象，逃逸面就存在）。
+- 复用仓库既有先例，无需新范式。
 
-**② 沙箱：复用 WorkflowTool runtime，不新建**
+**接受的代价**：
+- mod 与宿主同进程，mod 崩溃会波及 CLI。**必须**用 `try/catch` 包住每个 handler 调用（`hooks.ts` 的 `type:'function'` 执行器已有 abort/timeout 包裹，可借鉴）。
+- 崩溃归因降级为"哪个 mod 的 handler 抛错"（由 §3.4 registry 记录当前 mod 名），不做上游那套 Worker 级归因与熔断。
+- 若 P1 后期出现真实需求，`vm.SourceTextModule` 路线可作为 P2 增强（flag 改造点已在上面定位清楚）。
 
-```ts
-import { vmContext } from 'src/tools/WorkflowTool/runtime/vmContext'
-```
+**③ 隔离：同进程，不做 per-plugin Worker**
 
-已有 `codeGeneration:{strings:false, wasm:false}`，需**扩 API 面**（当前刻意不暴露绘制原语）。
+理由（两条并列）：
+- opencc 跑 Node，**没有上游依赖的 Bun Worker 运行时**，上游那套心跳自愈 + 单插件归因 + 熔断（`SIGKILL` 500ms / 宽限 2000ms / `unattendedCrashes` 阈值）要整体重写。
+- **上游自己提供同线程逃生舱**（`CLAUDE_CODE_HOOKS_SAME_THREAD` 环境变量切 `"same-thread"`），说明同线程是官方认可的降级路径。
 
-**③ 隔离：同进程 vm，不做 per-plugin Worker**
-
-理由：opencc 跑在 Node 而非 Bun，官方 Worker 方案的心跳自愈逻辑要重做 4.5MB 量级逻辑。**同进程 vm + 完整 `catch` 隔离是当前阶段的性价比选择。** Worker 隔离列入 P2。
+Worker 隔离与崩溃熔断列入 P2。
 
 **④ 命名空间：独立目录 + 独立变量名**
 
 ```
-src/mods/           # 新目录
-OPENCC_MODS_DIR     # 不用 CLAUDE_PLUGIN_ROOT（已被 12 文件占用）
+src/mods/           # 新目录（上游无同名文件 → 分叉不产生同步冲突）
+OPENCC_MODS_DIR     # 不用 CLAUDE_PLUGIN_ROOT（已被 10 文件占用）
 ```
+
+目录解析沿用 `pluginDirectories.ts:53` `getPluginsDirectory()` 的既有模式：env 覆盖 → 默认目录，`~` 走 `expandTilde` 展开。
 
 ### 3.3 Mods 事件模型
 
-复用现有 31 事件，**不新增**。Mods handler 签名对齐官方但简化：
+复用现有 27 事件，**不新增**。
 
-```ts
-type ModHandler = (
-  $: ModEngine,
-  e: ModEventInput,
-  next: (e: ModEventInput) => Promise<ModEventResult>
-) => ModEventResult | Promise<ModEventResult>
+**注册契约：导出式（有意分叉上游的调用点扫描）**
 
-interface ModEngine {
-  fs: { read; write; list; exists }
-  store: { get; set }          // 共享 KV
-  clock: { setTimeout; sleep }
-  ui: { toast; status; open; close }   // 只做 3 个
-  tools: { register }
-  commands: { register }
-  agents: { register }
+```js
+// my-mod/mods/register.js
+export function register(ctx) {
+  ctx.on('PostToolUse', { tool: 'Bash' }, async (e, next) => {
+    const r = await next(e)
+    ctx.ui.notice(`ran ${e.tool}`)
+    return r
+  })
 }
 ```
 
-**`next()` 之前 = before，之后 = after**（与官方一致），简化掉 matcher 分层。
+**为什么不用上游的 `on("<event>", matcher, hook)` AST 扫描**：
+- 导出式是**显式契约** —— 加载器直接调 `register(ctx)`，不需要猜调用点，静态分析压力小一个量级
+- 上游那套拒斥式 AST 校验（动态 import 拒绝、`$.catch` 逃逸拒绝、top-level await 拒绝、体积上限）是**为它的调用点扫描模型服务的**，换模型后大部分规则不再必要
+- 保留必要的：入口文件校验（必须是 `.js`/`.mjs`）、体积上限（单文件 1MB / 总计 8MB）、`register` 必须是函数
+
+**handler 签名**（`next()` 之前 = before，之后 = after，与上游一致）：
+
+```ts
+type ModHandler = (
+  e: ModEventInput,
+  next: (e: ModEventInput) => Promise<ModEventResult>
+) => ModEventResult | Promise<ModEventResult>
+```
+
+**能力面 `$` / `ctx` —— P1 收窄到上游同款**：
+
+```ts
+interface ModContext {
+  // 事件注册（opencc 扩展：上游不能运行时注册 command/tool/agent）
+  on(event, matcher?, handler): void
+  registerCommand(spec): void
+  registerTool(spec): void
+
+  // 交互 —— 对齐上游命名空间
+  ui: {
+    notice(msg: string): void        // 上游有
+    log(msg: string): void          // 上游有
+    ask(question: string): Promise<string>   // 上游有
+    toast(msg: string): void        // opencc 扩展（P1 唯一新增 UI 原语）
+  }
+
+  // 提示词组装 —— 对齐上游
+  prompt: {
+    compose(parts: string[]): string
+    read(): Promise<string>
+  }
+
+  // 回合控制 —— 对齐上游
+  turn: { abort(reason?: string): void }
+}
+```
+
+**P1 明确不提供**（原 v1.0 设计的三个命名空间）：
+
+| v1.0 提议 | 处置 | 理由 |
+|---|---|---|
+| `fs: { read; write; list; exists }` | **移出 P1**，P2 走显式授权 | 给了它，AST 拒斥器就成了唯一防线，而 `node:vm` 不是安全边界 |
+| `store: { get; set }` | **移出 P1**，P2 评估 | 上游没有；mod 间协调在 P1 靠事件流，不靠共享 KV |
+| `clock: { setTimeout; sleep }` | **移出 P1** | `setTimeout` 由宿主注入到 ctx 顶层即可，无需独立命名空间 |
+
+**P2 的授权制设计**（若需要）：`settings.json` 里显式白名单授权的 mod 才看到 `ctx.fs`，未授权 mod 的 ctx 上该属性为 `undefined`。这样"能力面窄 ⇒ 沙箱可验证"的不变量在默认态保持成立，授权是可见、可审计、可撤销的。
+
+**能力面收窄的连带影响**：`ui` 的 toast / pane / status 三种插槽里，只有 toast 属于"往宿主推信息"（mod → 宿主，方向安全）；pane / status 涉及宿主状态回读，**P1 建议只做 toast**，pane/status 列入 P2（见 §七 决策点 3）。
 
 ### 3.4 目录结构
 
 ```
 src/mods/
 ├── manifest.ts        # ModManifestSchema（Zod，对齐 PluginManifestSchema 风格）
-├── loader.ts          # 发现 + 校验 + 转译 + 加载
-├── transpile.ts       # TS → JS（typescript.transpileModule）
-├── staticScan.ts      # acorn AST 扫描，复用 WorkflowTool 的 staticAnalyzer
-├── registry.ts        # 生命周期管理（load/unload/reload）
-├── engine.ts          # $ 对象构建（受控 API 面）
-├── sandbox.ts         # 对接 WorkflowTool vmContext
+├── loader.ts          # 发现 + 校验 + import() 加载
+├── validate.ts        # 入口校验（扩展名 / 体积上限 / register 是函数）
+├── registry.ts        # 生命周期管理（load / unload / reload / 当前 mod 追踪）
+├── engine.ts          # ctx 对象构建（受控 API 面）
+├── dispatch.ts        # next() 链 + 两档 tier（同步；流式列入 P2）
 └── hooks.ts           # 接入现有 hook 管线
 ```
 
+> **注意**：**没有 `transpile.ts`**（JS 方案）、**没有 `sandbox.ts`**（import() 方案）。相比 v1.0 少两个文件。
+
 Mod 目录约定：
+
 ```
 my-mod/
-├── opencc-plugin.json     # 或复用 .claude-plugin/plugin.json 加 mods 字段
+├── opencc-mod.json           # { name, version, entry: "./mods/register.js" }
 └── mods/
-    ├── mods.json          # {"modules": ["./register.ts"]}
-    └── register.ts        # 导出 register(on)
+    ├── register.js           # export function register(ctx) { ... }
+    └── lib/util.js           # 相对路径 import 允许
 ```
+
+**加载器安全约束**（P1 实现，v1.0 缺失）：
+
+- 入口必须是 `.js` / `.mjs`（其他扩展名拒绝）
+- 单文件 ≤ 1MB、mod 总量 ≤ 8MB
+- 相对路径 import 解析后 **realpath 必须在 mod 目录内**（照抄上游 `h2e()` 的 `relative()` + `startsWith('..')` 双重校验）
+- 只允许相对路径 import；裸模块 specifier 拒绝（照抄上游白名单思路，上游只放行 `claude-code`，opencc **一个都不放行**）
+- 每次 handler 调用包 `try/catch`，错误归因到当前 mod 名
 
 ---
 
 ## 四、分阶段实施
 
-### P0 — 可行性验证（2–3 人天）
+### P0 — 可行性验证（1–2 人天）
 
-**目标：把最大的三个未知数变成已知数。**
+**目标：把剩下的未知数变成已知数。**（v1.0 的三个 P0 项中，转译对照实验已因 JS 决策删除）
 
 | 任务 | 验收标准 |
 |---|---|
-| TS 转译对照实验 | `typescript.transpileModule` 能否处理官方 `blast-radius`（~700 行，含 JSX/泛型/动态 import）？产出的 ESM 能否被 `vm.SourceTextModule` 直接消费？ |
-| vm 沙箱复用验证 | WorkflowTool 的 `vmContext` 能否加载外部 mod 代码？API 面要扩哪些？ |
-| 静态扫描复用 | 现有 `staticAnalyzer.ts` / `FORBIDDEN_PATTERNS` 能否直接扫 mod 源码？ |
+| `import()` 加载链路 | 原生 `import(pathToFileURL(...))` 能否在 `dist/cli.mjs` 产物内正常加载外部 `.js` 并拿到导出？相对路径 import 是否解析正常？ |
+| 异常边界 | handler 抛错时，`hooks.ts` 的 `type:'function'` 执行器是否正确隔离？错误能否归因到具体 mod？ |
+| 事件面映射 | 27 个 hook 事件中，哪些能承载 mod 语义？确认 P1 实际支持子集（预计 `PreToolUse`/`PostToolUse`/`UserPromptSubmit`/`SessionStart`/`SessionEnd`/`Stop`/`Notification` 七个够用） |
+| 目录围栏 | realpath 越界检测在 symlink / `..` / 绝对路径三种绕过手法下都拒绝 |
 
 **决策门**：P0 不通过则整个方案重新评估，不要硬推。
 
-### P1 — 最小可用（14–21 人天）
+### P1 — 最小可用（9–14 人天）
 
 | 任务 | 估计 | 产出 |
 |---|---|---|
-| TS 转译层 | 2–3 | `transpile.ts` + 缓存 |
-| mod 发现/加载/校验 | 3–4 | 目录约定 + manifest + 静态扫描 |
-| 同进程沙箱执行 | 3–4 | 对接 WorkflowTool vm |
-| 注册 API 打通 | 3–5 | command / tool / agent 三通道 |
-| 基础 UI 插槽 | 3–5 | toast / status / pane |
-| 测试 + 5-phase 验证 | 4–6 | build / typecheck / test / TUI / debug log scan |
+| mod 发现 / manifest / 校验 | 2–3 | `manifest.ts` + `validate.ts` + 目录约定 + realpath 围栏 |
+| `import()` 加载器 + registry | 2–3 | `loader.ts` + `registry.ts`（load / unload / 当前 mod 追踪） |
+| 事件接入 + `next()` 链 | 2–3 | `hooks.ts` + `dispatch.ts`（两档 tier，同步） |
+| 注册 API 打通 | 2–3 | `registerCommand` / `registerTool` 两通道（agent 注册视需要再议） |
+| `ui.notice` 单一插槽 | 1–2 | 只做 mod → 宿主单向推送 |
+| 测试 + 5-phase 验证 | 2–3 | build / typecheck / test / TUI / debug log scan |
 
-**验收**：写一个 opencc 自己的 mod（比如上下文用量指示器），能加载、能画 UI、能注册一个 tool。
+**验收**：写一个 opencc 自己的 mod（比如上下文用量指示器），能加载、能发 notice、能注册一个 tool、能拦截一次 `PostToolUse`。
 
-### P2 — 加固（10–15 人天）
+> **P1 明确不做**：卸载（unload）留到 P2 会造成"加载了撤不掉"的用户可感知缺陷，**P1 必须包含最小 unload**（从 hook 管线摘除 + registry 移除）。
 
-- per-plugin Worker 隔离 + 崩溃归因
-- 热重载（增量，遵守 prompt-cache 约束）
+### P2 — 加固（12–18 人天）
+
+- **最小可用 unload / reload**（若 P1 只做了 unload，reload 放这里）
+- `ctx.fs` 授权制（settings 白名单 + 运行时可见性）
+- 流式事件（`dispatchStream` / `linkStreams`）
+- pane / status UI 插槽（涉及宿主状态回读）
 - 三档 tier 权限模型
+- 崩溃归因与熔断（仿上游 `unattendedCrashes`）
 - 与 `/plugin` 菜单集成
 - 遥测埋点
 
-### P3 — 对标上游（15–20 人天）
+### P3 — 对标上游（12–18 人天）
 
-- 完整 render site 体系
-- `Client` 重绘循环
+- `vm.SourceTextModule` 隔离（需先解决 `--experimental-vm-modules` flag 与 `bin/opencc` 早退条件的联动）
+- per-plugin Worker + 心跳自愈
+- 完整 render site 体系 + `Client` 重绘循环
 - 组合 mod 的名词契约机制
+- in-memory 预编译通道（`registerScan` 等价物）
 
 ---
 
 ## 五、工作量汇总
 
-| 阶段 | 人天 | 累计 |
-|---|---|---|
-| P0 可行性 | 2–3 | 2–3 |
-| P1 最小可用 | 14–21 | 16–24 |
-| P2 加固 | 10–15 | 26–39 |
-| P3 对标上游 | 15–20 | 41–59 |
+| 阶段 | v1.0 估 | **v2.0 估** | 变化原因 |
+|---|---|---|---|
+| P0 可行性 | 2–3 | **1–2** | 转译对照实验删除 |
+| P1 最小可用 | 14–21 | **9–14** | 删转译层（2–3）、沙箱对接降为 import() 加载（3–4→2–3）、UI 插槽收窄为单一 notice（3–5→1–2） |
+| P2 加固 | 10–15 | **12–18** | 新增 `ctx.fs` 授权制、流式事件、pane/status |
+| P3 对标上游 | 15–20 | **12–18** | Worker 隔离后移，vm 隔离需先做 flag 改造 |
+| **合计** | **41–59** | **34–52** | **净减 7–7 人天** |
 
-**现实节奏**：按 opencc 惯用的「1–2 周一个可交付切片」，完整 Mods 需 **1.5–2 个月**。
+**现实节奏**：按 opencc 惯用的「1–2 周一个可交付切片」，P1 约 **2–3 周**，完整 Mods 约 **1.5 个月**（v1.0 估 1.5–2 个月）。
+
+> **注**：P1 虽净减，但 §1.2 指出沙箱从「直接复用」降级为「另写加载器」—— 这一项已在 P1 的「`import()` 加载器 + registry」中按 2–3 人天计入。若 P0 发现 `import()` 加载链路有意外阻碍，**P1 需回补 1–2 人天**。
 
 ---
 
@@ -252,30 +449,92 @@ my-mod/
 
 | ID | 风险 | 级别 | 缓解 |
 |---|---|---|---|
-| **R1** | **同步策略冲突** —— 明令禁 cherry-pick，自研 Mods 每次上游变更都要手工重打 | 高 | 动手前先定路线（建议 B），并写进 AGENTS.md |
-| **R2** | **Node vs Bun 隐性分叉** —— 官方建在 Bun SFX 上，opencc 跑 Node。`Bun.Transpiler` 等价替换可能引入官方没有的行为差异 | 高 | P0 阶段做对照实验；锁 `typescript` 版本 |
-| **R3** | **TUI 并发模型无先例** —— 外部代码推送 `draw` 到 Ink 单线程渲染循环，opencc 里完全没这个通道 | 中高 | P1 只做单向（mod → 宿主），不做宿主 → mod 主动唤醒；先做 toast 不做 pane |
-| **R4** | `HOOK_EVENTS` 双份定义易漏改 | 中 | 复用现有 31 事件 = 零改动；加事件时用脚本校验两处一致 |
+| **R1** | **同步策略冲突** —— 明令禁 cherry-pick，自研 Mods 每次上游变更都要手工重打 | 高 | 动手前先定路线（建议 B），并写进 AGENTS.md。**缓解依据：`src/mods/` 是纯新增目录，上游无同名文件 → 分叉不产生同步冲突** |
+| **R2** | ~~**Node vs Bun 隐性分叉**~~ | ~~高~~ | **已消解** —— JS 方案不做转译，不触碰 `Bun.Transpiler`。运行时差异（Node vs Bun SFX）仍存在，但只影响"不追平上游"的范围取舍，不再是技术风险 |
+| **R3** | **TUI 并发模型无先例** —— 外部代码向 Ink 单线程渲染循环推送内容，opencc 里完全没这个通道 | 中高 | P1 只做单向（mod → 宿主）的 `ui.notice`；不做宿主 → mod 主动唤醒；**pane/status 移出 P1** |
+| **R4** | `HOOK_EVENTS` 双份定义易漏改 | 中 | 复用现有 27 事件 = 零改动；加事件时用脚本校验两处一致（注意符号共出现在 11 个文件） |
 | **R5** | `assembleToolPool` prompt-cache 排序被打乱 | 中 | Mod 工具插入遵守现有排序规则，加断言测试 |
 | **R6** | web 侧 vendor 同步 —— CLI 侧新代码需手工同步回 `packages/zn-agent-core/src/opencc-src/` | 中 | Mods 核心代码放 CLI 仓，web 侧只 vendor 消费；加 `verify-server-types-self-contained` 守卫 |
-| **R7** | 生态/生态安全 —— mod 有完整机器权限 | 中 | 文档明确声明「不是沙箱边界」；沿用 `shouldSkipHookDueToTrust` |
+| **R7** | ~~**mod 有完整机器权限**~~ | ~~中~~ | **前提已更正** —— v1.0 假设 mod 拿到 `fs`/`store`，风险成立；**v2.0 能力面收窄后该前提不成立**。P1 的 mod 无文件系统访问能力。真实残余风险是「同进程无隔离」，见 R8 |
+| **R8** | **同进程无隔离** —— 原生 `import()` 加载，mod 与宿主共享进程，崩溃会波及 CLI | **中高** | ① 每次 handler 调用 `try/catch` 包裹，错误归因到 mod 名 ② 复用 `hooks.ts` 的 `type:'function'` abort/timeout 包裹 ③ P2 视真实需求引入 `vm.SourceTextModule` 隔离（flag 改造点已定位） |
+| **R9** | **无卸载路径** —— 加载后无法在会话内撤销 | 中 | P1 必须含最小 unload（从 hook 管线摘除 + registry 移除）；完整 reload 放 P2 |
+| **R10** | **JS-first 降低 mod 作者体验** —— 无类型提示，生态偏小 | 低 | mod 模板附带 `// @ts-check` + JSDoc；提供 `checkJs` 模式 tsconfig；文档说明可用 `tsc` 自行编译 |
+| **R11** | **事件面覆盖不足** —— 27 个 hook 事件未必都适合承载 mod 语义 | 中 | P0 第四项验收"事件面映射"；P1 先支持 7 个核心事件，明确列出不支持清单 |
 
 ---
 
 ## 七、给超哥的决策点
 
-1. **路线**：B（fork 自研、不进同步名单）还是别的？
+1. **路线**：B（fork 自研、不进同步名单）还是别的？—— 建议 B，`src/mods/` 纯新增目录不产生同步冲突
 2. **范围**：只做 P0+P1 最小可用，还是一路推到 P3 对标上游？
-3. **UI 范围**：P1 只做 toast/status 不做 pane，还是必须一步到位？
-4. **是否开源**：mod 生态要不要单独建仓库？
+3. **UI 范围**：**P1 只做 `ui.notice` 单向推送**（v1.0 的 toast/status/pane 三种 → 收窄为一种），pane/status 移 P2。是否接受？
+4. **`ctx.fs` 何时给**：P2 的授权制（settings 白名单）是否够用？还是要 P1 就给？
+5. **是否开源**：mod 生态要不要单独建仓库？
 
 ---
 
-## 附：三份审计报告位置
+## 附录 A：证据来源
 
-| 报告 | 路径 |
+| 报告 | 路径 | 状态 |
+|---|---|---|
+| **官方 Mods 实现核验（本轮重做）** | [`docs/mods-upstream-audit.md`](./mods-upstream-audit.md) | ✅ **已落库，可复现** |
+| 官方 Mods 深度报告（v1.0 引用） | `~/Desktop/claude-code-mods-report.md` | ⚠️ 本仓外，未核验 |
+| opencc CLI 扩展机制审计 | ~~`/tmp/opencc_extension_audit.md`~~ | ❌ **已被系统清理，不可复现** |
+| opencc 与上游差距分析 | ~~`/tmp/opencc_mods_gap.md`~~ | ❌ 同上 |
+| opencc-web 插件机制审计 | ~~`/tmp/opencc_web_plugin_audit.md`~~ | ❌ 同上 |
+
+> **v2.0 的证据链**：上游事实 → [`mods-upstream-audit.md`](./mods-upstream-audit.md)（基于 v2.1.289 二进制 strings 实证，含方法学限制说明）；opencc 侧事实 → 附录 C 实测命令。v1.0 依赖的三份 `/tmp` 报告已丢失，不再引用。
+
+## 附录 B：上游核验基线（可复现）
+
+```bash
+# 抽取（53MB / 400,517 行）
+strings -n 6 /opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
+  > ~/.agent_working_dir/claude-raw/2.1.289/raw/all-strings.txt
+```
+
+| 项 | 值 |
 |---|---|
-| opencc CLI 扩展机制审计 | `/tmp/opencc_extension_audit.md` |
-| opencc 与上游差距分析 | `/tmp/opencc_mods_gap.md` |
-| opencc-web 插件机制审计 | `/tmp/opencc_web_plugin_audit.md` |
-| 官方 Mods 深度报告 | `~/Desktop/claude-code-mods-report.md` |
+| 版本 | **2.1.289**（`/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code`） |
+| 二进制 | 229MB |
+| Mods 实现位置 | `all-strings.txt` 第 **330001–330003** 行（加载器 + 静态分析器 + 体积常量）、第 **337639** 行（Worker 运行时 / tier / 崩溃归因） |
+| 遥测事件名 | `plugin_function_hooks_worker`、`plugin_function_hooks_worker_mods`、`plugin_function_hooks_load`、`plugin_bundled_register` |
+
+**关键符号索引**（便于复核 §2.3；`→` 后为 `all-strings.txt` 行号）：
+
+| 符号 | 含义 | 位置 |
+|---|---|---|
+| `qEn` | TS→JS 转译器（`Bun.Transpiler`，`macro:false`） | 330001 |
+| `h5o` | 动态 `import()` 拒斥 | 330003 |
+| `ee` | `$.catch` 逃逸拒斥 | 330002 |
+| `kr` | `Client` UI 契约校验 | 330002 |
+| `y5o` | 扫描入口（构造 `ScanRefusal` 的 `refuse` 闭包） | 330003 |
+| `Lo` | `ScanRefusal` 异常类（带插件名 / 文件 / 行号 / 源码摘录） | 330003 |
+| `h2e` | 路径围栏校验（realpath + `relative()` 越界检测） | 330001 |
+| `qae` | `CLAUDE_CODE_HOOKS_SAME_THREAD` → `"same-thread"` / `"worker"` | 337639 |
+| `zae` / `rBt` | `modsOffAt` 状态机（关闭 / 恢复计时） | 337639 |
+| `MD` | worker 崩溃归因（`culprit.plugin` + `evidence`） | 337639 |
+| `ho` / `jo` / `er` | 32 文件节流 / 1MB 单文件 / 8MB 总量 | 330002 |
+| `oe` / `Er` | `"Client"` / `"h"`（UI 契约 AST 匹配锚点） | 330002 |
+
+## 附录 C：opencc 侧核验命令
+
+```bash
+# 27 个事件（两处定义内容一致）
+node -e "const s=require('fs').readFileSync('src/entrypoints/sdk/coreTypes.ts','utf8');
+  const i=s.indexOf('HOOK_EVENTS = ['),j=s.indexOf(']',i);
+  console.log(s.slice(i,j+1).match(/'([^']+)'/g).length)"
+
+# 沙箱实况（1,076 行非测试，非 v1.0 所说的 10,334）
+find src/tools/WorkflowTool/runtime -name '*.ts' -not -name '*.test.ts' | xargs wc -l
+
+# 运行时是 Node 不是 Bun
+head -1 bin/opencc                                   # #!/usr/bin/env node
+node -e "console.log(require('./package.json').engines)"   # { node: '>=22.0.0' }
+grep -n "target: 'node'" scripts/build.ts
+
+# vm 模块需 flag（不带 --experimental-vm-modules 直接抛错）
+node --experimental-vm-modules -e "new (require('vm').SourceTextModule)('export const a=1')"
+```
+
+> **建议同步修正 `AGENTS.md`**：技术栈表里 `Runtime | Bun` 有歧义 —— `bun` 是**构建工具链**（`bun run build`），产物运行时是 **Node ≥22**。本文档 §3.2② 与附录 C 的核验都曾栽在这一点上。
