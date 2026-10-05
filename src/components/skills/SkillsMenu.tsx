@@ -4,7 +4,6 @@ import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useMemo } from 'react';
 import { type Command, type CommandBase, type CommandResultDisplay, getCommandName, type PromptCommand } from '../../commands.js';
-import { USER_CONFIG_DIRNAME } from '../../constants.js';
 import { Box, Text } from '../../ink.js';
 import { estimateSkillFrontmatterTokens, getSkillsPath } from '../../skills/loadSkillsDir.js';
 import { getDisplayPath } from '../../utils/file.js';
@@ -108,7 +107,7 @@ export function SkillsMenu(t0) {
   if (skills.length === 0) {
     let t3;
     if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-      t3 = <FullWidthRow><Text dimColor={true}>{`Create skills in .claude/skills/ or ~/${USER_CONFIG_DIRNAME}/skills/`}</Text></FullWidthRow>;
+      t3 = <FullWidthRow><Text dimColor={true}>{`Create skills in .claude/skills/ or ~/.agents/skills/`}</Text></FullWidthRow>;
       $[6] = t3;
     } else {
       t3 = $[6];
