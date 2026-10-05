@@ -46,6 +46,110 @@ export type ModNotice = {
   text: string
 }
 
+// ---------------------------------------------------------------------------
+// ui.pane — live render site (P3 slice): mods register a component that the
+// host renders persistently above the prompt input, refreshed via
+// notifyPaneChanged(). Per-pane ErrorBoundary in ModPaneArea contains render
+// crashes (same-process substitute for upstream's Worker isolation). A
+// component may return null to take no space. Built-in mods pass real TSX
+// components; disk mods are limited to primitives-free components until the
+// UI-primitives whitelist decision (docs/mods-plan.md P3).
+// ---------------------------------------------------------------------------
+
+export type ModPaneSpec = {
+  /** Unique within the mod; replaces a prior pane with the same id. */
+  id: string
+  title: string
+  component: (props: Record<string, unknown>) => unknown
+  props?: Record<string, unknown>
+}
+
+export type RegisteredPane = {
+  key: string
+  modName: string
+  id: string
+  title: string
+  component: (props: Record<string, unknown>) => unknown
+  props: Record<string, unknown>
+}
+
+const modPanes = new Map<string, RegisteredPane>()
+const paneListeners = new Set<() => void>()
+let paneVersion = 0
+let paneSnapshot: RegisteredPane[] = []
+
+export function getModPanesSnapshot(): readonly RegisteredPane[] {
+  return paneSnapshot
+}
+
+export function getModPanesVersion(): number {
+  return paneVersion
+}
+
+export function subscribeModPanes(listener: () => void): () => void {
+  paneListeners.add(listener)
+  return () => {
+    paneListeners.delete(listener)
+  }
+}
+
+function setModPane(modName: string, spec: ModPaneSpec): void {
+  const key = `${modName}:${spec.id}`
+  modPanes.set(key, {
+    key,
+    modName,
+    id: spec.id,
+    title: spec.title,
+    component: spec.component,
+    props: spec.props ?? {},
+  })
+  paneSnapshot = [...modPanes.values()]
+  paneVersion++
+  for (const listener of paneListeners) listener()
+}
+
+function closeModPane(modName: string, id?: string): void {
+  let removed = false
+  for (const [key, pane] of modPanes) {
+    if (pane.modName === modName && (id === undefined || pane.id === id)) {
+      modPanes.delete(key)
+      removed = true
+    }
+  }
+  if (!removed) return
+  paneSnapshot = [...modPanes.values()]
+  paneVersion++
+  for (const listener of paneListeners) listener()
+}
+
+/** Called from recordEdit-style data updates: bump the render loop. */
+export function notifyPaneChanged(): void {
+  paneVersion++
+  for (const listener of paneListeners) listener()
+}
+
+/** Remove all panes of a mod (unload path). */
+export function clearModPanes(modName: string): void {
+  let removed = false
+  for (const [key, pane] of modPanes) {
+    if (pane.modName === modName) {
+      modPanes.delete(key)
+      removed = true
+    }
+  }
+  if (!removed) return
+  paneSnapshot = [...modPanes.values()]
+  paneVersion++
+  for (const listener of paneListeners) listener()
+}
+
+/** Wipe the whole pane registry. For tests only. */
+export function __resetModPanesForTesting(): void {
+  modPanes.clear()
+  paneSnapshot = []
+  paneVersion++
+}
+
 /** Fenced filesystem API (P2 授权制, docs/mods-plan.md §3.3). */
 export type ModFsApi = {
   read(path: string): Promise<string>
@@ -70,6 +174,14 @@ export type ModContext = {
     log(text: string): void
     /** Persistent status segment (P2); empty string clears. */
     status(text: string): void
+    /**
+     * Register a live pane above the prompt input (P3 render site).
+     * Component may return null (takes no space). Re-render via
+     * data-change notifications, not props identity.
+     */
+    pane(spec: ModPaneSpec): void
+    /** Close one pane by id, or all of this mod's panes when omitted. */
+    closePane(id?: string): void
   }
   /**
    * Fenced filesystem access. Present ONLY when the mod is listed in
@@ -354,6 +466,24 @@ export function createModContext(mod: LoadedMod): ModContext {
       status(text: string) {
         if (typeof text !== 'string') return
         setModStatus(modName, text.trim() === '' ? undefined : text)
+      },
+      pane(spec: ModPaneSpec) {
+        if (!spec || typeof spec !== 'object') {
+          throw new Error('ctx.ui.pane(): spec object required')
+        }
+        if (typeof spec.id !== 'string' || spec.id.trim() === '') {
+          throw new Error('ctx.ui.pane(): id must be a non-empty string')
+        }
+        if (typeof spec.title !== 'string' || spec.title.trim() === '') {
+          throw new Error('ctx.ui.pane(): title must be a non-empty string')
+        }
+        if (typeof spec.component !== 'function') {
+          throw new Error('ctx.ui.pane(): component must be a function')
+        }
+        setModPane(modName, spec)
+      },
+      closePane(id?: string) {
+        closeModPane(modName, typeof id === 'string' ? id : undefined)
       },
     },
     ...(fsApi ? { fs: fsApi } : {}),

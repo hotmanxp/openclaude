@@ -1,6 +1,7 @@
 import type { StructuredPatchHunk } from 'diff'
 import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
+import { notifyPaneChanged } from '../engine.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
@@ -79,6 +80,8 @@ function recordEdit(e: Record<string, unknown>): void {
     at: seq++,
   })
   edits = filtered.slice(-MAX_EDITS)
+  // The pane re-renders from module state on this notification.
+  notifyPaneChanged()
 }
 
 function renderHunks(hunks: StructuredPatchHunk[]): string[] {
@@ -179,6 +182,13 @@ export const diffBuiltinMod: BuiltinModSpec = {
       argumentHint: '[path-substring]',
       handler: async (args: string) =>
         formatSessionDiff(args?.trim() || undefined),
+    })
+    // Live pane (P3 render site): mirrors the accumulated session diff above
+    // the prompt input, refreshed on every Edit/Write. Hidden while empty.
+    ctx.ui.pane({
+      id: 'session-diff',
+      title: 'Session diff (mod)',
+      component: () => (edits.length === 0 ? null : formatSessionDiff()),
     })
   },
 }

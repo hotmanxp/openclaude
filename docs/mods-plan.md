@@ -2,7 +2,7 @@
 
 > **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v2.3 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+> **版本**：v2.4 ｜ **日期**：2026-10-05 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
 >
 > **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
 >
@@ -11,6 +11,8 @@
 > **v2.2 变更**（P0–P2 已全部实现于 `feat/mods-p1` 分支，本文档记录实现终态）：① **两档 tier 落地为真包裹** —— mod composite（`HookCallback.modChain` 标记）被 `executeHooks` 提出扁平并行批次，mod 链作为外层 tier，terminal `next()` 真实执行核心 hooks 子集并返回聚合结果（`{continue, decision?, reason?, systemMessage?}`），handler 有真实 before/after 语义（§3.3 注记已按实现更新）② **P2 全套落地**：`ctx.fs` 授权制（settings `mods.authorized` 白名单 + cwd/mod 根双围栏）、`ui.status` 持久插槽（`ModStatusLine` 组件）、async-generator 流式 handler（yield 进度走 notice 通道）、熔断（连续 5 次 handler 失败自动卸载 + `tengu_mods_circuit_break`）、`/mods` 管理命令（列表/reload/unload）、遥测（`tengu_mods_load`）③ mod 命令经 `skillChangeDetector.notifyCommandsChanged()` 注入 REPL 命令列表（含挂载追赶）④ P3 仍未做（vm 隔离 / per-plugin Worker / 完整 render site）。
 >
 > **v2.3 变更**（内置 mod 通道落地 = P3 首项，上游 §4.3/§九 对标）：① **in-memory 内置通道** `src/mods/builtin.ts` —— `registerBuiltinMod(spec)` + 固定清单（上游 `wCe()`/`Ne.registerScan()`/`plugin_bundled_register` 对标），内置 mod 绕过磁盘发现与安全围栏（first-party 代码），进入同一 registry/dispatch//mods 面板（标记 `· builtin`）；同名录 disk mod 可遮蔽内置版（disk 优先）② **`diff` 内置 mod**（对标上游 `cc-plugin-diff`，其 /diff = "changed files and their hunks beside the transcript, refreshed as Claude edits"）：PostToolUse 监听 `Edit`/`Write` 工具（注意 opencc 工具名，非 FileEdit/FileWrite），读取 `tool_response.structuredPatch`（宿主已算好 hunk，mod 只读事件数据）；命令为 **`/session-diff`** 而非 `/diff` —— 主仓已有宿主 `/diff`（git diff + 每轮差异面板，`src/commands/diff`），内置 mod 命令裸名会在 dedupe 中被宿主吞掉，故命名避让；输出 unified diff 文本（`MAX_DIFF_OUTPUT_CHARS` 16KB 上限 = 上游 `MAX_DIFF_BYTES` 对标，空态 "No changes yet." 同上游）③ 内置 mod 命令**顶级裸名**（无 `<mod>:` 前缀，上游一致），disk mod 命令保持 `<mod>:` 前缀 ④ 修复 `reloadMods` 重复注册（loadMods 开头清 registry 旧实例）。
+>
+> **v2.4 变更**（P3 render site 切面落地，上游 §七 Client 契约的 opencc 适配）：① **`ctx.ui.pane({id,title,component,props})` / `ctx.ui.closePane(id?)`** —— mod 注册实时 pane 组件，渲染于 prompt 上方持久区域（`ModPaneArea`），`notifyPaneChanged()` 驱动重绘，组件返回 null 时不占位 ② **每槽 ErrorBoundary**：mod 组件 render 崩溃降级为 pane 内错误行，不波及宿主 TUI —— 同进程下替代上游 per-plugin Worker 的崩溃隔离 ③ diff 内置 mod 升级为实时 pane（"Session diff (mod)"，随 Edit/Write 自动刷新），`/session-diff` 文本命令保留 ④ unload 清理 pane（同 status）⑤ 内置 mod 直接传真实 TSX 组件；disk mod 组件暂无 ink 原语可用（裸模块白名单 `opencc-mods` 待拍板，P3 剩余）。TUI 实测：模型连续 Write，pane 内 `2 files changed +4 −0` 实时刷新。
 >
 > **配套文档**：
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）

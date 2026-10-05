@@ -16,7 +16,11 @@ import {
   getLoadedMods,
   resetModsRegistryForTesting,
 } from './registry.js'
-import { getModStatusSnapshot } from './engine.js'
+import {
+  __resetModPanesForTesting,
+  getModPanesSnapshot,
+  getModStatusSnapshot,
+} from './engine.js'
 
 let modsDir: string
 let savedEnv: string | undefined
@@ -35,6 +39,7 @@ afterEach(async () => {
   // Reset the mod registry too — loadedMods persists across tests otherwise
   // and buildModHookMatchers would group handlers from unrelated fixtures.
   resetModsRegistryForTesting()
+  __resetModPanesForTesting()
   clearRegisteredHooks()
   if (modsDir) {
     await rm(modsDir, { recursive: true, force: true })
@@ -191,5 +196,19 @@ describe('loadMods', () => {
 
     await unloadMod('statusful')
     expect(getModStatusSnapshot()).toEqual({})
+  })
+
+  test('unloadMod clears mod panes', async () => {
+    await setupModsDir()
+    await writeMod(
+      'paneful',
+      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })); ctx.ui.pane({ id: "p", title: "P", component: () => "content" }) }',
+    )
+    await loadMods()
+    // built-in diff's pane is also present; target paneful's pane by key
+    expect(getModPanesSnapshot().some(p => p.key === 'paneful:p')).toBe(true)
+
+    await unloadMod('paneful')
+    expect(getModPanesSnapshot().some(p => p.key === 'paneful:p')).toBe(false)
   })
 })

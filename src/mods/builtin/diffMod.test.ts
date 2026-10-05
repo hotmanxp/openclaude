@@ -5,7 +5,7 @@ import {
   diffBuiltinMod,
   formatSessionDiff,
 } from './diffMod.js'
-import { createModContext } from '../engine.js'
+import { createModContext, __resetModPanesForTesting } from '../engine.js'
 import type { LoadedMod } from '../registry.js'
 
 function harness(): {
@@ -32,10 +32,12 @@ function harness(): {
 
 beforeEach(() => {
   __resetDiffEditsForTesting()
+  __resetModPanesForTesting()
 })
 
 afterEach(() => {
   __resetDiffEditsForTesting()
+  __resetModPanesForTesting()
 })
 
 describe('diff built-in mod — recording', () => {

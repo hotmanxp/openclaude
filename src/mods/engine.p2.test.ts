@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  __resetModPanesForTesting,
+  clearModPanes,
   createModContext,
+  getModPanesSnapshot,
   getModStatusSnapshot,
   setModFsAuthOverrideForTesting,
   subscribeModNotices,
@@ -32,11 +35,13 @@ function freshMod(name = 'my-mod'): LoadedMod {
 
 beforeEach(() => {
   resetModsRegistryForTesting()
+  __resetModPanesForTesting()
 })
 
 afterEach(() => {
   setModFsAuthOverrideForTesting(undefined)
   resetModsRegistryForTesting()
+  __resetModPanesForTesting()
 })
 
 describe('ctx.ui.status', () => {
@@ -47,6 +52,46 @@ describe('ctx.ui.status', () => {
     expect(getModStatusSnapshot()).toEqual({ 'my-mod': 'working…' })
     ctx.ui.status('')
     expect(getModStatusSnapshot()).toEqual({})
+  })
+})
+
+describe('ctx.ui.pane (P3 render site)', () => {
+  test('registers, replaces by id, and closes by id / all', () => {
+    const mod = freshMod('paneful')
+    const ctx = createModContext(mod)
+    ctx.ui.pane({ id: 'p1', title: 'T1', component: () => 'one' })
+    ctx.ui.pane({ id: 'p2', title: 'T2', component: () => 'two' })
+    expect(getModPanesSnapshot().map(p => p.id)).toEqual(['p1', 'p2'])
+
+    // same id replaces
+    ctx.ui.pane({ id: 'p1', title: 'T1b', component: () => 'one-b' })
+    expect(getModPanesSnapshot()).toHaveLength(2)
+    expect(getModPanesSnapshot()[0]!.title).toBe('T1b')
+
+    ctx.ui.closePane('p1')
+    expect(getModPanesSnapshot().map(p => p.id)).toEqual(['p2'])
+    ctx.ui.closePane()
+    expect(getModPanesSnapshot()).toEqual([])
+  })
+
+  test('validates spec shape', () => {
+    const ctx = createModContext(freshMod())
+    expect(() =>
+      // @ts-expect-error — runtime validation of JS input
+      ctx.ui.pane({ id: 'x', title: 't', component: 'nope' }),
+    ).toThrow(/component must be a function/)
+    expect(() => ctx.ui.pane({ id: '', title: 't', component: () => null })).toThrow(
+      /id must be/,
+    )
+  })
+
+  test('clearModPanes removes a mod panes on unload path', () => {
+    const ctx = createModContext(freshMod('with-panes'))
+    ctx.ui.pane({ id: 'a', title: 'A', component: () => 'a' })
+    ctx.ui.pane({ id: 'b', title: 'B', component: () => 'b' })
+    expect(getModPanesSnapshot()).toHaveLength(2)
+    clearModPanes('with-panes')
+    expect(getModPanesSnapshot()).toEqual([])
   })
 })
 
