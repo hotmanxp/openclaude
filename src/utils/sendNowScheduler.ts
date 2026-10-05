@@ -204,6 +204,25 @@ function pruneCandidates(): void {
   }
 }
 
+/**
+ * Add newly-queued commands to the candidate set.
+ *
+ * Re-run on every poll, not just at the entry point: handleSendNow calls
+ * onSubmit() first, which reaches the queue asynchronously, so a single scan
+ * at the moment the shortcut is pressed would race the enqueue and see an
+ * empty queue.
+ */
+function collectCandidates(): void {
+  for (const cmd of getCommandQueueSnapshot()) {
+    if (cmd.uuid === undefined || candidates.has(cmd.uuid)) continue
+    if (!isSendNowCandidate(cmd)) continue
+    candidates.set(cmd.uuid, {
+      uuid: cmd.uuid,
+      raisedFrom: cmd.priority ?? 'next',
+    })
+  }
+}
+
 function promoteAndRetry(candidate: Candidate): void {
   graceCount = 0
   // Record the pre-promotion priority before the call, since promoteToNow is
@@ -224,6 +243,7 @@ function cancel(): void {
 
 function evaluate(): void {
   if (disposed) return
+  collectCandidates()
   pruneCandidates()
   if (candidates.size === 0) {
     teardown()
@@ -303,14 +323,7 @@ export function sendQueuedNow(): boolean {
     return false
   }
 
-  for (const cmd of getCommandQueueSnapshot()) {
-    if (isSendNowCandidate(cmd) && !candidates.has(cmd.uuid!)) {
-      candidates.set(cmd.uuid!, {
-        uuid: cmd.uuid!,
-        raisedFrom: cmd.priority ?? 'next',
-      })
-    }
-  }
+  collectCandidates()
   if (candidates.size === 0) {
     teardown()
     return false

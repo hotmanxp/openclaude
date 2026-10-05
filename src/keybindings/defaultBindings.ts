@@ -79,6 +79,11 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+x ctrl+e': 'chat:externalEditor',
       'ctrl+g': 'chat:externalEditor',
       'ctrl+s': 'chat:stash',
+      // Send the queued message now, interrupting the running turn.
+      // ctrl+x is the chord prefix (same as ctrl+x ctrl+e above), so bare
+      // ctrl+s stays with chat:stash. Upstream also binds ctrl+enter.
+      'ctrl+x ctrl+s': 'chat:sendNow',
+      'ctrl+enter': 'chat:sendNow',
       // Image paste shortcut (platform-specific key defined above)
       [IMAGE_PASTE_KEY]: 'chat:imagePaste',
       ...{ 'shift+up': 'chat:messageActions' as const },
