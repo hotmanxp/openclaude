@@ -81,8 +81,16 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+s': 'chat:stash',
       // Send the queued message now, interrupting the running turn.
       // ctrl+x is the chord prefix (same as ctrl+x ctrl+e above), so bare
-      // ctrl+s stays with chat:stash. Upstream also binds ctrl+enter.
+      // ctrl+s stays with chat:stash. The chord is the one that works
+      // everywhere.
       'ctrl+x ctrl+s': 'chat:sendNow',
+      // Progressive enhancement only. A legacy terminal sends ctrl+enter as a
+      // bare \r, which ink parses as plain 'enter' with no ctrl flag — so this
+      // never matches unless the extended-keys protocol is negotiated
+      // (OPENCC_ENABLE_EXTENDED_KEYS=1, off by default; see
+      // supportsExtendedKeys in src/ink/terminal.ts). Harmless when inert: an
+      // unmatched binding falls through to normal submit. Kept because upstream
+      // binds it and it starts working the moment the protocol is enabled.
       'ctrl+enter': 'chat:sendNow',
       // Image paste shortcut (platform-specific key defined above)
       [IMAGE_PASTE_KEY]: 'chat:imagePaste',
