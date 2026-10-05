@@ -1512,7 +1512,17 @@ function PromptInput({
   // promotes it and lets the scheduler decide when the turn is safe to abort.
   // Going through the queue rather than submitting directly is what reuses the
   // existing abort-on-'now' hook in print.ts.
+  //
+  // The registration below is deliberately left ungated so the ctrl+x chord
+  // prefix is always consumed, but the body must respect the overlay gate the
+  // way every other Chat handler does: a permission dialog is up whenever a
+  // turn is active, so an ungated body would submit the buffer behind the
+  // dialog and tear down the very turn the dialog is blocking on.
   const handleSendNow = useCallback(() => {
+    if (isModalOverlayActive) {
+      return;
+    }
+
     const hasTypedContent =
       input.trim() !== '' || Object.keys(pastedContents).length > 0;
 
@@ -1524,7 +1534,7 @@ function PromptInput({
       // enqueue above even though onSubmit is async.
       sendQueuedNow();
     }
-  }, [isLoading, input, pastedContents, onSubmit]);
+  }, [isLoading, input, pastedContents, onSubmit, isModalOverlayActive]);
 
   // Handler for chat:modelPicker - toggle model picker
   const handleModelPicker = useCallback(() => {
@@ -1823,11 +1833,11 @@ function PromptInput({
     isActive: !isModalOverlayActive
   });
 
-  // chat:sendNow is registered separately, without the modal-overlay gate.
-  // ctrl+x is the chord prefix (ctrl+x ctrl+e, ctrl+x ctrl+k), and an inactive
-  // registration would stop the prefix being consumed, leaking ctrl+s to the
-  // terminal. Same reasoning as chat:killAgents in useCancelRequest.ts:328 —
-  // the handler itself no-ops when there is nothing to send.
+  // Registered separately, without the modal-overlay gate that the other Chat
+  // handlers carry. ctrl+x is the chord prefix (ctrl+x ctrl+e, ctrl+x ctrl+k),
+  // and an inactive registration would stop the prefix being consumed, leaking
+  // ctrl+s to the terminal. Same reasoning as chat:killAgents in
+  // useCancelRequest.ts:328 — the gate lives in the handler body instead.
   useKeybinding('chat:sendNow', handleSendNow, {
     context: 'Chat',
   });

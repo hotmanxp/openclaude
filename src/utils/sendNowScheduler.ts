@@ -49,6 +49,15 @@ const UNMOVABLE_GRACE_LIMIT = 2
  * that pressing the shortcut with nothing queued stops promptly.
  */
 const EMPTY_GRACE_POLLS = 8
+/**
+ * How long to keep waiting for a promoted message to be drained.
+ *
+ * Bounds the post-promote poll. Without it, a queue the drain never reaches
+ * (a queued slash/bash command stalls the processor) would spin here for the
+ * rest of the session. Generous relative to a normal drain, short enough that
+ * a stuck queue stops costing CPU.
+ */
+const DRAIN_GRACE_POLLS = 25
 
 export type Head = 'deliverable' | 'not_ready' | 'behind_earlier'
 
@@ -167,6 +176,7 @@ let unsubscribers: Array<() => void> = []
 let candidates = new Map<CandidateUuid, Candidate>()
 let graceCount = 0
 let emptyPolls = 0
+let drainPolls = 0
 let lastDecision: string | null = null
 let disposed = false
 
@@ -201,6 +211,7 @@ function teardown(): void {
   // `wait unmovable_grace` forever.
   graceCount = 0
   emptyPolls = 0
+  drainPolls = 0
   for (const unsubscribe of unsubscribers) unsubscribe()
   unsubscribers = []
   restoreRaised()
@@ -232,10 +243,12 @@ function collectCandidates(): void {
   for (const cmd of getCommandQueueSnapshot()) {
     if (cmd.uuid === undefined || candidates.has(cmd.uuid)) continue
     if (!isSendNowCandidate(cmd)) continue
-    candidates.set(cmd.uuid, {
-      uuid: cmd.uuid,
-      raisedFrom: cmd.priority ?? 'next',
-    })
+    // raisedFrom stays undefined until we actually promote. Setting it here
+    // would mark candidates we never raised, so hasRaisedCandidate() would be
+    // true for a command sitting at its original priority and restoreRaised()
+    // would call demoteFromNow(uuid, <its own priority>) — a no-op returning
+    // true, which in turn kept the poll loop spinning.
+    candidates.set(cmd.uuid, { uuid: cmd.uuid, raisedFrom: undefined })
   }
 }
 
@@ -249,9 +262,13 @@ function hasRaisedCandidate(): boolean {
 
 function promoteAndRetry(candidate: Candidate): void {
   graceCount = 0
-  // Record the pre-promotion priority before the call, since promoteToNow is
-  // what makes raisedFrom meaningful for the restore pass.
-  candidate.raisedFrom = candidate.raisedFrom ?? 'next'
+  // Capture the live priority, not a default: a command enqueued as 'later'
+  // must restore to 'later', not 'next'. Read before promoting, since
+  // promoteToNow overwrites it.
+  if (candidate.raisedFrom === undefined) {
+    const current = getCommandQueue().find(c => c.uuid === candidate.uuid)
+    candidate.raisedFrom = current?.priority ?? 'next'
+  }
   promoteToNow(candidate.uuid)
   schedule()
 }
@@ -287,17 +304,31 @@ function evaluate(): void {
   if (selected === null) {
     // No head left. This is expected right after a promote: the promoted
     // command is now 'now', so selectHead deliberately skips it and there is
-    // nothing to select. Tearing down here would call restoreRaised() and
-    // demote that command straight back to 'next' while it is still queued —
-    // silently undoing the promotion that was supposed to let it jump the
-    // queue. Keep polling instead, and let the drain dequeue it.
+    // nothing to select. Keep polling briefly so the drain can dequeue it —
+    // tearing down immediately would demote it straight back while it is still
+    // queued, undoing the promotion.
+    //
+    // Bounded, unlike the wait branch: a drain that never runs (a queued slash
+    // or bash command can stall the processor indefinitely) would otherwise
+    // poll every 200ms for the rest of the session.
     if (hasRaisedCandidate() && getCurrentQueryGuard()?.isActive) {
-      schedule()
-      return
+      if (drainPolls < DRAIN_GRACE_POLLS) {
+        drainPolls++
+        schedule()
+        return
+      }
+      logForDebugging(
+        '[low-latency-submit] giving up: promoted message was not drained',
+      )
     }
     teardown()
     return
   }
+
+  // Only reset once a head is actually selected: the no-head branch below
+  // counts these polls, and clearing the counter on the way in (as it used to
+  // be) made the limit unreachable — the same mistake as the grace counter.
+  drainPolls = 0
 
   const evidence = readEvidence()
   const decision = decide({
@@ -322,7 +353,13 @@ function evaluate(): void {
 
   switch (decision.action) {
     case 'stand_by':
-      clearTimer()
+      // Full teardown, not just clearTimer(). stand_by means the guard went
+      // idle, and decide() checks isLocalTurnActive first — so this can fire
+      // even when a promoted candidate is still queued. Stopping only the timer
+      // would leave that candidate pinned at 'now' for the rest of the session,
+      // and would retain the subscriptions and candidate map so a later queue
+      // mutation could revive the scheduler and promote whatever appeared next.
+      teardown()
       return
     case 'wait':
       if (decision.reason === 'unmovable_grace') {

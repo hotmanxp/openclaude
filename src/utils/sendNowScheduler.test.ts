@@ -376,3 +376,83 @@ describe('sendNowScheduler grace counter', () => {
     }
   })
 })
+
+describe('sendQueuedNow teardown paths', () => {
+  const UUID_A = '11111111-1111-1111-1111-111111111111'
+
+  async function drive({ turnRunning }) {
+    const { QueryGuard } = await import('./QueryGuard.js')
+    const {
+      publishTurnHandles,
+      resetTurnHandles,
+    } = await import('./turnAbortRegistry.js')
+    const { setMainRequestInFlight } = await import('./turnEvidence.js')
+    const scheduler = await import('./sendNowScheduler.js')
+    const queue = await import('./messageQueueManager.js')
+
+    resetTurnHandles()
+    queue.resetCommandQueue()
+    scheduler.disposeSendNowScheduler()
+
+    const guard = new QueryGuard()
+    if (turnRunning) {
+      guard.reserve()
+      guard.tryStart()
+    }
+    publishTurnHandles({
+      abortController: turnRunning ? new AbortController() : null,
+      queryGuard: guard,
+      isCompacting: false,
+    })
+    setMainRequestInFlight(true)
+
+    return { scheduler, queue, guard, dispose: scheduler.disposeSendNowScheduler }
+  }
+
+  it('restores a promoted message when the turn goes idle before the drain', async () => {
+    // stand_by means the guard went idle, and decide() tests isLocalTurnActive
+    // first — so it fires even with a promoted candidate still queued. Stopping
+    // only the timer (the old behaviour) left that candidate pinned at 'now'
+    // until something else woke the scheduler; with no further queue activity
+    // nothing ever did, so it stayed promoted for the rest of the session.
+    const { scheduler, queue, guard, dispose } = await drive({ turnRunning: true })
+    try {
+      // Two candidates, so one is left behind after the other is promoted.
+      queue.enqueue({ value: 'first', mode: 'prompt', uuid: UUID_A })
+      queue.enqueue({
+        value: 'second',
+        mode: 'prompt',
+        uuid: '22222222-2222-2222-2222-222222222222',
+      })
+      scheduler.sendQueuedNow()
+      await Bun.sleep(200)
+      guard.end(guard.generation)
+      await Bun.sleep(700)
+
+      const first = queue
+        .getCommandQueue()
+        .find(c => c.uuid === UUID_A)
+      expect(first?.priority).toBe('next')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('gives up polling when a promoted message is never drained', async () => {
+    // Bounded so a queue the drain never reaches cannot spin for the session.
+    const { scheduler, queue, dispose } = await drive({ turnRunning: true })
+    try {
+      queue.enqueue({ value: 'send me', mode: 'prompt', uuid: UUID_A })
+      scheduler.sendQueuedNow()
+      await Bun.sleep(450)
+      expect(queue.getCommandQueue()[0]?.priority).toBe('now')
+
+      // Past DRAIN_GRACE_POLLS (25 x 200ms = 5s) the scheduler must give up
+      // and restore, rather than polling indefinitely.
+      await Bun.sleep(6000)
+      expect(queue.getCommandQueue()[0]?.priority).toBe('next')
+    } finally {
+      dispose()
+    }
+  }, 15000)
+})

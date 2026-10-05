@@ -135,6 +135,7 @@ opencc
 | Connection Refused | LiteLLM proxy isn't running | Start the proxy with `litellm --config litellm_config.yaml --port 4000` |
 | Auth Failed | Missing or wrong `master_key` | Set the correct key in `OPENAI_API_KEY` |
 | Upstream provider error | The backend provider key is missing or invalid | Ensure the upstream API key (e.g., `OPENAI_API_KEY`) is set in your LiteLLM proxy process environment |
+| `anthropic does not support parameters: ['store']` | The alias points at an Anthropic backend but its name does not look like a Claude model, so OpenClaude still sends the OpenAI-only `store` field | Name the alias after the Claude model (`claude-*`, `anthropic/...`, or a versioned family name such as `sonnet-4-6`); OpenClaude omits `store` for those names. For other alias names, set `drop_params: true` under `litellm_settings` (or per model in `litellm_params`) so LiteLLM drops unsupported fields |
 | Tools fail but chat works | The selected model has weak function/tool calling support | Switch to a model with strong tool support (e.g., GPT-4o, Claude Sonnet) |
 
 ## 6. Resources
