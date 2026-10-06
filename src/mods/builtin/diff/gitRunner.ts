@@ -11,9 +11,7 @@ import { getCwd } from '../../../utils/cwd.js'
 import { execFileNoThrowWithCwd } from '../../../utils/execFileNoThrow.js'
 import { gitExe } from '../../../utils/git.js'
 import { GIT_ENV, GIT_TIMEOUT_MS, MAX_RAW_BYTES } from './constants.js'
-import type { GitRun, GitRunResult } from './source.js'
-
-const FAILED: GitRunResult = { exitCode: -1, stdout: '', stderr: '' }
+import { RUN_FAILED, type GitRun, type GitRunResult } from './source.js'
 
 type RunOptions = {
   cwd?: string
@@ -39,7 +37,7 @@ export function createGitRun(options: RunOptions = {}): GitRun {
       })
       return { exitCode: result.code, stdout: result.stdout, stderr: result.stderr }
     } catch {
-      return FAILED
+      return RUN_FAILED
     }
   }
 }

@@ -1,21 +1,27 @@
 import type { StructuredPatchHunk } from 'diff'
+import React from 'react'
 import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
 import { notifyPaneChanged } from '../engine.js'
+import { DiffDialog } from './diff/DiffDialog.jsx'
+import { resetDiffStore } from './diff/store.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
  * ("The diff panel as a plugin pane: /diff, the changed files and their
  * hunks beside the transcript, refreshed as Claude edits").
  *
- * opencc's mod surface (P2 hooks + P3 panes) provides the equivalent:
- * - PostToolUse on the 'Edit'/'Write' tools records the tool_response's
- *   structuredPatch hunks (the host already computed them — the mod only
- *   reads event data, nothing imported, nothing fenced)
- * - `/diff` renders the accumulated edits as a unified diff, capped
- *   at MAX_DIFF_OUTPUT_CHARS (upstream MAX_DIFF_BYTES parity)
- * - "No changes yet" mirrors upstream's empty-state string
+ * `/diff` opens the same dialog the plugin opens: the files git reports as
+ * changed, with per-file counts, and a coloured body once you open one.
+ * The git side lives in ./diff.
+ *
+ * The session-scoped edit log below is a separate, opencc-only view — it
+ * records what the model changed via Edit/Write with no git involved, and
+ * backs the live pane rather than the command.
  */
+
+/** Upstream's string when the dialog closes without a selection. */
+const DISMISSED = 'Diff dialog dismissed'
 
 type RecordedEdit = {
   filePath: string
@@ -161,6 +167,7 @@ export const diffBuiltinMod: BuiltinModSpec = {
   register(ctx: ModContext): void {
     ctx.on('SessionStart', async (e, next) => {
       resetEdits()
+      resetDiffStore()
       return next(e)
     })
     // Tool names are 'Edit'/'Write' (FILE_EDIT_TOOL_NAME/FILE_WRITE_TOOL_NAME).
@@ -173,16 +180,16 @@ export const diffBuiltinMod: BuiltinModSpec = {
       return next(e)
     })
     ctx.registerCommand({
-      // This mod IS the host /diff now: the previous built-in /diff command
-      // (git diff + per-turn diffs panel, src/commands/diff) was removed and
-      // this session-scoped text diff was promoted to the bare /diff name,
-      // matching upstream cc-plugin-diff parity.
+      // Upstream ships /diff as the `cc-plugin-diff` plugin, whose command
+      // opens a dialog over `git diff HEAD` rather than printing text. The
+      // host /diff that used to own this name was removed in eeb58339; the
+      // mod keeps the name, but now renders the dialog the plugin renders.
       name: 'diff',
-      description:
-        'Show a unified diff of the files edited this session (built-in diff mod)',
-      argumentHint: '[path-substring]',
-      handler: async (args: string) =>
-        formatSessionDiff(args?.trim() || undefined),
+      type: 'local-jsx',
+      description: 'Show uncommitted changes in a diff dialog',
+      call: async onDone => (
+        <DiffDialog onDone={() => onDone(DISMISSED, { display: 'system' })} />
+      ),
     })
     // Live pane (P3 render site): mirrors the accumulated session diff above
     // the prompt input, refreshed on every Edit/Write. Hidden while empty.

@@ -182,6 +182,9 @@ describe('diff built-in mod — formatting', () => {
     diffBuiltinMod.register(ctx)
     const command = mod.commands.find(c => c.name === 'diff')
     expect(command).toBeDefined()
-    expect(command!.description).toContain('built-in diff mod')
+    // The command renders the plugin's dialog instead of printing text, so
+    // it is a local-jsx command — cf. cc-plugin-diff's `command.run` hook.
+    expect(command!.type).toBe('local-jsx')
+    expect(command!.call).toBeDefined()
   })
 })
