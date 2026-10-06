@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { diffBuiltinMod } from './diffMod.js'
 import {
-  __getDiffEditsForTesting,
-  __resetDiffEditsForTesting,
-  diffBuiltinMod,
-  formatSessionDiff,
-} from './diffMod.js'
-import { createModContext, __resetModPanesForTesting } from '../engine.js'
+  __resetModPanesForTesting,
+  createModContext,
+  getModPanesSnapshot,
+} from '../engine.js'
+import { toggleAsk, resetDiffStore } from './diff/store.js'
 import type { LoadedMod } from '../registry.js'
 
 function harness(): {
   mod: LoadedMod
-  postToolUse: (e: Record<string, unknown>) => Promise<unknown>
+  userPromptSubmit: (e: Record<string, unknown>) => Promise<unknown>
+  sessionStart: () => Promise<unknown>
 } {
   const mod: LoadedMod = {
     manifest: { name: 'diff', entry: '(builtin)' },
@@ -22,169 +23,73 @@ function harness(): {
   }
   const ctx = createModContext(mod)
   diffBuiltinMod.register(ctx)
-  const registration = mod.handlers.find(h => h.event === 'PostToolUse')
-  if (!registration) throw new Error('diff mod did not register PostToolUse')
+
+  const find = (event: string) => {
+    const registration = mod.handlers.find(h => h.event === event)
+    if (!registration) throw new Error(`diff mod did not register ${event}`)
+    return registration
+  }
+  const next = async () => ({ continue: true })
   return {
     mod,
-    postToolUse: async e => registration.handler(e, async () => ({ continue: true })),
+    userPromptSubmit: async e => find('UserPromptSubmit').handler(e, next),
+    sessionStart: async () => find('SessionStart').handler({ source: 'startup' }, next),
   }
 }
 
 beforeEach(() => {
-  __resetDiffEditsForTesting()
+  resetDiffStore()
   __resetModPanesForTesting()
 })
 
 afterEach(() => {
-  __resetDiffEditsForTesting()
+  resetDiffStore()
   __resetModPanesForTesting()
 })
 
-describe('diff built-in mod — recording', () => {
-  test('records FileEdit structuredPatch from tool_response', async () => {
-    const { postToolUse } = harness()
-    await postToolUse({
-      hook_event_name: 'PostToolUse',
-      tool_name: 'Edit',
-      tool_input: { file_path: '/proj/a.ts' },
-      tool_response: {
-        filePath: '/proj/a.ts',
-        structuredPatch: [
-          {
-            oldStart: 1,
-            oldLines: 3,
-            newStart: 1,
-            newLines: 3,
-            lines: [' const a = 1', '-const b = 2', '+const b = 3'],
-          },
-        ],
-      },
-    })
-    expect(__getDiffEditsForTesting()).toHaveLength(1)
-  })
-
-  test('records FileWrite create with full content', async () => {
-    const { postToolUse } = harness()
-    await postToolUse({
-      tool_name: 'Write',
-      tool_input: {},
-      tool_response: {
-        filePath: '/proj/new.txt',
-        type: 'create',
-        content: 'hello\nworld',
-      },
-    })
-    expect(__getDiffEditsForTesting()[0]!.isNewFile).toBe(true)
-  })
-
-  test('latest edit per file wins', async () => {
-    const { postToolUse } = harness()
-    for (const v of [1, 2]) {
-      await postToolUse({
-        tool_name: 'Edit',
-        tool_input: {},
-        tool_response: {
-          filePath: '/proj/a.ts',
-          structuredPatch: [
-            { oldStart: v, oldLines: 1, newStart: v, newLines: 1, lines: [`-${v}`, `+${v}`] },
-          ],
-        },
-      })
-    }
-    expect(__getDiffEditsForTesting()).toHaveLength(1)
-    expect(formatSessionDiff()).toContain('+2')
-    expect(formatSessionDiff()).not.toContain('+1\n')
-  })
-
-  test('ignores responses without patch and without path', async () => {
-    const { postToolUse } = harness()
-    await postToolUse({ tool_name: 'Edit', tool_input: {}, tool_response: {} })
-    await postToolUse({ tool_name: 'Edit', tool_input: {}, tool_response: { filePath: '/x' } })
-    expect(__getDiffEditsForTesting()).toHaveLength(0)
-  })
-})
-
-describe('diff built-in mod — formatting', () => {
-  test('empty state mirrors upstream string', () => {
-    expect(formatSessionDiff()).toBe('No changes yet.')
-    expect(formatSessionDiff('/nope')).toBe('No session edits matching "/nope".')
-  })
-
-  test('renders unified diff hunks', async () => {
-    const { postToolUse } = harness()
-    await postToolUse({
-      tool_name: 'Edit',
-      tool_input: {},
-      tool_response: {
-        filePath: '/proj/a.ts',
-        structuredPatch: [
-          {
-            oldStart: 1,
-            oldLines: 2,
-            newStart: 1,
-            newLines: 2,
-            lines: ['-const b = 2', '+const b = 3', ' const c = 4'],
-          },
-        ],
-      },
-    })
-    const out = formatSessionDiff()
-    expect(out).toContain('1 file(s) changed, +1 −1')
-    expect(out).toContain('--- a/proj/a.ts')
-    expect(out).toContain('+++ b/proj/a.ts')
-    expect(out).toContain('@@ -1,2 +1,2 @@')
-    expect(out).toContain('-const b = 2')
-    expect(out).toContain('+const b = 3')
-  })
-
-  test('renders new files as /dev/null origin', async () => {
-    const { postToolUse } = harness()
-    await postToolUse({
-      tool_name: 'Write',
-      tool_input: {},
-      tool_response: { filePath: '/proj/new.txt', type: 'create', content: 'hi' },
-    })
-    const out = formatSessionDiff()
-    expect(out).toContain('--- /dev/null')
-    expect(out).toContain('+++ b/proj/new.txt')
-    expect(out).toContain('+hi')
-  })
-
-  test('path filter narrows output', async () => {
-    const { postToolUse } = harness()
-    for (const p of ['/proj/a.ts', '/proj/b.ts']) {
-      await postToolUse({
-        tool_name: 'Edit',
-        tool_input: {},
-        tool_response: {
-          filePath: p,
-          structuredPatch: [
-            { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['+x'] },
-          ],
-        },
-      })
-    }
-    const out = formatSessionDiff('b.ts')
-    expect(out).toContain('b.ts')
-    expect(out).not.toContain('a/proj/a.ts')
-  })
-
-  test('registers a top-level /diff command on the ctx', () => {
-    const mod: LoadedMod = {
-      manifest: { name: 'diff', entry: '(builtin)' },
-      root: '(builtin)',
-      entryPath: '(builtin)',
-      handlers: [],
-      commands: [],
-      tools: [],
-    }
-    const ctx = createModContext(mod)
-    diffBuiltinMod.register(ctx)
+describe('diff built-in mod — registration', () => {
+  test('registers /diff as a local-jsx command', () => {
+    const { mod } = harness()
     const command = mod.commands.find(c => c.name === 'diff')
     expect(command).toBeDefined()
     // The command renders the plugin's dialog instead of printing text, so
     // it is a local-jsx command — cf. cc-plugin-diff's `command.run` hook.
     expect(command!.type).toBe('local-jsx')
     expect(command!.call).toBeDefined()
+  })
+
+  test('registers the live diff pane on session start', async () => {
+    const { sessionStart } = harness()
+    // The pane is registered from SessionStart, not from register(): its
+    // component import has to land after the module has finished evaluating.
+    expect(getModPanesSnapshot().find(p => p.id === 'diff')).toBeUndefined()
+    await sessionStart()
+    const pane = getModPanesSnapshot().find(p => p.id === 'diff')
+    expect(pane).toBeDefined()
+    expect(pane!.title).toBe('Diff')
+  })
+
+  test('resets the store on session start', async () => {
+    const { sessionStart } = harness()
+    toggleAsk('src/a.ts')
+    await sessionStart()
+    // A fresh session must not inherit the previous one's armed file.
+    const { getDiffSnapshot } = await import('./diff/store.js')
+    expect(getDiffSnapshot().armedPath).toBeNull()
+  })
+})
+
+describe('diff built-in mod — ask injection', () => {
+  test('passes the event through when nothing is armed', async () => {
+    const { userPromptSubmit } = harness()
+    const result = await userPromptSubmit({ prompt: 'hello' })
+    expect(result).toEqual({ continue: true })
+  })
+
+  test('passes the event through when the armed body never loaded', async () => {
+    const { userPromptSubmit } = harness()
+    toggleAsk('src/never-loaded.ts')
+    const result = await userPromptSubmit({ prompt: 'hello' })
+    expect(result).toEqual({ continue: true })
   })
 })
