@@ -3209,7 +3209,12 @@ export function accumulateUsage(
   messageUsage: Readonly<NonNullableUsage>,
 ): NonNullableUsage {
   return {
-    input_tokens: totalUsage?.input_tokens ?? 0 + messageUsage?.input_tokens ?? 0,
+    // Parenthesised like every sibling field below: `+` binds tighter than
+    // `??`, so the unparenthesised form parsed as
+    // `total ?? (0 + message) ?? 0` and never actually added the two totals —
+    // cumulative input_tokens just echoed the first turn's value (cc-012).
+    input_tokens:
+      (totalUsage?.input_tokens ?? 0) + (messageUsage?.input_tokens ?? 0),
     cache_creation_input_tokens:
       (totalUsage?.cache_creation_input_tokens ?? 0) +
       (messageUsage?.cache_creation_input_tokens ?? 0),
