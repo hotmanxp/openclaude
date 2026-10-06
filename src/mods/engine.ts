@@ -13,8 +13,11 @@ import type {
 } from './registry.js'
 import {
   BUILTIN_ORIGIN,
+  MOD_RENDER_EVENT,
   getLoadedMods,
   getModToolsVersion,
+  type ModRenderEvent,
+  type ModRenderHandler,
 } from './registry.js'
 import {
   isModSupportedEvent,
@@ -38,7 +41,7 @@ import {
 const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
-const SUPPORTED_EVENTS_HINT = MOD_SUPPORTED_EVENTS.join(', ')
+const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
 
 export type ModNotice = {
   key: string
@@ -165,6 +168,13 @@ export type ModContext = {
     matcher: string | Record<string, unknown>,
     handler: ModHandler,
   ): void
+  /**
+   * Synchronous render transform (`ui.render`). The handler receives
+   * `({text}, next)` and returns the rewritten text — or nothing to pass
+   * through. Runs inside React render: must be synchronous and fast (a
+   * returned promise is ignored). No matcher — it applies to every reply.
+   */
+  on(event: ModRenderEvent, handler: ModRenderHandler): void
   registerCommand(spec: ModCommandSpec): void
   registerTool(spec: ModToolSpec): void
   ui: {
@@ -396,6 +406,20 @@ export function createModContext(mod: LoadedMod): ModContext {
           `ctx.on(): unsupported event "${String(event)}". Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
       }
+      if (event === MOD_RENDER_EVENT) {
+        // Sync render transform: no matcher, single handler argument.
+        if (typeof matcherOrHandler !== 'function' || maybeHandler !== undefined) {
+          throw new Error(
+            'ctx.on("ui.render"): pass exactly one synchronous handler — no matcher',
+          )
+        }
+        mod.handlers.push({
+          event,
+          matcher: undefined,
+          handler: matcherOrHandler as unknown as ModHandler,
+        })
+        return
+      }
       const hasExplicitMatcher =
         typeof matcherOrHandler === 'string' ||
         (matcherOrHandler !== null &&
@@ -430,8 +454,15 @@ export function createModContext(mod: LoadedMod): ModContext {
           `ctx.registerCommand(): name must match [a-zA-Z0-9_-]{1,40}, got "${String(spec?.name)}"`,
         )
       }
-      if (typeof spec.handler !== 'function') {
-        throw new Error('ctx.registerCommand(): handler must be a function')
+      if (typeof spec.handler !== 'function' && typeof spec.call !== 'function') {
+        throw new Error(
+          'ctx.registerCommand(): provide handler (type "local") or call (type "local-jsx")',
+        )
+      }
+      if (typeof spec.handler === 'function' && typeof spec.call === 'function') {
+        throw new Error(
+          'ctx.registerCommand(): handler and call are mutually exclusive',
+        )
       }
       mod.commands.push(spec)
     },
@@ -568,6 +599,11 @@ export function getModTools(): Tool[] {
 // register top-level commands (upstream cc-plugin-diff parity: /diff is a
 // top-level command) — the caller (appendModCommands) dedupes against
 // existing names so a built-in can never shadow a host command.
+//
+// Two shapes: `handler` → LocalCommand (text to the user), `call` →
+// LocalJSXCommand (the mod renders the interaction and decides, via onDone,
+// what enters the conversation — handoff uses it to render its document
+// picker without a model AskUserQuestion round-trip).
 // ---------------------------------------------------------------------------
 
 export function buildModCommands(): Command[] {
@@ -578,16 +614,36 @@ export function buildModCommands(): Command[] {
       const runtimeName = isBuiltin
         ? spec.name
         : `${mod.manifest.name}:${spec.name}`
-      commands.push({
+      const base = {
         name: runtimeName,
         description:
           spec.description ?? `Command provided by mod "${mod.manifest.name}"`,
         ...(spec.argumentHint ? { argumentHint: spec.argumentHint } : {}),
+        ...(spec.immediate ? { immediate: true } : {}),
+      }
+      if (typeof spec.call === 'function') {
+        // local-jsx: the mod owns the whole interaction — it renders the
+        // component and calls onDone to say what enters the conversation.
+        // Used by the handoff mod so document selection is program-rendered
+        // instead of routed through a model AskUserQuestion call.
+        commands.push({
+          ...base,
+          type: 'local-jsx',
+          ...(spec.supportsNonInteractive
+            ? { supportsNonInteractive: true }
+            : {}),
+          load: async () => ({ call: spec.call! }),
+        })
+        continue
+      }
+      const handler = spec.handler!
+      commands.push({
+        ...base,
         type: 'local',
         supportsNonInteractive: true,
         load: async () => ({
           call: async (args: string) => {
-            const output = await spec.handler(args)
+            const output = await handler(args)
             return {
               type: 'text' as const,
               value:

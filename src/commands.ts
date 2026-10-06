@@ -23,7 +23,6 @@ import { context, contextNonInteractive } from './commands/context/index.js'
 // import cost from './commands/cost/index.js'
 import diagnostics from './commands/diagnostics/index.js'
 import dream from './commands/dream/index.js'
-import handoff from './commands/handoff/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
@@ -329,7 +328,6 @@ const COMMANDS = memoize((): Command[] => [
   fast,
   files,
   focus,
-  handoff,
   heapDump,
   help,
   ide,

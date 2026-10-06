@@ -162,6 +162,13 @@ export type LocalJSXCommandModule = {
 type LocalJSXCommand = {
   type: 'local-jsx'
   /**
+   * Opt into headless (`-p`) sessions. The JSX never renders there, so the
+   * command's `call` must reach a decision without showing anything — it
+   * still receives the ToolUseContext and can call onDone. Defaults to false
+   * (headless filters local-jsx commands out, like /plan and /think-back).
+   */
+  supportsNonInteractive?: boolean
+  /**
    * Lazy-load the command implementation.
    * Returns a module with a call() function.
    * This defers loading heavy dependencies until the command is invoked.

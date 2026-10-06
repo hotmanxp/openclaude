@@ -15,6 +15,7 @@ import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { InterruptedByUser } from '../InterruptedByUser.js';
 import { Markdown } from '../Markdown.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { transformModRenderText } from '../../mods/renderTap.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
 import { RateLimitMessage } from './RateLimitMessage.js';
 const MAX_API_ERROR_CHARS = 1000;
@@ -239,7 +240,7 @@ export function AssistantTextMessage(t0) {
         }
         let t5;
         if ($[25] !== text) {
-          t5 = <Box flexDirection="column"><Markdown>{text}</Markdown></Box>;
+          t5 = <Box flexDirection="column"><Markdown>{transformModRenderText(text)}</Markdown></Box>;
           $[25] = text;
           $[26] = t5;
         } else {

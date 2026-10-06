@@ -8,6 +8,7 @@ import { type CliHighlight, getCliHighlightPromise } from '../utils/cliHighlight
 import { hashContent } from '../utils/hash.js';
 import { configureMarked, formatToken } from '../utils/markdown.js';
 import { stripPromptXMLTags } from '../utils/messages.js';
+import { transformModRenderText } from '../mods/renderTap.js';
 import { MarkdownTable } from './MarkdownTable.js';
 type Props = {
   children: string;
@@ -228,9 +229,12 @@ export function StreamingMarkdown({
   const unstableSuffix = stripped.substring(stablePrefix.length);
 
   // stablePrefix is memoized inside <Markdown> via useMemo([children, ...])
-  // so it never re-parses as the unstable suffix grows
+  // so it never re-parses as the unstable suffix grows. Each half goes
+  // through the mod ui.render chain separately — a completed ```mermaid
+  // fence is always one lexer token, so it never straddles the boundary;
+  // a still-growing fence fails to parse and stays code (fail-safe).
   return <Box flexDirection="column" gap={1}>
-      {stablePrefix && <Markdown>{stablePrefix}</Markdown>}
-      {unstableSuffix && <Markdown>{unstableSuffix}</Markdown>}
+      {stablePrefix && <Markdown>{transformModRenderText(stablePrefix)}</Markdown>}
+      {unstableSuffix && <Markdown>{transformModRenderText(unstableSuffix)}</Markdown>}
     </Box>;
 }

@@ -16,6 +16,7 @@ Commands are CLI subcommands exposed via Commander.js as slash commands or direc
 | `/session` | `src/commands/session/index.ts` | local-jsx (remote mode only) |
 | `/doctor` | `src/commands/doctor/index.ts` | local-jsx |
 | `/diff` | `src/mods/builtin/diffMod.ts` | local (built-in mod command; former `src/commands/diff` was removed) |
+| `/handoff` | `src/mods/builtin/handoffMod.tsx` | local-jsx (built-in mod command; former `src/commands/handoff` was removed) |
 | `/compact` | `src/commands/compact/index.ts` | local-jsx |
 | `/mcp` | `src/commands/mcp/index.ts` | local-jsx |
 | `/skills` | `src/commands/skills/index.ts` | local-jsx |
