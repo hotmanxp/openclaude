@@ -104,3 +104,41 @@ describe('saveCurrentProjectConfig — writeback path', () => {
     ).not.toThrow()
   })
 })
+// oc-006: migrateConfigFields computed normalizedConfig and then returned
+// `config` on both return paths, so the normalization was calculated and
+// thrown away. A config carrying an out-of-range
+// maxMessagesCompactionThreshold kept the bogus value.
+describe('migrateConfigFields normalization (oc-006)', () => {
+  async function migrate(raw: Record<string, unknown>) {
+    const mod = await importFreshConfig()
+    return (mod as unknown as {
+      __migrateConfigFieldsForTesting: (c: unknown) => unknown
+    }).__migrateConfigFieldsForTesting(raw)
+  }
+
+  test('coerces an invalid maxMessagesCompactionThreshold to off', async () => {
+    const cfg = (await migrate({
+      installMethod: 'local',
+      maxMessagesCompactionThreshold: 'not-a-valid-threshold',
+    })) as Record<string, unknown>
+    expect(cfg.maxMessagesCompactionThreshold).toBe('off')
+  })
+
+  test('keeps a valid maxMessagesCompactionThreshold', async () => {
+    const cfg = (await migrate({
+      installMethod: 'local',
+      maxMessagesCompactionThreshold: '200',
+    })) as Record<string, unknown>
+    expect(cfg.maxMessagesCompactionThreshold).toBe('200')
+  })
+
+  test('normalizes on the legacy autoUpdaterStatus path too', async () => {
+    const cfg = (await migrate({
+      autoUpdaterStatus: 'installed',
+      maxMessagesCompactionThreshold: 12345,
+    })) as Record<string, unknown>
+    expect(cfg.maxMessagesCompactionThreshold).toBe('off')
+    // The migration itself must still happen.
+    expect(cfg.installMethod).toBe('native')
+  })
+})
