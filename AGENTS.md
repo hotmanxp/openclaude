@@ -7,26 +7,26 @@
 |-------|------|
 | Language | TypeScript 5.9.3 (strict) |
 | **Build tool** | **Bun** — `bun run build` / `bun test` / `bun run dev` |
-| **Runtime** | **Node ≥22** — 产物 `dist/cli.mjs` 由 `bin/opencc`（`#!/usr/bin/env node`）执行；`package.json` `engines.node >= 22.0.0`；`scripts/build.ts` `target: 'node'` |
+| **Runtime** | **Node ≥22** — the build output `dist/cli.mjs` is executed by `bin/opencc` (`#!/usr/bin/env node`); `package.json` sets `engines.node >= 22.0.0`; `scripts/build.ts` uses `target: 'node'` |
 | TUI | React 19.2.4 + Ink 7 |
 | Module | ESM only (`.js` import suffixes) |
 | Build output | `dist/cli.mjs` (~22MB bundle) |
 | Test | `bun test` (co-located `*.test.ts`) |
 
-> **Bun vs Node —— 别搞混**：Bun 只是**构建/测试工具链**。运行时是 Node。`dist/cli.mjs` 里出现的 `Bun.*` 标识符是 `scripts/build.ts` 的 **bundler shim**（`bun-bundle-shim` 插件 + `target: 'node'`），不是真 Bun 全局。
+> **Bun vs Node — don't confuse them**: Bun is only the **build/test toolchain**. The runtime is Node. Any `Bun.*` identifier inside `dist/cli.mjs` comes from the **bundler shim** in `scripts/build.ts` (the `bun-bundle-shim` plugin plus `target: 'node'`), not from a real Bun global.
 >
-> 推论（涉及运行时能力的决策都受此约束）：
-> - **没有 `Bun.Transpiler`** —— 需要转译只能用 npm 包（且 `typescript` 只在 devDependencies，生产依赖里无任何转译器）
-> - **没有 `Bun.embeddedFiles` / `/$bunfs/` SFX 内嵌文件解析**
-> - **`vm.SourceTextModule` 需要 `--experimental-vm-modules`**，Node 25 上不给 flag 直接抛错；且 `bin/opencc` 的 `relaunchWithLongSessionHeapIfNeeded()` 有早退条件，加 flag 必须连早退判定一起改
-> - 调试产物问题时用 `node dist/cli.mjs`，不是 `bun dist/cli.mjs`
+> Consequences (every runtime-capability decision is bound by these):
+> - **No `Bun.Transpiler`** — if you need to transpile, use an npm package (`typescript` is a devDependency only; there is no transpiler in the production dependency tree)
+> - **No `Bun.embeddedFiles` / `/$bunfs/` SFX embedded-file parsing**
+> - **`vm.SourceTextModule` requires `--experimental-vm-modules`** — on Node 25 it throws without the flag; also `relaunchWithLongSessionHeapIfNeeded()` in `bin/opencc` has early-exit conditions, so adding the flag means changing the early-exit check too
+> - Use `node dist/cli.mjs`, not `bun dist/cli.mjs`, when debugging build-output issues
 
 ## Repository Layout
 | Path | Purpose |
 |------|---------|
 | `src/commands/` | Slash commands (`/help`, `/story-log`, `/set-ticket`, ...) |
 | `src/tools/` | Tool implementations (FileRead, Bash, Grep, Glob, ...) |
-| `src/mods/` | Mods 系统 —— 用户 JS 扩展（事件/工具/命令/UI 插槽）。**fork 自研，明确不进上游同步名单**（路线 B，见 `docs/mods-plan.md` §1.3；上游无同名文件，分叉不产生同步冲突） |
+| `src/mods/` | Mods system — user JS extensions (events / tools / commands / UI slots). **Fork-original, explicitly excluded from the upstream sync list** (route B, see `docs/mods-plan.md` §1.3; upstream has no file of the same name, so the fork causes no sync conflicts) |
 | `src/services/api/` | API clients |
 | `src/components/` | Ink/React UI |
 | `src/hooks/`, `src/utils/` | React hooks, model utils |
@@ -76,14 +76,14 @@
 ## Verification
 
 Full 5-phase protocol in [`docs/verification-checklist.md`](docs/verification-checklist.md):
-`build → typecheck → test → TUI 完整流程 (with --debug) → debug log scan`.
+`build → typecheck → test → TUI full flow (with --debug) → debug log scan`.
 Skipping the debug log scan is incomplete — runtime errors hide behind successful UI smoke.
 
 **Functional verification**: dispatch `tui-func-verifier` subagent for any TUI/CLI flow check, new feature smoke, or UI regression. See Project Rule #7.
 
-### 测试：不要跑全量
+### Tests: never run the full suite
 
-**禁止执行 `bun test`、`bun run test`、`bun run test:full`、`bun run test:coverage` 或任何不带文件路径的 `bun test`。** 只跑改动相关的单个测试文件。
+**Never run `bun test`, `bun run test`, `bun run test:full`, `bun run test:coverage`, or any `bun test` without file paths.** Run only the individual test files related to your change.
 
 ```
 ✅ bun test src/utils/model/providers.test.ts
@@ -93,26 +93,26 @@ Skipping the debug log scan is incomplete — runtime errors hide behind success
 ❌ bun run test / test:full / test:coverage
 ```
 
-理由：仓库 772 个测试文件、6000 个用例，全量跑约 36 秒且**输出被 `test-env-preload` 预加载 + 大量 console 噪音淹没**（非 TTY 下 `bun test` 只打 `(fail)` 不打 `(pass)`，几千个通过用例零反馈，看着像卡死）。曾因此误判"测试没反应"并反复重跑，浪费大量时间与 token。
+Rationale: the repo has 772 test files and 6000 cases; a full run takes ~36 seconds and **the output is drowned by the `test-env-preload` preamble plus heavy console noise** (in a non-TTY, `bun test` only prints `(fail)`, never `(pass)`, so thousands of passing cases give zero feedback and it looks hung). This has repeatedly caused false "the tests aren't responding" diagnoses and wasteful re-runs in both time and tokens.
 
-配套硬性约束：
-- 跑测试**必须重定向到日志文件**再看：`bun test <file> > /tmp/t.log 2>&1; tail -5 /tmp/t.log`。**不要用管道 `| tail`**，管道缓冲到进程结束才落盘，同样表现为"没反应"。
-- 需要统计进度用 `grep -cE '^\(fail\)' /tmp/t.log`，不要 `tail -f` 实时盯。
-- 判断某个测试是否通过，用**隔离跑**（只传该文件）。全套跑下的失败可能是跨文件污染造成的假象，不代表产品有问题。
+Hard companion constraints:
+- When running tests you **must redirect to a log file first**: `bun test <file> > /tmp/t.log 2>&1; tail -5 /tmp/t.log`. **Do not pipe to `| tail`** — the pipe buffers until the process exits, which again looks like "no response".
+- To count progress use `grep -cE '^\(fail\)' /tmp/t.log`; do not `tail -f` in real time.
+- To judge whether a given test passes, run it **in isolation** (pass just that file). A failure seen in a full run may be an artifact of cross-file pollution, not a real product bug.
 
-### 跨文件 mock 污染（重要）
+### Cross-file mock pollution (important)
 
-`bun:test` 的 `mock.module` 写入**进程级全局注册表**，`mock.restore()` **不撤销** module-level mock。任何测试若在 `mock.module('./X.js', ...)` 后没有在 `afterEach` 里把真实实现装回去，就会污染**之后加载 `X.js` 的所有测试文件**，且只在全套跑里暴露、隔离跑全绿。
+`bun:test`'s `mock.module` writes to a **process-level global registry**, and `mock.restore()` does **not** undo module-level mocks. Any test that calls `mock.module('./X.js', ...)` without reinstalling the real implementation in an `afterEach` pollutes **every test file loaded after `X.js`**, and it only shows up in a full run — the files all pass in isolation.
 
-已知的污染源与受害方（历史上反复踩坑，见 `betas.test.ts`、`compact.test.ts`、`providerProfiles.test.ts`、`modelOptions.picker.test.ts`、`config.backupRecovery.test.ts` 的注释）：
-- `providerFallback.test.ts` 最后一个测试的 `getActiveProviderProfile: () => a` → 污染 `model/providers.test.ts`（已在 `229daa63` 定点修复）
-- `providerProfiles.test.ts` 泄漏的 `providerProfiles[]` → 污染 `betas.test.ts` / `compact.test.ts` 的 firstParty 判定
+Known polluters and victims (this has been hit repeatedly; see the comments in `betas.test.ts`, `compact.test.ts`, `providerProfiles.test.ts`, `modelOptions.picker.test.ts`, `config.backupRecovery.test.ts`):
+- `providerFallback.test.ts`'s last test, `getActiveProviderProfile: () => a` → pollutes `model/providers.test.ts` (already fixed surgically in `229daa63`)
+- The leaked `providerProfiles[]` from `providerProfiles.test.ts` → pollutes the firstParty checks in `betas.test.ts` / `compact.test.ts`
 
-**不要用 `--isolate` / `--parallel` 绕开**（bun 1.3.14 支持，实测均已验证）：
-- `--isolate` 能消除污染（配对测试通过），但全量跑**挂死**在 `openclaudePaths.test.ts`，内存涨到 4.6GB
-- `--parallel=N` 同样挂死在 `tests/sdk/permissions.test.ts`，并新增 11 个失败
+**Do not work around it with `--isolate` / `--parallel`** (both supported by bun 1.3.14, both empirically verified):
+- `--isolate` does eliminate the pollution (the paired tests pass), but a full run **hangs** at `openclaudePaths.test.ts` and memory climbs to 4.6GB
+- `--parallel=N` likewise hangs at `tests/sdk/permissions.test.ts` and adds 11 new failures
 
-根因：仓库里有测试**依赖同进程内的共享状态** —— SDK 权限回调的 IPC 时序（`tests/sdk/permissions.test.ts` 的 50ms 超时路径）、`runAutoFixCheck` 的子进程等待、配置损坏文件的恢复逻辑。进程隔离后这些依赖全部断裂，代价远大于收益。新增测试若引入 `mock.module`，**必须在 `afterEach` 里还原**，或按 `229daa63` 的模式在**被污染方**定点防护。
+Root cause: some tests in this repo **depend on shared in-process state** — SDK permission-callback IPC timing (the 50ms timeout path in `tests/sdk/permissions.test.ts`), the subprocess wait in `runAutoFixCheck`, the corrupted-config-file recovery logic. Process isolation breaks all of these, and the cost far outweighs the benefit. If a new test introduces `mock.module`, it **must restore in `afterEach`**, or follow the `229daa63` pattern of a **targeted guard on the polluted side**.
 
 ## Release
 
