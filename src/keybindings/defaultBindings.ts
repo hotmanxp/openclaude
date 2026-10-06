@@ -298,6 +298,20 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       },
     },
   ],
+  // Diff dialog navigation
+  {
+    context: 'DiffDialog',
+    bindings: {
+      escape: 'diff:dismiss',
+      left: 'diff:back',
+      up: 'diff:previousFile',
+      down: 'diff:nextFile',
+      enter: 'diff:viewDetails',
+      // Upstream reaches `[ ask ]` by clicking the button; the list here is
+      // keyboard-only, so `a` stands in for it.
+      a: 'diff:toggleAsk',
+    },
+  },
   // Model picker effort cycling (internal-only)
   {
     context: 'ModelPicker',
