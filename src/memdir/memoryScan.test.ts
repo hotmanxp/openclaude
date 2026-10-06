@@ -1,5 +1,11 @@
-import { afterEach, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import {
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink as fsSymlink,
+  writeFile,
+} from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { __test, scanMemoryFiles } from './memoryScan.ts'
@@ -100,6 +106,11 @@ function createFakeDeps({
     readCalls,
     readPaths,
     deps: {
+      // The fake tree has no real filesystem, so symlink targets resolve to
+      // themselves — every link here counts as internal, which is what the
+      // fake-fixture tests are about. Real containment is covered separately
+      // against real symlinks below.
+      realpath: async (p: string) => p,
       readdir: async (dirPath: string) => {
         openedDirs.push(dirPath)
         const entries = tree[dirPath]
@@ -504,4 +515,65 @@ test('scanMemoryFiles stops scheduling additional reads after abort', async () =
   expect(result).toEqual([])
   expect(readsStarted).toBeGreaterThan(0)
   expect(readsStarted).toBeLessThanOrEqual(__test.HEADER_READ_CONCURRENCY)
+})
+
+// cc-005: a *.md symlink was yielded unconditionally, so one pointing anywhere
+// on disk had its content read and injected into the model context. Real
+// filesystem symlinks are required here — the fakes above can't express a
+// realpath target.
+describe('scanMemoryFiles symlink containment (cc-005)', () => {
+  let dir: string
+  let memoryDir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'opencc-memscan-'))
+    memoryDir = join(dir, 'memory')
+    await mkdir(memoryDir, { recursive: true })
+  })
+
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true })
+  })
+
+  async function scanPaths(): Promise<string[]> {
+    const headers = await scanMemoryFiles(
+      memoryDir,
+      new AbortController().signal,
+    )
+    return headers.map(h => h.filePath)
+  }
+
+  test('a symlink pointing outside the memory dir is not scanned', async () => {
+    const outside = join(dir, 'outside')
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'secret.md'), 'AKIA-secret /etc/shadow')
+    await fsSymlink(join(outside, 'secret.md'), join(memoryDir, 'innocent.md'))
+
+    expect(await scanPaths()).toEqual([])
+  })
+
+  test('a symlink inside the memory dir is still scanned', async () => {
+    // Regression guard for the first attempt at this fix: comparing a raw
+    // memory dir against a resolved target rejects every legitimate file
+    // whenever the dir sits under a symlinked parent (macOS /var).
+    const sub = join(memoryDir, 'sub')
+    await mkdir(sub, { recursive: true })
+    await writeFile(join(sub, 'real.md'), 'real memory')
+    await fsSymlink(join(sub, 'real.md'), join(memoryDir, 'alias.md'))
+
+    const paths = await scanPaths()
+    expect(paths.some(p => p.endsWith('alias.md'))).toBe(true)
+    expect(paths.some(p => p.endsWith(join('sub', 'real.md')))).toBe(true)
+  })
+
+  test('ordinary files are unaffected', async () => {
+    await writeFile(join(memoryDir, 'normal.md'), 'a normal memory')
+    expect(await scanPaths()).toEqual([join(memoryDir, 'normal.md')])
+  })
+
+  test('a dangling symlink is ignored rather than failing the scan', async () => {
+    await writeFile(join(memoryDir, 'normal.md'), 'a normal memory')
+    await fsSymlink(join(memoryDir, 'missing.md'), join(memoryDir, 'dangling.md'))
+    expect(await scanPaths()).toEqual([join(memoryDir, 'normal.md')])
+  })
 })

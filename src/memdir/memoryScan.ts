@@ -5,12 +5,29 @@
  */
 
 import type { Dirent } from 'fs'
-import { readdir } from 'fs/promises'
-import { join } from 'path'
+import { readdir, realpath } from 'fs/promises'
+import { join, relative, resolve, sep } from 'path'
+import { logForDebugging } from '../utils/debug.js'
 import { parseFrontmatter } from '../utils/frontmatterParser.js'
 import type { ReadFileRangeResult } from '../utils/readFileInRange.js'
 import { readFileInRange } from '../utils/readFileInRange.js'
 import { type MemoryType, parseMemoryType } from './memoryTypes.js'
+
+/**
+ * Whether `target` is the memory dir or lives under it.
+ *
+ * Both sides are realpath'd before comparing. The base has to be resolved too:
+ * on macOS a temp dir arrives as /var/folders/... while /var is itself a
+ * symlink to /private/var, so comparing a raw base against a resolved target
+ * makes every legitimate file look like it escapes.
+ */
+function isInside(memoryDirReal: string, target: string): boolean {
+  if (target === memoryDirReal) return true
+  const rel = relative(memoryDirReal, target)
+  // `sep` guards against a sibling whose name merely starts with the memory
+  // dir's name (/mem vs /memory); rel === '' is the equality case above.
+  return rel !== '' && !rel.startsWith('..' + sep) && rel !== '..'
+}
 
 export type MemoryHeader = {
   filename: string
@@ -41,6 +58,8 @@ type MemoryScanDependencies = {
     signal: AbortSignal,
     options: { truncateOnByteLimit: true },
   ) => Promise<Pick<ReadFileRangeResult, 'content' | 'mtimeMs'>>
+  /** Resolves a symlink for the containment check; injectable for tests. */
+  realpath?: (path: string) => Promise<string>
 }
 
 type RankedMemoryHeader = {
@@ -51,6 +70,7 @@ type RankedMemoryHeader = {
 const defaultDependencies: MemoryScanDependencies = {
   readdir: dir => readdir(dir, { withFileTypes: true }),
   readFileInRange,
+  realpath,
 }
 
 /**
@@ -129,6 +149,12 @@ async function* walkMarkdownFiles(
   signal: AbortSignal,
   deps: MemoryScanDependencies,
 ): AsyncGenerator<string> {
+  // Resolved once, up front: the containment check below compares a symlink's
+  // realpath against this, and comparing against the unresolved path rejects
+  // every legitimate file whenever the memory dir sits under a symlinked
+  // parent (macOS /var -> /private/var).
+  const resolvePath = deps.realpath ?? realpath
+  const memoryDirReal = await resolvePath(memoryDir).catch(() => resolve(memoryDir))
   const pendingDirs: Array<{
     absolutePath: string
     relativePath: string
@@ -155,9 +181,24 @@ async function* walkMarkdownFiles(
         entry.name.endsWith('.md') && entry.name !== 'MEMORY.md'
 
       if (entry.isSymbolicLink()) {
-        if (isMarkdownMemoryFile) {
-          yield relativePath
+        // A link was yielded unconditionally, so one pointing anywhere on disk
+        // got read and injected into the model context — the memory dir is
+        // where a user expects the scan to stay (cc-005). Resolve and require
+        // containment; an internal link is still fine.
+        if (!isMarkdownMemoryFile) continue
+        let target: string
+        try {
+          target = await resolvePath(absolutePath)
+        } catch {
+          continue // dangling symlink — ignore
         }
+        if (!isInside(memoryDirReal, target)) {
+          logForDebugging(
+            `[memoryScan] ignoring symlink outside the memory dir: ${relativePath}`,
+          )
+          continue
+        }
+        yield relativePath
         continue
       }
 
