@@ -141,13 +141,14 @@ describe('loadMods', () => {
     await writeMod('healthy', 'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }')
 
     const results = await loadMods()
-    // broken + healthy disk mods + built-in diff
-    expect(results).toHaveLength(3)
     const broken = results.find(r => r.name === 'broken')!
     const healthy = results.find(r => r.name === 'healthy')!
     expect(broken.ok).toBe(false)
     expect(broken.error).toBeTruthy()
     expect(healthy.ok).toBe(true)
+    // The disk mods are joined by every shipped built-in; don't pin that
+    // count — adding a built-in must not require editing this test.
+    expect(results.some(r => r.name === 'diff' && r.ok)).toBe(true)
     expect(getRegisteredHooks()?.Stop).toHaveLength(1)
   })
 

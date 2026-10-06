@@ -6,6 +6,7 @@ import {
   registerBuiltinMod,
 } from './builtin.js'
 import { diffBuiltinMod } from './builtin/diffMod.js'
+import { handoffBuiltinMod } from './builtin/handoffMod.js'
 import {
   getLoadedMods,
   resetModsRegistryForTesting,
@@ -18,7 +19,7 @@ beforeEach(() => {
 afterEach(() => {
   // Restore the fixed manifest — module-level builtinSpecs would otherwise
   // leak test-only specs into other test files (cross-file pollution).
-  __setBuiltinSpecsForTesting([diffBuiltinMod])
+  __setBuiltinSpecsForTesting([diffBuiltinMod, handoffBuiltinMod])
   resetModsRegistryForTesting()
 })
 

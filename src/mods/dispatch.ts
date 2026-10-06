@@ -7,8 +7,14 @@ import type {
   HookInput,
   ModChainEntry,
 } from '../types/hooks.js'
-import type { LoadedMod } from './registry.js'
+import type {
+  LoadedMod,
+  ModRenderEvent,
+  ModRenderHandler,
+} from './registry.js'
 import {
+  MOD_RENDER_EVENT,
+  getLoadedMods,
   recordModHandlerFailure,
   recordModHandlerSuccess,
 } from './registry.js'
@@ -42,8 +48,13 @@ export const MOD_SUPPORTED_EVENTS = [
 
 export type ModSupportedEvent = (typeof MOD_SUPPORTED_EVENTS)[number]
 
-export function isModSupportedEvent(event: string): event is ModSupportedEvent {
-  return (MOD_SUPPORTED_EVENTS as readonly string[]).includes(event)
+export function isModSupportedEvent(
+  event: string,
+): event is ModSupportedEvent | ModRenderEvent {
+  return (
+    (MOD_SUPPORTED_EVENTS as readonly string[]).includes(event) ||
+    event === MOD_RENDER_EVENT
+  )
 }
 
 /** Per-event matcher source fields, mirroring getMatchingHooks' switch. */
@@ -225,6 +236,9 @@ export function buildModHookMatchers(mods: readonly LoadedMod[]): {
 
   for (const mod of mods) {
     for (const spec of mod.handlers) {
+      // ui.render handlers never enter the hook system — they are consumed
+      // synchronously by runModRenderChainSync (render-site tap).
+      if (spec.event === MOD_RENDER_EVENT) continue
       const key = `${spec.event}\0${spec.matcher ?? ''}`
       const group = groups.get(key) ?? []
       group.push({ modName: mod.manifest.name, handler: spec.handler })
@@ -253,4 +267,71 @@ export function buildModHookMatchers(mods: readonly LoadedMod[]): {
     refs.push(matcherEntry)
   }
   return { byEvent, refs }
+}
+
+// ---------------------------------------------------------------------------
+// ui.render — mod-only synchronous text transform chain (upstream parity:
+// cc-plugin-mermaid declares `{hooks:["ui.render"]}`). Unlike hook events
+// this runs INSIDE React render, so the contract is synchronous: each
+// handler receives ({text}, next) and returns the rewritten text, or
+// nothing to pass through. A returned Promise is logged and ignored — async
+// handlers cannot participate in a synchronous render path. Handlers run in
+// mod load order; failures feed the same circuit breaker as hook events.
+// ---------------------------------------------------------------------------
+
+export function hasModRenderHandlers(): boolean {
+  for (const mod of getLoadedMods()) {
+    for (const spec of mod.handlers) {
+      if (spec.event === MOD_RENDER_EVENT) return true
+    }
+  }
+  return false
+}
+
+function getModRenderChain(): { modName: string; handler: ModRenderHandler }[] {
+  const chain: { modName: string; handler: ModRenderHandler }[] = []
+  for (const mod of getLoadedMods()) {
+    for (const spec of mod.handlers) {
+      if (spec.event === MOD_RENDER_EVENT) {
+        chain.push({
+          modName: mod.manifest.name,
+          handler: spec.handler as unknown as ModRenderHandler,
+        })
+      }
+    }
+  }
+  return chain
+}
+
+export function runModRenderChainSync(input: string): string {
+  const chain = getModRenderChain()
+  if (chain.length === 0) return input
+  let text = input
+  for (const { modName, handler } of chain) {
+    const next = (replacement?: string) => {
+      if (typeof replacement === 'string') text = replacement
+      return text
+    }
+    try {
+      const out = handler({ text }, next)
+      if (typeof out === 'string') {
+        text = out
+      } else if (
+        out !== undefined &&
+        out !== null &&
+        typeof (out as Promise<unknown>).then === 'function'
+      ) {
+        logForDebugging(
+          `[mods] "${modName}" ui.render handler returned a promise — ignored (ui.render is a synchronous contract)`,
+        )
+      }
+      recordModHandlerSuccess(modName)
+    } catch (error) {
+      logForDebugging(
+        `[mods] ui.render handler error from mod "${modName}": ${error instanceof Error ? error.message : String(error)}`,
+      )
+      recordModHandlerFailure(modName)
+    }
+  }
+  return text
 }

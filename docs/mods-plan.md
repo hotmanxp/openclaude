@@ -2,7 +2,7 @@
 
 > **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v2.5 ｜ **日期**：2026-10-06 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+> **版本**：v2.7 ｜ **日期**：2026-10-06 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
 >
 > **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
 >
@@ -15,6 +15,10 @@
 > **v2.4 变更**（P3 render site 切面落地，上游 §七 Client 契约的 opencc 适配）：① **`ctx.ui.pane({id,title,component,props})` / `ctx.ui.closePane(id?)`** —— mod 注册实时 pane 组件，渲染于 prompt 上方持久区域（`ModPaneArea`），`notifyPaneChanged()` 驱动重绘，组件返回 null 时不占位 ② **每槽 ErrorBoundary**：mod 组件 render 崩溃降级为 pane 内错误行，不波及宿主 TUI —— 同进程下替代上游 per-plugin Worker 的崩溃隔离 ③ diff 内置 mod 升级为实时 pane（"Session diff (mod)"，随 Edit/Write 自动刷新），`/session-diff` 文本命令保留 ④ unload 清理 pane（同 status）⑤ 内置 mod 直接传真实 TSX 组件；disk mod 组件暂无 ink 原语可用（裸模块白名单 `opencc-mods` 待拍板，P3 剩余）。TUI 实测：模型连续 Write，pane 内 `2 files changed +4 −0` 实时刷新。
 >
 > **v2.5 变更**（/diff 升格 —— 宿主命令移除，mod 命令转正）：① **删除宿主 `/diff`**（`src/commands/diff/`、`src/components/diff/`、`src/hooks/useDiffData.ts`、`useTurnDiffs.ts` 共 10 文件；`src/utils/gitDiff.ts` 保留 —— FileEditTool/FileWriteTool 仍在用）② **diff 内置 mod 命令 `session-diff` → `diff`**，占用顶级裸名 `/diff`（v2.3 的"命名避让"失效 —— 避让对象已不存在），与上游 cc-plugin-diff 完全对齐 ③ **DiffDialog keybinding context 及全部 `diff:*` actions 移除**（`keybindings/schema.ts`、`validate.ts`、`defaultBindings.ts`、`skills/bundled/keybindings.ts`）④ `/session-diff` 不再存在；pane 内截断提示同步改为 `/diff <path-substring>`。
+>
+> **v2.7 变更**（`ui.render` 事件 + mermaid 内置 mod，上游 §九 cc-plugin-mermaid 对标）：① **新增 mod-only 同步事件 `ui.render`**（registry `MOD_RENDER_EVENT`）—— 上游 cc-plugin-mermaid 声明 `{hooks:["ui.render"]}`，opencc 对应实现为**专用同步链**（`dispatch.runModRenderChainSync`），不走 HookEvent/executeHooks 体系：事件在 React render 内触发，handler 契约为 `(e:{text}, next) => string|void` 同步纯函数，返回 Promise 记日志忽略；失败走既有熔断（registry recordModHandlerFailure）② **渲染 tap 点**：`AssistantTextMessage`（最终消息，错误检测特殊分支之后才 tap，避免破坏错误文案识别）+ `StreamingMarkdown`（流式两段各自过链 —— 完成的 mermaid fence 恒为单个 lexer token，不会跨越稳定边界）③ **LRU 缓存层**（`mods/renderTap.ts`，32 条/50KB 上限，上游 mermaid mod 同款参数）—— 无 handler 注册时零开销直通 ④ **mermaid 内置 mod**（净室实现，非上游代码搬运）：flowchart TD/TB/BT/LR/RL（rect/round/diamond 三种节点形、`|label|` 边标签、链式边、DFS 破环 + 最长路径分层、跳级/回边走右侧 gutter、BT/RL 用 FLIP 翻转）+ sequenceDiagram（participant/消息 `->>/-->>/-x/--x/->/--`/note over-left-right/loop-opt-alt 框 + else 分隔）；解析失败、subgraph（v1 未布局）、超限（20KB/200 行/24 节点/140 行渲染）一律**保留原 fence**（fail-safe）⑤ 输出包 ```` ```text ```` fence 过 Markdown 保证空白保留。已知限制：CJK 全角字符按 1 列计宽，标签对齐在含 CJK 时会歪。
+>
+> **v2.6 变更**（`/handoff` 升格 + mod 命令面补 `local-jsx`）：① **`ModCommandSpec` 新增 `type` / `call`** —— 此前 mod 命令只产出 `LocalCommand`（`handler` 返回值强制包成 `{type:'text'}`），既无法注入 prompt 也拿不到 `ToolUseContext`。现在 `handler`（`local`）与 `call`（`local-jsx`，签名同宿主 `LocalJSXCommandCall`）二选一，`buildModCommands()` 分支产出对应命令类型；`registerCommand` 对「两者都缺 / 都给」均 fail loud ② **删除宿主 `/handoff`**（`src/commands/handoff/` 共 7 文件），由 `handoff` 内置 mod 占用顶级裸名 `/handoff`（同 v2.5 的 /diff 路径）③ **选择界面由程序渲染**：恢复分支原本把「最近 5 份文档」写进提示词、指示模型调 `AskUserQuestion` 自行拼 JSON 选项（多一轮模型往返，且选项集不受程序控制；只有 1 份时还要专门写一段"别用 AskUserQuestion"的绕行说明）。现改为 mod 返回 `local-jsx` 组件 `<Dialog><Select/></Dialog>`，程序 `fs.readFile` 读入选中文档并经 `onDone(..., {display:'user', shouldQuery:true, metaMessages})` 注入 —— 全程零模型询问 ④ **`LocalJSXCommand` 新增 `supportsNonInteractive`** —— headless 命令表（`main.tsx`）此前只收 `prompt` / `local`，会把 mod 的 local-jsx 命令整个滤掉；handoff 声明该标志保住 `-p "/handoff"`，pickup 分支在无 `--pick` 时返回一行说明而非弹选择器 ⑤ mod 的 Ink 组件单独放 `handoffPicker.tsx` 并由 `handoffCall` **动态 import** —— 静态 import 会经组件图绕回 `mods/builtin.ts`（它 import mod 来声明固定清单）造成 TDZ 循环。
 >
 > **配套文档**：
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）

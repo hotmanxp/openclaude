@@ -82,6 +82,38 @@ describe('ctx.registerCommand', () => {
       ctx.registerCommand({ name: 'a b', handler: async () => 'x' }),
     ).toThrow(/name must match/)
   })
+
+  test('accepts a local-jsx spec that only provides call', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    ctx.registerCommand({
+      name: 'picker',
+      type: 'local-jsx',
+      call: async () => null,
+    })
+    expect(mod.commands).toHaveLength(1)
+    expect(mod.commands[0]!.call).toBeFunction()
+  })
+
+  test('rejects a spec with neither handler nor call', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    expect(() => ctx.registerCommand({ name: 'empty' })).toThrow(
+      /provide handler .* or call/,
+    )
+  })
+
+  test('rejects a spec providing both handler and call', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    expect(() =>
+      ctx.registerCommand({
+        name: 'both',
+        handler: async () => 'x',
+        call: async () => null,
+      }),
+    ).toThrow(/mutually exclusive/)
+  })
 })
 
 describe('ctx.registerTool', () => {
@@ -187,5 +219,36 @@ describe('buildModCommands', () => {
     expect(commands).toHaveLength(1)
     expect(commands[0]!.name).toBe('demo:ping')
     expect(commands[0]!.type).toBe('local')
+  })
+
+  test('emits a local-jsx command when the spec provides call', async () => {
+    const mod = freshMod('demo')
+    const ctx = createModContext(mod)
+    const call = async () => null
+    ctx.registerCommand({
+      name: 'pick',
+      type: 'local-jsx',
+      description: 'pick a thing',
+      argumentHint: '[--x]',
+      supportsNonInteractive: true,
+      call,
+    })
+    registerLoadedMod(mod)
+
+    const [command] = buildModCommands()
+    expect(command!.name).toBe('demo:pick')
+    expect(command!.type).toBe('local-jsx')
+    expect(command!.description).toBe('pick a thing')
+    expect(command!.argumentHint).toBe('[--x]')
+    expect(
+      command!.type === 'local-jsx' && command!.supportsNonInteractive,
+    ).toBe(true)
+    // The host calls load() then call() — the mod's function is passed through.
+    const loaded = await (
+      command as unknown as {
+        load: () => Promise<{ call: unknown }>
+      }
+    ).load()
+    expect(loaded.call).toBe(call)
   })
 })

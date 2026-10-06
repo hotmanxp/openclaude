@@ -17,8 +17,25 @@ export type ModHandler = (
   next: (e?: Record<string, unknown>) => Promise<Record<string, unknown>>,
 ) => unknown | Promise<unknown>
 
+/**
+ * Mod-only synchronous render event (upstream `ui.render` parity — the
+ * cc-plugin-mermaid built-in declares `{hooks:["ui.render"]}`). Runs INSIDE
+ * React render, so the contract is synchronous: a handler receives
+ * `({text}, next)` and returns the rewritten text (or nothing to pass
+ * through). Distinct from the async hook-event chain — see dispatch.ts.
+ */
+export const MOD_RENDER_EVENT = 'ui.render'
+export type ModRenderEvent = typeof MOD_RENDER_EVENT
+
+export type ModRenderHandler = (
+  e: { text: string },
+  next: (text?: string) => string,
+) => string | void
+
+export type ModEventName = HookEvent | ModRenderEvent
+
 export type ModHandlerSpec = {
-  event: HookEvent
+  event: ModEventName
   /** Normalized string matcher (object matchers are converted by dispatch). */
   matcher?: string
   handler: ModHandler

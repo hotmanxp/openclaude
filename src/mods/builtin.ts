@@ -97,5 +97,9 @@ export async function loadBuiltinMods(): Promise<{
 // Import the mod file here to ship it; no other wiring needed.
 // ---------------------------------------------------------------------------
 import { diffBuiltinMod } from './builtin/diffMod.js'
+import { handoffBuiltinMod } from './builtin/handoffMod.js'
+import { mermaidBuiltinMod } from './builtin/mermaidMod.js'
 
 registerBuiltinMod(diffBuiltinMod)
+registerBuiltinMod(handoffBuiltinMod)
+registerBuiltinMod(mermaidBuiltinMod)

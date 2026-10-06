@@ -13,8 +13,11 @@ import type {
 } from './registry.js'
 import {
   BUILTIN_ORIGIN,
+  MOD_RENDER_EVENT,
   getLoadedMods,
   getModToolsVersion,
+  type ModRenderEvent,
+  type ModRenderHandler,
 } from './registry.js'
 import {
   isModSupportedEvent,
@@ -38,7 +41,7 @@ import {
 const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
-const SUPPORTED_EVENTS_HINT = MOD_SUPPORTED_EVENTS.join(', ')
+const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
 
 export type ModNotice = {
   key: string
@@ -165,6 +168,13 @@ export type ModContext = {
     matcher: string | Record<string, unknown>,
     handler: ModHandler,
   ): void
+  /**
+   * Synchronous render transform (`ui.render`). The handler receives
+   * `({text}, next)` and returns the rewritten text — or nothing to pass
+   * through. Runs inside React render: must be synchronous and fast (a
+   * returned promise is ignored). No matcher — it applies to every reply.
+   */
+  on(event: ModRenderEvent, handler: ModRenderHandler): void
   registerCommand(spec: ModCommandSpec): void
   registerTool(spec: ModToolSpec): void
   ui: {
@@ -395,6 +405,20 @@ export function createModContext(mod: LoadedMod): ModContext {
         throw new Error(
           `ctx.on(): unsupported event "${String(event)}". Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
+      }
+      if (event === MOD_RENDER_EVENT) {
+        // Sync render transform: no matcher, single handler argument.
+        if (typeof matcherOrHandler !== 'function' || maybeHandler !== undefined) {
+          throw new Error(
+            'ctx.on("ui.render"): pass exactly one synchronous handler — no matcher',
+          )
+        }
+        mod.handlers.push({
+          event,
+          matcher: undefined,
+          handler: matcherOrHandler as unknown as ModHandler,
+        })
+        return
       }
       const hasExplicitMatcher =
         typeof matcherOrHandler === 'string' ||
