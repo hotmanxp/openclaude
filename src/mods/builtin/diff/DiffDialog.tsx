@@ -49,6 +49,29 @@ export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
   )
   const selected = rows.find(row => row.path === selectedPath) ?? rows[0] ?? null
 
+  // The first row is selected implicitly, so an unset path means index 0 —
+  // not "nothing is selected". Navigation has to agree with what is drawn or
+  // the arrow keys appear dead.
+  const indexOfSelection = useCallback(
+    (path: string | null): number => {
+      if (rows.length === 0) return 0
+      const found = rows.findIndex(row => row.path === path)
+      return found >= 0 ? found : 0
+    },
+    [rows],
+  )
+
+  const step = useCallback(
+    (delta: number) => {
+      setView('list')
+      setSelectedPath(current =>
+        rows[moveSelection(indexOfSelection(current), delta, rows.length)]?.path ??
+        null,
+      )
+    },
+    [rows, indexOfSelection],
+  )
+
   // Entering the detail view needs that file's hunks; fetch on the way in.
   useEffect(() => {
     if (view === 'detail' && selected) void loadDiffBody(selected.path)
@@ -62,28 +85,8 @@ export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
     [],
   )
 
-  useKeybinding(
-    'diff:previousFile',
-    () => {
-      setView('list')
-      setSelectedPath(current => {
-        const index = rows.findIndex(row => row.path === current)
-        return rows[moveSelection(index, -1, rows.length)]?.path ?? null
-      })
-    },
-    KEYBINDING_CONTEXT,
-  )
-  useKeybinding(
-    'diff:nextFile',
-    () => {
-      setView('list')
-      setSelectedPath(current => {
-        const index = rows.findIndex(row => row.path === current)
-        return rows[moveSelection(index, 1, rows.length)]?.path ?? null
-      })
-    },
-    KEYBINDING_CONTEXT,
-  )
+  useKeybinding('diff:previousFile', () => step(-1), KEYBINDING_CONTEXT)
+  useKeybinding('diff:nextFile', () => step(1), KEYBINDING_CONTEXT)
   useKeybinding(
     'diff:viewDetails',
     () => {
@@ -98,20 +101,29 @@ export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
     },
     KEYBINDING_CONTEXT,
   )
-  useKeybinding('diff:dismiss', onDone, KEYBINDING_CONTEXT)
-
-  // Esc in the detail view goes back rather than closing, matching upstream:
-  // the detail view is reached from the list, so it is dismissed first.
+  // Esc mirrors upstream's `onCancel`: the detail view was reached from the
+  // list, so it is popped first and only the list itself closes the dialog.
   const handleCancel = useCallback(() => {
     if (view === 'detail') setView('list')
     else onDone()
   }, [view, onDone])
+
+  useKeybinding('diff:dismiss', handleCancel, KEYBINDING_CONTEXT)
 
   if (snapshot.isOutsideRepository) {
     return <Text dimColor={true}>{OUTSIDE_REPOSITORY_MESSAGE}</Text>
   }
   if (columns < MIN_COLUMNS) {
     return <Text dimColor={true}>{tooNarrowMessage()}</Text>
+  }
+  // Upstream distinguishes "not read yet" from "read and found nothing":
+  // claiming there are no changes before git has answered would be a lie.
+  if (snapshot.data === null && !snapshot.hasSettled) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor={true}>Loading diff…</Text>
+      </Box>
+    )
   }
 
   const { title, subtitle } = diffTitle(snapshot.data)

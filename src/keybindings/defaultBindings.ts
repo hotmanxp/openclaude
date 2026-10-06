@@ -304,9 +304,9 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
     bindings: {
       escape: 'diff:dismiss',
       left: 'diff:back',
-      right: 'diff:viewDetails',
       up: 'diff:previousFile',
       down: 'diff:nextFile',
+      enter: 'diff:viewDetails',
     },
   },
   // Model picker effort cycling (internal-only)
