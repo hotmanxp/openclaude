@@ -8,17 +8,18 @@
  */
 
 import React from 'react'
+import type { StructuredPatchHunk } from 'diff'
 import { Box, Text } from '../../../ink.js'
+import { StructuredDiff } from '../../../components/StructuredDiff.js'
 import {
   MAX_ATTACH_LINES,
   MAX_DETAIL_CHARS,
   MAX_DETAIL_NODES,
   MAX_HUNK_CHARS,
   MIN_PATH_WIDTH,
-  TRAILING_GUARD,
 } from './constants.js'
 import type { DiffFileBody, DiffHunk } from './parse.js'
-import { sanitize, sanitizeKeepingLeadingTab, truncateTail } from './text.js'
+import { plural, sanitize, sanitizeKeepingLeadingTab, truncateTail } from './text.js'
 
 /** `Sr` — a path git will accept after `:/` without further quoting. */
 const LITERAL_PATH_RE = /^[\p{L}\p{N}._/@+-]+$/u
@@ -119,51 +120,18 @@ export function budgetHunks(
   return { hunks: out, isTruncated, room: room() }
 }
 
-type RenderedLine = {
-  oldNumber: number | null
-  newNumber: number | null
-  content: string
-  kind: 'add' | 'remove' | 'context'
-}
-
 /**
  * Walk a hunk's lines assigning old/new numbers. `+` advances only the new
  * side, `-` only the old, a space both — which is what produces the
  * two-column gutter git shows.
  */
-export function numberLines(hunk: DiffHunk): RenderedLine[] {
-  let oldNumber = hunk.oldStart
-  let newNumber = hunk.newStart
-  const out: RenderedLine[] = []
-  for (const line of hunk.lines) {
-    if (line.startsWith('+')) {
-      out.push({ oldNumber: null, newNumber, content: line, kind: 'add' })
-      newNumber += 1
-    } else if (line.startsWith('-')) {
-      out.push({ oldNumber, newNumber: null, content: line, kind: 'remove' })
-      oldNumber += 1
-    } else {
-      out.push({ oldNumber, newNumber, content: line, kind: 'context' })
-      oldNumber += 1
-      newNumber += 1
-    }
-  }
-  return out
-}
 
-function gutter(
-  line: RenderedLine,
-  width: number,
-): React.ReactNode {
-  const oldCell = line.oldNumber === null ? ' '.repeat(width) : String(line.oldNumber).padStart(width)
-  const newCell = line.newNumber === null ? ' '.repeat(width) : String(line.newNumber).padStart(width)
-  return `${oldCell} ${newCell} `
-}
+/** The widest line number in the hunk, which sets the gutter width. */
 
-/** Upstream reserves a couple of columns so the frame never collides. */
-function gutterWidth(): number {
-  return Math.max(1, TRAILING_GUARD - 12)
-}
+/**
+ * `old new ` for a context line; the marker takes the new column's place on
+ * an add or remove, which is where the +/- has to stay visible.
+ */
 
 type Props = {
   body: DiffFileBody | undefined
@@ -172,12 +140,120 @@ type Props = {
   isBinary: boolean
   path: string
   columns: number
+  /** Rows the body may occupy, after the dialog chrome. */
+  visibleRows: number
+  scrollTop: number
+}
+
+/** `xe`'s counts: a line is on the old side unless it is an addition. */
+/** Every rendered row, so the window can be measured before rendering. */
+export function countRows(hunks: BudgetedHunk[]): number {
+  return hunks.reduce((sum, { hunk }) => sum + hunk.lines.length + 1, 0)
+}
+
+/** Rows left to scroll at the current offset. */
+
+
+/**
+ * Slice the hunks down to the visible rows.
+ *
+ * Hunk headers are not drawn here — `StructuredDiff` renders them from the
+ * hunk itself — so a header-only window is a window of nothing. The hunk a
+ * row falls inside is trimmed to the intersecting lines, and its start
+ * numbers shift by whatever was cut, so the gutter stays honest.
+ */
+
+export type WindowedHunk = {
+  header: string
+  patch: StructuredPatchHunk
+}
+
+export type BodyWindow = {
+  hunks: WindowedHunk[]
+  above: number
+  below: number
+  isTruncated: boolean
+}
+
+/** Rows left to scroll at the current offset. */
+export function maxScroll(rows: number, visibleRows: number): number {
+  return Math.max(0, rows - Math.max(1, visibleRows))
 }
 
 /**
- * `Pn` — the detail body. Falls back to a one-line explanation whenever
- * there is nothing renderable: untracked files have no hunks until staged,
- * binary files have no text, and a >1 MB file is skipped outright.
+ * Slice the hunks down to the visible rows.
+ *
+ * `StructuredDiff` draws the hunk header itself, so a header counts as a
+ * row here too. A hunk cut at either end has its start numbers shifted by
+ * the lines removed, so the gutter keeps pointing at real line numbers.
+ */
+export function windowBody(
+  hunks: BudgetedHunk[],
+  visibleRows: number,
+  scrollTop: number,
+): BodyWindow {
+  const height = Math.max(1, visibleRows)
+  const total = countRows(hunks)
+  const top = Math.max(0, Math.min(Math.max(0, total - height), scrollTop))
+  const end = top + height
+
+  const out: WindowedHunk[] = []
+  let cursor = 0
+  let isTruncated = false
+  for (const { hunk } of hunks) {
+    const hunkStart = cursor
+    const hunkEnd = cursor + hunk.lines.length + 1
+    cursor = hunkEnd
+    if (hunkEnd <= top || hunkStart >= end) continue
+
+    const skip = Math.max(0, top - hunkStart)
+    const take = Math.min(
+      hunk.lines.length - skip,
+      end - Math.max(hunkStart, top),
+    )
+    // The window opens on this hunk's header row.
+    if (take <= 0) {
+      out.push({
+        header: hunkHeader(hunk),
+        patch: {
+          oldStart: hunk.oldStart,
+          newStart: hunk.newStart,
+          oldLines: hunk.lines.filter(l => !l.startsWith('+')).length,
+          newLines: hunk.lines.filter(l => !l.startsWith('-')).length,
+          lines: hunk.lines.slice(0, height - 1),
+        },
+      })
+      continue
+    }
+
+    const lines = hunk.lines.slice(skip, skip + take)
+    const dropped = hunk.lines.slice(0, skip)
+    if (skip > 0 || skip + take < hunk.lines.length) isTruncated = true
+    out.push({
+      // The header describes the hunk as a whole, so it keeps the original
+      // span even though the visible lines are a slice of it.
+      header: hunkHeader(hunk),
+      patch: {
+        oldStart: hunk.oldStart + dropped.filter(l => !l.startsWith('+')).length,
+        newStart: hunk.newStart + dropped.filter(l => !l.startsWith('-')).length,
+        oldLines: lines.filter(l => !l.startsWith('+')).length,
+        newLines: lines.filter(l => !l.startsWith('-')).length,
+        lines,
+      },
+    })
+  }
+
+  return { hunks: out, above: top, below: Math.max(0, total - end), isTruncated }
+}
+
+/**
+ * `Pn` — the detail body.
+ *
+ * Rendering is `StructuredDiffList`, the same component the Edit and Write
+ * tools show, so the gutter, the marker column, the syntax colouring and
+ * the truncation all match what the transcript already uses. What is added
+ * here is the window: a 400-line hunk would otherwise push the footer off
+ * the screen, so the caller scrolls through it.
  */
 export function DiffBody({
   body,
@@ -186,37 +262,40 @@ export function DiffBody({
   isBinary,
   path,
   columns,
+  visibleRows,
+  scrollTop,
 }: Props): React.ReactNode {
   const note = bodyNote({ body, isLoading, isUntracked, isBinary, path })
   if (note !== null) return <Text dimColor={true}>{note}</Text>
 
   const budget = budgetHunks(body as DiffFileBody)
-  const width = gutterWidth()
-  const pathWidth = Math.max(MIN_PATH_WIDTH, columns - width * 2 - 3)
+  const { hunks, above, below, isTruncated } = windowBody(
+    budget.hunks,
+    visibleRows,
+    scrollTop,
+  )
 
   return (
     <Box flexDirection="column">
-      {budget.hunks.map(({ hunk }, index) => (
-        <Box key={index} flexDirection="column">
-          <Text dimColor={true}>{hunkHeader(hunk)}</Text>
-          {numberLines(hunk).map((line, at) => (
-            <Text
-              key={at}
-              backgroundColor={
-                line.kind === 'add'
-                  ? 'diffAddedWord'
-                  : line.kind === 'remove'
-                    ? 'diffRemovedWord'
-                    : undefined
-              }
-            >
-              {gutter(line, width)}
-              {truncateTail(line.content, pathWidth)}
-            </Text>
-          ))}
+      {above > 0 ? (
+        <Text dimColor={true}>{` ↑ ${above} more ${plural(above, 'line')}`}</Text>
+      ) : null}
+      {hunks.map(({ header, patch }, index) => (
+        <Box flexDirection="column" key={`${patch.newStart}-${index}`}>
+          <Text dimColor={true}>{header}</Text>
+          <StructuredDiff
+            patch={patch}
+            dim={false}
+            width={columns}
+            filePath={path}
+            firstLine={null}
+          />
         </Box>
       ))}
-      {budget.isTruncated ? (
+      {below > 0 ? (
+        <Text dimColor={true}>{` ↓ ${below} more ${plural(below, 'line')}`}</Text>
+      ) : null}
+      {budget.isTruncated || isTruncated ? (
         <Text dimColor={true} italic={true}>
           {TRUNCATION_NOTE}
         </Text>

@@ -170,12 +170,15 @@ test('Enter opens the coloured body, Esc steps back then dismisses', async () =>
     )
 
     await harness.press(KEYS.enter)
-    await waitFor(() => harness.getOutput().includes('@@ -'), 'a hunk header')
+    // The hunk header comes from the native colour-diff module, which the
+    // test harness has no NAPI for, so assert on the lines instead.
+    await waitFor(() => harness.getOutput().includes('const b = 2'), 'a diff body')
 
     const detail = harness.getOutput()
-    expect(detail).toContain('@@ -1,3 +1,3 @@')
-    expect(detail).toContain('+const a = 10')
-    expect(detail).toContain('-const a = 1')
+    // The marker column is what makes an add/remove readable at a glance.
+    expect(detail).toMatch(/\d\s\+const a = 10/)
+    expect(detail).toMatch(/\d\s-const a = 1/)
+    expect(detail).toMatch(/\d\s\sconst b = 2/)
     // Both footers appear across the run; the newest one is what is on screen.
     expect(detail.lastIndexOf('↑/↓ to scroll')).toBeGreaterThan(
       detail.lastIndexOf('↑/↓ to select'),
@@ -228,7 +231,7 @@ test('`a` arms the file and its hunks ride the next prompt', async () => {
   try {
     await waitFor(() => harness.getOutput().includes('alpha.ts'), 'the list')
     await harness.press(KEYS.enter)
-    await waitFor(() => harness.getOutput().includes('@@ -'), 'a hunk header')
+    await waitFor(() => harness.getOutput().includes('const b = 2'), 'a diff body')
 
     // The toggle sits on the right of the file header.
     expect(harness.getOutput()).toContain('ask')

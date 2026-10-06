@@ -5,7 +5,14 @@ import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import { useKeybinding } from '../../../keybindings/useKeybinding.js'
 import { MIN_COLUMNS } from './constants.js'
 import { DiffFileList, DiffStatsCell } from './DiffFileList.jsx'
-import { DiffBody, DiffFileHeader, DiffRule } from './detail.jsx'
+import {
+  DiffBody,
+  DiffFileHeader,
+  DiffRule,
+  budgetHunks,
+  countRows,
+  maxScroll,
+} from './detail.jsx'
 import {
   OUTSIDE_REPOSITORY_MESSAGE,
   diffTitle,
@@ -44,9 +51,10 @@ const KEYBINDING_CONTEXT = { context: 'DiffDialog', isActive: true } as const
  */
 export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactNode {
   const snapshot = useSyncExternalStore(subscribeToDiff, getDiffSnapshot)
-  const { columns } = useTerminalSize()
+  const { columns, rows: terminalRows } = useTerminalSize()
   const [view, setView] = useState<View>('list')
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
 
   useEffect(() => {
     void refreshDiff()
@@ -70,15 +78,29 @@ export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactN
     [rows],
   )
 
+  // How many rows the body may take: the terminal minus the dialog chrome
+  // (title, stats, file header, rule, footer) and the transcript above.
+  const visibleRows = Math.max(5, terminalRows - 18)
+  const bodyRowCount = useMemo(() => {
+    if (view !== 'detail' || selected?.body === undefined) return 0
+    return countRows(budgetHunks(selected.body).hunks)
+  }, [view, selected])
+  const scrollCeiling = maxScroll(bodyRowCount, visibleRows)
+
   const step = useCallback(
     (delta: number) => {
-      setView('list')
+      if (view === 'detail') {
+        setScrollTop(current =>
+          Math.max(0, Math.min(scrollCeiling, current + delta)),
+        )
+        return
+      }
       setSelectedPath(current =>
         rows[moveSelection(indexOfSelection(current), delta, rows.length)]?.path ??
         null,
       )
     },
-    [rows, indexOfSelection],
+    [view, rows, indexOfSelection, scrollCeiling],
   )
 
   // Entering the detail view needs that file's hunks; fetch on the way in.
@@ -86,13 +108,11 @@ export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactN
     if (view === 'detail' && selected) void loadDiffBody(selected.path)
   }, [view, selected])
 
-  const select = useCallback(
-    (path: string) => {
-      setSelectedPath(path)
-      setView('detail')
-    },
-    [],
-  )
+  const select = useCallback((path: string) => {
+    setSelectedPath(path)
+    setScrollTop(0)
+    setView('detail')
+  }, [])
 
   useKeybinding('diff:previousFile', () => step(-1), KEYBINDING_CONTEXT)
   useKeybinding('diff:nextFile', () => step(1), KEYBINDING_CONTEXT)
@@ -203,6 +223,8 @@ export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactN
               isBinary={selected.isBinary}
               path={selected.path}
               columns={columns}
+              visibleRows={visibleRows}
+              scrollTop={scrollTop}
             />
           </>
         ) : rows.length === 0 ? (
