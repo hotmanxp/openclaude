@@ -169,7 +169,7 @@ describe('diff built-in mod — formatting', () => {
     expect(out).not.toContain('a/proj/a.ts')
   })
 
-  test('registers a top-level session-diff command on the ctx', () => {
+  test('registers a top-level /diff command on the ctx', () => {
     const mod: LoadedMod = {
       manifest: { name: 'diff', entry: '(builtin)' },
       root: '(builtin)',
@@ -180,7 +180,7 @@ describe('diff built-in mod — formatting', () => {
     }
     const ctx = createModContext(mod)
     diffBuiltinMod.register(ctx)
-    const command = mod.commands.find(c => c.name === 'session-diff')
+    const command = mod.commands.find(c => c.name === 'diff')
     expect(command).toBeDefined()
     expect(command!.description).toContain('built-in diff mod')
   })

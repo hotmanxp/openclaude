@@ -8,11 +8,11 @@ import { notifyPaneChanged } from '../engine.js'
  * ("The diff panel as a plugin pane: /diff, the changed files and their
  * hunks beside the transcript, refreshed as Claude edits").
  *
- * opencc's P2 mod surface has no pane, so the equivalent here is:
+ * opencc's mod surface (P2 hooks + P3 panes) provides the equivalent:
  * - PostToolUse on the 'Edit'/'Write' tools records the tool_response's
  *   structuredPatch hunks (the host already computed them — the mod only
  *   reads event data, nothing imported, nothing fenced)
- * - `/session-diff` renders the accumulated edits as a unified diff, capped
+ * - `/diff` renders the accumulated edits as a unified diff, capped
  *   at MAX_DIFF_OUTPUT_CHARS (upstream MAX_DIFF_BYTES parity)
  * - "No changes yet" mirrors upstream's empty-state string
  */
@@ -173,10 +173,11 @@ export const diffBuiltinMod: BuiltinModSpec = {
       return next(e)
     })
     ctx.registerCommand({
-      // NOT '/diff': the host already ships a /diff command (git diff +
-      // per-turn diffs panel, src/commands/diff). This mod's session-scoped
-      // text diff is reachable as /session-diff.
-      name: 'session-diff',
+      // This mod IS the host /diff now: the previous built-in /diff command
+      // (git diff + per-turn diffs panel, src/commands/diff) was removed and
+      // this session-scoped text diff was promoted to the bare /diff name,
+      // matching upstream cc-plugin-diff parity.
+      name: 'diff',
       description:
         'Show a unified diff of the files edited this session (built-in diff mod)',
       argumentHint: '[path-substring]',

@@ -32,11 +32,11 @@ describe('built-in mod channel', () => {
     const diff = getLoadedMods().find(m => m.manifest.name === 'diff')!
     expect(isBuiltinMod(diff)).toBe(true)
     expect(diff.root).toBe('(builtin)')
-    // register() ran: handlers + the session-diff command were collected
+    // register() ran: handlers + the /diff command were collected
     expect(diff.handlers.length).toBeGreaterThan(0)
     // Built-in commands register top-level (no <mod>: prefix) — upstream
-    // cc-plugin-diff parity — but must not collide with the host /diff.
-    expect(diff.commands.some(c => c.name === 'session-diff')).toBe(true)
+    // cc-plugin-diff parity. The host /diff was removed; this mod IS /diff.
+    expect(diff.commands.some(c => c.name === 'diff')).toBe(true)
   })
 
   test('is idempotent — reloading does not duplicate built-ins', async () => {

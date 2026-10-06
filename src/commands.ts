@@ -21,7 +21,6 @@ import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
 // import cost from './commands/cost/index.js'
-import diff from './commands/diff/index.js'
 import diagnostics from './commands/diagnostics/index.js'
 import dream from './commands/dream/index.js'
 import handoff from './commands/handoff/index.js'
@@ -322,7 +321,6 @@ const COMMANDS = memoize((): Command[] => [
   context,
   contextNonInteractive,
   ctx_viz,
-  diff,
   diagnostics,
   dream,
   doctor,
