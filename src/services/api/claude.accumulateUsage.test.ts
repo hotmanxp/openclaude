@@ -3,7 +3,8 @@ import { expect, test } from 'bun:test'
 import { accumulateUsage } from './claude.js'
 
 // Minimal usage shape; the fields accumulateUsage reads are the numeric ones
-// plus the nested cache_creation object.
+// plus the nested cache_creation object. Cast at the call site rather than
+// here so `let total` keeps a real type.
 function usage(input: number, output: number) {
   return {
     input_tokens: input,
@@ -15,7 +16,7 @@ function usage(input: number, output: number) {
       ephemeral_1h_input_tokens: 0,
       ephemeral_5m_input_tokens: 0,
     },
-  } as never
+  }
 }
 
 // cc-012: `totalUsage?.input_tokens ?? 0 + messageUsage?.input_tokens ?? 0`
@@ -23,22 +24,25 @@ function usage(input: number, output: number) {
 // The result was the FIRST turn's value, never a sum, so cumulative
 // input_tokens across turns never grew.
 test('input_tokens accumulates across turns', () => {
-  const result = accumulateUsage(usage(100, 10), usage(50, 5))
+  const result = accumulateUsage(usage(100, 10) as never, usage(50, 5) as never)
   expect(result.input_tokens).toBe(150)
   expect(result.output_tokens).toBe(15)
 })
 
 test('accumulates over several turns', () => {
-  let total = usage(0, 0)
-  for (const n of [100, 200, 300]) {
-    total = accumulateUsage(total, usage(n, 1))
+  let total = accumulateUsage(
+    usage(0, 0) as never,
+    usage(100, 1) as never,
+  )
+  for (const n of [200, 300]) {
+    total = accumulateUsage(total, usage(n, 1) as never)
   }
   expect(total.input_tokens).toBe(600)
 })
 
 test('a zero first turn does not swallow later turns', () => {
   // The buggy form returned `0 ?? (0 + 50) ?? 0` = 0 here.
-  const result = accumulateUsage(usage(0, 0), usage(50, 0))
+  const result = accumulateUsage(usage(0, 0) as never, usage(50, 0) as never)
   expect(result.input_tokens).toBe(50)
 })
 
@@ -49,7 +53,7 @@ test('missing fields are treated as zero', () => {
       ephemeral_5m_input_tokens: 0,
     },
   } as never
-  const result = accumulateUsage(empty, usage(7, 3))
+  const result = accumulateUsage(empty as never, usage(7, 3) as never)
   expect(result.input_tokens).toBe(7)
   expect(result.output_tokens).toBe(3)
 })
