@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -252,6 +252,65 @@ describe('ctx.fs (P2 授权制)', () => {
     const ctx = createModContext(mod)
     await ctx.fs!.write(join(dir, 'new-file.txt'), 'data')
     expect(await ctx.fs!.read(join(dir, 'new-file.txt'))).toBe('data')
+  })
+
+  // tc-001: write() fenced only the PARENT dir, so a pre-existing symlink at
+  // the final segment was followed by writeFile and landed outside the roots.
+  // read/list/exists already fenced the final path; write was the odd one out.
+  test('write rejects a symlink whose target escapes the fence', async () => {
+    setModFsAuthOverrideForTesting(() => true)
+    const inside = join(dir, 'inside')
+    const outside = join(dir, 'outside')
+    await mkdir(inside, { recursive: true })
+    await mkdir(outside, { recursive: true })
+    const secret = join(outside, 'secret.txt')
+    await writeFile(secret, 'original', 'utf8')
+    await symlink(secret, join(inside, 'link.txt'))
+
+    const mod = freshMod()
+    mod.root = inside
+    const ctx = createModContext(mod)
+
+    await expect(ctx.fs!.write(join(inside, 'link.txt'), 'PWNED')).rejects.toThrow(
+      /escapes authorized roots/,
+    )
+    expect(await readFile(secret, 'utf8')).toBe('original')
+  })
+
+  test('write still overwrites a regular file inside the fence', async () => {
+    setModFsAuthOverrideForTesting(() => true)
+    const mod = freshMod()
+    mod.root = dir
+    const ctx = createModContext(mod)
+    await ctx.fs!.write(join(dir, 'existing.txt'), 'first')
+    await ctx.fs!.write(join(dir, 'existing.txt'), 'second')
+    expect(await ctx.fs!.read(join(dir, 'existing.txt'))).toBe('second')
+  })
+
+  test('write follows a symlink that stays inside the fence', async () => {
+    setModFsAuthOverrideForTesting(() => true)
+    const inside = join(dir, 'inside')
+    await mkdir(inside, { recursive: true })
+    const target = join(inside, 'real.txt')
+    await writeFile(target, 'first', 'utf8')
+    await symlink(target, join(inside, 'alias.txt'))
+
+    const mod = freshMod()
+    mod.root = inside
+    const ctx = createModContext(mod)
+    await ctx.fs!.write(join(inside, 'alias.txt'), 'second')
+    expect(await readFile(target, 'utf8')).toBe('second')
+  })
+
+  test('write creates a new file even when its parent has no entries yet', async () => {
+    setModFsAuthOverrideForTesting(() => true)
+    const nested = join(dir, 'fresh-subdir')
+    await mkdir(nested, { recursive: true })
+    const mod = freshMod()
+    mod.root = dir
+    const ctx = createModContext(mod)
+    await ctx.fs!.write(join(nested, 'brand-new.txt'), 'ok')
+    expect(await ctx.fs!.read(join(nested, 'brand-new.txt'))).toBe('ok')
   })
 
   test('notice bridge carries streamed progress as notices too', () => {
