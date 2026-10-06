@@ -5,7 +5,10 @@ import {
   renderMermaidFences,
 } from './mermaidMod.js'
 import { createModContext } from '../engine.js'
+import { stringWidth } from '../../ink/stringWidth.js'
 import type { LoadedMod } from '../registry.js'
+
+const displayWidth = (line: string): number => stringWidth(line)
 
 function harness(): { handler: (e: { text: string }) => string | void } {
   const mod: LoadedMod = {
@@ -114,6 +117,151 @@ describe('mermaid built-in mod — fence rewriting', () => {
     expect(out).toContain('```text')
     expect(out).toContain('▼')
     expect(out).not.toContain('```mermaid')
+  })
+
+  // Inline labels parse: before the fix `A -- text --> B` left `A -- text` as
+  // an unparseable node token and dropped the whole diagram (returned null).
+  test('parses inline edge labels (A -- text --> B)', () => {
+    const out = renderMermaidDiagram(
+      ['flowchart TD', 'A{ok?} -- yes --> B[done]', 'A -- no --> C'].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('done')
+    expect(out).toContain('C')
+  })
+
+  test('inline labels are equivalent to the pipe form', () => {
+    const inline = renderMermaidDiagram(
+      ['flowchart TD', 'A -- retry .-> B'].join('\n'),
+    )
+    const piped = renderMermaidDiagram(
+      ['flowchart TD', 'A -.->|retry| B'].join('\n'),
+    )
+    expect(inline).not.toBeNull()
+    expect(inline).toBe(piped)
+  })
+
+  test('parses inline labels on thick and dotted edges', () => {
+    expect(
+      renderMermaidDiagram(['flowchart TD', 'A == fast ==> B'].join('\n')),
+    ).not.toBeNull()
+    expect(
+      renderMermaidDiagram(['flowchart TD', 'A -- plain --- B'].join('\n')),
+    ).not.toBeNull()
+  })
+
+  test('renders a label containing its own closing bracket', () => {
+    const out = renderMermaidDiagram(
+      ['flowchart TD', 'A["returns ModLoadResult[]"] --> B'].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('ModLoadResult')
+  })
+
+  // The real-world regression: a 48-line session-start flowchart with inline
+  // labels, a `[]`-bearing node label and 6 back edges. Every one of those
+  // alone returned null; the reply silently fell back to raw code.
+  test('renders a large real-world flowchart (session-start mods flow)', () => {
+    const out = renderMermaidDiagram(
+      [
+        'flowchart TD',
+        'A["session start<br/>processSessionStartHooks"] --> M',
+        'B["/mods reload"] --> R',
+        'R["reloadMods()"] --> M',
+        'M{"loadMods()"} --> W',
+        'W --> D',
+        'D --> U',
+        'U --> DISC',
+        'DISC --> LOOP{"each root"}',
+        'LOOP --> SL',
+        'LOOP -- throws --> ERR["catch: logForDebugging"]',
+        'LOOP -- done --> BI',
+        'BI --> BIC{"name taken?"}',
+        'BIC -- yes --> BIS',
+        'BIC -- no --> BIR',
+        'BIR --> SWAP',
+        'SWAP --> UNREG',
+        'UNREG --> BUILD',
+        'BUILD --> HOOK',
+        'HOOK --> RET["returns ModLoadResult[]"]',
+        'RET -.->|"fails >= 5 times"| BRK',
+        'BRK --> UNLOAD',
+        'UNLOAD --> SWAP',
+        'ERR --> LOOP',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('session start')
+    expect(out).toContain('ModLoadResult')
+  })
+
+  // Mermaid keywords are case-insensitive. `Note` (the capitalised spelling
+  // models actually emit) previously failed the whole-diagram regex, so a reply
+  // containing a single note fell back to raw code.
+  test('accepts capitalised sequence keywords', () => {
+    const out = renderMermaidDiagram(
+      [
+        'sequenceDiagram',
+        'Participant S',
+        'Actor P',
+        'S->>P: hi',
+        'Note over P: warn',
+        'Activate P',
+        'P-->>S: ok',
+        'Deactivate P',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('warn')
+  })
+
+  test('accepts uppercase frames and END', () => {
+    const out = renderMermaidDiagram(
+      [
+        'sequenceDiagram',
+        'S->>P: a',
+        'LOOP retry',
+        'P-->>S: b',
+        'ELSE give up',
+        'S->>P: c',
+        'END',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    // the frame keyword is echoed verbatim, so match case-insensitively
+    expect(out?.toLowerCase()).toContain('[loop]')
+  })
+
+  // CJK glyphs occupy two terminal columns but one code unit, so a
+  // char-count-based box leaves its closing border visibly off-align.
+  test('aligns box borders for CJK labels', () => {
+    const out = renderMermaidDiagram(
+      ['flowchart TD', 'A["中文标签"] --> B["abcdefgh"]'].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    // Group the three rows of each box and assert the borders line up by
+    // display width — the top/bottom rules and the label row must match.
+    const rows = (out ?? '').split('\n')
+    const top = rows.findIndex(l => l.startsWith('┌'))
+    expect(top).toBeGreaterThan(-1)
+    const [rule, label, bottom] = [rows[top], rows[top + 1], rows[top + 2]] as [
+      string,
+      string,
+      string,
+    ]
+    expect(label.startsWith('│')).toBe(true)
+    expect(bottom.startsWith('└')).toBe(true)
+    expect(displayWidth(label)).toBe(displayWidth(rule))
+    expect(displayWidth(bottom)).toBe(displayWidth(rule))
+  })
+
+  test('renders a cyclic flowchart with many back edges', () => {
+    const lines = ['flowchart TD', 'A --> B', 'B --> C', 'C --> A']
+    // Six distinct back edges — above the old hard-coded limit of 4.
+    for (let i = 0; i < 6; i++) lines.push(`C --> N${i}`)
+    const out = renderMermaidDiagram(lines.join('\n'))
+    expect(out).not.toBeNull()
+    expect(out).toContain('A')
   })
 
   test('keeps an unparseable fence untouched', () => {

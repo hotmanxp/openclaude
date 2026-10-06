@@ -1,3 +1,4 @@
+import { stringWidth } from '../../ink/stringWidth.js'
 import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
 
@@ -25,11 +26,12 @@ import type { ModContext } from '../engine.js'
 // Guardrails (fail-safe): anything past these keeps the original fence.
 const MAX_FENCE_SOURCE = 20_000
 const MAX_FENCE_LINES = 200
-const MAX_NODES = 24
-const MAX_EDGES = 40
+const MAX_NODES = 64
+const MAX_EDGES = 120
 const MAX_PARTICIPANTS = 12
 const MAX_MESSAGES = 60
-const MAX_RENDER_ROWS = 140
+const MAX_RENDER_ROWS = 200
+const MAX_GUTTER_EDGES = 24
 const MAX_LABEL = 36
 const BOX_H = 3
 const GAP_H = 3
@@ -108,20 +110,62 @@ export function renderMermaidDiagram(source: string): string | null {
 // Shared grid painting
 // ---------------------------------------------------------------------------
 
+/**
+ * A painted row is stored as an array of CELL STRINGS, one per terminal column.
+ * A CJK glyph is a single cell whose rendered width is 2, so `x` is always a
+ * display column and never an array index — indexing by array slot instead
+ * would shift everything after a wide glyph one column to the left.
+ */
 type Grid = string[][]
 
 function paint(grid: Grid, x: number, y: number, s: string): void {
   if (y < 0 || y >= grid.length || x < 0) return
   const row = grid[y] ?? []
-  for (let k = 0; k < s.length; k++) {
-    while (row.length <= x + k) row.push(' ')
-    row[x + k] = s[k] ?? ' '
+  let col = x
+  for (const ch of s) {
+    const w = stringWidth(ch)
+    while (row.length < col + w) row.push(' ')
+    // A wide glyph owns its first column; the rest stay blank so a later
+    // write at col+w lands exactly one glyph to the right on screen.
+    row[col] = ch
+    for (let k = 1; k < w; k++) row[col + k] = ''
+    col += w
   }
   grid[y] = row
 }
 
+/**
+ * Join a painted row by DISPLAY column. The grid is indexed by array slot, but
+ * a CJK glyph occupies two terminal columns, so a plain `join('')` yields rows
+ * whose visible width depends on whether they contain CJK — borders that were
+ * drawn in the same column then land in different places on screen. Pad each
+ * row to the grid's display width and trim the trailing whitespace.
+ */
+function rowToString(row: string[], targetWidth: number): string {
+  let out = ''
+  let col = 0
+  for (const ch of row) {
+    out += ch
+    col += stringWidth(ch)
+  }
+  if (col < targetWidth) out += ' '.repeat(targetWidth - col)
+  return out.replace(/\s+$/, '')
+}
+
+/** Display width of the widest painted row in the grid. */
+function gridDisplayWidth(grid: Grid): number {
+  let w = 0
+  for (const row of grid) {
+    let c = 0
+    for (const ch of row) c += stringWidth(ch)
+    if (c > w) w = c
+  }
+  return w
+}
+
 function gridToString(grid: Grid): string {
-  return grid.map(row => row.join('').replace(/\s+$/, '')).join('\n')
+  const w = gridDisplayWidth(grid)
+  return grid.map(row => rowToString(row, w)).join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -133,31 +177,106 @@ type FcNode = { label: string; shape: FcShape }
 type FcEdge = { from: string; to: string; label?: string; arrow: boolean }
 type FcDir = 'TD' | 'BT' | 'LR' | 'RL'
 
-/** Longest-first: `-\.->` before `-\.-`. */
-const EDGE_OP_RE = /(-\.->|-\.-|-->|==>|---)/
+/** Longest-first: `-\.->` before `-\.-`, `===` last so `==>` wins its prefix. */
+const EDGE_OP_RE = /(-\.->|-\.-|-->|==>|---|===)/
+
+/**
+ * Mermaid's most common edge-label form is INLINE — `A -- text --> B`, where
+ * the label sits between the two halves of the arrow. The line splitter only
+ * understands the pipe form `A -->|text| B`, so an inline-labelled line leaves
+ * `A -- text` as an unparseable node token and the whole diagram is dropped
+ * (fail-safe keeps the original fence, so the user just sees raw code).
+ * Rewrite inline forms onto the pipe form before splitting.
+ *
+ * Opening and closing tokens mirror each other: `--` closes with `-->` or
+ * `---`, `-.` with `.->` or `.--`, `==` with `==>` or `===`.
+ */
+const INLINE_EDGE_LABEL_RE =
+  /(--|==|-\.)[ \t]+([^|\n]*?)[ \t]+(-->|==>|\.->|---|\.-->|===)/g
+
+/** Closing token of an inline edge label → canonical edge operator. */
+const INLINE_EDGE_OP: Record<string, string> = {
+  '-->': '-->',
+  '---': '---',
+  '.->': '-.->',
+  '.--': '-.-',
+  '==>': '==>',
+  '===': '===',
+}
+
+function normalizeInlineEdgeLabels(line: string): string {
+  if (!line.includes('-') && !line.includes('=')) return line
+  return line.replace(
+    INLINE_EDGE_LABEL_RE,
+    (_match, _open: string, label: string, close: string) =>
+      `${INLINE_EDGE_OP[close] ?? close}|${label.trim()}|`,
+  )
+}
+
+function stripSurroundingQuotes(value: string): string {
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    return value.slice(1, -1)
+  }
+  return value
+}
+
+/**
+ * Read the label inside an opening bracket, honoring quoted spans so a label
+ * may contain its own closing bracket (`A["return ModLoadResult[]"]`). A plain
+ * `[^\]]*` character class stops at that inner `]` and leaves a dangling
+ * quote, which then fails the trailing anchor and drops the whole diagram.
+ * Returns the inner text plus the index just past the closing bracket.
+ */
+function readBracketed(
+  token: string,
+  start: number,
+  close: string,
+): { inner: string; end: number } | null {
+  let i = start
+  let quote: string | undefined
+  while (i < token.length) {
+    const ch = token[i] as string
+    if (quote !== undefined) {
+      if (ch === quote) quote = undefined
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (ch === close) {
+      return { inner: token.slice(start, i), end: i + 1 }
+    }
+    i++
+  }
+  return null
+}
 
 function parseNodeToken(
   token: string,
 ): { id: string; def?: FcNode } | null {
-  const m = /^([A-Za-z0-9_]+)\s*(?:\[([^\]]*)\]|\(([^)]*)\)|\{([^}]*)\})?\s*$/.exec(
-    token,
-  )
-  if (!m) return null
-  const id = m[1] ?? ''
+  const idMatch = /^([A-Za-z0-9_]+)/.exec(token)
+  if (!idMatch) return null
+  const id = idMatch[1] ?? ''
   if (id === '') return null
-  const raw = (m[2] ?? m[3] ?? m[4])?.trim()
-  if (raw === undefined) return { id }
-  let label = raw
-  if (
-    (label.startsWith('"') && label.endsWith('"') && label.length >= 2) ||
-    (label.startsWith("'") && label.endsWith("'") && label.length >= 2)
-  ) {
-    label = label.slice(1, -1)
+
+  const rest = token.slice(id.length).trim()
+  let raw: string | undefined
+  let shape: FcShape = 'rect'
+  if (rest !== '') {
+    const open = rest[0] as string
+    if (open !== '[' && open !== '(' && open !== '{') return null
+    const close = open === '[' ? ']' : open === '(' ? ')' : '}'
+    const scanned = readBracketed(rest, 1, close)
+    if (!scanned || scanned.end !== rest.length) return null
+    raw = scanned.inner.trim()
+    if (open === '(') shape = 'round'
+    else if (open === '{') shape = 'diamond'
   }
+  if (raw === undefined) return { id }
+  let label = stripSurroundingQuotes(raw)
   label = label.replace(/<br\s*\/?>/gi, ' ').trim()
   if (label.length > MAX_LABEL) label = `${label.slice(0, MAX_LABEL - 1)}…`
-  const shape: FcShape =
-    m[2] !== undefined ? 'rect' : m[3] !== undefined ? 'round' : 'diamond'
   return { id, def: { label: label === '' ? id : label, shape } }
 }
 
@@ -183,7 +302,7 @@ function parseFlowchart(
     }
     if (/^subgraph\b/.test(line)) return null // subgraphs: not laid out in v1
 
-    const pieces = line.split(EDGE_OP_RE)
+    const pieces = normalizeInlineEdgeLabels(line).split(EDGE_OP_RE)
     type Step = { token: string; op?: string; label?: string }
     const steps: Step[] = []
     for (let k = 0; k < pieces.length; k++) {
@@ -199,7 +318,7 @@ function parseFlowchart(
         if (token !== undefined) {
           const pipe = /^\|([^|]*)\|\s*(.*)$/.exec(token)
           if (pipe) {
-            label = (pipe[1] ?? '').trim()
+            label = stripSurroundingQuotes((pipe[1] ?? '').trim())
             token = (pipe[2] ?? '').trim()
           }
         }
@@ -241,7 +360,7 @@ function parseFlowchart(
           ...(step.label !== undefined && step.label !== ''
             ? { label: step.label }
             : {}),
-          arrow: step.op !== '---' && step.op !== '-.-',
+          arrow: step.op !== '---' && step.op !== '-.-' && step.op !== '===',
         })
       } else if (step.op !== undefined) {
         return null
@@ -331,6 +450,23 @@ function mapGlyphs(text: string, map: Record<string, string>): string {
 }
 
 /** Paint a 3-line box (label horizontal); returns its center x and width. */
+/**
+ * Pad (or truncate) to an exact terminal column count. `String.padEnd` counts
+ * code units, so a CJK label padded to N columns still overflows and pushes the
+ * closing border off-align — pad by display width instead.
+ */
+function padToWidth(text: string, columns: number): string {
+  let out = ''
+  let used = 0
+  for (const ch of text) {
+    const cw = stringWidth(ch)
+    if (used + cw > columns) break
+    out += ch
+    used += cw
+  }
+  return out + ' '.repeat(Math.max(0, columns - used))
+}
+
 function drawBox(
   grid: Grid,
   x: number,
@@ -339,11 +475,11 @@ function drawBox(
   shape: FcShape,
 ): { cx: number; w: number } {
   const inner = shape === 'diamond' ? `⟨${label}⟩` : label
-  const w = inner.length + 4
+  const w = stringWidth(inner) + 4
   const [tl, tr, bl, br] =
     shape === 'round' ? ['╭', '╮', '╰', '╯'] : ['┌', '┐', '└', '┘']
   paint(grid, x, y, tl + '─'.repeat(w - 2) + tr)
-  paint(grid, x, y + 1, `│ ${inner} │`)
+  paint(grid, x, y + 1, `│ ${padToWidth(inner, w - 4)} │`)
   paint(grid, x, y + 2, bl + '─'.repeat(w - 2) + br)
   return { cx: x + Math.floor(w / 2), w }
 }
@@ -421,8 +557,8 @@ function layoutVertical(
     paint(grid, tx, y2, e.arrow ? '▼' : '│')
     if (e.label) {
       const span = right - left - 2
-      if (span >= e.label.length) {
-        const pad = Math.floor((span - e.label.length) / 2)
+      if (span >= stringWidth(e.label)) {
+        const pad = Math.floor((span - stringWidth(e.label)) / 2)
         paint(grid, left + 1 + pad, y1, e.label)
       }
     }
@@ -442,8 +578,8 @@ function layoutVertical(
     paint(grid, tx, y1, sx < tx ? '┘' : '└')
     if (e.label) {
       const span = right - left - 2
-      if (span >= e.label.length) {
-        const pad = Math.floor((span - e.label.length) / 2)
+      if (span >= stringWidth(e.label)) {
+        const pad = Math.floor((span - stringWidth(e.label)) / 2)
         paint(grid, left + 1 + pad, y1, e.label)
       }
     }
@@ -481,8 +617,8 @@ function layoutVertical(
       paint(grid, tx, z2, e.arrow ? '▼' : '│')
       if (e.label) {
         const span = g - tx - 2
-        if (span >= e.label.length) {
-          const pad = Math.floor((span - e.label.length) / 2)
+        if (span >= stringWidth(e.label)) {
+          const pad = Math.floor((span - stringWidth(e.label)) / 2)
           paint(grid, tx + 1 + pad, z1, e.label)
         }
       }
@@ -514,7 +650,7 @@ function layoutVertical(
       const key = `${e.from}\0${e.to}`
       if (!gutterXs.has(key)) {
         gutterEdges.push(e)
-        if (gutterEdges.length > 4) return null
+        if (gutterEdges.length > MAX_GUTTER_EDGES) return null
         gutterXs.set(key, gutterX)
         gutterX += 2
       }
@@ -522,7 +658,8 @@ function layoutVertical(
   }
   for (const e of gutterEdges) routeGutter(e)
 
-  const lines = grid.map(row => row.join('').replace(/\s+$/, ''))
+  const w = gridDisplayWidth(grid)
+  const lines = grid.map(row => rowToString(row, w))
   if (graph.dir === 'BT') {
     return lines.reverse().map(l => mapGlyphs(l, FLIP_V)).join('\n')
   }
@@ -550,7 +687,7 @@ function layoutHorizontal(
     for (const id of rows[l] ?? []) {
       const node = graph.nodes.get(id)!
       const inner = node.shape === 'diamond' ? `⟨${node.label}⟩` : node.label
-      w = Math.max(w, inner.length + 4)
+      w = Math.max(w, stringWidth(inner) + 4)
     }
     colX[l] = x
     colW[l] = w
@@ -565,7 +702,7 @@ function layoutHorizontal(
     for (const id of rows[l] ?? []) {
       const node = graph.nodes.get(id)!
       const inner = node.shape === 'diamond' ? `⟨${node.label}⟩` : node.label
-      const w = inner.length + 4
+      const w = stringWidth(inner) + 4
       boxTop.set(id, yL)
       boxW.set(id, w)
       yL += BOX_H + 3
@@ -585,15 +722,17 @@ function layoutHorizontal(
       const [tl, tr, bl, br] =
         node.shape === 'round' ? ['╭', '╮', '╰', '╯'] : ['┌', '┐', '└', '┘']
       paint(grid, colX[l] ?? 0, top, tl + '─'.repeat(w - 2) + tr)
-      paint(grid, colX[l] ?? 0, top + 1, `│ ${inner} │`)
+      paint(grid, colX[l] ?? 0, top + 1, `│ ${padToWidth(inner, w - 4)} │`)
       paint(grid, colX[l] ?? 0, top + 2, bl + '─'.repeat(w - 2) + br)
       cy.set(id, top + 1)
     }
   }
 
+  // 3 gap columns between a box's right wall and the next box's left wall;
+  // the arrowhead lands in the middle one so the run is symmetric.
   const gapCols = (fromLevel: number): [number, number, number] => {
     const base = (colX[fromLevel] ?? 0) + (colW[fromLevel] ?? 0)
-    return [base, base + 1, base + 2]
+    return [base, base + 1, base + 1]
   }
 
   const routeAdjacent = (
@@ -611,8 +750,8 @@ function layoutHorizontal(
       paint(grid, x2, sy, head)
       if (e.label) {
         const span = x2 - x0 - 2
-        if (span >= e.label.length) {
-          const pad = Math.floor((span - e.label.length) / 2)
+        if (span >= stringWidth(e.label)) {
+          const pad = Math.floor((span - stringWidth(e.label)) / 2)
           paint(grid, x0 + 1 + pad, sy, e.label)
         }
       }
@@ -673,7 +812,7 @@ function layoutHorizontal(
       const key = `${e.from}\0${e.to}`
       if (!gutterYs.has(key)) {
         gutterEdges.push(e)
-        if (gutterEdges.length > 4) return null
+        if (gutterEdges.length > MAX_GUTTER_EDGES) return null
         gutterYs.set(key, gutterY)
         gutterY += 2
       }
@@ -681,7 +820,8 @@ function layoutHorizontal(
   }
   for (const e of gutterEdges) routeGutter(e)
 
-  const lines = grid.map(row => row.join('').replace(/\s+$/, ''))
+  const w = gridDisplayWidth(grid)
+  const lines = grid.map(row => rowToString(row, w))
   if (graph.dir === 'RL') {
     return lines.map(l => mapGlyphs(l, FLIP_H)).join('\n')
   }
@@ -721,10 +861,10 @@ function collectSequenceItems(lines: string[]): WalkItem[] | null {
   for (const rawLine of lines) {
     const line = rawLine.trim()
     if (line === '' || line.startsWith('%%') || line === 'autonumber') continue
-    if (/^(activate|deactivate)\s+[A-Za-z0-9_]+$/.test(line)) continue
+    if (/^(activate|deactivate)\s+[A-Za-z0-9_]+$/i.test(line)) continue
     if (/^[+-][A-Za-z0-9_]+$/.test(line)) continue
-    if (/^(participant|actor)\s+/.test(line)) continue
-    const note = /^note\s+(over|left of|right of)\s+([A-Za-z0-9_,\s]+?)\s*:\s?(.*)$/.exec(
+    if (/^(participant|actor)\s+/i.test(line)) continue
+    const note = /^note\s+(over|left of|right of)\s+([A-Za-z0-9_,\s]+?)\s*:\s?(.*)$/i.exec(
       line,
     )
     if (note) {
@@ -744,7 +884,7 @@ function collectSequenceItems(lines: string[]): WalkItem[] | null {
       })
       continue
     }
-    const frameOpen = /^(loop|opt|alt)\s+(.*)$/.exec(line)
+    const frameOpen = /^(loop|opt|alt)\s+(.*)$/i.exec(line)
     if (frameOpen) {
       walk.push({
         kind: 'frame-open',
@@ -755,14 +895,14 @@ function collectSequenceItems(lines: string[]): WalkItem[] | null {
       })
       continue
     }
-    if (/^else\b/.test(line)) {
+    if (/^else\b/i.test(line)) {
       walk.push({
         kind: 'frame-else',
-        label: line.replace(/^else\s*/, '').slice(0, MAX_LABEL),
+        label: line.replace(/^else\s*/i, '').slice(0, MAX_LABEL),
       })
       continue
     }
-    if (line === 'end') {
+    if (/^end$/i.test(line)) {
       walk.push({ kind: 'frame-close' })
       continue
     }
@@ -799,7 +939,7 @@ function renderSequence(lines: string[]): string | null {
   }
   for (const rawLine of lines) {
     const line = rawLine.trim()
-    const decl = /^(participant|actor)\s+([A-Za-z0-9_]+)(?:\s+as\s+(.*))?$/.exec(line)
+    const decl = /^(participant|actor)\s+([A-Za-z0-9_]+)(?:\s+as\s+(.*))?$/i.exec(line)
     if (decl) ensure(decl[2] ?? '', decl[3]?.trim())
   }
   const walk = collectSequenceItems(lines)
@@ -856,12 +996,12 @@ function renderSequence(lines: string[]): string | null {
       if (item.kind === 'message') {
         const m = item.msg
         if ((m.from === a && m.to === b) || (m.from === b && m.to === a)) {
-          need = Math.max(need, m.label.length + 8)
+          need = Math.max(need, stringWidth(m.label) + 8)
         }
       } else if (item.kind === 'note') {
         const n = item.note
         if (n.over.length === 2 && n.over.includes(a) && n.over.includes(b)) {
-          need = Math.max(need, n.text.length + 6)
+          need = Math.max(need, stringWidth(n.text) + 6)
         }
       }
     }
@@ -873,7 +1013,7 @@ function renderSequence(lines: string[]): string | null {
     let x = 0
     for (let i = 0; i < participants.length; i++) {
       const p = participants[i]!
-      const w = p.label.length + 2
+      const w = stringWidth(p.label) + 2
       if (i > 0) x += gapFor(participants[i - 1]!.id, p.id)
       centers.push(x + Math.floor(w / 2))
       widths.push(w)
@@ -906,7 +1046,7 @@ function renderSequence(lines: string[]): string | null {
       const x0 = (centers[i] ?? 0) - Math.floor(w / 2)
       const border =
         line === 1
-          ? `│${p.label.padEnd(w - 2).slice(0, w - 2)}│`
+          ? `│${padToWidth(p.label, w - 2)}│`
           : `${line === 2 ? '└' : '┌'}${'─'.repeat(w - 2)}${line === 2 ? '┘' : '┐'}`
       at(line, x0, border)
     })
@@ -939,7 +1079,7 @@ function renderSequence(lines: string[]): string | null {
         drawLifelines(y)
         drawLifelines(y + 1)
         if (label !== '') {
-          const start = left + Math.max(0, Math.floor((right - left - label.length) / 2))
+          const start = left + Math.max(0, Math.floor((right - left - stringWidth(label)) / 2))
           at(y, start, label)
         }
         const fill = style === 'dashed' ? '┄' : '─'
@@ -959,7 +1099,7 @@ function renderSequence(lines: string[]): string | null {
     } else if (item.kind === 'note') {
       const n = item.note
       const cols = n.over.map(cxOf)
-      const baseW = Math.max(8, n.text.length + 2)
+      const baseW = Math.max(8, stringWidth(n.text) + 2)
       let x0: number
       let x1: number
       if (n.position === 'over') {
@@ -986,7 +1126,7 @@ function renderSequence(lines: string[]): string | null {
       drawLifelines(y + 1)
       drawLifelines(y + 2)
       at(y, x0, `┌${'─'.repeat(x1 - x0 - 1)}┐`)
-      at(y + 1, x0, `│${n.text.padEnd(x1 - x0 - 1).slice(0, x1 - x0 - 1)}│`)
+      at(y + 1, x0, `│${padToWidth(n.text, x1 - x0 - 1)}│`)
       at(y + 2, x0, `└${'─'.repeat(x1 - x0 - 1)}┘`)
       y += 3
     } else {
@@ -1039,7 +1179,8 @@ function renderSequence(lines: string[]): string | null {
   }
 
   if (rows.length > MAX_RENDER_ROWS) return null
-  return rows.map(row => row.join('').replace(/\s+$/, '')).join('\n')
+  const w = gridDisplayWidth(rows)
+  return rows.map(row => rowToString(row, w)).join('\n')
 }
 
 // ---------------------------------------------------------------------------
