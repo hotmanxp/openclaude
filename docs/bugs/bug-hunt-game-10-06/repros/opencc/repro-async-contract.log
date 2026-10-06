@@ -1,0 +1,3 @@
+render output      : "msg-0" (expected "RENDERED:msg-0")
+breaker count      : 0 (a mod that NEVER works is never counted as failing)
+unhandledRejection : 0

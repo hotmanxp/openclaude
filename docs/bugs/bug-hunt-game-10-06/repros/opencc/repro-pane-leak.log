@@ -1,0 +1,8 @@
+loadMods result    : [{"name":"leaky","ok":false,"error":"boom"},{"name":"diff","ok":true},{"name":"handoff","ok":true},{"name":"mermaid","ok":true}]
+loaded mods        : [ "diff", "handoff", "mermaid" ]
+PANES after failure: [{"mod":"leaky","id":"p"}]
+STATUS after failure: {"leaky":"LEAKED STATUS"}
+unloadMod returned : false
+PANES after unload : [{"mod":"leaky","id":"p"}]
+STATUS after unload: {"leaky":"LEAKED STATUS"}
+RESULT: FAIL — failed mod left a live pane; unload cannot remove it

@@ -1,0 +1,21 @@
+WORKER_AGENT.tools = ["*"]
+
+===== CLAUDE_CODE_SIMPLE=(unset) isCoordinatorMode=true =====
+1677 |   file: string,
+1678 |   createDefault: () => A,
+1679 | ): A {
+1680 |   // Log a warning if config is accessed before it's allowed
+1681 |   if (!configReadingAllowed && process.env.NODE_ENV !== 'test') {
+1682 |     throw new Error('Config accessed before allowed.')
+                     ^
+error: Config accessed before allowed.
+      at getConfig (/Users/ethan/code/opencc/src/utils/config.ts:1682:15)
+      at getGlobalConfig (/Users/ethan/code/opencc/src/utils/config.ts:1220:7)
+      at getAPIProvider (/Users/ethan/code/opencc/src/utils/model/providers.ts:44:24)
+      at isToolSearchEnabledOptimistic (/Users/ethan/code/opencc/src/utils/toolSearch.ts:301:5)
+      at getAllBaseTools (/Users/ethan/code/opencc/src/tools.ts:257:9)
+      at getTools (/Users/ethan/code/opencc/src/tools.ts:313:17)
+      at assembleToolPool (/Users/ethan/code/opencc/src/tools.ts:359:24)
+      at /private/tmp/judge-verify/mine-cc009b.ts:22:18
+
+Bun v1.3.14 (macOS arm64)

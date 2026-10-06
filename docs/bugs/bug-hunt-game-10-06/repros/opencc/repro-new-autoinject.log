@@ -1,0 +1,5 @@
+/Users/me/work/opencodeproject/src         -> /Users/me/work/src             (dropped: opencodeproject)
+/Users/me/code/opencc/src/utils            -> /Users/me/code/opencc/src/utils 
+/Users/me/Documents/2024/reports/q3        -> /Users/me/Documents/2024/reports/q3 
+/Users/me/work/openhandsdk/frontend        -> /Users/me/work/openhandsdk/frontend 
+/srv/containerplatform/logs                -> /srv/logs                      (dropped: containerplatform)

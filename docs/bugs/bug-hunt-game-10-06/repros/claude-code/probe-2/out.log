@@ -1,0 +1,3 @@
+BEFORE: { "coordinatorMode": true, "model": "opus" }
+updateSettingsForSource returned error: null
+AFTER : { "model": "opus" } 

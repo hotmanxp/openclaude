@@ -1,0 +1,5 @@
+[baseline all-valid    ] model=opus includeCoAuthoredBy=true errors=0
+[model wrong type      ] model=undefined includeCoAuthoredBy=undefined errors=1 first="Expected string, but received number"
+[includeCoAuthored str ] model=undefined includeCoAuthoredBy=undefined errors=1 first="Expected boolean, but received string"
+[permissions wrong type] model=undefined includeCoAuthoredBy=undefined errors=1 first="Expected object, but received string"
+[hooks wrong type      ] model=undefined includeCoAuthoredBy=undefined errors=1 first="Expected record, but received string"

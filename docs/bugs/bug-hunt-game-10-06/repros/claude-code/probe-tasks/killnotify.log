@@ -1,0 +1,13 @@
+bun test v1.3.14 (0d9b296a)
+
+../../../../private/tmp/bughunt-claude-code/probe-tasks/killnotify.test.ts:
+AFTER UI KILL status= killed notified= true
+QUEUED NOTIFICATIONS: []
+enqueueShellNotification would enqueue? false
+evictedTaskIds from GC: [ "bprobe0001" ]
+tasks remaining after GC: []
+
+ 1 pass
+ 0 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [726.00ms]

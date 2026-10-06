@@ -1,0 +1,19 @@
+both tool_use blocks reported success: [ "A", "B" ]
+
+persisted metadata = {"agentB":"done"}
+both updates durable? NO — one silently lost
+213 |  * Sanitizes a string for safe use in file paths.
+214 |  * Removes path traversal characters and other potentially dangerous characters.
+215 |  * Only allows alphanumeric characters, hyphens, and underscores.
+216 |  */
+217 | export function sanitizePathComponent(input: string): string {
+218 |   return input.replace(/[^a-zA-Z0-9_-]/g, '-')
+               ^
+TypeError: undefined is not an object (evaluating 'input.replace')
+      at sanitizePathComponent (/Users/ethan/code/opencc/src/utils/tasks.ts:218:10)
+      at getTaskPath (/Users/ethan/code/opencc/src/utils/tasks.ts:230:43)
+      at getTask (/Users/ethan/code/opencc/src/utils/tasks.ts:314:16)
+      at blockTask (/Users/ethan/code/opencc/src/utils/tasks.ts:464:5)
+      at /private/tmp/bughunt-claude-code/probe-tasks/repro-lostupd.mjs:41:20
+
+Bun v1.3.14 (macOS arm64)

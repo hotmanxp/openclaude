@@ -1,0 +1,11 @@
+loaded          : ["a","b"]
+fresh chain     : "B(A(shared line))"
+render #1       : "B(A(shared line))"
+
+unloadMod(a)    : true
+loaded          : ["b"]
+fresh chain     : "B(shared line)"
+render #2       : "B(A(shared line))"
+  fresh chain   : "B(shared line)"
+  stale?        : YES -- tap served a stale memo
+  leaked "a"    : YES -- unloaded mod "a" still transforming output

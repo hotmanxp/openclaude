@@ -1,0 +1,4 @@
+chain returned: "hello"
+unhandledRejection count: 1
+rejection reason: async render failed
+RESULT: FAIL — rejecting async ui.render handler produced an unhandled rejection

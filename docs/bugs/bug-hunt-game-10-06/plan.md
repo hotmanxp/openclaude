@@ -175,7 +175,9 @@
 
 ## 复现物位置
 
-`/tmp/bughunt-<agent>/` 下有各选手的 E3 脚本，日志与脚本成对。**注意 `/tmp` 会被清理**，要长期保留需先拷进仓库。裁判自己的验证脚本在 `/tmp/judge-verify/`（mods 与 data-persistence 两簇）。
+**已入库**：[`repros/`](./repros/) —— 各选手的 E3 脚本 + 裁判自建的复核脚本，按 `claude-code` / `opencc` / `trae-code` / `workbuddy` / `judge-verify` 分子目录，日志与脚本成对。原始位置 `/tmp/bughunt-<agent>/` 与 `/tmp/judge-verify/` 会被系统清理，仓库内这份是唯一长期副本。
+
+脚本内保留的 `/tmp` 绝对路径是**故意不改**的，以保持与原始运行完全一致；跑法与已知失效探针见 [`repros/README.md`](./repros/README.md)。
 
 ---
 

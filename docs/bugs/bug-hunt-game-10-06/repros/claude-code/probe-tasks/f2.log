@@ -1,0 +1,7 @@
+task 1 created; listTasks id = false
+
+writes completed      : 60
+concurrent reads      : 400
+reads that returned null (task "vanished"): 0  []
+
+getTask() conflates a torn/corrupt file with "task does not exist" — its catch block (tasks.ts:341) returns null for BOTH.

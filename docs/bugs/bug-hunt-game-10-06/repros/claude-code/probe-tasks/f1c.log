@@ -1,0 +1,5 @@
+pre-kill : 69 bytes -> "{\n  \"id\": \"1\",\n  \"subject\": \"good state\",\n  \"status\": \"in_progress\"\n}"
+SIGKILL delivered while file was 69 bytes (partial)
+post-kill: 69 bytes -> "{\n  \"id\": \"1\",\n  \"subject\": \"good state\",\n  \"status\": \"in_pr"
+previous good state still present? YES
+valid JSON? yes

@@ -1,0 +1,2 @@
+after unload+reload, probe renders as: "V1(PROBE-TEXT)"
+after 40 distinct other texts, probe renders as: "V2(PROBE-TEXT)"

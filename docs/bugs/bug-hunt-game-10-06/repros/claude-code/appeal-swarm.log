@@ -1,0 +1,17 @@
+created task #1 (status=pending, owner=undefined)
+inProcessRunner.ts:636  claimTask("teammate-alpha") -> success=true
+on-disk: status=in_progress  owner="teammate-alpha"
+<<< teammate process dies here — crash / SIGKILL / closed terminal >>>
+<<< NOTE: grep -n "owner" src/utils/swarm/inProcessRunner.ts returns ONLY >>>
+<<<       :593 (a comment) and :602 (the skip check). No release. No reaper.  >>>
+
+fresh teammate calls findAvailableTask() -> undefined (no work)
+task #1 status on disk = "in_progress"  owner = "teammate-alpha"
+
+RESULT: the task is PERMANENTLY unclaimable.
+  - it is not "pending" any more, so :601 rejects it; and
+  - owner is still set, so :602 would reject it even after a status reset.
+  - nothing in the codebase clears that owner: claimTask writes it at
+    tasks.ts:597 (updateTaskUnsafe -> writeFile at tasks.ts:365) and the only
+    release helper, unassignTeammateTasks, is NOT called from inProcessRunner.ts.
+re-read from disk: owner="teammate-alpha" (persisted, no lease/TTL field)

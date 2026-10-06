@@ -1,0 +1,5 @@
+race settled?          : false   <-- generator still hung in Promise.race
+backgroundShellId      : null  <-- never assigned
+unhandledRejection cnt : 1
+reason                 : spawnShellTask failed: setAppState updater threw
+RESULT: FAIL — rejection escapes AND the only wake-up (inside .then) never runs => generator deadlocks

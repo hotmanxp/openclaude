@@ -1,0 +1,6 @@
+stub marker present in dist/cli.mjs : true
+stub bindings                        : MonitorMcpDetailDialog = noop14
+source guard                         : if (!MonitorMcpDetailDialog) return null;
+in dist, MonitorMcpDetailDialog is  : a function (TRUTHY)
+so `if (!MonitorMcpDetailDialog)`   : NEVER FIRES
+RESULT: FAIL — the guard the author wrote to survive the deleted module is dead in the shipped build; case 'monitor_mcp' renders a noop component that returns null with no Back button.

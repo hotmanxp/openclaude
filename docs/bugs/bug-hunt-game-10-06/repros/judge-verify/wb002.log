@@ -1,0 +1,12 @@
+
+[throwing callback FIRST]
+  collected results      : []
+  raw exception escaped  : callback hook threw
+
+[throwing callback LAST ]
+  collected results      : []
+  raw exception escaped  : callback hook threw
+
+[function-typed hook throws (has internal try/catch)]
+  collected results      : [{"name":"function-hook","outcome":"non_blocking_error"},{"name":"sibling-PERMISSION-deny","outcome":"blocking","blockingError":{"blockingError":"deny rm -rf /"}}]
+  raw exception escaped  : null

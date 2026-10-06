@@ -1,0 +1,18 @@
+tasks-mode list id = tasklist
+
+--- session 1: watcher claims the task ---
+available task      : #1 migrate the auth module
+claimTask           : true -> owner = tasklist
+<<< process killed here (SIGKILL / crash / closed terminal) >>>
+
+--- session 2: fresh process, same --tasks tasklist ---
+  watcher round 1: available task = NONE — watcher idles forever
+  watcher round 2: available task = NONE — watcher idles forever
+  watcher round 3: available task = NONE — watcher idles forever
+
+on-disk state  : {"id":"1","status":"pending","owner":"tasklist"}
+task files     : [ ".lock", "1.json" ]
+
+VERDICT: recoverable automatically? NO — `owner` is set, findAvailableTask.ts:204 `if (task.owner) return false`
+and no tasks-mode code path clears a stale owner (unassignTeammateTasks is only wired into the
+swarm/team paths: TeamsDialog.tsx:574, useInboxPoller.ts:735, attachments.ts:4070, print.ts:2742).

@@ -1,0 +1,3 @@
+failure count after 50 renders: 0
+output for msg-0: "msg-0"
+RESULT: FAIL — mod produced 0 useful renders across 50 invocations, breaker count stayed 0, mod never auto-disabled

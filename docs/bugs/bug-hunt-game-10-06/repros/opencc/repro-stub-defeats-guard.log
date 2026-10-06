@@ -1,0 +1,5 @@
+stub exports (assigned to noop): MonitorMcpDetailDialog
+
+BackgroundTasksDialog.tsx:389 guard is  if (!MonitorMcpDetailDialog) return null;
+shipped bundle binds MonitorMcpDetailDialog to a function  ->  !MonitorMcpDetailDialog === false
+RESULT: FAIL — the guard cannot fire. Selecting a 'monitor_mcp' task renders <MonitorMcpDetailDialog/>, which is the noop returning null: a blank pane with no Back button (onBack is never wired), so the user is stuck.

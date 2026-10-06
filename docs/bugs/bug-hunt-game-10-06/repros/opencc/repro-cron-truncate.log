@@ -1,0 +1,4 @@
+writeCronTasks uses temp+rename?  NO — direct writeFile overwrite
+   write call                   : await writeFile( getCronFilePath(root)
+readCronTasks returns [] on parse failure? YES — all tasks silently dropped
+   any backup/previous-version recovery?   NO

@@ -1,0 +1,5 @@
+healthy file: 353 bytes, 3 tasks
+after truncation: 211 bytes
+safeParseJSON ok?          : false
+readCronTasks would return : []  <-- all 3 tasks GONE, no error
+backup written?            : NO (no .bak/.corrupt path in readCronTasks)

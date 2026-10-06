@@ -1,0 +1,3 @@
+input : "TODO: fix the thing"
+output: "TODO: fix the thing"
+REPRODUCED: async handler accepted, output silently dropped (no warning to user)

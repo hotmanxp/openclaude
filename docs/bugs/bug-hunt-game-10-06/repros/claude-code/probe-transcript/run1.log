@@ -1,0 +1,13 @@
+TURN ONE  recordTranscript+flush threw? false
+          on disk: true
+
+[probe] chmod 0444 on the transcript -> appends now fail with EACCES
+TURN TWO  flush() rejected?              false  
+RETRY     second record+flush threw?     false  (empty = no error at all)
+
+===== RESULT =====
+transcript lines on disk : 1
+contains "TURN ONE"      : true
+contains "TURN TWO"      : false   <-- the user's second prompt
+file mode now            : 600 (writable again)
+RESULT: TURN TWO is permanently gone. No retry, no error, no re-write possible.

@@ -1,0 +1,6 @@
+$ tsc --noEmit
+src/mods/renderChain.test.ts(73,11): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(event: "PreToolUse" | "PostToolUse" | "Notification" | "SessionStart" | "SessionEnd" | "Stop" | "UserPromptSubmit", handler: ModHandler): void', gave the following error.
+    Argument of type '"ui.render"' is not assignable to parameter of type '"PreToolUse" | "PostToolUse" | "Notification" | "SessionStart" | "SessionEnd" | "Stop" | "UserPromptSubmit"'.
+  Overload 2 of 3, '(event: "ui.render", handler: ModRenderHandler): void', gave the following error.
+    Type 'Promise<string>' is not assignable to type 'string | void'.

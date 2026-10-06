@@ -1,0 +1,2 @@
+runModChain returned normally: {"continue":true,"hook_event_name":"PreToolUse"}
+=> a throwing mod handler CANNOT reject the composite callback

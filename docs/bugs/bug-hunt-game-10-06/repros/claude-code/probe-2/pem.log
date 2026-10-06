@@ -1,0 +1,2 @@
+isValidPemContent(dirty with shell payload around a PEM block) = true
+isValidPemContent(cert block only) = true

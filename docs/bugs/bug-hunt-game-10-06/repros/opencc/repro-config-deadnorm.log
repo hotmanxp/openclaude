@@ -1,0 +1,7 @@
+--- normalizedConfig referenced 1 times ---
+--- occurrences ---
+  const normalizedConfig = {
+--- return statements in the function ---
+  return config
+  return {
+VERDICT: normalizedConfig is DEAD — never returned on any path

@@ -1,0 +1,8 @@
+written 110 bytes:
+torn to   60 bytes
+JSON.parse throws?          : true
+task files on disk          : 1
+tasks listTasks() would show: 0 []
+file still on disk?         : YES (not deleted, just unreadable)
+backup created?             : NO (no rename/atomic/backup anywhere in tasks.ts)
+RESULT: FAIL — task permanently invisible but still on disk; no error, no backup, no recovery

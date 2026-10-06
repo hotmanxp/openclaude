@@ -1,0 +1,2 @@
+composite callback rejects? no
+core throw ESCAPED runModChain -> core callback threw

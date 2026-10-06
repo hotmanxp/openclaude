@@ -1,0 +1,4 @@
+initial : t0 t1 t2 t3
+A deleted t0, B deleted t1 (both intended)
+expected: t2 t3
+actual  : t0 t2 t3  <-- t0 resurrected; one delete silently lost

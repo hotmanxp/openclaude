@@ -1,0 +1,4 @@
+WS handshake never completes; relay readyState still CONNECTING
+client sent 400 MiB after CONNECT; relay RSS 72.9MB -> 931.8MB
+bytes written back to client: []
+oversize CONNECT, 3 more writes -> responses: 1 ["HTTP/1.1 400 Bad Request\r\n\r\n"]

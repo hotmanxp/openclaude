@@ -1,0 +1,7 @@
+stub exports (5): psHandler, logsHandler, attachHandler, killHandler, handleBgFlag
+real exports (17): LOG_STREAM_CHUNK_SIZE, buildBackgroundChildProcessConfig, buildBackgroundSessionLaunch, parseBackgroundInvocation, parseLogsInvocation, buildBackgroundSessionDisplayCommand, printExistingLog, followLogFile, terminateBackgroundProcessTree, terminateBackgroundSessionProcessTree, killBackgroundSession, confirmBackgroundSessionLaunch, psHandler, logsHandler, attachHandler, killHandler, handleBgFlag
+
+MISSING from stub (12): LOG_STREAM_CHUNK_SIZE, buildBackgroundChildProcessConfig, buildBackgroundSessionLaunch, parseBackgroundInvocation, parseLogsInvocation, buildBackgroundSessionDisplayCommand, printExistingLog, followLogFile, terminateBackgroundProcessTree, terminateBackgroundSessionProcessTree, killBackgroundSession, confirmBackgroundSessionLaunch
+
+imported by BackgroundAgentViewDialog.tsx: killBackgroundSession
+RESULT: FAIL — production import(s) killBackgroundSession are NOT exported by the stub

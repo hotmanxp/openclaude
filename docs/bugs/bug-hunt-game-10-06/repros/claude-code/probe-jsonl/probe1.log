@@ -1,0 +1,8 @@
+turn1 recordTranscript returned: 00000000-0000-4000-8000-000000000001
+flush() REJECTED: Error: EISDIR: illegal operation on a directory, open '/var/folders/xd/vb8tqxt55bn3wg3rz0mr3q600000gn/T/probe-jsonl-92Pya5/iam-a-directory'
+turn2 recordTranscript returned: 00000000-0000-4000-8000-000000000002
+--- final transcript on disk ---
+{"parentUuid":"00000000-0000-4000-8000-000000000001","isSidechain":false,"uuid":"00000000-0000-4000-8000-000000000002","timestamp":"2026-04-02T00:00:00.000Z","cwd":"/Users/ethan/code/opencc","userType":"external","sessionId":"00000000-0000-4000-8000-000000000999","version":"unknown","type":"user","isMeta":false,"message":{"role":"user","content":"TURN TWO user work"},"entrypoint":"cli","gitBranch":"main-opencc"}
+
+contains TURN ONE ? false
+contains TURN TWO ? true
