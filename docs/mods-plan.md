@@ -2,7 +2,7 @@
 
 > **目标**：让 opencc 支持 Claude Code 引入的 Mods 机制 —— 用户写 JavaScript 事件处理函数，直接扩展 opencc 自身的行为、工具与 UI。
 >
-> **版本**：v2.7 ｜ **日期**：2026-10-06 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
+> **版本**：v2.8 ｜ **日期**：2026-10-06 ｜ **依据**：官方 Mods 实证核验（见 [`mods-upstream-audit.md`](./mods-upstream-audit.md)）+ opencc 侧实测（附录 C）
 >
 > **v2.0 变更**：经上游核验与方案讨论，确立三项决策 —— ① **mod 用纯 JS，不做 TS 转译**（见 §3.2①）② **用原生 `import()` 加载，不用 `node:vm`**（见 §3.2②）③ **能力面收窄到上游同款，`fs`/`store` 延后到 P2 授权制**（见 §3.3）。同时修正了 v1.0 中若干经实测证伪的数字（见 §1.1）。
 >
@@ -19,6 +19,8 @@
 > **v2.6 变更**（`/handoff` 升格 + mod 命令面补 `local-jsx`）：① **`ModCommandSpec` 新增 `type` / `call`** —— 此前 mod 命令只产出 `LocalCommand`（`handler` 返回值强制包成 `{type:'text'}`），既无法注入 prompt 也拿不到 `ToolUseContext`。现在 `handler`（`local`）与 `call`（`local-jsx`，签名同宿主 `LocalJSXCommandCall`）二选一，`buildModCommands()` 分支产出对应命令类型；`registerCommand` 对「两者都缺 / 都给」均 fail loud ② **删除宿主 `/handoff`**（`src/commands/handoff/` 共 7 文件），由 `handoff` 内置 mod 占用顶级裸名 `/handoff`（同 v2.5 的 /diff 路径）③ **选择界面由程序渲染**：恢复分支原本把「最近 5 份文档」写进提示词、指示模型调 `AskUserQuestion` 自行拼 JSON 选项（多一轮模型往返，且选项集不受程序控制；只有 1 份时还要专门写一段"别用 AskUserQuestion"的绕行说明）。现改为 mod 返回 `local-jsx` 组件 `<Dialog><Select/></Dialog>`，程序 `fs.readFile` 读入选中文档并经 `onDone(..., {display:'user', shouldQuery:true, metaMessages})` 注入 —— 全程零模型询问 ④ **`LocalJSXCommand` 新增 `supportsNonInteractive`** —— headless 命令表（`main.tsx`）此前只收 `prompt` / `local`，会把 mod 的 local-jsx 命令整个滤掉；handoff 声明该标志保住 `-p "/handoff"`，pickup 分支在无 `--pick` 时返回一行说明而非弹选择器 ⑤ mod 的 Ink 组件单独放 `handoffPicker.tsx` 并由 `handoffCall` **动态 import** —— 静态 import 会经组件图绕回 `mods/builtin.ts`（它 import mod 来声明固定清单）造成 TDZ 循环。
 >
 > **v2.7 变更**（`ui.render` 事件 + mermaid 内置 mod，上游 §九 cc-plugin-mermaid 对标）：① **新增 mod-only 同步事件 `ui.render`**（registry `MOD_RENDER_EVENT`）—— 上游 cc-plugin-mermaid 声明 `{hooks:["ui.render"]}`，opencc 对应实现为**专用同步链**（`dispatch.runModRenderChainSync`），不走 HookEvent/executeHooks 体系：事件在 React render 内触发，handler 契约为 `(e:{text}, next) => string|void` 同步纯函数，返回 Promise 记日志忽略；失败走既有熔断（registry recordModHandlerFailure）② **渲染 tap 点**：`AssistantTextMessage`（最终消息，错误检测特殊分支之后才 tap，避免破坏错误文案识别）+ `StreamingMarkdown`（流式两段各自过链 —— 完成的 mermaid fence 恒为单个 lexer token，不会跨越稳定边界）③ **LRU 缓存层**（`mods/renderTap.ts`，32 条/50KB 上限，上游 mermaid mod 同款参数）—— 无 handler 注册时零开销直通 ④ **mermaid 内置 mod**（净室实现，非上游代码搬运）：flowchart TD/TB/BT/LR/RL（rect/round/diamond 三种节点形、`|label|` 边标签、链式边、DFS 破环 + 最长路径分层、跳级/回边走右侧 gutter、BT/RL 用 FLIP 翻转）+ sequenceDiagram（participant/消息 `->>/-->>/-x/--x/->/--`/note over-left-right/loop-opt-alt 框 + else 分隔）；解析失败、subgraph（v1 未布局）、超限（20KB/200 行/24 节点/140 行渲染）一律**保留原 fence**（fail-safe）⑤ 输出包 ```` ```text ```` fence 过 Markdown 保证空白保留。已知限制：CJK 全角字符按 1 列计宽，标签对齐在含 CJK 时会歪。
+>
+> **v2.8 变更**（宿主指令面 mod 化盘点 = P4 规划，详见 §四 P4 节）：对 `src/commands/` **88 条真实指令**（另 19 个 stub 死代码不计；fork 原创 22 条，git 首提交日期实证）按当前能力面做可行性分档 —— ① **第一档 7 条**现在就能转正（`/remember` ctx.fs、`/goal` 事件驱动、`/version`、`/release-notes`、`/files`、`/knowledge`、`/stickers`），模式同 /diff、/handoff ② **第二档 ~14 条**「读宿主状态拼文本」（/cost、/context-text、/cache-stats、/diagnostics、/set-ticket 等，fork 原创集中区）：内置 mod 可直接 import 宿主单例，disk mod 形态需先补宿主数据面读数接口（v2.1 提过的 appState 接缝）③ **第三档 15 条** prompt 类（/commit、/review、/bughunter × 3 等）卡在 `prompt.compose` 未实现 —— 单项补齐收益最大的缺口，建议 P4 首项 ④ **第四档**核心宿主功能（会话管理/配置中枢/账户远端/渲染管线深耦合）明确不 mod 化。
 >
 > **配套文档**：
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**）
@@ -452,6 +454,43 @@ my-mod/
 - 组合 mod 的名词契约机制
 - in-memory 预编译通道（`registerScan` 等价物）
 
+### P4 — 宿主指令面 mod 化（v2.8 盘点，⬜ 未排期）
+
+> **背景**：/diff（v2.5）、/handoff（v2.6）、mermaid（v2.7）三条转正先例跑通后，对 `src/commands/` 全量指令做一次可行性盘点。判据 = 当前能力面（`registerCommand` local/local-jsx、7+1 事件、`ui.notice/status/pane`、授权 `ctx.fs`）× 指令的宿主耦合深度。fork 原创性按 git 首提交日期实证（基线 2026-04-07 之前 = 上游继承）。
+
+**第一档 — 现在就能转正（7 条，模式同 /diff、/handoff）**
+
+纯 local 文本输出、零宿主单例依赖，内置 mod 形态即可落地：
+
+| 指令 | mod 化路径 | fork 原创 |
+|---|---|---|
+| `/remember` | 写记忆文件 → `ctx.fs` 授权制教科书场景 | ✅ |
+| `/goal` | 目标 gate → `UserPromptSubmit` 事件自实现，语义最契合 mods | ✅ |
+| `/knowledge` | `ctx.fs` 覆盖大半；settings 读写部分需补 API | ✅ |
+| `/version` | 读构建常量，零依赖 | |
+| `/release-notes` | mod 内全局 `fetch` 可用 | |
+| `/files` | local-jsx `call` 拿 `ToolUseContext`（v2.6 已支持） | |
+| `/stickers` | 彩蛋，零风险试点 | |
+
+**第二档 — 可搬，建议先补「宿主数据面」（~14 条，fork 原创集中区）**
+
+共性是「读宿主状态 → 拼文本」：内置 mod 可直接 import 宿主单例（同 diff mod 用 gitRunner），但要以 **disk mod** 形态存在或供社区复刻，需 mods 面暴露宿主读数接口（token 用量 / 成本 / LSP 诊断 / 缓存指标 —— 即 v2.1 提过的「appState 接缝」）：
+
+`/cost`、`/context-text`、`/context`、`/cache-stats`、`/diagnostics`、`/request-size`、`/set-context-window`、`/clear-context-window`、`/commit-message`、`/advisor`、`/benchmark`、`/cache-probe`、`/set-ticket`（fork 标志性命令，`ui.status` 恰好承载会话标签显示）；`/heapdump`、`/keybindings` 另需宿主原语（v8 dump / spawn 编辑器）。
+
+**第三档 — 卡在 `prompt.compose` 未实现（15 条，最高杠杆缺口）**
+
+prompt 类指令（注入提示词给模型）在当前能力面无对应物。**`prompt.compose` 是解锁这 15 条的单点钥匙**，建议作为 P4 首项：`/commit`、`/commit-push-pr`、`/review`、`/security-review`、`/init`、`/init-verifiers`、`/insights`、`/auto-fix`、`/dream`、`/statusline`、`/bughunter` × 3、`/pr-comments`、workflows 动态子命令。
+
+**第四档 — 明确不 mod 化（核心宿主功能）**
+
+- **会话/上下文管理**（直接操纵消息树，mod 化是风险不是收益）：`/clear` `/compact` `/rewind` `/branch` `/resume` `/export` `/copy` `/rename` `/tag` `/memory`
+- **配置中枢**（宿主设置本体）：`/model` `/provider` `/config` `/permissions` `/hooks` `/agents` `/mcp` `/plugin` `/sandbox` `/theme` `/vim` `/skills` 等
+- **账户/计费/远端**（凭证 + 外部服务）：`/login` `/logout` `/usage` `/bridge` `/session` `/desktop` `/update` 等
+- **渲染管线深耦合**：`/focus`（改 systemPromptSections）、`/color`
+
+**结论**：① 第一档随时可做，`/remember`（ctx.fs）与 `/goal`（事件驱动）价值最高，兼作能力面实战验证 ② fork 原创 22 条中 9 条落在前两档 ③ 「宿主数据面接口」与 `prompt.compose` 是两个前置补齐点，后者杠杆最大。
+
 ---
 
 ## 五、工作量汇总
@@ -495,6 +534,7 @@ my-mod/
 3. **UI 范围**：**P1 只做 `ui.notice` 单向推送**（v1.0 的 toast/status/pane 三种 → 收窄为一种），pane/status 移 P2。是否接受？
 4. **`ctx.fs` 何时给**：P2 的授权制（settings 白名单）是否够用？还是要 P1 就给？
 5. **是否开源**：mod 生态要不要单独建仓库？
+6. **P4 排期顺序**（v2.8）：先做 `prompt.compose`（解锁 15 条 prompt 类指令，杠杆最大）还是先清第一档 7 条轻量转正？第二档是否值得为 disk mod 形态补「宿主数据面」接口，还是只走内置 mod 直 import 宿主单例的捷径？
 
 ---
 
