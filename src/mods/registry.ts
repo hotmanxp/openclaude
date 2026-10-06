@@ -84,11 +84,35 @@ export type LoadedMod = {
 
 let loadedMods: LoadedMod[] = []
 
+// Fires whenever the set of loaded mods changes (register or unregister).
+// Consumers that memoize per-mod output subscribe here: the render cache is
+// keyed by input text alone, so it cannot notice that the handler behind a
+// cached entry was replaced (cluster B).
+const modSetListeners = new Set<() => void>()
+
+export function subscribeModSetChanged(listener: () => void): () => void {
+  modSetListeners.add(listener)
+  return () => {
+    modSetListeners.delete(listener)
+  }
+}
+
+function notifyModSetChanged(): void {
+  for (const listener of modSetListeners) {
+    try {
+      listener()
+    } catch {
+      // A broken subscriber must not break registration.
+    }
+  }
+}
+
 /** Marker for in-memory built-in mods (src/mods/builtin.ts). */
 export const BUILTIN_ORIGIN = '(builtin)'
 
 export function registerLoadedMod(mod: LoadedMod): void {
   loadedMods.push(mod)
+  notifyModSetChanged()
   notifyModToolsChanged()
 }
 
@@ -100,6 +124,12 @@ export function unregisterMod(name: string): LoadedMod | undefined {
   const index = loadedMods.findIndex(m => m.manifest.name === name)
   if (index === -1) return undefined
   const [removed] = loadedMods.splice(index, 1)
+  // Drop the circuit-breaker count with the mod (tc-006). Keeping it let a
+  // reloaded instance start at N failures and trip the breaker after fewer
+  // than MOD_BREAKER_THRESHOLD fresh ones — the count was for code that is no
+  // longer loaded.
+  failureCounts.delete(name)
+  notifyModSetChanged()
   notifyModToolsChanged()
   return removed
 }

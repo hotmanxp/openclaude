@@ -7,8 +7,11 @@ import {
 import { createModContext } from './engine.js'
 import {
   getModFailureCount,
+  recordModHandlerFailure,
+  recordModHandlerSuccess,
   registerLoadedMod,
   resetModsRegistryForTesting,
+  unregisterMod,
   type LoadedMod,
 } from './registry.js'
 
@@ -140,5 +143,66 @@ describe('render tap (renderTap)', () => {
     expect(transformModRenderText('same')).toBe('same')
     expect(transformModRenderText('same')).toBe('same')
     expect(calls).toBe(1)
+  })
+})
+
+describe('state that outlives the mod it was keyed to', () => {
+  function renderMod(name: string, wrap: (t: string) => string): LoadedMod {
+    const mod: LoadedMod = {
+      manifest: { name, entry: '(test)' },
+      root: '(test)',
+      entryPath: '(test)',
+      handlers: [],
+      commands: [],
+      tools: [],
+    }
+    const ctx = createModContext(mod)
+    ctx.on('ui.render', e => wrap(e.text))
+    return mod
+  }
+
+  // cluster B: the LRU is keyed by input text alone, so it kept serving the
+  // previous mod's output after a reload replaced the handler.
+  test('reloading a mod invalidates its cached render output', () => {
+    registerLoadedMod(renderMod('m', t => `V1:${t}`))
+    expect(transformModRenderText('hello')).toBe('V1:hello')
+
+    unregisterMod('m')
+    registerLoadedMod(renderMod('m', t => `V2:${t}`))
+
+    expect(transformModRenderText('hello')).toBe('V2:hello')
+  })
+
+  test('unloading the last ui.render mod stops transforming', () => {
+    registerLoadedMod(renderMod('m', t => `X:${t}`))
+    expect(transformModRenderText('hi')).toBe('X:hi')
+
+    unregisterMod('m')
+    // No handler left, so the text must pass through untouched rather than
+    // replaying the cached wrapped output.
+    expect(transformModRenderText('hi')).toBe('hi')
+  })
+
+  // tc-006: the breaker count belonged to the unloaded instance, so a reloaded
+  // mod inherited it and tripped after fewer than the threshold of new failures.
+  test('reloading a mod resets its circuit-breaker failure count', () => {
+    registerLoadedMod(renderMod('breaker', t => t))
+    recordModHandlerFailure('breaker')
+    recordModHandlerFailure('breaker')
+    expect(getModFailureCount('breaker')).toBe(2)
+
+    unregisterMod('breaker')
+    expect(getModFailureCount('breaker')).toBe(0)
+
+    registerLoadedMod(renderMod('breaker', t => t))
+    expect(getModFailureCount('breaker')).toBe(0)
+  })
+
+  test('a successful handler clears the count', () => {
+    registerLoadedMod(renderMod('ok', t => t))
+    recordModHandlerFailure('ok')
+    expect(getModFailureCount('ok')).toBe(1)
+    recordModHandlerSuccess('ok')
+    expect(getModFailureCount('ok')).toBe(0)
   })
 })
