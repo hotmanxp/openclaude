@@ -55,15 +55,27 @@
 
 | ID | 缺陷 | 位置 | 证据 |
 |---|---|---|---|
-| **wb-r01** ⭐ | `transformModRenderText` 在 `AssistantTextMessage.tsx:243` + `Markdown.tsx:237-238` **被套两遍** → 非幂等 handler 产出 `H(H(text))` | 三处 | E3（裁判三重独立验证） |
+| **wb-r01** ⭐ | ~~`transformModRenderText` 被套两遍~~ **裁判复核推翻，见下方勘误** | — | **不成立** |
 | **cluster B** ✚ | `renderTap` LRU 缓存无任何失效入口，卸载/重载后旧输出继续投屏 | `renderTap.ts:19,48-55` + `hooks.ts:225,243` | E3 ×4 |
 | **tc-006** ✚ | `unregisterMod` 不清 `failureCounts`，重载 mod 继承旧熔断计数 | `registry.ts:99-105` | E1 |
 
-**wb-r01 是本批价值最高的一条**：它经过**每一条助手消息的渲染路径**，而 `renderTap` 的缓存结构（:50 以**输入文本**为 key、:53 存链输出）让第二次必然 cache miss → 重跑链。mermaid 类包裹/加围栏的 mod 全部中招。
-**修法建议**：`transformModRenderText` 带「已应用」标记（`WeakSet` 或改为 `Markdown` 内单一入口），保证同一段文本只应用一次链。
 **与 cluster B 一起做**：两者都改 `renderTap` 的缓存契约，顺手把失效钩子补上。
 
-> ⚠️ `wb-r01` 原报告自带的对照组是失效的（模块级 LRU 吃掉后半段实验），但**结论本身成立**——已由裁判从源码三重独立验证，并被 workbuddy 修正后的脚本复现。
+> #### 🛑 勘误（2026-10-06，裁判复核推翻 wb-r01）
+>
+> **wb-r01 不成立，从本批移除。** 原判定称 `transformModRenderText` 在 `AssistantTextMessage.tsx:243` 与 `Markdown.tsx:237-238`「被套两遍」，产出 `H(H(text))`。**这是把两条互不相交的路径当成了嵌套。**
+>
+> 实际调用图：
+> - 已完成的助手消息 → `AssistantTextMessage:243` → 渲染**普通** `Markdown`（`Markdown.tsx:80`）
+> - 正在流式输出的文本 → `StreamingMarkdown:237-238` → 渲染**普通** `Markdown`
+>
+> `Markdown.tsx:237-238` 位于 `StreamingMarkdown()` **函数体内**（不是模块顶层），而它渲染的 `<Markdown>` 是普通导出——普通 `Markdown` 的整个函数体（:80–187）**从不调用** `transformModRenderText`。两处各应用一次链，互不嵌套，因此没有任何消息会收到 `H(H(text))`。
+>
+> **我当初的「三重独立验证」是假的**：workbuddy 的复现脚本只证明了*函数被调用两次*时会套两遍（这确实成立），但没有证明*React 树会对同一段文本调用两次*。这两件事被我混为一谈——正是我在 `VERDICT.md` §六 自陈的那类错误（把「证明了一件事」当成「证明了那件事」）。它甚至是我给这一批排的**最高价值项**，错得最显眼。
+>
+> 验证脚本：[`repros/workbuddy/probe-wbr01-callgraph.mjs`](./repros/workbuddy/probe-wbr01-callgraph.mjs)（读源码求调用图，输出 NOT REPRODUCED）。
+>
+> 本批实际待修只剩 **cluster B + tc-006**。cluster B（LRU 无失效入口）本身不受影响，仍成立。
 
 ### 批 2 · 任务系统（2 个）✚ 必须一起修
 
@@ -163,7 +175,7 @@
 第 2 批          批 2 任务系统 + 批 3 原子写
                  └─ 同一个修法（atomicReplace + 统一清理点），一次改完三处受益
 
-第 3 批          批 1 渲染管线（wb-r01 + cluster B + tc-006）
+第 3 批          批 1 渲染管线（cluster B + tc-006；wb-r01 已证伪移除）
                  └─ 走每条消息的路径，改 renderTap 缓存契约
 
 第 4 批          mods 状态清理专项（cluster A + oc-001 + tc-004 + cluster C + cc-003）
