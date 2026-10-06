@@ -111,7 +111,18 @@ async function loadSingleMod(root: string): Promise<LoadedMod> {
     commands: [],
     tools: [],
   }
-  await module.register(createModContext(mod))
+  const name = manifest.name
+  try {
+    await module.register(createModContext(mod))
+  } catch (error) {
+    // A mod can claim ui.pane / ui.status before it throws. Those live in
+    // registries keyed by mod name, and this mod never gets registered, so no
+    // unload or reload path would ever clear them — leaving a broken mod's UI
+    // on screen permanently (oc-001). Release what it claimed.
+    clearModStatus(name)
+    clearModPanes(name)
+    throw error
+  }
   return mod
 }
 
@@ -133,7 +144,7 @@ export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
   // Drop previous instances first — /mods reload must not duplicate
   // handlers (disk and built-in mods alike).
   for (const mod of [...getLoadedMods()]) {
-    unregisterMod(mod.manifest.name)
+    purgeModState(mod.manifest.name)
   }
   let roots: string[]
   try {
@@ -222,12 +233,27 @@ function ensureBreakerWired(): void {
 }
 
 /** Minimal unload (P1, docs R9): remove a mod and rebuild the hook swap. */
-export async function unloadMod(name: string): Promise<boolean> {
-  const removed = unregisterMod(name)
-  if (!removed) return false
-  // Clear any persistent ui.status segment and ui.pane the mod left behind.
+/**
+ * Drop every trace of a mod from the runtime.
+ *
+ * The single cleanup point for mod-owned state. Registration writes into
+ * several independent registries (engine's panes and statuses, the render
+ * cache, the circuit-breaker count), so anything that removes a mod must call
+ * this — unloading and reloading are both removals, and having only one of
+ * them do the cleanup is what let `/mods reload` leave stale panes and status
+ * segments on screen (tc-004).
+ */
+function purgeModState(name: string): void {
   clearModStatus(name)
   clearModPanes(name)
+  // The render cache and breaker count are keyed by mod registration, so they
+  // clear when the mod leaves the registry — see registry.unregisterMod.
+  unregisterMod(name)
+}
+
+export async function unloadMod(name: string): Promise<boolean> {
+  if (!getLoadedMods().some(m => m.manifest.name === name)) return false
+  purgeModState(name)
   swapRegisteredHooks()
   logForDebugging(`[mods] unloaded mod "${name}"`)
   return true

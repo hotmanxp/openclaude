@@ -8,6 +8,7 @@ import {
 } from '../bootstrap/state.js'
 import {
   loadMods,
+  reloadMods,
   unloadMod,
   resetModsLoaderForTesting,
   OPENCC_MODS_DIR_ENV,
@@ -211,5 +212,59 @@ describe('loadMods', () => {
 
     await unloadMod('paneful')
     expect(getModPanesSnapshot().some(p => p.key === 'paneful:p')).toBe(false)
+  })
+})
+
+describe('mod state outlives the mod', () => {
+  // Both of these are the same shape: mod-owned state lives in registries keyed
+  // by mod name, and not every path that removes a mod cleared them.
+  test('a mod whose register() throws leaves no pane or status behind', async () => {
+    await setupModsDir()
+    await writeMod(
+      'leaky',
+      `export function register(ctx) {
+         ctx.ui.status('LEAKY')
+         ctx.ui.pane({ id: 'p', title: 'P', component: () => 'x' })
+         throw new Error('boom after claiming UI state')
+       }`,
+    )
+
+    await loadMods()
+
+    // The mod never loaded, so nothing will ever unload it — whatever it
+    // claimed during register() has to have been released on the way out.
+    expect(getModStatusSnapshot().leaky).toBeUndefined()
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'leaky'),
+    ).toHaveLength(0)
+  })
+
+  test('/mods reload clears panes and status of a mod that is gone', async () => {
+    await setupModsDir()
+    await writeMod(
+      'keeper',
+      `export function register(ctx) {
+         ctx.ui.status('KEEPER')
+         ctx.ui.pane({ id: 'k', title: 'K', component: () => 'x' })
+       }`,
+    )
+
+    await loadMods()
+    expect(getModStatusSnapshot().keeper).toBe('KEEPER')
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'keeper'),
+    ).toHaveLength(1)
+
+    // The user deletes the mod and reloads. Reload is a removal like any
+    // other, so its UI state must go with it. Before the fix reload dropped
+    // the registry entry but not the pane/status, so the deleted mod's UI
+    // stayed on screen — while unloadMod had always cleared them.
+    await rm(join(modsDir, 'keeper'), { recursive: true, force: true })
+    await reloadMods()
+
+    expect(getModStatusSnapshot().keeper).toBeUndefined()
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'keeper'),
+    ).toHaveLength(0)
   })
 })
