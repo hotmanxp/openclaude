@@ -250,3 +250,18 @@
 `/mods reload` 的 ESM 模块缓存问题（改源码后 reload 仍跑旧代码）**尚未验证**：验证需要一个能实际加载 mod 的环境，而 `src/mods/` 当前被另一会话的未提交 WIP 占用（`/plugins` 禁用闸门，涉及 `hooks.ts` / `builtin.ts` / `pluginView.ts` / `types/plugin.ts` / `ManagePlugins.tsx`）。该 WIP 目前自身处于未完成状态（`hooks.ts:104` 调用 `isModEnabled` 但未 import），mod 加载会抛 `isModEnabled is not defined`。
 
 **未触碰、未提交任何他人 WIP 文件。** 等该 WIP 落地后再验证 oc-002 及其它 `src/mods/` 相关项。
+
+### oc-002 阻塞解除并完成修复（2026-10-07）
+
+`src/mods/` 的他人 WIP 已落地（`isModEnabled` import 补齐），验证得以进行。oc-002 **确认成立**：改 mod 源码后 `/mods reload` 仍执行旧代码——ESM 按解析后的 URL 永久缓存模块。
+
+**修法**：`loadMods()` 每轮 `modReloadGeneration++`，mod entry 的 import specifier 追加 `?openccReload=N`，使每次加载都是不同的 URL。
+
+**一个必须记录的发现**：Bun 的 ESM loader **会忽略 file: URL 上的 `?query`**（实测三个不同 generation 全部返回同一份旧代码），Node 则正常失效缓存。由于 Bun 只是构建/测试工具链、**运行时是 Node**（`engines.node >= 22`），这个修法对产品是正确的——但意味着**任何 `bun test` 写的回归测试都观察不到修复前后差异**，会给假绿。
+
+因此本条的验证脚本明确标注必须用 `node` 跑：
+[`repros/opencc/probe-oc002-reload-stale.mjs`](./repros/opencc/probe-oc002-reload-stale.mjs)
+
+> 这是本次比赛暴露的**第三个**赛制级问题（前两个：E3 无法验证组件树调用关系、探针自造对照组）。**测试运行时与产品运行时不同，本身就是一类系统性证据风险**，应当写进证据分级规则。
+
+**未提交说明**：本次改动落在 `src/mods/hooks.ts`，该文件同时含有他人未提交的 WIP，为避免把别人的在途工作裹进本次提交，暂存于工作区未提交。
