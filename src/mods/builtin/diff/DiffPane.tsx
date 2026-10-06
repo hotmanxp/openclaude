@@ -19,23 +19,18 @@ import { plural, sanitize, truncateTail } from './text.js'
 export function DiffPane(): React.ReactNode {
   const snapshot = useSyncExternalStore(subscribeToDiff, getDiffSnapshot)
   const { columns } = useTerminalSize()
-  const open = snapshot.paneOpen
 
   useEffect(() => {
-    // Only poll while it is on screen: a hidden pane has nothing to redraw
-    // and a hidden dialog opens with a stale list otherwise.
-    if (!open) return
     void refreshDiff()
     const timer = setInterval(() => void refreshDiff(), POLL_WORKTREE_MS)
     return () => clearInterval(timer)
-  }, [open])
+  }, [])
 
   const rows = useMemo(
     () => buildRows(snapshot.data, snapshot.bodies),
     [snapshot.data, snapshot.bodies],
   )
 
-  if (!open) return null
   if (columns < MIN_COLUMNS) {
     return <Text dimColor={true}>{tooNarrowMessage()}</Text>
   }

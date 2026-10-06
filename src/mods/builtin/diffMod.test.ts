@@ -58,15 +58,12 @@ describe('diff built-in mod — registration', () => {
     expect(command!.call).toBeDefined()
   })
 
-  test('registers the live diff pane on session start', async () => {
+  test('registers no pane until one is asked for', async () => {
     const { sessionStart } = harness()
-    // The pane is registered from SessionStart, not from register(): its
-    // component import has to land after the module has finished evaluating.
-    expect(getModPanesSnapshot().find(p => p.id === 'diff')).toBeUndefined()
     await sessionStart()
-    const pane = getModPanesSnapshot().find(p => p.id === 'diff')
-    expect(pane).toBeDefined()
-    expect(pane!.title).toBe('Diff')
+    // ModPaneArea draws a title and border for every registered pane, so
+    // an empty one is still a visible box.
+    expect(getModPanesSnapshot().find(p => p.id === 'diff')).toBeUndefined()
   })
 
   test('resets the store on session start', async () => {
@@ -117,5 +114,19 @@ describe('diff built-in mod — the panel toggle', () => {
     setPaneOpen(true)
     const call = mod.commands.find(c => c.name === 'diff')!.call!
     expect(await call(() => {}, {} as never, '')).toBeNull()
+  })
+
+  test('the pane is registered on open and unregistered on close', async () => {
+    const { mod } = harness()
+    const call = mod.commands.find(c => c.name === 'diff')!.call!
+    const noop = () => {}
+
+    await call(noop, {} as never, '')
+    const opened = getModPanesSnapshot().find(p => p.id === 'diff')
+    expect(opened).toBeDefined()
+    expect(opened!.title).toBe('Diff')
+
+    await call(noop, {} as never, '')
+    expect(getModPanesSnapshot().find(p => p.id === 'diff')).toBeUndefined()
   })
 })

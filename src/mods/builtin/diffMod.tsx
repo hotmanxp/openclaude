@@ -27,6 +27,8 @@ import {
 /** Upstream's string when the dialog closes without a selection. */
 const DISMISSED = 'Diff dialog dismissed'
 
+const PANE_ID = 'diff'
+
 /**
  * The dialog and the pane are imported lazily, never at module scope.
  *
@@ -46,12 +48,6 @@ export const diffBuiltinMod: BuiltinModSpec = {
   register(ctx: ModContext): void {
     ctx.on('SessionStart', async (e, next) => {
       resetDiffStore()
-      const { DiffPane } = await import('./diff/DiffPane.jsx')
-      ctx.ui.pane({
-        id: 'diff',
-        title: 'Diff',
-        component: () => <DiffPane />,
-      })
       return next(e)
     })
 
@@ -85,15 +81,19 @@ export const diffBuiltinMod: BuiltinModSpec = {
         // reveals the pane and opens the dialog over it.
         if (isPaneOpen()) {
           setPaneOpen(false)
-          // The store's own listeners only re-render the component that
-          // subscribed; the host needs telling to drop the pane's rows.
-          ctx.ui.notify()
+          // Unregister rather than render nothing: ModPaneArea draws the
+          // title and border for every registered pane, so a pane that
+          // returns null still leaves an empty box on screen.
+          ctx.ui.closePane(PANE_ID)
           onDone(DISMISSED, { display: 'system' })
           return null
         }
         setPaneOpen(true)
-        ctx.ui.notify()
-        const { DiffDialog } = await import('./diff/DiffDialog.jsx')
+        const [{ DiffDialog }, { DiffPane }] = await Promise.all([
+          import('./diff/DiffDialog.jsx'),
+          import('./diff/DiffPane.jsx'),
+        ])
+        ctx.ui.pane({ id: PANE_ID, title: 'Diff', component: () => <DiffPane /> })
         return (
           <DiffDialog
             onDone={() => onDone(DISMISSED, { display: 'system' })}
