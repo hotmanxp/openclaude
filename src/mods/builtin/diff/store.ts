@@ -9,6 +9,7 @@
  */
 
 import { getCwd } from '../../../utils/cwd.js'
+import { buildAskAttachment, fitAttachment } from './ask.js'
 import { createGitRun } from './gitRunner.js'
 import type { DiffFileBody } from './parse.js'
 import {
@@ -31,6 +32,8 @@ export type DiffSnapshot = {
   bodies: ReadonlyMap<string, DiffFileBody>
   /** Path whose hunks are in flight, so the detail view can say "Loading". */
   pendingBody: string | null
+  /** Path armed for the next prompt, or null. */
+  armedPath: string | null
 }
 
 const BASE_MODES: readonly DiffMode[] = Object.freeze([
@@ -55,6 +58,7 @@ let snapshot: DiffSnapshot = {
   baseModes: BASE_MODES,
   bodies: new Map(),
   pendingBody: null,
+  armedPath: null,
 }
 
 const listeners = new Set<() => void>()
@@ -84,7 +88,15 @@ export function resetDiffStore(): void {
     isOutsideRepository: false,
     bodies: new Map(),
     pendingBody: null,
+    armedPath: null,
   })
+}
+
+/** `Yn` — arm a file for the next prompt, or disarm it if already armed. */
+export function toggleAsk(path: string): boolean {
+  const armed = snapshot.armedPath === path ? null : path
+  publish({ armedPath: armed })
+  return armed !== null
 }
 
 function runFor(cwd: string): GitRun {
@@ -180,4 +192,25 @@ export async function loadDiffBody(path: string): Promise<void> {
   } finally {
     bodyInflight.delete(path)
   }
+}
+
+/**
+ * Build the attachment for the armed file and disarm it.
+ *
+ * Returns null when nothing is armed, when the body never loaded, or when
+ * the diff is too large to fit — in each case the prompt proceeds without
+ * the attachment rather than with an empty one.
+ */
+export function consumeArmedDiff(): string | null {
+  const { armedPath, bodies } = snapshot
+  if (armedPath === null) return null
+  const body = bodies.get(armedPath)
+  if (body === undefined) {
+    publish({ armedPath: null })
+    return null
+  }
+  const attachment = buildAskAttachment(armedPath, body)
+  const text = fitAttachment(attachment.text)
+  publish({ armedPath: null })
+  return text
 }

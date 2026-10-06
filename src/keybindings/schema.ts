@@ -147,6 +147,7 @@ export const KEYBINDING_ACTIONS = [
   'diff:dismiss',
   'diff:back',
   'diff:viewDetails',
+  'diff:toggleAsk',
   'diff:previousFile',
   'diff:nextFile',
   // Model picker actions (internal-only)

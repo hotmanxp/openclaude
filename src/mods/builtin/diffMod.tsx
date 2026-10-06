@@ -4,7 +4,7 @@ import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
 import { notifyPaneChanged } from '../engine.js'
 import { DiffDialog } from './diff/DiffDialog.jsx'
-import { resetDiffStore } from './diff/store.js'
+import { consumeArmedDiff, resetDiffStore } from './diff/store.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
@@ -179,6 +179,21 @@ export const diffBuiltinMod: BuiltinModSpec = {
       recordEdit(e)
       return next(e)
     })
+    // An armed file rides the next prompt. The arming is consumed here
+    // rather than on submit failure: the attachment belongs to the turn the
+    // user asked for, and re-arming it would silently duplicate the diff.
+    ctx.on('UserPromptSubmit', async (e, next) => {
+      const armed = consumeArmedDiff()
+      if (armed === null) return next(e)
+      const merged = {
+        ...e,
+        hookSpecificOutput: {
+          hookEventName: 'UserPromptSubmit',
+          additionalContext: armed,
+        },
+      }
+      return next(merged)
+    })
     ctx.registerCommand({
       // Upstream ships /diff as the `cc-plugin-diff` plugin, whose command
       // opens a dialog over `git diff HEAD` rather than printing text. The
@@ -188,7 +203,10 @@ export const diffBuiltinMod: BuiltinModSpec = {
       type: 'local-jsx',
       description: 'Show uncommitted changes in a diff dialog',
       call: async onDone => (
-        <DiffDialog onDone={() => onDone(DISMISSED, { display: 'system' })} />
+        <DiffDialog
+          onDone={() => onDone(DISMISSED, { display: 'system' })}
+          setStatus={text => ctx.ui.status(text)}
+        />
       ),
     })
     // Live pane (P3 render site): mirrors the accumulated session diff above

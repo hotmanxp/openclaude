@@ -226,7 +226,7 @@ export function DiffBody({
 }
 
 /** `Lt` — why there is no diff to draw, or null when there is one. */
-function bodyNote(args: {
+export function bodyNote(args: {
   body: DiffFileBody | undefined
   isLoading: boolean
   isUntracked: boolean
@@ -253,3 +253,46 @@ export function DiffRule({ columns }: { columns: number }): React.ReactNode {
 }
 
 export { sanitize }
+
+type HeaderProps = {
+  displayPath: string
+  isUntracked: boolean
+  isTruncated: boolean
+  isArmed: boolean
+  /** Upstream only offers `[ ask ]` when there is something to attach. */
+  isAskable: boolean
+  columns: number
+}
+
+/**
+ * `gr` — the detail view's file header: the path in bold with its flags,
+ * then the ask toggle on the far side.
+ *
+ * The path truncates from the *start*: the file name at the end is what
+ * identifies the row, so the directory is what gets dropped.
+ */
+export function DiffFileHeader({
+  displayPath,
+  isUntracked,
+  isTruncated,
+  isArmed,
+  isAskable,
+  columns,
+}: HeaderProps): React.ReactNode {
+  const flags = [
+    isUntracked ? 'untracked' : null,
+    isTruncated ? 'truncated' : null,
+  ].filter((flag): flag is string => flag !== null)
+  return (
+    <Box flexDirection="row">
+      <Text bold={true} wrap="truncate-start">
+        {truncateTail(sanitize(displayPath), columns)}
+      </Text>
+      {flags.length > 0 ? <Text dimColor={true}>{` (${flags.join(', ')})`}</Text> : null}
+      <Box flexGrow={1} />
+      {isAskable ? (
+        <Text color={isArmed ? 'diffAddedWord' : undefined}>{isArmed ? 'asked ✓' : 'ask'}</Text>
+      ) : null}
+    </Box>
+  )
+}

@@ -17,6 +17,8 @@ export type DiffRow = {
   isUntracked: boolean
   isBinary: boolean
   body: DiffFileBody | undefined
+  /** Upstream offers `[ ask ]` only when there is something to attach. */
+  isAskable: boolean
 }
 
 /**
@@ -38,11 +40,26 @@ export function buildRows(
       isUntracked: file.isUntracked,
       isBinary: file.isBinary,
       body: bodies.get(file.path),
+      isAskable: isAskable(file, bodies.get(file.path)),
     }))
 }
 
 function displayOf(file: DiffFileEntry): string {
   return toDisplayPath(file)
+}
+
+/**
+ * An untracked file has no hunks until it is staged, a binary file has no
+ * text, and an unread one has nothing to quote — none of them are worth
+ * attaching, so upstream hides the toggle rather than offering an empty one.
+ */
+function isAskable(
+  file: DiffFileEntry,
+  body: DiffFileBody | undefined,
+): boolean {
+  if (file.isUntracked || file.isBinary) return false
+  if (body === undefined) return false
+  return !body.isLarge && body.hunks.length > 0
 }
 
 /**

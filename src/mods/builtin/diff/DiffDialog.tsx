@@ -5,7 +5,7 @@ import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import { useKeybinding } from '../../../keybindings/useKeybinding.js'
 import { MIN_COLUMNS } from './constants.js'
 import { DiffFileList, DiffStatsCell } from './DiffFileList.jsx'
-import { DiffBody, DiffRule } from './detail.jsx'
+import { DiffBody, DiffFileHeader, DiffRule } from './detail.jsx'
 import {
   OUTSIDE_REPOSITORY_MESSAGE,
   diffTitle,
@@ -14,13 +14,22 @@ import {
   tooNarrowMessage,
 } from './presentation.js'
 import { buildRows, moveSelection, windowRows } from './rows.js'
-import { getDiffSnapshot, loadDiffBody, refreshDiff, subscribeToDiff } from './store.js'
+import {
+  getDiffSnapshot,
+  loadDiffBody,
+  refreshDiff,
+  subscribeToDiff,
+  toggleAsk,
+} from './store.js'
+import { armedStatus } from './ask.js'
 import { plural } from './text.js'
 
 type View = 'list' | 'detail'
 
 export type DiffDialogProps = {
   onDone: () => void
+  /** Armed/unarmed feedback rides the host's status segment. */
+  setStatus?: (text: string) => void
 }
 
 const KEYBINDING_CONTEXT = { context: 'DiffDialog', isActive: true } as const
@@ -33,7 +42,7 @@ const KEYBINDING_CONTEXT = { context: 'DiffDialog', isActive: true } as const
  * plugin's declarative focus model, which is the same choice upstream's own
  * SDK path makes.
  */
-export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
+export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactNode {
   const snapshot = useSyncExternalStore(subscribeToDiff, getDiffSnapshot)
   const { columns } = useTerminalSize()
   const [view, setView] = useState<View>('list')
@@ -109,6 +118,14 @@ export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
   }, [view, onDone])
 
   useKeybinding('diff:dismiss', handleCancel, KEYBINDING_CONTEXT)
+  useKeybinding(
+    'diff:toggleAsk',
+    () => {
+      if (view !== 'detail' || selected === null || !selected.isAskable) return
+      setStatus?.(toggleAsk(selected.path) ? armedStatus(selected.path) : '')
+    },
+    KEYBINDING_CONTEXT,
+  )
 
   if (snapshot.isOutsideRepository) {
     return <Text dimColor={true}>{OUTSIDE_REPOSITORY_MESSAGE}</Text>
@@ -170,7 +187,14 @@ export function DiffDialog({ onDone }: DiffDialogProps): React.ReactNode {
       <Box flexDirection="column" marginTop={1} marginBottom={1}>
         {isDetail && selected ? (
           <>
-            <Text wrap="truncate-end">{selected.displayPath}</Text>
+            <DiffFileHeader
+              displayPath={selected.displayPath}
+              isUntracked={selected.isUntracked}
+              isTruncated={selected.body?.isTruncated === true}
+              isArmed={snapshot.armedPath === selected.path}
+              isAskable={selected.isAskable}
+              columns={columns}
+            />
             <DiffRule columns={columns} />
             <DiffBody
               body={selected.body}

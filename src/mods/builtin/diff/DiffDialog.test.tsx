@@ -12,7 +12,7 @@ import { setCwdState } from '../../../bootstrap/state.js'
 import { createRoot } from '../../../ink.js'
 import { KeybindingSetup } from '../../../keybindings/KeybindingProviderSetup.js'
 import { AppStateProvider } from '../../../state/AppState.js'
-import { resetDiffStore } from './store.js'
+import { consumeArmedDiff, resetDiffStore } from './store.js'
 
 const KEYS = {
   enter: '\r',
@@ -93,7 +93,9 @@ type Harness = {
   cleanup: () => Promise<void>
 }
 
-async function renderDialog(): Promise<Harness & { dismissed: () => number }> {
+async function renderDialog(): Promise<
+  Harness & { dismissed: () => number; statuses: string[] }
+> {
   const { DiffDialog } = await import(`./DiffDialog.jsx?t=${Date.now()}-${Math.random()}`)
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
@@ -102,6 +104,7 @@ async function renderDialog(): Promise<Harness & { dismissed: () => number }> {
     patchConsole: false,
   })
   let dismissals = 0
+  const statuses: string[] = []
 
   root.render(
     <AppStateProvider>
@@ -109,6 +112,9 @@ async function renderDialog(): Promise<Harness & { dismissed: () => number }> {
         <DiffDialog
           onDone={() => {
             dismissals += 1
+          }}
+          setStatus={text => {
+            statuses.push(text)
           }}
         />
       </KeybindingSetup>
@@ -118,6 +124,7 @@ async function renderDialog(): Promise<Harness & { dismissed: () => number }> {
   return {
     getOutput,
     dismissed: () => dismissals,
+    statuses,
     press: async (key: string) => {
       stdin.write(key)
       await Bun.sleep(120)
@@ -211,6 +218,59 @@ test('the detail view explains an untracked file instead of showing hunks', asyn
       'the untracked note',
     )
     expect(harness.getOutput()).toContain('git add')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('`a` arms the file and its hunks ride the next prompt', async () => {
+  const harness = await renderDialog()
+  try {
+    await waitFor(() => harness.getOutput().includes('alpha.ts'), 'the list')
+    await harness.press(KEYS.enter)
+    await waitFor(() => harness.getOutput().includes('@@ -'), 'a hunk header')
+
+    // The toggle sits on the right of the file header.
+    expect(harness.getOutput()).toContain('ask')
+
+    await harness.press('a')
+    await waitFor(
+      () => harness.getOutput().includes('asked'),
+      'the armed label',
+    )
+    expect(harness.statuses.at(-1)).toContain('rides your next prompt')
+
+    const attached = consumeArmedDiff()
+    expect(attached).not.toBeNull()
+    expect(attached).toContain('The user attached the diff of alpha.ts')
+    expect(attached).toContain('@@ -1 +1 @@')
+    expect(attached).toContain('+const a = 10')
+
+    // Consuming disarms, so the prompt after next does not repeat it.
+    expect(consumeArmedDiff()).toBeNull()
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('an untracked file offers no ask toggle', async () => {
+  const harness = await renderDialog()
+  try {
+    await waitFor(() => harness.getOutput().includes('gamma.ts'), 'the list')
+    await harness.press(KEYS.down)
+    await waitFor(
+      () => /❯.*gamma\.ts/.test(harness.getOutput()),
+      'the cursor on gamma.ts',
+    )
+    await harness.press(KEYS.enter)
+    await waitFor(
+      () => harness.getOutput().includes('see line counts'),
+      'the untracked note',
+    )
+    // Nothing to attach: the header shows no toggle, and `a` does nothing.
+    expect(harness.getOutput()).not.toContain('asked')
+    await harness.press('a')
+    expect(consumeArmedDiff()).toBeNull()
   } finally {
     await harness.cleanup()
   }

@@ -307,6 +307,9 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       up: 'diff:previousFile',
       down: 'diff:nextFile',
       enter: 'diff:viewDetails',
+      // Upstream reaches `[ ask ]` by clicking the button; the list here is
+      // keyboard-only, so `a` stands in for it.
+      a: 'diff:toggleAsk',
     },
   },
   // Model picker effort cycling (internal-only)
