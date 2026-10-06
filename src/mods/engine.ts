@@ -430,8 +430,15 @@ export function createModContext(mod: LoadedMod): ModContext {
           `ctx.registerCommand(): name must match [a-zA-Z0-9_-]{1,40}, got "${String(spec?.name)}"`,
         )
       }
-      if (typeof spec.handler !== 'function') {
-        throw new Error('ctx.registerCommand(): handler must be a function')
+      if (typeof spec.handler !== 'function' && typeof spec.call !== 'function') {
+        throw new Error(
+          'ctx.registerCommand(): provide handler (type "local") or call (type "local-jsx")',
+        )
+      }
+      if (typeof spec.handler === 'function' && typeof spec.call === 'function') {
+        throw new Error(
+          'ctx.registerCommand(): handler and call are mutually exclusive',
+        )
       }
       mod.commands.push(spec)
     },
@@ -568,6 +575,11 @@ export function getModTools(): Tool[] {
 // register top-level commands (upstream cc-plugin-diff parity: /diff is a
 // top-level command) — the caller (appendModCommands) dedupes against
 // existing names so a built-in can never shadow a host command.
+//
+// Two shapes: `handler` → LocalCommand (text to the user), `call` →
+// LocalJSXCommand (the mod renders the interaction and decides, via onDone,
+// what enters the conversation — handoff uses it to render its document
+// picker without a model AskUserQuestion round-trip).
 // ---------------------------------------------------------------------------
 
 export function buildModCommands(): Command[] {
@@ -578,16 +590,36 @@ export function buildModCommands(): Command[] {
       const runtimeName = isBuiltin
         ? spec.name
         : `${mod.manifest.name}:${spec.name}`
-      commands.push({
+      const base = {
         name: runtimeName,
         description:
           spec.description ?? `Command provided by mod "${mod.manifest.name}"`,
         ...(spec.argumentHint ? { argumentHint: spec.argumentHint } : {}),
+        ...(spec.immediate ? { immediate: true } : {}),
+      }
+      if (typeof spec.call === 'function') {
+        // local-jsx: the mod owns the whole interaction — it renders the
+        // component and calls onDone to say what enters the conversation.
+        // Used by the handoff mod so document selection is program-rendered
+        // instead of routed through a model AskUserQuestion call.
+        commands.push({
+          ...base,
+          type: 'local-jsx',
+          ...(spec.supportsNonInteractive
+            ? { supportsNonInteractive: true }
+            : {}),
+          load: async () => ({ call: spec.call! }),
+        })
+        continue
+      }
+      const handler = spec.handler!
+      commands.push({
+        ...base,
         type: 'local',
         supportsNonInteractive: true,
         load: async () => ({
           call: async (args: string) => {
-            const output = await spec.handler(args)
+            const output = await handler(args)
             return {
               type: 'text' as const,
               value:

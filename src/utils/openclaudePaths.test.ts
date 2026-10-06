@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { afterEach, describe, expect, mock, test } from 'bun:test'
-import * as fsPromises from 'fs/promises'
-import { homedir } from 'os'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 
 const originalEnv = { ...process.env }
@@ -245,24 +245,25 @@ describe('OpenCC paths', () => {
   })
 
   test('legacy local installs are detected when they still expose the claude binary', async () => {
-    mock.module('fs/promises', () => ({
-      ...fsPromises,
-      access: async (path: string) => {
-        if (
-          path === join(homedir(), '.claude', 'local', 'node_modules', '.bin', 'opencc')
-        ) {
-          return
-        }
-        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-      },
-    }))
+    // Real directory, real `access` — no fs mock. A `mock.module('fs/promises')`
+    // here is process-global in bun and leaks a fake `access` into every later
+    // test file that imported fs/promises at module top level.
+    const home = await mkdtemp(join(tmpdir(), 'occ-legacy-'))
+    try {
+      const binDir = join(home, '.claude', 'local', 'node_modules', '.bin')
+      await mkdir(binDir, { recursive: true })
+      await writeFile(join(binDir, 'opencc'), '#!/bin/sh\n')
 
-    const { getDetectedLocalInstallDir, localInstallationExists } =
-      await importFreshLocalInstaller()
+      const { getDetectedLocalInstallDir, localInstallationExists } =
+        await importFreshLocalInstaller()
+      const probe = { configHomeDir: join(home, 'no-such-config'), homeDir: home }
 
-    expect(await localInstallationExists()).toBe(true)
-    expect(await getDetectedLocalInstallDir()).toBe(
-      join(homedir(), '.claude', 'local'),
-    )
+      expect(await localInstallationExists(probe)).toBe(true)
+      expect(await getDetectedLocalInstallDir(probe)).toBe(
+        join(home, '.claude', 'local'),
+      )
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 })

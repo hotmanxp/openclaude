@@ -25,10 +25,14 @@ function getLegacyLocalInstallDir(homeDir = homedir()): string {
   return join(homeDir, '.claude', 'local')
 }
 
-export function getCandidateLocalInstallDirs(options?: {
+export type LocalInstallProbeOptions = {
   configHomeDir?: string
   homeDir?: string
-}): string[] {
+}
+
+export function getCandidateLocalInstallDirs(
+  options?: LocalInstallProbeOptions,
+): string[] {
   const homeDir = options?.homeDir ?? homedir()
   const configHomeDir = options?.configHomeDir ?? getClaudeConfigHomeDir()
   return Array.from(
@@ -170,9 +174,16 @@ export async function installOrUpdateClaudePackage(
 /**
  * Check if local installation exists.
  * Pure existence probe — callers use this to choose update path / UI hints.
+ *
+ * `options` lets a test point both candidate roots at a real temp dir and
+ * exercise the genuine `access` call, instead of replacing `fs/promises`
+ * process-wide (a `mock.module` on fs leaks a fake `access` into every later
+ * test file that imported it).
  */
-export async function localInstallationExists(): Promise<boolean> {
-  for (const localInstallDir of getCandidateLocalInstallDirs()) {
+export async function localInstallationExists(
+  options?: LocalInstallProbeOptions,
+): Promise<boolean> {
+  for (const localInstallDir of getCandidateLocalInstallDirs(options)) {
     for (const binaryPath of getCandidateLocalBinaryPaths(localInstallDir)) {
       try {
         await access(binaryPath)
@@ -185,8 +196,10 @@ export async function localInstallationExists(): Promise<boolean> {
   return false
 }
 
-export async function getDetectedLocalInstallDir(): Promise<string | null> {
-  for (const localInstallDir of getCandidateLocalInstallDirs()) {
+export async function getDetectedLocalInstallDir(
+  options?: LocalInstallProbeOptions,
+): Promise<string | null> {
+  for (const localInstallDir of getCandidateLocalInstallDirs(options)) {
     for (const binaryPath of getCandidateLocalBinaryPaths(localInstallDir)) {
       try {
         await access(binaryPath)

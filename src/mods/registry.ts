@@ -1,4 +1,5 @@
 import type { HookEvent } from '../types/hooks.js'
+import type { LocalJSXCommandCall } from '../types/command.js'
 import type { ModManifest } from './manifest.js'
 
 /**
@@ -28,7 +29,20 @@ export type ModCommandSpec = {
   name: string
   description?: string
   argumentHint?: string
-  handler: (args: string) => unknown | Promise<unknown>
+  /**
+   * `'local'` (default) renders the handler's return value as text for the
+   * user; `'local-jsx'` hands the host a component to render and uses
+   * `onDone` to decide what enters the conversation.
+   */
+  type?: 'local' | 'local-jsx'
+  /** Required for `type: 'local'`. */
+  handler?: (args: string) => unknown | Promise<unknown>
+  /** Required for `type: 'local-jsx'` — same contract as a host local-jsx command. */
+  call?: LocalJSXCommandCall
+  /** Bypass the input queue (`local-jsx` only, passed through to the host command). */
+  immediate?: boolean
+  /** Keep the command available in headless sessions (`local-jsx` only). */
+  supportsNonInteractive?: boolean
 }
 
 export type ModToolSpec = {
