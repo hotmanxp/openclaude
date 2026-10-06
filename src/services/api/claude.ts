@@ -2841,13 +2841,23 @@ async function* queryModel(
       try {
         // Fall back to non-streaming mode
         const result = yield* executeNonStreamingRequest(
-          { model: options.model, source: options.querySource, effortValue: effort },
+          {
+            model: options.model,
+            source: options.querySource,
+            // Must match the streaming path (and the watchdog fallback at
+            // :2730). Dropping it here sent a routed sub-agent's ENTIRE
+            // conversation to the global default provider instead of its
+            // agentModels endpoint — a privacy leak, not just a wrong model.
+            providerOverride: options.providerOverride,
+            effortValue: effort,
+          },
           {
             model: options.model,
             fallbackModel: options.fallbackModel,
             thinkingConfig,
             ...(isFastModeEnabled() && { fastMode: isFastMode }),
             signal,
+            querySource: options.querySource,
           },
           paramsFromContext,
           (attempt, _startTime, tokens) => {
