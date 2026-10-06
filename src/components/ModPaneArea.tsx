@@ -1,4 +1,9 @@
-import { Component, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  Component,
+  isValidElement,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import { Box, Text } from '../ink.js'
 import {
   getModPanesSnapshot,
@@ -16,13 +21,35 @@ import {
  */
 
 class PaneErrorBoundary extends Component<
-  { modName: string; title: string; children: ReactNode },
-  { error: Error | null }
+  {
+    modName: string
+    title: string
+    /**
+     * Changing this value clears a latched error and retries the subtree.
+     * It is `${paneVersion}:${component identity}` — a mod that fixes its
+     * component (re-registers with a new function) or pushes fresh data
+     * (`ctx.ui.notify()`) recovers without a process restart. Without it the
+     * error latched for the pane's whole lifetime.
+     */
+    resetKey: string
+    children: ReactNode
+  },
+  { error: Error | null; seenResetKey: string }
 > {
-  state = { error: null as Error | null }
+  state = { error: null as Error | null, seenResetKey: this.props.resetKey }
 
   static getDerivedStateFromError(error: Error): { error: Error } {
     return { error }
+  }
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { seenResetKey: string },
+  ): { error: null; seenResetKey: string } | null {
+    if (props.resetKey !== state.seenResetKey) {
+      return { error: null, seenResetKey: props.resetKey }
+    }
+    return null
   }
 
   render(): ReactNode {
@@ -38,9 +65,54 @@ class PaneErrorBoundary extends Component<
   }
 }
 
+/**
+ * Normalize a mod component's return value into something renderable.
+ *
+ * The component is called as a plain function (not `<C />`), so React never
+ * sees it as a component boundary and primitives do not get wrapped for the
+ * caller. Ink's reconciler drops bare `number` / `string[]` / `boolean` and
+ * renders an empty box with no diagnostic, which reads as "my pane is broken"
+ * with nothing to act on. Normalize the shapes a mod author reasonably writes,
+ * and throw a naming error for the rest so the ErrorBoundary can show it.
+ */
+export function normalizePaneContent(value: unknown, modName: string, paneId: string): ReactNode {
+  // `cond && <X/>` yields false — treat every boolean as "takes no space".
+  if (value === null || value === undefined || typeof value === 'boolean') {
+    return null
+  }
+  if (typeof value === 'string') return <Text>{value}</Text>
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return <Text>{String(value)}</Text>
+  }
+  if (Array.isArray(value)) {
+    const items = value.map(item => normalizePaneContent(item, modName, paneId))
+    if (items.every(item => item === null)) return null
+    return <>{items}</>
+  }
+  if (isValidElement(value)) return value
+  throw new Error(
+    `ctx.ui.pane("${paneId}"): component must return null, a string, a number, ` +
+      `a React element or an array of those — got ${describe(value)}. ` +
+      `Returning a plain object, class instance or function is not renderable.`,
+  )
+}
+
+function describe(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value === 'object') {
+    const name = (value as object).constructor?.name
+    return name ? `an instance of ${name}` : 'a plain object'
+  }
+  return `a ${typeof value}`
+}
+
 function PaneView({ pane }: { pane: RegisteredPane }): ReactNode {
-  const content = pane.component(pane.props)
-  if (content === null || content === undefined) return null
+  const content = normalizePaneContent(
+    pane.component(pane.props),
+    pane.modName,
+    pane.id,
+  )
+  if (content === null) return null
   return (
     <Box
       key={pane.key}
@@ -51,13 +123,13 @@ function PaneView({ pane }: { pane: RegisteredPane }): ReactNode {
       <Text dimColor>
         {pane.title} · mod:{pane.modName}
       </Text>
-      {typeof content === 'string' ? <Text>{content}</Text> : (content as ReactNode)}
+      {content}
     </Box>
   )
 }
 
 export function ModPaneArea(): ReactNode {
-  usePaneVersion()
+  const version = usePaneVersion()
   const panes = getModPanesSnapshot()
   if (panes.length === 0) return null
   return (
@@ -67,6 +139,7 @@ export function ModPaneArea(): ReactNode {
           key={pane.key}
           modName={pane.modName}
           title={pane.title}
+          resetKey={`${version}:${pane.component}`}
         >
           <PaneView pane={pane} />
         </PaneErrorBoundary>

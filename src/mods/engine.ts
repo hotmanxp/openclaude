@@ -182,6 +182,12 @@ export type ModContext = {
     pane(spec: ModPaneSpec): void
     /** Close one pane by id, or all of this mod's panes when omitted. */
     closePane(id?: string): void
+    /**
+     * Request a re-render of this mod's panes. Disk mods hold their data in
+     * module scope (props identity never changes), so without this a pane can
+     * only be redrawn when some other mod happens to notify.
+     */
+    notify(): void
   }
   /**
    * Fenced filesystem access. Present ONLY when the mod is listed in
@@ -484,6 +490,9 @@ export function createModContext(mod: LoadedMod): ModContext {
       },
       closePane(id?: string) {
         closeModPane(modName, typeof id === 'string' ? id : undefined)
+      },
+      notify() {
+        notifyPaneChanged()
       },
     },
     ...(fsApi ? { fs: fsApi } : {}),

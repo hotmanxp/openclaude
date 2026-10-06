@@ -7,6 +7,7 @@ import {
   clearModPanes,
   createModContext,
   getModPanesSnapshot,
+  getModPanesVersion,
   getModStatusSnapshot,
   setModFsAuthOverrideForTesting,
   subscribeModNotices,
@@ -92,6 +93,16 @@ describe('ctx.ui.pane (P3 render site)', () => {
     expect(getModPanesSnapshot()).toHaveLength(2)
     clearModPanes('with-panes')
     expect(getModPanesSnapshot()).toEqual([])
+  })
+
+  // Regression: a disk mod holds its data in module scope, so nothing else
+  // bumps paneVersion on its behalf — without ctx.ui.notify() its pane froze.
+  test('ctx.ui.notify() bumps paneVersion so a disk mod can repaint', () => {
+    const ctx = createModContext(freshMod('painter'))
+    ctx.ui.pane({ id: 'a', title: 'A', component: () => 'a' })
+    const before = getModPanesVersion()
+    ctx.ui.notify()
+    expect(getModPanesVersion()).toBeGreaterThan(before)
   })
 })
 
