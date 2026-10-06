@@ -255,6 +255,103 @@ describe('mermaid built-in mod — fence rewriting', () => {
     expect(displayWidth(bottom)).toBe(displayWidth(rule))
   })
 
+  // `subgraph` … `end` used to bail out of parseFlowchart entirely, so any
+  // diagram using one fell back to raw code.
+  test('wraps subgraph members in a titled frame', () => {
+    const out = renderMermaidDiagram(
+      [
+        'flowchart TD',
+        '  subgraph load [加载阶段]',
+        '    A[a] --> B[b]',
+        '  end',
+        '  B --> C[c]',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('加载阶段')
+  })
+
+  test('falls back to the cluster id when no title is given', () => {
+    const out = renderMermaidDiagram(
+      ['flowchart TD', '  subgraph s1', '    A[a] --> B[b]', '  end', 'B --> C[c]'].join(
+        '\n',
+      ),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('s1')
+  })
+
+  test('handles nested subgraphs', () => {
+    const out = renderMermaidDiagram(
+      [
+        'flowchart TD',
+        '  subgraph outer [外层]',
+        '    subgraph inner [内层]',
+        '      A[a] --> B[b]',
+        '    end',
+        '    B --> C[c]',
+        '  end',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('内层')
+    expect(out).toContain('外层')
+  })
+
+  test('renders clusters in an LR flowchart', () => {
+    const out = renderMermaidDiagram(
+      [
+        'graph LR',
+        '  subgraph s1 [组一]',
+        '    A[a] --> B[b]',
+        '  end',
+        '  B --> C[c]',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+    expect(out).toContain('组一')
+  })
+
+  test('keeps a node claimed by two sibling subgraphs as code', () => {
+    // The two frames would overlap, so this is not drawable.
+    const src = [
+      'flowchart TD',
+      '  subgraph one [一]',
+      '    A[a] --> M[m]',
+      '  end',
+      '  subgraph two [二]',
+      '    M --> B[b]',
+      '  end',
+    ].join('\n')
+    expect(renderMermaidDiagram(src)).toBeNull()
+  })
+
+  test('renders a node shared by a nested subgraph and its ancestor', () => {
+    const out = renderMermaidDiagram(
+      [
+        'flowchart TD',
+        '  subgraph outer [外]',
+        '    subgraph inner [内]',
+        '      A[a]',
+        '    end',
+        '    A --> B[b]',
+        '  end',
+      ].join('\n'),
+    )
+    expect(out).not.toBeNull()
+  })
+
+  test('keeps an unterminated subgraph as code', () => {
+    const src = ['flowchart TD', '  subgraph s1', '    A --> B'].join('\n')
+    expect(renderMermaidDiagram(src)).toBeNull()
+  })
+
+  test('leaves cluster-free flowcharts untouched', () => {
+    const out = renderMermaidDiagram(['flowchart TD', 'A --> B --> C'].join('\n'))
+    expect(out).not.toBeNull()
+    expect(out).not.toContain('subgraph')
+  })
+
   test('renders a cyclic flowchart with many back edges', () => {
     const lines = ['flowchart TD', 'A --> B', 'B --> C', 'C --> A']
     // Six distinct back edges — above the old hard-coded limit of 4.
