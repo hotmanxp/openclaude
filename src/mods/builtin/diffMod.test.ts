@@ -5,7 +5,7 @@ import {
   createModContext,
   getModPanesSnapshot,
 } from '../engine.js'
-import { toggleAsk, resetDiffStore } from './diff/store.js'
+import { isPaneOpen, resetDiffStore, setPaneOpen, toggleAsk } from './diff/store.js'
 import type { LoadedMod } from '../registry.js'
 
 function harness(): {
@@ -91,5 +91,31 @@ describe('diff built-in mod — ask injection', () => {
     toggleAsk('src/never-loaded.ts')
     const result = await userPromptSubmit({ prompt: 'hello' })
     expect(result).toEqual({ continue: true })
+  })
+})
+
+describe('diff built-in mod — the panel toggle', () => {
+  test('starts closed', () => {
+    harness()
+    expect(isPaneOpen()).toBe(false)
+  })
+
+  test('/diff opens the pane, and a second call closes it', async () => {
+    const { mod } = harness()
+    const call = mod.commands.find(c => c.name === 'diff')!.call!
+    const done = () => {}
+
+    await call(done, {} as never, '')
+    expect(isPaneOpen()).toBe(true)
+
+    await call(done, {} as never, '')
+    expect(isPaneOpen()).toBe(false)
+  })
+
+  test('closing does not render a dialog', async () => {
+    const { mod } = harness()
+    setPaneOpen(true)
+    const call = mod.commands.find(c => c.name === 'diff')!.call!
+    expect(await call(() => {}, {} as never, '')).toBeNull()
   })
 })

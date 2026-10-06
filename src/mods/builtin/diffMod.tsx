@@ -1,7 +1,12 @@
 import React from 'react'
 import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
-import { consumeArmedDiff, resetDiffStore } from './diff/store.js'
+import {
+  consumeArmedDiff,
+  isPaneOpen,
+  resetDiffStore,
+  setPaneOpen,
+} from './diff/store.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
@@ -72,8 +77,22 @@ export const diffBuiltinMod: BuiltinModSpec = {
       // mod keeps the name, but now renders the dialog the plugin renders.
       name: 'diff',
       type: 'local-jsx',
-      description: 'Show uncommitted changes in a diff dialog',
+      description: 'Toggle the diff panel, or open it on a changed file',
       call: async onDone => {
+        // Upstream describes this command as "Toggle the diff panel showing
+        // uncommitted changes": turning it off closes the pane and shows no
+        // dialog, because there would be nothing to focus. Turning it on
+        // reveals the pane and opens the dialog over it.
+        if (isPaneOpen()) {
+          setPaneOpen(false)
+          // The store's own listeners only re-render the component that
+          // subscribed; the host needs telling to drop the pane's rows.
+          ctx.ui.notify()
+          onDone(DISMISSED, { display: 'system' })
+          return null
+        }
+        setPaneOpen(true)
+        ctx.ui.notify()
         const { DiffDialog } = await import('./diff/DiffDialog.jsx')
         return (
           <DiffDialog

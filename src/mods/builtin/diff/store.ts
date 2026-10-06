@@ -34,6 +34,12 @@ export type DiffSnapshot = {
   pendingBody: string | null
   /** Path armed for the next prompt, or null. */
   armedPath: string | null
+  /**
+   * Whether the pane is showing. Upstream keeps this in a stored preference
+   * so the panel survives restarts; without that API this is session-scoped
+   * and starts closed — a panel nobody asked for is noise on every launch.
+   */
+  paneOpen: boolean
 }
 
 const BASE_MODES: readonly DiffMode[] = Object.freeze([
@@ -59,6 +65,7 @@ let snapshot: DiffSnapshot = {
   bodies: new Map(),
   pendingBody: null,
   armedPath: null,
+  paneOpen: false,
 }
 
 const listeners = new Set<() => void>()
@@ -90,6 +97,15 @@ export function resetDiffStore(): void {
     pendingBody: null,
     armedPath: null,
   })
+}
+
+/** `/diff` toggles the panel, so it needs to know either way. */
+export function isPaneOpen(): boolean {
+  return snapshot.paneOpen
+}
+
+export function setPaneOpen(open: boolean): void {
+  publish({ paneOpen: open })
 }
 
 /** `Yn` — arm a file for the next prompt, or disarm it if already armed. */
