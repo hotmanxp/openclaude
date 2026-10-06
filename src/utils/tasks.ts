@@ -81,6 +81,12 @@ export const TaskSchema = lazySchema(() =>
     description: z.string(),
     activeForm: z.string().optional(), // present continuous form for spinner (e.g., "Running tests")
     owner: z.string().optional(), // agent ID
+    // Lease bookkeeping (cc-010). A claim without a lease is permanent: if the
+    // claiming agent dies, nothing ever clears `owner` and findAvailableTask
+    // skips the task forever. The owner must renew before `leaseExpiresAt` or
+    // the task becomes claimable again. `claimedAt` is kept for diagnostics.
+    claimedAt: z.number().optional(), // epoch ms when the current lease began
+    leaseExpiresAt: z.number().optional(), // epoch ms; past this the claim is stale
     status: TaskStatusSchema(),
     blocks: z.array(z.string()), // task IDs this task blocks
     blockedBy: z.array(z.string()), // task IDs that block this task
@@ -88,6 +94,66 @@ export const TaskSchema = lazySchema(() =>
   }),
 )
 export type Task = z.infer<ReturnType<typeof TaskSchema>>
+
+// ---------------------------------------------------------------------------
+// Claim leases (cc-010)
+//
+// A claimed task used to be held forever: `owner` was written once and only
+// ever cleared by the owning agent. If that agent crashed, the task was
+// invisible to every other agent — permanently lost work, silently.
+//
+// The owner now holds a time-boxed lease and renews it while it works. Once
+// the lease lapses the claim is stale and another agent may take the task.
+// The lease must be comfortably longer than a heartbeat period so a busy
+// agent that simply hasn't ticked yet is never robbed of in-flight work.
+// ---------------------------------------------------------------------------
+
+/** How long a claim stays valid without a renewal. */
+export const TASK_LEASE_MS = 60_000
+
+/** Lease fields written when an agent claims (or re-claims) a task. */
+function leaseFor(now: number = Date.now()): Pick<
+  Task,
+  'claimedAt' | 'leaseExpiresAt'
+> {
+  return { claimedAt: now, leaseExpiresAt: now + TASK_LEASE_MS }
+}
+
+/**
+ * A claim is live only while its owner has an unexpired lease.
+ *
+ * Tasks claimed before leases existed have no `leaseExpiresAt`. Treating a
+ * missing lease as expired would let a second agent steal work from a task
+ * that is genuinely in progress, so those are honoured as live — a task file
+ * has to be re-claimed once to pick up a lease.
+ */
+export function hasLiveLease(
+  task: Pick<Task, 'owner' | 'leaseExpiresAt'>,
+  now: number = Date.now(),
+): boolean {
+  if (!task.owner) return false
+  if (task.leaseExpiresAt === undefined) return true
+  return task.leaseExpiresAt > now
+}
+
+/**
+ * Extend this agent's lease on a task it already owns.
+ *
+ * Call periodically while the task is in progress; without renewal the lease
+ * lapses and another agent may take the task over. Returns false when the task
+ * is gone or is no longer owned by `agentId` (it was taken over or completed),
+ * which is the caller's signal to stop working on it.
+ */
+export async function renewTaskLease(
+  taskListId: string,
+  taskId: string,
+  agentId: string,
+): Promise<boolean> {
+  const task = await getTask(taskListId, taskId)
+  if (!task || task.owner !== agentId) return false
+  await updateTask(taskListId, taskId, leaseFor())
+  return true
+}
 
 // High water mark file name - stores the maximum task ID ever assigned
 const HIGH_WATER_MARK_FILE = '.highwatermark'
@@ -572,8 +638,14 @@ export async function claimTask(
       return { success: false, reason: 'task_not_found' }
     }
 
-    // Check if already claimed by another agent
-    if (task.owner && task.owner !== claimantAgentId) {
+    // Check if already claimed by another agent whose lease is still live. An
+    // expired lease means that agent died mid-task, so the work is up for
+    // grabs rather than lost forever (cc-010).
+    if (
+      task.owner &&
+      task.owner !== claimantAgentId &&
+      hasLiveLease(task)
+    ) {
       return { success: false, reason: 'already_claimed', task }
     }
 
@@ -597,6 +669,7 @@ export async function claimTask(
     // Claim the task (already holding taskPath lock — use unsafe variant)
     const updated = await updateTaskUnsafe(taskListId, taskId, {
       owner: claimantAgentId,
+      ...leaseFor(),
     })
     return { success: true, task: updated! }
   } catch (error) {
@@ -637,8 +710,12 @@ async function claimTaskWithBusyCheck(
       return { success: false, reason: 'task_not_found' }
     }
 
-    // Check if already claimed by another agent
-    if (task.owner && task.owner !== claimantAgentId) {
+    // Check if already claimed by another agent whose lease is still live (cc-010)
+    if (
+      task.owner &&
+      task.owner !== claimantAgentId &&
+      hasLiveLease(task)
+    ) {
       return { success: false, reason: 'already_claimed', task }
     }
 
@@ -658,12 +735,15 @@ async function claimTaskWithBusyCheck(
       return { success: false, reason: 'blocked', task, blockedByTasks }
     }
 
-    // Check if agent is busy with other unresolved tasks
+    // Check if agent is busy with other unresolved tasks. Expired leases don't
+    // count: a restarted agent reusing its ID must not be locked out by
+    // tasks its previous incarnation never released (cc-010).
     const agentOpenTasks = allTasks.filter(
       t =>
         t.status !== 'completed' &&
         t.owner === claimantAgentId &&
-        t.id !== taskId,
+        t.id !== taskId &&
+        hasLiveLease(t),
     )
     if (agentOpenTasks.length > 0) {
       return {
@@ -677,6 +757,7 @@ async function claimTaskWithBusyCheck(
     // Claim the task
     const updated = await updateTask(taskListId, taskId, {
       owner: claimantAgentId,
+      ...leaseFor(),
     })
     return { success: true, task: updated! }
   } catch (error) {

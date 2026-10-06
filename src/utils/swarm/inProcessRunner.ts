@@ -92,7 +92,21 @@ import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
 import { sleep } from '../sleep.js'
 import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
-import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
+import {
+  claimTask,
+  hasLiveLease,
+  listTasks,
+  renewTaskLease,
+  type Task,
+  TASK_LEASE_MS,
+  updateTask,
+} from '../tasks.js'
+
+/**
+ * Lease renewal cadence. Must stay well below TASK_LEASE_MS so a single slow
+ * or delayed tick cannot lapse a live agent's claim.
+ */
+const TASK_LEASE_HEARTBEAT_MS = Math.floor(TASK_LEASE_MS / 3)
 import type { TeammateContext } from '../teammateContext.js'
 import { runWithTeammateContext } from '../teammateContext.js'
 import {
@@ -590,7 +604,7 @@ async function sendIdleNotification(
 
 /**
  * Find an available task from the team's task list.
- * A task is available if it's pending, has no owner, and is not blocked.
+ * A task is available if it's pending, has no live claim, and is not blocked.
  */
 function findAvailableTask(tasks: Task[]): Task | undefined {
   const unresolvedTaskIds = new Set(
@@ -599,7 +613,9 @@ function findAvailableTask(tasks: Task[]): Task | undefined {
 
   return tasks.find(task => {
     if (task.status !== 'pending') return false
-    if (task.owner) return false
+    // An expired lease means the previous owner died mid-task (cc-010);
+    // skipping those would strand the work forever.
+    if (hasLiveLease(task)) return false
     return task.blockedBy.every(id => !unresolvedTaskIds.has(id))
   })
 }
@@ -624,6 +640,7 @@ function formatTaskAsPrompt(task: Task): string {
 async function tryClaimNextTask(
   taskListId: string,
   agentName: string,
+  claimedTaskIdRef: { current: string | null },
 ): Promise<string | undefined> {
   try {
     const tasks = await listTasks(taskListId)
@@ -649,11 +666,38 @@ async function tryClaimNextTask(
       `[inProcessRunner] Claimed task #${availableTask.id}: ${availableTask.subject}`,
     )
 
+    claimedTaskIdRef.current = availableTask.id
     return formatTaskAsPrompt(availableTask)
   } catch (err) {
     logForDebugging(`[inProcessRunner] Error checking task list: ${err}`)
     return undefined
   }
+}
+
+/**
+ * Keep the lease on whatever task this teammate currently holds (cc-010).
+ *
+ * Runs for the teammate's whole lifetime rather than only while idle: a
+ * teammate mid-turn can run for many minutes, and if its lease lapses another
+ * agent is free to take the task it is still working on. Stops renewing as
+ * soon as the teammate no longer owns the task.
+ */
+function startTaskLeaseHeartbeat(
+  taskListId: string,
+  agentName: string,
+  claimedTaskIdRef: { current: string | null },
+): () => void {
+  const heartbeat = setInterval(() => {
+    const held = claimedTaskIdRef.current
+    if (held === null) return
+    void renewTaskLease(taskListId, held, agentName).then(renewed => {
+      if (!renewed) {
+        claimedTaskIdRef.current = null
+      }
+    })
+  }, TASK_LEASE_HEARTBEAT_MS)
+  heartbeat.unref?.()
+  return () => clearInterval(heartbeat)
 }
 
 /**
@@ -693,6 +737,7 @@ async function waitForNextPromptOrShutdown(
   getAppState: () => AppState,
   setAppState: SetAppStateFn,
   taskListId: string,
+  claimedTaskIdRef: { current: string | null },
 ): Promise<WaitResult> {
   const POLL_INTERVAL_MS = 500
 
@@ -851,7 +896,11 @@ async function waitForNextPromptOrShutdown(
     }
 
     // Check the team's task list for unclaimed tasks
-    const taskPrompt = await tryClaimNextTask(taskListId, identity.agentName)
+    const taskPrompt = await tryClaimNextTask(
+      taskListId,
+      identity.agentName,
+      claimedTaskIdRef,
+    )
     if (taskPrompt) {
       return {
         type: 'new_message',
@@ -1016,12 +1065,26 @@ export async function runInProcessTeammate(
   )
   let currentPrompt = wrappedInitialPrompt
   let shouldExit = false
+  const claimedTaskIdRef: { current: string | null } = { current: null }
 
   // Try to claim an available task immediately so the UI can show activity
   // from the very start. The idle loop handles claiming for subsequent tasks.
   // Use parentSessionId as the task list ID since the leader creates tasks
   // under its session ID, not the team name.
-  await tryClaimNextTask(identity.parentSessionId, identity.agentName)
+  await tryClaimNextTask(
+    identity.parentSessionId,
+    identity.agentName,
+    claimedTaskIdRef,
+  )
+
+  // Hold the lease for as long as this teammate lives (cc-010). Without a
+  // renewal, a teammate that outlives one lease period would have its task
+  // reclaimed out from under it while it is still working.
+  const stopLeaseHeartbeat = startTaskLeaseHeartbeat(
+    identity.parentSessionId,
+    identity.agentName,
+    claimedTaskIdRef,
+  )
 
   try {
     // Add initial prompt to task.messages for display (wrapped with XML)
@@ -1412,6 +1475,7 @@ export async function runInProcessTeammate(
         toolUseContext.getAppState,
         setAppState,
         identity.parentSessionId,
+        claimedTaskIdRef,
       )
 
       switch (waitResult.type) {
@@ -1515,6 +1579,7 @@ export async function runInProcessTeammate(
     }
 
     unregisterPerfettoAgent(identity.agentId)
+    stopLeaseHeartbeat()
     return { success: true, messages: allMessages }
   } catch (error) {
     const errorMessage =
@@ -1579,6 +1644,7 @@ export async function runInProcessTeammate(
     )
 
     unregisterPerfettoAgent(identity.agentId)
+    stopLeaseHeartbeat()
     return {
       success: false,
       error: errorMessage,
