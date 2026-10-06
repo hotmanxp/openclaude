@@ -333,9 +333,16 @@ export function runModRenderChainSync(input: string): string {
         out !== null &&
         typeof (out as Promise<unknown>).then === 'function'
       ) {
+        // The handler broke the synchronous contract, so its output is lost.
+        // Counting that as a success is what made these mods invisible: the
+        // breaker never tripped and the failure counter stayed at zero while
+        // every render silently skipped the transform (cluster A). Treat it as
+        // the failure it is so the breaker eventually unloads the mod.
         logForDebugging(
           `[mods] "${modName}" ui.render handler returned a promise — ignored (ui.render is a synchronous contract)`,
         )
+        recordModHandlerFailure(modName)
+        continue
       }
       recordModHandlerSuccess(modName)
     } catch (error) {

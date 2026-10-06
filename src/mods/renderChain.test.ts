@@ -206,3 +206,67 @@ describe('state that outlives the mod it was keyed to', () => {
     expect(getModFailureCount('ok')).toBe(0)
   })
 })
+
+// cluster A: a ui.render handler returning a promise had its output silently
+// dropped and was then recorded as a SUCCESS. The failure counter stayed at
+// zero, so the circuit breaker never tripped and the mod looked healthy while
+// every render skipped the transform.
+describe('async ui.render handlers are counted as failures', () => {
+  function asyncRenderMod(name: string): LoadedMod {
+    const mod: LoadedMod = {
+      manifest: { name, entry: '(test)' },
+      root: '(test)',
+      entryPath: '(test)',
+      handlers: [],
+      commands: [],
+      tools: [],
+    }
+    // Cast: ctx.on() narrows ui.render to a sync handler, which is exactly
+    // what this test asserts about.
+    ;(createModContext(mod).on as unknown as (e: string, h: (e: any) => Promise<string>) => void)(
+      'ui.render',
+      async (e: any) => `MANGLED:${e.text}`,
+    )
+    return mod
+  }
+
+  test('an async handler increments the breaker count', () => {
+    registerLoadedMod(asyncRenderMod('async-mod'))
+    // Distinct inputs: the render cache is keyed by input text, so repeating
+    // one would never reach the chain again.
+    transformModRenderText('render-1')
+    expect(getModFailureCount('async-mod')).toBeGreaterThan(0)
+  })
+
+  test('a synchronous handler is not penalised', () => {
+    const mod: LoadedMod = {
+      manifest: { name: 'sync-mod', entry: '(test)' },
+      root: '(test)',
+      entryPath: '(test)',
+      handlers: [],
+      commands: [],
+      tools: [],
+    }
+    createModContext(mod).on('ui.render', (e: any) => `OK:${e.text}`)
+    registerLoadedMod(mod)
+
+    expect(transformModRenderText('render-1')).toBe('OK:render-1')
+    expect(getModFailureCount('sync-mod')).toBe(0)
+  })
+
+  test('a handler that declines still counts as a success', () => {
+    const mod: LoadedMod = {
+      manifest: { name: 'noop-mod', entry: '(test)' },
+      root: '(test)',
+      entryPath: '(test)',
+      handlers: [],
+      commands: [],
+      tools: [],
+    }
+    createModContext(mod).on('ui.render', () => undefined)
+    registerLoadedMod(mod)
+
+    expect(transformModRenderText('render-1')).toBe('render-1')
+    expect(getModFailureCount('noop-mod')).toBe(0)
+  })
+})
