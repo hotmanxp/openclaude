@@ -2,6 +2,7 @@ import type { Tool } from '../Tool.js'
 import { MCPTool } from '../tools/MCPTool/MCPTool.js'
 import type { Command } from '../types/command.js'
 import { logForDebugging } from '../utils/debug.js'
+import { emitUserNotice, subscribeUserNotices } from '../utils/noticeBus.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { realpath, readFile, writeFile, readdir } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
@@ -42,12 +43,6 @@ const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
 const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
-
-export type ModNotice = {
-  key: string
-  modName: string
-  text: string
-}
 
 // ---------------------------------------------------------------------------
 // ui.pane — live render site (P3 slice): mods register a component that the
@@ -211,39 +206,30 @@ export type ModContext = {
 // ---------------------------------------------------------------------------
 // ui.notice channel — REPL subscribes and maps to addNotification (the host's
 // existing notification queue). Bridge keeps mods decoupled from React state.
+// The bus itself lives in utils/noticeBus.ts so non-mods core code can raise
+// the same user-visible notice without importing the mods runtime.
 // ---------------------------------------------------------------------------
 
-const noticeListeners = new Set<(notice: ModNotice) => void>()
-let noticeSeq = 0
+export type ModNotice = {
+  key: string
+  modName: string
+  text: string
+}
 
 export function subscribeModNotices(
   listener: (notice: ModNotice) => void,
 ): () => void {
-  noticeListeners.add(listener)
-  return () => {
-    noticeListeners.delete(listener)
-  }
+  return subscribeUserNotices(notice =>
+    listener({
+      key: notice.key,
+      modName: notice.source,
+      text: notice.text,
+    }),
+  )
 }
 
 function emitModNotice(modName: string, text: string): void {
-  const trimmed =
-    text.length > MOD_NOTICE_MAX_CHARS
-      ? `${text.slice(0, MOD_NOTICE_MAX_CHARS)}…`
-      : text
-  const notice: ModNotice = {
-    key: `mod-notice-${modName}-${noticeSeq++}`,
-    modName,
-    text: trimmed,
-  }
-  for (const listener of noticeListeners) {
-    try {
-      listener(notice)
-    } catch (error) {
-      logForDebugging(
-        `[mods] notice listener error: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
+  emitUserNotice(modName, text)
 }
 
 // Streamed handler progress (P2 流式事件) rides the same notice channel.
