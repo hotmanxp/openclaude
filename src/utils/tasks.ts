@@ -3,6 +3,7 @@ import { join } from 'path'
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import { uniq } from './array.js'
+import { replaceFileAtomic } from './atomicReplace.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -297,7 +298,7 @@ export async function createTask(
     const id = String(highestId + 1)
     const task: Task = { id, ...taskData }
     const path = getTaskPath(taskListId, id)
-    await writeFile(path, jsonStringify(task, null, 2))
+    await replaceFileAtomic(path, jsonStringify(task, null, 2))
     notifyTasksUpdated()
     return id
   } finally {
@@ -362,7 +363,7 @@ async function updateTaskUnsafe(
   }
   const updated: Task = { ...existing, ...updates, id: taskId }
   const path = getTaskPath(taskListId, taskId)
-  await writeFile(path, jsonStringify(updated, null, 2))
+  await replaceFileAtomic(path, jsonStringify(updated, null, 2))
   notifyTasksUpdated()
   return updated
 }
