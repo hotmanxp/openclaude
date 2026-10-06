@@ -135,3 +135,52 @@ describe('validateModImports', () => {
     )
   })
 })
+
+// cc-003: in listModFiles' walk(), `if (!entry.isFile()) continue` ran before
+// the symlink-escape check. Dirent.isFile() is false for ANY symlink, even one
+// pointing at a regular file, so every link was skipped before the check could
+// run — leaving it unreachable, and letting a symlinked file bypass both the
+// size cap and the bare-import ban.
+describe('listModFiles symlink classification (cc-003)', () => {
+  test('rejects a symlink whose target escapes the mod root', async () => {
+    const modRoot = join(dir, 'mod')
+    const outside = join(dir, 'outside')
+    await mkdir(modRoot, { recursive: true })
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'payload.mjs'), 'x'.repeat(3 * 1024 * 1024))
+    await symlink(join(outside, 'payload.mjs'), join(modRoot, 'linked.mjs'))
+
+    await expect(validateModSize('m', modRoot)).rejects.toThrow(
+      /symlink escapes the mod folder/,
+    )
+  })
+
+  test('still accepts a symlink that stays inside the mod root', async () => {
+    const modRoot = join(dir, 'mod-inside')
+    await mkdir(modRoot, { recursive: true })
+    await writeFile(join(modRoot, 'real.mjs'), 'export const x = 1')
+    await symlink(join(modRoot, 'real.mjs'), join(modRoot, 'alias.mjs'))
+
+    await validateModSize('m', modRoot)
+  })
+
+  test('a symlinked bare import is still caught by the import ban', async () => {
+    // The size cap and the import ban share the file list, so a link that
+    // reached it could smuggle in `import lodash from 'lodash'`.
+    const modRoot = join(dir, 'mod-import')
+    await mkdir(modRoot, { recursive: true })
+    const real = join(modRoot, 'real.mjs')
+    await writeFile(real, "import lodash from 'lodash'\n")
+    await symlink(real, join(modRoot, 'alias.mjs'))
+
+    await expect(validateModImports('m', modRoot)).rejects.toThrow()
+  })
+
+  test('a dangling symlink is ignored, not rejected', async () => {
+    const modRoot = join(dir, 'mod-dangling')
+    await mkdir(modRoot, { recursive: true })
+    await symlink(join(modRoot, 'nope.mjs'), join(modRoot, 'dangling.mjs'))
+
+    await validateModSize('m', modRoot)
+  })
+})
