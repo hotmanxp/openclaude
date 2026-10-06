@@ -332,6 +332,7 @@ import { asSessionId } from 'src/types/ids.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js'
 import { getCommands, clearCommandsCache } from '../commands.js'
+import { buildModCommands } from '../mods/engine.js'
 import {
   isBareMode,
   isEnvTruthy,
@@ -919,6 +920,17 @@ export async function runHeadless(
 
   headlessProfilerCheckpoint('before_runHeadlessStreaming')
 streamJsonDrainStarted = true
+  // Mods load inside processSessionStartHooks (loadMods), joined by
+  // loadInitialMessages above — but `commands` was resolved in main.tsx
+  // before that, so mod commands (e.g. the built-in /diff) are missing from
+  // it, and a loadMods→notifyCommandsChanged fired before the
+  // skillChangeDetector subscription inside runHeadlessStreaming was missed
+  // too. Rebuild once here; no-op when no mod registered commands.
+  let headlessCommands = commands
+  if (buildModCommands().length > 0) {
+    clearCommandsCache()
+    headlessCommands = await getCommands(cwd())
+  }
   if (deferHeartbeatStartUntilStreamDrain) {
     heartbeat?.start()
     heartbeat?.setPhase('draining_commands')
@@ -927,7 +939,7 @@ streamJsonDrainStarted = true
     for await (const message of runHeadlessStreaming(
       structuredIO,
       appState.mcp.clients,
-      [...commands, ...appState.mcp.commands],
+      [...headlessCommands, ...appState.mcp.commands],
       filteredTools,
       initialMessages,
       canUseTool,

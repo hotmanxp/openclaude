@@ -193,6 +193,18 @@ export function dispose(): Promise<void> {
  */
 export const subscribe = skillsChanged.subscribe
 
+/**
+ * Notify command-list consumers (useSkillsChange → REPL) that a dynamic
+ * command source changed outside the file watcher — e.g. the mods system
+ * registering/unloading commands (src/mods). Clears the memoization layer
+ * only: like onDynamicSkillsLoaded, a full clearCommandsCache() would wipe
+ * freshly-registered dynamic sources before listeners re-fetch.
+ */
+export function notifyCommandsChanged(): void {
+  clearCommandMemoizationCaches()
+  skillsChanged.emit()
+}
+
 async function getWatchablePaths(): Promise<string[]> {
   const fs = getFsImplementation()
   const paths: string[] = []
@@ -311,5 +323,6 @@ export const skillChangeDetector = {
   initialize,
   dispose,
   subscribe,
+  notifyCommandsChanged,
   resetForTesting,
 }

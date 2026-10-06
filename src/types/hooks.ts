@@ -262,6 +262,23 @@ export type HookCallback = {
   timeout?: number
   /** Internal hooks (e.g. session file access analytics) are excluded from tengu_run_hook metrics */
   internal?: boolean
+  /**
+   * Mods system marker (src/mods): the raw per-mod handler chain this composite
+   * represents. When present, executeHooks extracts the composite from the flat
+   * parallel batch and runs it as the OUTER tier wrapping the core hooks
+   * (two-tier model: mod wraps core, docs/mods-plan.md §3.1) — the terminal
+   * `next()` executes the core segment. Never set for non-mod callbacks.
+   */
+  modChain?: ModChainEntry[]
+}
+
+/** One mod's handler in a composite chain (src/mods/dispatch.ts). */
+export type ModChainEntry = {
+  modName: string
+  handler: (
+    e: Record<string, unknown>,
+    next: (e?: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  ) => unknown
 }
 
 export type HookCallbackMatcher = {

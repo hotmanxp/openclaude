@@ -16,11 +16,17 @@ import { mergeAndFilterTools } from '../utils/toolPool.js'
  *   These are merged with the assembled pool and take precedence in deduplication.
  * @param mcpTools - MCP tools discovered dynamically (from mcp state)
  * @param toolPermissionContext - Permission context for filtering
+ * @param modToolsVersion - Change counter for mod-contributed tools
+ *   (src/mods). Mod tools are read inside assembleToolPool via getModTools();
+ *   this version (via useSyncExternalStore in REPL) busts the useMemo when a
+ *   mod registers/unregisters tools after mount. Optional so non-REPL callers
+ *   are unaffected — they re-run assembleToolPool per turn anyway.
  */
 export function useMergedTools(
   initialTools: Tools,
   mcpTools: Tools,
   toolPermissionContext: ToolPermissionContext,
+  modToolsVersion?: number,
 ): Tools {
   let replBridgeEnabled = false
   let replBridgeOutboundOnly = false
@@ -40,5 +46,6 @@ export function useMergedTools(
     toolPermissionContext,
     replBridgeEnabled,
     replBridgeOutboundOnly,
+    modToolsVersion,
   ])
 }

@@ -1634,6 +1634,29 @@ export function clearRegisteredPluginHooks(): void {
   STATE.registeredHooks = Object.keys(filtered).length > 0 ? filtered : null
 }
 
+/**
+ * Remove specific registered matcher entries (by identity) from the global
+ * registry. Used by the mods system (src/mods/hooks.ts) to swap composite
+ * hook matchers atomically on unload/reload, mirroring the clear-then-register
+ * pair pattern in loadPluginHooks. No-op for entries that were never added.
+ */
+export function unregisterHookMatchers(
+  toRemove: RegisteredHookMatcher[],
+): void {
+  if (!STATE.registeredHooks || toRemove.length === 0) {
+    return
+  }
+  const removeSet = new Set(toRemove)
+  const filtered: Partial<Record<HookEvent, RegisteredHookMatcher[]>> = {}
+  for (const [event, matchers] of Object.entries(STATE.registeredHooks)) {
+    const kept = (matchers ?? []).filter(m => !removeSet.has(m))
+    if (kept.length > 0) {
+      filtered[event as HookEvent] = kept
+    }
+  }
+  STATE.registeredHooks = Object.keys(filtered).length > 0 ? filtered : null
+}
+
 export function resetSdkInitState(): void {
   STATE.initJsonSchema = null
   STATE.registeredHooks = null

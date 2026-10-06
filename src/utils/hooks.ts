@@ -59,6 +59,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { logOTelEvent } from './telemetry/events.js'
 import { ALLOWED_OFFICIAL_MARKETPLACE_NAMES } from './plugins/schemas.js'
+import { runModChain } from '../mods/dispatch.js'
 import {
   startHookSpan,
   endHookSpan,
@@ -2336,8 +2337,10 @@ async function* executeHooks({
     }
   }
 
-  // Run all hooks in parallel with individual timeouts
-  const hookPromises = matchingHooks.map(async function* (
+  // Run all hooks in parallel with individual timeouts. Factory form so the
+  // mods tier-wrap (below) can rebuild generators over just the core subset.
+  const buildHookGenerators = (hooks: typeof matchingHooks) =>
+    hooks.map(async function* (
     { hook, pluginRoot, pluginId, skillRoot },
     hookIndex,
   ): AsyncGenerator<HookResult> {
@@ -2928,6 +2931,73 @@ async function* executeHooks({
     }
   })
 
+  const hookPromises = buildHookGenerators(matchingHooks)
+
+  // --- Mods two-tier wrap (docs/mods-plan.md §3.1: mod < core) -----------
+  // Mod composites (HookCallback.modChain marker) are hoisted out of the
+  // flat parallel batch: the mod chain runs as the OUTER tier and its
+  // terminal next() executes the core subset (parallel, unchanged semantics),
+  // giving handlers true before/after visibility over the core pipeline.
+  const modChainEntries = matchingHooks.flatMap(m =>
+    m.hook.type === 'callback' && m.hook.modChain ? m.hook.modChain : [],
+  )
+
+  function aggregateCoreOutput(results: HookResult[]): Record<string, unknown> {
+    const blocked = results.some(
+      r =>
+        r.outcome === 'blocking' ||
+        r.blockingError !== undefined ||
+        r.preventContinuation,
+    )
+    const blockingReason = results.find(r => r.blockingError)?.blockingError
+      ?.blockingError
+    const systemMessage = results.map(r => r.systemMessage).find(Boolean)
+    return {
+      continue: !blocked,
+      ...(blocked
+        ? { decision: 'block' as const, reason: blockingReason }
+        : {}),
+      ...(systemMessage ? { systemMessage } : {}),
+    }
+  }
+
+  async function* modWrappedResults(): AsyncGenerator<HookResult> {
+    const coreHooks = matchingHooks.filter(
+      m => !(m.hook.type === 'callback' && m.hook.modChain),
+    )
+    const coreResults: HookResult[] = []
+    const coreRunner = async (
+      e: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> => {
+      for await (const r of all(buildHookGenerators(coreHooks))) {
+        coreResults.push(r)
+      }
+      return aggregateCoreOutput(coreResults)
+    }
+    const compositeOutput = await runModChain(
+      modChainEntries,
+      hookInput,
+      coreRunner,
+      signal,
+    )
+    const compositeHook: HookCallback = {
+      type: 'callback',
+      timeout: timeoutMs / 1000,
+      callback: async () =>
+        compositeOutput as Awaited<ReturnType<HookCallback['callback']>>,
+    }
+    const compositeResult = await executeHookCallback({
+      toolUseID,
+      hook: compositeHook,
+      hookEvent,
+      hookInput,
+      signal,
+      toolUseContext,
+    })
+    yield compositeResult
+    yield* coreResults
+  }
+
   // Track outcomes for logging
   const outcomes = {
     success: 0,
@@ -2938,8 +3008,11 @@ async function* executeHooks({
 
   let permissionBehavior: PermissionResult['behavior'] | undefined
 
-  // Run all hooks in parallel and wait for all to complete
-  for await (const result of all(hookPromises)) {
+  // Run all hooks (flat parallel path, or mods-wrapped when mod composites
+  // are present) and wait for all to complete
+  const resultSource: AsyncIterable<HookResult> =
+    modChainEntries.length > 0 ? modWrappedResults() : all(hookPromises)
+  for await (const result of resultSource) {
     outcomes[result.outcome]++
 
     // Check for preventContinuation early
