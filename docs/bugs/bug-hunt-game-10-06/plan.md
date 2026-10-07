@@ -25,7 +25,7 @@
 | **cc-012** `??` 与 `+` 优先级致累计 `input_tokens` 恒为首轮值 | ✅ 已修 | `b151d9e0` |
 | **cc-007** 握手前缓冲无上限，超大上传撑爆内存 | ✅ 已修 | `2b4e70e6` |
 | **oc-005** SSE 只按 `\n\n` 分帧，CRLF 网关丢整个响应 | ✅ 已修 | `5a0beee6` |
-| **oc-002** reload 跑旧代码（ESM 缓存） | ✅ 已修，**待提交**（`hooks.ts` 与他人 WIP 同文件） | `842f5a76`（仅复现脚本） |
+| **oc-002** reload 跑旧代码（ESM 缓存） | ✅ 已修（**修复代码随他人提交进入 `b0854adb`**） | `842f5a76`（复现脚本） |
 | **cc-003** `listModFiles` 符号链接逃逸检查是不可达死代码 | ✅ 已修 | `2e14daf7` |
 | **cc-005** `scanMemoryFiles` 放行 `.md` 符号链接，目录外内容进模型上下文 | ✅ 已修 | `bcd7b8e4` |
 | **cluster A** async `ui.render` 输出静默丢弃**且被记为成功** | ✅ 已修 | `d03d9df2` |
@@ -269,3 +269,9 @@
 > 这是本次比赛暴露的**第三个**赛制级问题（前两个：E3 无法验证组件树调用关系、探针自造对照组）。**测试运行时与产品运行时不同，本身就是一类系统性证据风险**，应当写进证据分级规则。
 
 **未提交说明**：本次改动落在 `src/mods/hooks.ts`，该文件同时含有他人未提交的 WIP，为避免把别人的在途工作裹进本次提交，暂存于工作区未提交。
+
+### oc-002 的提交归属说明（2026-10-07）
+
+oc-002 的修复代码（`hooks.ts` 的 `modReloadGeneration` + `reloadQuerySuffix()`）原打算单独提交，因与另一会话的 `/plugins` WIP 同文件而暂留工作区。对方随后提交整个特性时把工作区一并纳入，**该修复因此出现在 `b0854adb feat(mods)!: manage mods and their options from /plugins` 里**。
+
+代码本身正确且已验证（`node repros/opencc/probe-oc002-reload-stale.mjs` → NOT REPRODUCED；`bun test src/mods/` 207 pass），只是**git 历史把它归到了一个无关的 feature commit 下**。若日后按 commit 追溯本次 bug 修复的归属，需注意这一点——真正独立的只有复现脚本 `842f5a76`。
