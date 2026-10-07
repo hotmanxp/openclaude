@@ -84,6 +84,53 @@ export type LoadedMod = {
 
 let loadedMods: LoadedMod[] = []
 
+/**
+ * Every mod the loader FOUND, including ones it deliberately skipped because
+ * /plugins has them disabled. First writer wins: a disk mod claims its name
+ * before the built-in channel is consulted, which is the same order that
+ * decides which one actually loads (`loadBuiltinMods` skips taken names).
+ *
+ * Without this, disabling a mod would delete its row from /plugins — and a
+ * row you cannot see is a mod you cannot re-enable. Upstream keeps disabled
+ * built-ins listed and greys them out.
+ */
+let knownMods = new Map<string, KnownMod>()
+
+/**
+ * A mod's option schema, kept alongside discovery so a mod that /plugins has
+ * disabled can still render "Configure options". The schema lives in the
+ * manifest, which a disabled mod has no loaded object to ask — same reason
+ * `builtin` is recorded rather than read off a LoadedMod.
+ *
+ * Optional: the disk-mod loader records discovery before it has parsed far
+ * enough to be certain of the rest, so a disabled disk mod may arrive here
+ * with no schema and therefore no Configure options item until it is enabled.
+ * Built-ins always record theirs.
+ */
+export type KnownMod = {
+  builtin: boolean
+  userConfig?: Record<string, unknown> | undefined
+}
+
+export function noteDiscoveredMod(
+  name: string,
+  builtin: boolean,
+  userConfig?: Record<string, unknown>,
+): void {
+  if (knownMods.has(name)) return
+  knownMods.set(name, { builtin, userConfig })
+}
+
+export function getKnownMods(): ReadonlyMap<string, KnownMod> {
+  return knownMods
+}
+
+/** Forget discovery results. Called per `loadMods()` pass so a deleted mod
+ *  folder stops lingering in /plugins. */
+export function clearKnownMods(): void {
+  knownMods = new Map()
+}
+
 // Fires whenever the set of loaded mods changes (register or unregister).
 // Consumers that memoize per-mod output subscribe here: the render cache is
 // keyed by input text alone, so it cannot notice that the handler behind a
@@ -137,6 +184,7 @@ export function unregisterMod(name: string): LoadedMod | undefined {
 /** Reset registry state. For tests only. */
 export function resetModsRegistryForTesting(): void {
   loadedMods = []
+  clearKnownMods()
   modToolsVersion++
   notifyModToolsChanged()
   failureCounts.clear()

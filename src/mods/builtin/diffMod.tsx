@@ -7,6 +7,7 @@ import {
   resetDiffStore,
   setPaneOpen,
 } from './diff/store.js'
+import { setDiffOptions } from './diff/settings.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
@@ -45,7 +46,46 @@ export const diffBuiltinMod: BuiltinModSpec = {
   version: '1.0.0',
   description:
     'Uncommitted changes as a live pane, and /diff to open the same list as a dialog',
+  /**
+   * Every default below is 1:1 with the upstream constant it overrides, so
+   * "unset" and "upstream" are the same state. That is deliberate: this mod
+   * is a port, and an option whose default silently differs from the port is
+   * a claim about upstream behaviour that nobody verified.
+   */
+  userConfig: {
+    minColumns: {
+      type: 'number',
+      title: 'Minimum terminal width',
+      description:
+        'Column count below which the diff panel refuses to render. Upstream uses 110; lower it to use the panel in a narrow terminal.',
+      required: false,
+      default: 110,
+      min: 40,
+    },
+    pollIntervalMs: {
+      type: 'number',
+      title: 'Refresh interval (ms)',
+      description:
+        'How often the pane re-reads the worktree. Upstream uses 2000; raise it to poll less often.',
+      required: false,
+      default: 2000,
+      min: 250,
+    },
+    listWindow: {
+      type: 'number',
+      title: 'Files shown at once',
+      description:
+        'Rows of the file list rendered before it starts scrolling. Upstream uses 5.',
+      required: false,
+      default: 5,
+      min: 1,
+    },
+  },
   register(ctx: ModContext): void {
+    // Adopted here rather than read per render: the dialog and pane are
+    // separate modules with no handle on ctx, and plugin options are resolved
+    // at load time. `/plugins` says "Reload mod" after a change.
+    setDiffOptions(ctx.options)
     ctx.on('SessionStart', async (e, next) => {
       resetDiffStore()
       return next(e)

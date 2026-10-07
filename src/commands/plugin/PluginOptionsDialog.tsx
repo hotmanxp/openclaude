@@ -44,6 +44,48 @@ export function buildFinalValues(fields: string[], collected: Record<string, str
   }
   return finalValues;
 }
+/**
+ * A field is a CHOICE when its schema pins an accepted value set (`options`).
+ *
+ * Upstream models this as `"type": "string"` plus `"options": [...]` — not a
+ * distinct enum type — so `type` stays `string` and the dialog swaps the
+ * free-text box for a ←/→ cycler. See cc-plugin-agents-md's
+ * `userConfig.instructionFiles`.
+ */
+export function getChoiceOptions(schema) {
+  const options = schema?.options;
+  return Array.isArray(options) && options.length > 0 ? options : undefined;
+}
+
+/**
+ * The value a choice field should start on: the saved value if it is still
+ * legal, else the schema default, else the first option. Never returns a
+ * value the cycler cannot reach, and never `undefined` — a choice field with
+ * no selection would render blank while claiming to be a single pick.
+ *
+ * Exported for unit testing.
+ */
+export function resolveInitialChoice(schema, savedValue) {
+  const options = getChoiceOptions(schema);
+  if (!options) return undefined;
+  if (typeof savedValue === 'string' && options.includes(savedValue)) return savedValue;
+  if (typeof schema?.default === 'string' && options.includes(schema.default)) return schema.default;
+  return options[0];
+}
+
+/**
+ * Step a choice field by `delta`, wrapping at both ends. Wrapping (rather
+ * than clamping) is what makes ←/→ feel like a cycler; clamping leaves the
+ * key looking broken at the first and last option.
+ *
+ * Exported for unit testing.
+ */
+export function cycleChoice(options, current, delta) {
+  const index = options.indexOf(current);
+  const from = index === -1 ? 0 : index;
+  const next = (from + delta + options.length) % options.length;
+  return options[next];
+}
 type Props = {
   title: string;
   subtitle: string;
@@ -75,7 +117,12 @@ export function PluginOptionsDialog(t0) {
   let t2;
   if ($[2] !== configSchema || $[3] !== initialValues) {
     t2 = key => {
-      if (configSchema[key]?.sensitive === true) {
+      const schema_0 = configSchema[key];
+      // Choice fields resolve to a legal member of their set, so the box is
+      // never blank and never shows a value the cycler can't return to.
+      const choice = resolveInitialChoice(schema_0, initialValues?.[key]);
+      if (choice !== undefined) return choice;
+      if (schema_0?.sensitive === true) {
         return "";
       }
       const v = initialValues?.[key];
@@ -197,27 +244,35 @@ export function PluginOptionsDialog(t0) {
     t9 = $[29];
   }
   useKeybindings(t8, t9);
-  let t10;
-  if ($[30] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = (char, key_0) => {
-      if (key_0.backspace || key_0.delete) {
-        setCurrentInput(_temp3);
-        return;
+  // Left deliberately un-memoized: the handler closes over fieldSchema and
+  // currentInput, and threading those through the compiler's positional
+  // cache would renumber every later slot in this file. Re-registration per
+  // render costs nothing for a dialog this small.
+  useInput((char, key_0) => {
+    const choiceOptions = getChoiceOptions(fieldSchema);
+    if (choiceOptions) {
+      // Choice fields take no typed input — the value is whatever the cycler
+      // last landed on. Left/right step it; everything that would edit text
+      // (backspace, printable chars) is inert.
+      if (key_0.leftArrow || key_0.rightArrow) {
+        setCurrentInput(cycleChoice(choiceOptions, currentInput, key_0.leftArrow ? -1 : 1));
       }
-      if (char && !key_0.ctrl && !key_0.meta && !key_0.tab && !key_0.return) {
-        setCurrentInput(prev_3 => prev_3 + char);
-      }
-    };
-    $[30] = t10;
-  } else {
-    t10 = $[30];
-  }
-  useInput(t10);
+      return;
+    }
+    if (key_0.backspace || key_0.delete) {
+      setCurrentInput(_temp3);
+      return;
+    }
+    if (char && !key_0.ctrl && !key_0.meta && !key_0.tab && !key_0.return) {
+      setCurrentInput(prev_3 => prev_3 + char);
+    }
+  });
   if (!fieldSchema || !currentField) {
     return null;
   }
   const isSensitive = fieldSchema.sensitive === true;
   const isRequired = fieldSchema.required === true;
+  const choiceOptions = getChoiceOptions(fieldSchema);
   let t11;
   if ($[31] !== currentInput || $[32] !== isSensitive) {
     t11 = isSensitive ? "*".repeat(stringWidth(currentInput)) : currentInput;
@@ -228,6 +283,14 @@ export function PluginOptionsDialog(t0) {
     t11 = $[33];
   }
   const displayValue = t11;
+  // A constrained string renders as a cycler, not a text box: the arrows on
+  // either side are the whole affordance, and without them a user would not
+  // know ←/→ does anything.
+  const valueNode = choiceOptions ? <Box>
+      <Text dimColor={true}>{` ${figures.pointerSmall} `}</Text>
+      <Text>{currentInput}</Text>
+      <Text dimColor={true}>{` ${figures.pointerSmall} `}</Text>
+    </Box> : undefined;
   const t12 = fieldSchema.title || currentField;
   let t13;
   if ($[34] !== isRequired) {
@@ -277,72 +340,77 @@ export function PluginOptionsDialog(t0) {
     t18 = $[44];
   }
   let t19;
-  if ($[45] !== t17) {
-    t19 = <Box marginTop={1}>{t16}{t17}{t18}</Box>;
+  if ($[45] !== t17 || $[46] !== choiceOptions) {
+    // Guarded on choiceOptions (referentially stable, taken straight off the
+    // schema) rather than valueNode — a JSX literal is a fresh object every
+    // render and would defeat the memo entirely.
+    t19 = <Box marginTop={1}>{choiceOptions ? valueNode : <>{t16}{t17}{t18}</>}</Box>;
     $[45] = t17;
-    $[46] = t19;
+    $[46] = choiceOptions;
+    $[47] = t19;
   } else {
-    t19 = $[46];
+    t19 = $[47];
   }
   let t20;
-  if ($[47] !== t14 || $[48] !== t15 || $[49] !== t19) {
+  if ($[48] !== t14 || $[49] !== t15 || $[50] !== t19) {
     t20 = <Box flexDirection="column">{t14}{t15}{t19}</Box>;
-    $[47] = t14;
-    $[48] = t15;
-    $[49] = t19;
-    $[50] = t20;
+    $[48] = t14;
+    $[49] = t15;
+    $[50] = t19;
+    $[51] = t20;
   } else {
-    t20 = $[50];
+    t20 = $[51];
   }
   const t21 = currentFieldIndex + 1;
   let t22;
-  if ($[51] !== fields.length || $[52] !== t21) {
+  if ($[52] !== fields.length || $[53] !== t21) {
     t22 = <Text dimColor={true}>Field {t21} of {fields.length}</Text>;
-    $[51] = fields.length;
-    $[52] = t21;
-    $[53] = t22;
+    $[52] = fields.length;
+    $[53] = t21;
+    $[54] = t22;
   } else {
-    t22 = $[53];
+    t22 = $[54];
   }
   let t23;
-  if ($[54] !== currentFieldIndex || $[55] !== fields.length) {
-    t23 = currentFieldIndex < fields.length - 1 && <Text dimColor={true}>Tab: Next field · Enter: Save and continue</Text>;
-    $[54] = currentFieldIndex;
-    $[55] = fields.length;
-    $[56] = t23;
+  if ($[55] !== currentFieldIndex || $[56] !== fields.length) {
+    t23 = currentFieldIndex < fields.length - 1 && <Text dimColor={true}>{choiceOptions ? "Tab: Next field · ←/→: Change value · Enter: Save and continue" : "Tab: Next field · Enter: Save and continue"}</Text>;
+    $[55] = currentFieldIndex;
+    $[56] = fields.length;
+    $[57] = t23;
   } else {
-    t23 = $[56];
+    t23 = $[57];
   }
   let t24;
-  if ($[57] !== currentFieldIndex || $[58] !== fields.length) {
-    t24 = currentFieldIndex === fields.length - 1 && <Text dimColor={true}>Enter: Save configuration</Text>;
-    $[57] = currentFieldIndex;
-    $[58] = fields.length;
-    $[59] = t24;
+  if ($[58] !== currentFieldIndex || $[59] !== fields.length || $[60] !== choiceOptions) {
+    t24 = currentFieldIndex === fields.length - 1 && <Text dimColor={true}>{choiceOptions ? "Enter: Save configuration · ←/→: Change value" : "Enter: Save configuration"}</Text>;
+    $[58] = currentFieldIndex;
+    $[59] = fields.length;
+    $[60] = choiceOptions;
+    $[61] = t24;
   } else {
-    t24 = $[59];
+    t24 = $[61];
   }
   let t25;
-  if ($[60] !== t22 || $[61] !== t23 || $[62] !== t24) {
+  if ($[62] !== t22 || $[63] !== t23 || $[64] !== t24) {
     t25 = <Box flexDirection="column">{t22}{t23}{t24}</Box>;
-    $[60] = t22;
-    $[61] = t23;
-    $[62] = t24;
-    $[63] = t25;
+    $[62] = t22;
+    $[63] = t23;
+    $[64] = t24;
+    $[65] = t25;
   } else {
-    t25 = $[63];
+    t25 = $[65];
   }
   let t26;
-  if ($[64] !== onCancel || $[65] !== subtitle || $[66] !== t20 || $[67] !== t25 || $[68] !== title) {
+  if ($[66] !== onCancel || $[67] !== subtitle || $[68] !== t20 || $[69] !== t25 || $[70] !== title) {
     t26 = <Dialog title={title} subtitle={subtitle} onCancel={onCancel} isCancelActive={false}>{t20}{t25}</Dialog>;
-    $[64] = onCancel;
-    $[65] = subtitle;
-    $[66] = t20;
-    $[67] = t25;
-    $[68] = title;
-    $[69] = t26;
+    $[66] = onCancel;
+    $[67] = subtitle;
+    $[68] = t20;
+    $[69] = t25;
+    $[70] = title;
+    $[71] = t26;
   } else {
-    t26 = $[69];
+    t26 = $[71];
   }
   return t26;
 }

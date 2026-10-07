@@ -1,6 +1,7 @@
 // @ts-ignore
 import type { LspServerConfig } from '../services/lsp/types.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
+import type { ModPluginInfo } from '../mods/pluginView.js'
 import type { BundledSkillDefinition } from '../skills/bundledSkills.js'
 import type {
   CommandMetadata,
@@ -54,6 +55,13 @@ export type LoadedPlugin = {
   repository: string // Repository identifier, usually same as source
   enabled?: boolean
   isBuiltin?: boolean // true for built-in plugins that ship with the CLI
+  /**
+   * Set when this "plugin" is actually a mod (src/mods). Mods project into
+   * the plugin shape so they render in /plugins → Installed and toggle
+   * through the same `enabledPlugins` key; this field is how the UI tells
+   * the two apart and shows mod components instead of plugin ones.
+   */
+  mod?: ModPluginInfo
   sha?: string // Git commit SHA for version pinning (from marketplace entry source)
   commandsPath?: string
   commandsPaths?: string[] // Additional command paths from manifest

@@ -1,11 +1,14 @@
 import { logForDebugging } from '../utils/debug.js'
+import type { UserConfigSchema } from '../utils/plugins/mcpbHandler.js'
 import type { LoadedMod } from './registry.js'
 import {
   BUILTIN_ORIGIN,
   getLoadedMods,
+  noteDiscoveredMod,
   registerLoadedMod,
 } from './registry.js'
 import { createModContext, type ModContext } from './engine.js'
+import { isModEnabled } from './pluginView.js'
 
 /**
  * Built-in mod channel (docs/mods-plan.md §4.3 / §九 — upstream parity of
@@ -15,13 +18,20 @@ import { createModContext, type ModContext } from './engine.js'
  * features as mods — upstream ships `/diff` (cc-plugin-diff) the same way.
  *
  * Built-ins are ordinary mods once registered: same registry, same dispatch,
- * same /mods listing (marked `builtin`), same unload semantics.
+ * same /plugins → Installed listing (under the "Built-in" section), same
+ * unload semantics.
  */
 
 export type BuiltinModSpec = {
   name: string
   version?: string
   description?: string
+  /**
+   * User-configurable values, surfaced by `/plugins` → Installed as
+   * "Configure options". Same schema and same storage as a disk mod's
+   * `opencc-mod.json` → `userConfig`; see ModManifestSchema.
+   */
+  userConfig?: UserConfigSchema
   register(ctx: ModContext): void | Promise<void>
 }
 
@@ -50,26 +60,48 @@ export function isBuiltinMod(mod: LoadedMod): boolean {
 }
 
 /**
+ * True when `name` is a declared built-in mod — whether or not it is
+ * currently loaded. /plugins needs this to rebuild a disabled built-in's
+ * `enabledPlugins` key, since a disabled mod is (by design) absent from the
+ * registry and carries no origin marker of its own.
+ */
+export function isBuiltinModName(name: string): boolean {
+  return builtinSpecs.some(spec => spec.name === name)
+}
+
+/**
  * Load all declared built-in mods into the registry. Idempotent per name:
  * an already-loaded built-in (or a disk mod with the same name) is skipped,
- * so /mods reload can call this again without duplicating handlers.
+ * so a reload can call this again without duplicating handlers.
  */
 export async function loadBuiltinMods(): Promise<{
   loaded: LoadedMod[]
   failed: Array<{ name: string; error: string }>
+  disabled: string[]
 }> {
   const loaded: LoadedMod[] = []
   const failed: Array<{ name: string; error: string }> = []
+  const disabled: string[] = []
   const existingNames = new Set(getLoadedMods().map(m => m.manifest.name))
 
   for (const spec of builtinSpecs) {
     if (existingNames.has(spec.name)) continue
+    // Recorded even when skipped: /plugins lists disabled mods so they can be
+    // turned back on (see registry.noteDiscoveredMod).
+    noteDiscoveredMod(spec.name, true, spec.userConfig)
+    // Disabled in /plugins → Installed. Skipped BEFORE register() so a
+    // built-in the user turned off never claims handlers, panes or status.
+    if (!isModEnabled(spec.name, true)) {
+      disabled.push(spec.name)
+      continue
+    }
     try {
       const mod: LoadedMod = {
         manifest: {
           name: spec.name,
           ...(spec.version ? { version: spec.version } : {}),
           ...(spec.description ? { description: spec.description } : {}),
+          ...(spec.userConfig ? { userConfig: spec.userConfig } : {}),
           entry: BUILTIN_ORIGIN,
         },
         root: BUILTIN_ORIGIN,
@@ -89,7 +121,7 @@ export async function loadBuiltinMods(): Promise<{
       failed.push({ name: spec.name, error: message })
     }
   }
-  return { loaded, failed }
+  return { loaded, failed, disabled }
 }
 
 // ---------------------------------------------------------------------------

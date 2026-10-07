@@ -5,7 +5,7 @@
  * Ported from `ae`/`te`/`Er` @33315500-33318000.
  */
 
-import { LIST_WINDOW } from './constants.js'
+import { diffListWindow } from './settings.js'
 import { type DiffFileEntry, type DiffFileBody, toDisplayPath } from './parse.js'
 import type { DiffData } from './source.js'
 
@@ -69,9 +69,10 @@ function isAskable(
 export function windowStart(paths: string[], selectedPath: string | null): number {
   const index = paths.indexOf(selectedPath ?? '')
   if (index < 0) return 0
+  const size = diffListWindow()
   return Math.max(
     0,
-    Math.min(paths.length - LIST_WINDOW, index - Math.floor(LIST_WINDOW / 2)),
+    Math.min(paths.length - size, index - Math.floor(size / 2)),
   )
 }
 
@@ -85,7 +86,7 @@ export type Windowed = {
 export function windowRows(rows: DiffRow[], selectedPath: string | null): Windowed {
   const paths = rows.map(row => row.path)
   const start = windowStart(paths, selectedPath)
-  const shown = rows.slice(start, start + LIST_WINDOW)
+  const shown = rows.slice(start, start + diffListWindow())
   return { shown, above: start, below: rows.length - start - shown.length }
 }
 

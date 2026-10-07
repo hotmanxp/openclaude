@@ -75,9 +75,12 @@ describe('loadMods', () => {
     modsDir = join(tmpdir(), `opencc-mods-missing-${Date.now()}`)
     process.env[OPENCC_MODS_DIR_ENV] = modsDir
     const results = await loadMods()
-    // The built-in diff mod registers even without a mods dir.
+    // The built-in diff mod registers even without a mods dir. It hooks
+    // SessionStart (reset its store) + UserPromptSubmit (ride an armed file
+    // into the next turn), not PostToolUse.
     expect(results.map(r => r.name)).toContain('diff')
-    expect(getRegisteredHooks()?.PostToolUse).toHaveLength(2)
+    expect(getRegisteredHooks()?.SessionStart).toHaveLength(1)
+    expect(getRegisteredHooks()?.UserPromptSubmit).toHaveLength(1)
   })
 
   test('loads a valid mod end-to-end into the global hook registry', async () => {
@@ -116,11 +119,13 @@ describe('loadMods', () => {
     expect(getLoadedMods().length).toBeGreaterThanOrEqual(2)
 
     // Composite registered into the global registry under Stop + PostToolUse
-    // PostToolUse = greeter's {tool:Bash} + the built-in diff's
-    // {tool:FileEdit}/{tool:FileWrite} matchers.
+    // (PostToolUse = greeter's {tool:Bash} alone; the built-in diff mod hooks
+    // SessionStart/UserPromptSubmit instead) and under UserPromptSubmit
+    // (diff's armed-file injection).
     const registered = getRegisteredHooks()
     expect(registered?.Stop).toHaveLength(1)
-    expect(registered?.PostToolUse).toHaveLength(3)
+    expect(registered?.PostToolUse).toHaveLength(1)
+    expect(registered?.UserPromptSubmit).toHaveLength(1)
     expect(registered?.Stop![0]!.pluginName).toBe('mod:greeter')
 
     // Composite callback is invocable and chains to terminal continue
@@ -239,7 +244,7 @@ describe('mod state outlives the mod', () => {
     ).toHaveLength(0)
   })
 
-  test('/mods reload clears panes and status of a mod that is gone', async () => {
+  test('reloadMods clears panes and status of a mod that is gone', async () => {
     await setupModsDir()
     await writeMod(
       'keeper',

@@ -2,6 +2,8 @@ import type { Tool } from '../Tool.js'
 import { MCPTool } from '../tools/MCPTool/MCPTool.js'
 import type { Command } from '../types/command.js'
 import { logForDebugging } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
+import { loadPluginOptions, type PluginOptionValues } from '../utils/plugins/pluginOptionsStorage.js'
 import { emitUserNotice, subscribeUserNotices } from '../utils/noticeBus.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { realpath, readFile, writeFile, readdir } from 'node:fs/promises'
@@ -27,6 +29,7 @@ import {
   subscribeModProgress,
   type ModSupportedEvent,
 } from './dispatch.js'
+import { modPluginId } from './pluginView.js'
 
 /**
  * Mod runtime API surface (docs/mods-plan.md §3.3 "能力面 $ / ctx").
@@ -201,6 +204,20 @@ export type ModContext = {
    * explicit, visible and revocable).
    */
   fs?: ModFsApi
+  /**
+   * The mod's saved `userConfig` values — declared in `opencc-mod.json`,
+   * edited via `/plugins` → Installed → Configure options.
+   *
+   * Always an object: empty when the mod declares no options or the user
+   * saved none. Schema `default`s are deliberately NOT applied here, because
+   * "the user chose the default" and "the user never touched this" are
+   * different states and only the mod knows whether the difference matters.
+   *
+   * Plugins read the same values through `${user_config.KEY}` substitution in
+   * MCP/LSP config, hook commands and skill prose. A mod is JavaScript, not
+   * substituted text, so it reads them here.
+   */
+  options: PluginOptionValues
 }
 
 // ---------------------------------------------------------------------------
@@ -399,6 +416,32 @@ function buildFsApiLazy(modName: string, allowedRoots: string[]): ModFsApi {
 // ctx construction
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a mod's saved option values.
+ *
+ * The storage key is the same `name@marketplace` id the plugin pipeline uses,
+ * which is what lets `/plugins` show and save a mod's options with the
+ * existing dialog and nothing mod-specific.
+ *
+ * `loadPluginOptions` merges settings.json (non-sensitive) with the keychain
+ * (sensitive) and is memoized per id, so a mod declaring sensitive options
+ * costs one keychain read per session — the same trade plugins already make.
+ *
+ * Never throws: a settings read failure must not take the whole mod down, and
+ * a mod that declared options but never saved them simply sees `{}`.
+ */
+function readModOptions(mod: LoadedMod): PluginOptionValues {
+  try {
+    const builtin = mod.root === BUILTIN_ORIGIN
+    return loadPluginOptions(modPluginId(mod.manifest.name, builtin))
+  } catch (error) {
+    logForDebugging(
+      `[mods] failed to read options for "${mod.manifest.name}": ${errorMessage(error)}`,
+    )
+    return {}
+  }
+}
+
 export function createModContext(mod: LoadedMod): ModContext {
   const modName = mod.manifest.name
   // P2 授权制: fs API only for whitelisted mods; presence is decided at
@@ -407,6 +450,7 @@ export function createModContext(mod: LoadedMod): ModContext {
     ? buildFsApiLazy(modName, [process.cwd(), mod.root])
     : undefined
   return {
+    options: readModOptions(mod),
     on(event, matcherOrHandler, maybeHandler?) {
       if (typeof event !== 'string' || !isModSupportedEvent(event)) {
         throw new Error(
