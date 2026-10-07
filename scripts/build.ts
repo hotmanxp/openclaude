@@ -288,7 +288,16 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
           { filter: /^\.\.\/(daemon\/workerRegistry|daemon\/main|cli\/bg|cli\/handlers\/templateJobs|environment-runner\/main|self-hosted-runner\/main)\.js$/ },
           args => {
             // Always-stub modules: stub unconditionally (no real source exists).
-            if (alwaysStubPaths.has(args.path)) return null
+            // These must resolve into the stub namespace rather than fall
+            // through — returning null tells bun to load the real source, which
+            // is the opposite of "always stub" and left the four friendly
+            // "unavailable in the open build" stubs as dead code (oc-009).
+            if (alwaysStubPaths.has(args.path)) {
+              return {
+                path: args.path,
+                namespace: 'internal-feature-stub',
+              }
+            }
             // Flag-gated modules: stub only when the corresponding feature
             // flag is false. When the flag is true, return null so bun:bundle
             // resolves the real source file we now ship (T12.1/T12.2).
@@ -1089,7 +1098,11 @@ if (result?.success) {
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
-    'src/daemon/workerRegistry',
+    // src/daemon/workerRegistry used to need allow-listing: the always-stub
+    // branch returned null, so bun treated it as a MISSING module and emitted a
+    // missing-module stub. It now resolves into the stub namespace like any
+    // other stub, so it bundles as a real function carrying the friendly
+    // "unavailable in the open build" error and needs no allow-listing.
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer

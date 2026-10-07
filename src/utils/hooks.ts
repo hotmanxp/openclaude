@@ -5166,7 +5166,8 @@ async function executeFunctionHook({
   }
 }
 
-async function executeHookCallback({
+/** @internal exported for testing: a rejecting callback must not escape. */
+export async function executeHookCallback({
   toolUseID,
   hook,
   hookEvent,
@@ -5190,13 +5191,35 @@ async function executeHookCallback({
         updateAttributionState: toolUseContext.updateAttributionState,
       }
     : undefined
-  const json = await hook.callback(
-    hookInput,
-    toolUseID,
-    signal,
-    hookIndex,
-    context,
-  )
+  // A rejecting callback must not tear down the batch it shares with other
+  // hooks. Hooks run concurrently through all(), so letting the rejection
+  // propagate discards the results of every slower hook that had not been
+  // yielded yet, and surfaces a raw exception instead of a HookResult
+  // attributed to the hook that actually failed (wb-002).
+  let json: Awaited<ReturnType<NonNullable<HookCallback['callback']>>>
+  try {
+    json = await hook.callback(
+      hookInput,
+      toolUseID,
+      signal,
+      hookIndex,
+      context,
+    )
+  } catch (error) {
+    logError(error)
+    return {
+      outcome: 'non_blocking_error',
+      hook,
+      message: createAttachmentMessage({
+        type: 'hook_error_during_execution',
+        hookName: `${hookEvent}:Callback`,
+        toolUseID,
+        hookEvent,
+        content: `Hook callback failed: ${errorMessage(error)}`,
+        durationMs: 0,
+      }),
+    }
+  }
   if (isAsyncHookJSONOutput(json)) {
     return {
       outcome: 'success',

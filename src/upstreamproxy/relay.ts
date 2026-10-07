@@ -54,6 +54,21 @@ const MAX_CHUNK_BYTES = 512 * 1024
 const PING_INTERVAL_MS = 30_000
 
 /**
+ * How long the WebSocket handshake may stay pending before the relay gives up.
+ *
+ * The keepalive pinger only starts in onopen, so before the upgrade completes
+ * nothing bounds the connection: a gateway that accepts TCP and then stalls
+ * holds the client socket open indefinitely (cc-008). Paired with the pending
+ * buffer ceiling, this bounds a stuck handshake in both memory and time.
+ */
+let HANDSHAKE_TIMEOUT_MS = 30_000
+
+/** @internal Shortens the handshake timeout so tests don't wait 30s. */
+export function _setHandshakeTimeoutForTesting(ms: number): void {
+  HANDSHAKE_TIMEOUT_MS = ms
+}
+
+/**
  * Encode an UpstreamProxyChunk protobuf message by hand.
  *
  * For `message UpstreamProxyChunk { bytes data = 1; }` the wire format is:
@@ -111,6 +126,8 @@ type ConnState = {
   ws?: WebSocketLike
   connectBuf: Buffer
   pinger?: ReturnType<typeof setInterval>
+  /** Cleared once the WS opens, so a slow-but-fine upgrade is never cut off. */
+  handshakeTimer?: ReturnType<typeof setTimeout>
   // Bytes that arrived after the CONNECT header but before ws.onopen fired.
   // TCP can coalesce CONNECT + ClientHello into one packet, and the socket's
   // data callback can fire again while the WS handshake is still in flight.
@@ -414,7 +431,24 @@ function openTunnel(
   ws.binaryType = 'arraybuffer'
   st.ws = ws
 
+  // Bound the handshake itself — cleared the moment it succeeds.
+  st.handshakeTimer = setTimeout(() => {
+    if (st.wsOpen || st.closed) return
+    st.closed = true
+    sock.end()
+    try {
+      ws.close()
+    } catch {
+      // Already closing; sock.end() above is what matters.
+    }
+  }, HANDSHAKE_TIMEOUT_MS)
+  st.handshakeTimer.unref?.()
+
   ws.onopen = () => {
+    if (st.handshakeTimer) {
+      clearTimeout(st.handshakeTimer)
+      st.handshakeTimer = undefined
+    }
     // First chunk carries the CONNECT line plus Proxy-Authorization so the
     // server can auth the tunnel and know the target host:port. Server
     // responds with its own "HTTP/1.1 200" over the tunnel; we just pipe it.
@@ -484,6 +518,7 @@ function forwardToWs(ws: WebSocketLike, data: Buffer): void {
 function cleanupConn(st: ConnState | undefined): void {
   if (!st) return
   if (st.pinger) clearInterval(st.pinger)
+  if (st.handshakeTimer) clearTimeout(st.handshakeTimer)
   if (st.ws && st.ws.readyState <= WebSocket.OPEN) {
     try {
       st.ws.close()
