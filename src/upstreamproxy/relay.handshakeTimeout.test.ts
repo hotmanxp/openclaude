@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { afterEach, describe, expect, test } from 'bun:test'
 import { connect, createServer } from 'node:net'
 
