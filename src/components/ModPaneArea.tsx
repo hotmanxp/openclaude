@@ -7,10 +7,12 @@ import {
 } from 'react'
 import { Box, Text } from '../ink.js'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
+import { useKeybinding } from '../keybindings/useKeybinding.js'
 import {
   getModPanesSnapshot,
   getModPanesVersion,
   notifyPaneWidth,
+  requestPaneClose,
   subscribeModPanes,
   type RegisteredPane,
 } from '../mods/engine.js'
@@ -163,6 +165,37 @@ function PaneView({ pane }: { pane: RegisteredPane }): ReactNode {
   )
 }
 
+const ESCAPE_OWNER_CONTEXT = { context: 'ModPane', isActive: true } as const
+
+/**
+ * Honour `closeOnEscape` at the pane layer — upstream `$oe` @29743840.
+ *
+ * Upstream does not watch for Escape; it registers a `chat:cancel` handler
+ * and arms it only while nothing else wants Escape. That distinction is the
+ * whole design: `chat:cancel` is a contended action, and a pane that grabbed
+ * Escape unconditionally would swallow a keystroke something else needed.
+ * Registering through the keybinding context puts this handler in that same
+ * priority order instead of ahead of it.
+ *
+ * Upstream additionally guards on `promptOwnsEscape`. The host's prompt
+ * input keeps its value in REPL-local state, not AppState, so a pane area
+ * cannot read it — that condition is the one thing here that cannot be
+ * mirrored, and `ModPane` therefore ranks below the prompt's own context.
+ */
+function PaneEscapeHandler({ panes }: { panes: readonly RegisteredPane[] }): ReactNode {
+  const candidate = panes.find(pane => pane.closeOnEscape && !pane.isFocused)
+
+  useKeybinding(
+    'chat:cancel',
+    () => {
+      if (candidate === undefined) return
+      requestPaneClose(candidate.modName, candidate.id)
+    },
+    { ...ESCAPE_OWNER_CONTEXT, isActive: candidate !== undefined },
+  )
+  return null
+}
+
 export function ModPaneArea(): ReactNode {
   const version = usePaneVersion()
   const panes = getModPanesSnapshot()
@@ -178,6 +211,7 @@ export function ModPaneArea(): ReactNode {
   if (panes.length === 0) return null
   return (
     <Box flexDirection="column">
+      <PaneEscapeHandler panes={panes} />
       {panes.map(pane => (
         <PaneErrorBoundary
           key={pane.key}

@@ -278,6 +278,30 @@ function syncPaneFlags(): void {
   }
 }
 
+/** Callbacks a mod registers to learn that the host closed one of its panes. */
+const paneCloseListeners = new Map<string, (id: string) => void>()
+
+/**
+ * Host-initiated close — upstream's `DZe(id, {kind:"person"})` @6009…,
+ * the path a pane with `closeOnEscape` takes when the user presses Escape.
+ *
+ * The mod is told so it can drop its own open flag; without that callback a
+ * mod whose toggle reads local state would believe its pane is still open and
+ * the next `/diff` would try to close something already gone.
+ */
+export function requestPaneClose(modName: string, id: string): boolean {
+  const closed = closeModPane(modName, id)
+  if (closed) paneCloseListeners.get(modName)?.(id)
+  return closed
+}
+
+export function setPaneCloseListener(
+  modName: string,
+  listener: (id: string) => void,
+): void {
+  paneCloseListeners.set(modName, listener)
+}
+
 /** Upstream `ZYo` @6017976 — one mod's panes, frozen. */
 export function getModPanesFor(modName: string): readonly Readonly<{
   id: string
@@ -682,6 +706,11 @@ export function createModContext(mod: LoadedMod): ModContext {
   const fsApi: ModFsApi | undefined = isModFsAuthorized(modName)
     ? buildFsApiLazy(modName, [process.cwd(), mod.root])
     : undefined
+  // A pane the host closes on the user's behalf (Escape, a resize) has to
+  // reach the mod, or a mod tracking its own open flag drifts from reality.
+  setPaneCloseListener(modName, () => {
+    notifyPaneChanged()
+  })
   return {
     options: readModOptions(mod),
     on(event, matcherOrHandler, maybeHandler?) {
