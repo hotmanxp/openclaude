@@ -3,9 +3,7 @@ import type { BuiltinModSpec } from '../builtin.js'
 import type { ModContext } from '../engine.js'
 import {
   consumeArmedDiff,
-  isPaneOpen,
   resetDiffStore,
-  setPaneOpen,
 } from './diff/store.js'
 import { setDiffOptions, diffMinColumns } from './diff/settings.js'
 
@@ -26,16 +24,15 @@ import { setDiffOptions, diffMinColumns } from './diff/settings.js'
  */
 
 /**
- * Upstream's strings for the toggle (bundle @35263677 region): `Ys = "Diff
- * panel hidden"`, `Vs = "Diff panel shown"`.
+ * Upstream's string when the toggle turns the panel off (bundle `Ys` @
+ * 35263677 region: "Diff panel hidden").
  *
  * Not `Diff dialog dismissed` — the host drops any local-command result
  * ending in " dismissed" when fullscreen, treating it as a modal-close
  * notification (`skipTranscript`, processSlashCommand.tsx). Spelling it as
- * the panel messages upstream uses keeps the toggle visible in scrollback.
+ * the panel message upstream uses keeps the toggle visible in scrollback.
  */
 const PANE_HIDDEN = 'Diff panel hidden'
-const PANE_SHOWN = 'Diff panel shown'
 
 const PANE_ID = 'diff'
 
@@ -95,6 +92,14 @@ export const diffBuiltinMod: BuiltinModSpec = {
     // separate modules with no handle on ctx, and plugin options are resolved
     // at load time. `/plugins` says "Reload mod" after a change.
     setDiffOptions(ctx.options)
+
+    // The host can close this mod's pane on its own — Escape, per
+    // `closeOnEscape` — and a mod that keeps its own open flag in step with
+    // the registry is never wrong about what is on screen. Reading the
+    // registry before each toggle is enough: the flag only exists to answer
+    // "toggle on or off", and the registry is the truth for that.
+    const isShown = () => ctx.ui.panes().some(pane => pane.isShown)
+
     ctx.on('SessionStart', async (e, next) => {
       resetDiffStore()
       return next(e)
@@ -128,29 +133,31 @@ export const diffBuiltinMod: BuiltinModSpec = {
         // uncommitted changes": turning it off closes the pane and shows no
         // dialog, because there would be nothing to focus. Turning it on
         // reveals the pane and opens the dialog over it.
-        if (isPaneOpen()) {
-          setPaneOpen(false)
+        //
+        // Read the registry rather than the local flag: the host may have
+        // closed the pane already (Escape), and a stale flag would make this
+        // toggle close something that is not there.
+        if (isShown()) {
           ctx.ui.close({ id: PANE_ID })
           onDone(PANE_HIDDEN, { display: 'system' })
           return null
         }
-        setPaneOpen(true)
         const [{ DiffDialog }, { DiffPane }] = await Promise.all([
           import('./diff/DiffDialog.jsx'),
           import('./diff/DiffPane.jsx'),
         ])
-        // Upstream's `cc-plugin-diff` declares minColumns=110
-        // (bundle `sX` @6003570) and refuses to draw below it, saying so in
-        // the status line rather than truncating. `open` answers whether the
-        // pane found room, so the same refusal happens before anything draws.
+        // Upstream's `cc-plugin-diff` declares `closeOnEscape: true` on its
+        // pane (bundle `Le()` @35284826), which is what makes Esc close the
+        // panel rather than only the dialog over it. Without it a user who
+        // pressed Esc was left with a panel and no way to dismiss it.
         const opened = await ctx.ui.open({
           id: PANE_ID,
           title: 'Diff',
           columns: diffMinColumns(),
+          closeOnEscape: true,
           component: () => <DiffPane />,
         })
         if (!opened.isPlaced) {
-          setPaneOpen(false)
           // Unregister the waiting pane: it holds a slot in the pane list and
           // would otherwise keep the toggle reporting "open".
           ctx.ui.close({ id: PANE_ID })
@@ -159,9 +166,12 @@ export const diffBuiltinMod: BuiltinModSpec = {
         }
         return (
           <DiffDialog
-            // Closing the dialog leaves the pane showing, so the toggle's
-            // result is "shown", not "dismissed".
-            onDone={() => onDone(PANE_SHOWN, { display: 'system' })}
+            // Esc closes the pane too (closeOnEscape), so leaving the dialog
+            // hides the panel rather than only the dialog over it.
+            onDone={() => {
+              ctx.ui.close({ id: PANE_ID })
+              onDone(PANE_HIDDEN, { display: 'system' })
+            }}
             setStatus={text => ctx.ui.status(text)}
           />
         )
