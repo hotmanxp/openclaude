@@ -1098,7 +1098,11 @@ if (result?.success) {
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
     'src/components/tasks/MonitorMcpDetailDialog',
-    'src/daemon/workerRegistry',
+    // src/daemon/workerRegistry used to need allow-listing: the always-stub
+    // branch returned null, so bun treated it as a MISSING module and emitted a
+    // missing-module stub. It now resolves into the stub namespace like any
+    // other stub, so it bundles as a real function carrying the friendly
+    // "unavailable in the open build" error and needs no allow-listing.
   ])
 
   // Stub markers are not byte-stable across build hosts: the per-importer
