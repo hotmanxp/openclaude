@@ -1,13 +1,16 @@
 import {
   Component,
   isValidElement,
+  useEffect,
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import { Box, Text } from '../ink.js'
+import { useTerminalSize } from '../hooks/useTerminalSize.js'
 import {
   getModPanesSnapshot,
   getModPanesVersion,
+  notifyPaneWidth,
   subscribeModPanes,
   type RegisteredPane,
 } from '../mods/engine.js'
@@ -68,12 +71,11 @@ class PaneErrorBoundary extends Component<
 /**
  * Normalize a mod component's return value into something renderable.
  *
- * The component is called as a plain function (not `<C />`), so React never
- * sees it as a component boundary and primitives do not get wrapped for the
- * caller. Ink's reconciler drops bare `number` / `string[]` / `boolean` and
- * renders an empty box with no diagnostic, which reads as "my pane is broken"
- * with nothing to act on. Normalize the shapes a mod author reasonably writes,
- * and throw a naming error for the rest so the ErrorBoundary can show it.
+ * Components are mounted as `<C />`, so React already normalizes their
+ * return. This remains for a mod that hands `pane()` a function returning a
+ * bare value: Ink's reconciler drops bare `number` / `string[]` / `boolean`
+ * and renders an empty box with no diagnostic, which reads as "my pane is
+ * broken" with nothing to act on.
  */
 export function normalizePaneContent(value: unknown, modName: string, paneId: string): ReactNode {
   // `cond && <X/>` yields false — treat every boolean as "takes no space".
@@ -106,24 +108,57 @@ function describe(value: unknown): string {
   return `a ${typeof value}`
 }
 
+/**
+ * Render one pane's component.
+ *
+ * The component is mounted as `<C />`, **not** called as a plain function.
+ * Calling it directly (the previous behaviour here) meant React never saw a
+ * component boundary: no state, no effects, no context, no focus, no
+ * `autoFocus`. That is why the diff pane drew as a static box while its
+ * `DiffPane` source was a full React component with hooks in it.
+ */
+function PaneContent({ pane }: { pane: RegisteredPane }): ReactNode {
+  const Component = pane.component as (props: Record<string, unknown>) => ReactNode
+  return <Component {...pane.props} />
+}
+
+/**
+ * One pane, in the layout its `placement` asks for.
+ *
+ * Upstream's two placements @35263677: `"dock"` sits beside the transcript
+ * and keeps refreshing; `"inline"` is inserted into the transcript as a
+ * modal, taking the full width and scrolling with it. This host renders both
+ * above the prompt input — there is no transcript insertion point on this
+ * surface — but the distinction that survives is the border and the padding:
+ * a dock pane is a persistent panel, an inline pane is a modal body.
+ */
 function PaneView({ pane }: { pane: RegisteredPane }): ReactNode {
-  const content = normalizePaneContent(
-    pane.component(pane.props),
-    pane.modName,
-    pane.id,
-  )
-  if (content === null) return null
+  const isDock = pane.placement === 'dock'
+
+  if (!pane.isPlaced) {
+    return (
+      <Box flexDirection="column" borderStyle="round" paddingX={1}>
+        <Text dimColor>
+          {pane.title} · mod:{pane.modName}
+        </Text>
+        <Text dimColor>waiting for a wider terminal…</Text>
+      </Box>
+    )
+  }
+
   return (
     <Box
       key={pane.key}
       flexDirection="column"
-      borderStyle="round"
+      borderStyle={isDock ? 'round' : 'single'}
       paddingX={1}
+      paddingY={isDock ? 0 : 1}
     >
       <Text dimColor>
         {pane.title} · mod:{pane.modName}
+        {pane.isFocused ? ' ·focused' : ''}
       </Text>
-      {content}
+      <PaneContent pane={pane} />
     </Box>
   )
 }
@@ -131,6 +166,15 @@ function PaneView({ pane }: { pane: RegisteredPane }): ReactNode {
 export function ModPaneArea(): ReactNode {
   const version = usePaneVersion()
   const panes = getModPanesSnapshot()
+  const { columns } = useTerminalSize()
+
+  // A pane that asked for a width it does not have waits rather than drawing
+  // a truncated version of itself — the same call upstream makes when a
+  // terminal resize reaches `Fn({isOpen, columns})` (`wpr` @35282718).
+  useEffect(() => {
+    notifyPaneWidth(columns)
+  }, [columns])
+
   if (panes.length === 0) return null
   return (
     <Box flexDirection="column">

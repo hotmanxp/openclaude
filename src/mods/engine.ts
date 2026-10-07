@@ -30,6 +30,27 @@ import {
   type ModSupportedEvent,
 } from './dispatch.js'
 import { modPluginId } from './pluginView.js'
+import { resolveElementTable, type ElementTable } from './ui/elements.js'
+import { setClipboard } from '../ink/termio/osc.js'
+
+/**
+ * Upstream `ui.invalidate` @10562833 — the only events a mod may name.
+ * A typo here would otherwise silently redraw nothing.
+ */
+const INVALIDATE_EVENTS = new Set([
+  'ui.render',
+  'prompt.section',
+  'prompt.context',
+  'prompt.attachment',
+  'tool.describe',
+  'command.describe',
+  'config.describe',
+])
+
+/** `$.ui.open` without the component — the shape a caller builds before it has one. */
+export type ModPaneOpenSpec = Omit<ModPaneSpec, 'component'> & {
+  component?: (props: Record<string, unknown>) => unknown
+}
 
 /**
  * Mod runtime API surface (docs/mods-plan.md §3.3 "能力面 $ / ctx").
@@ -48,21 +69,36 @@ const MOD_NOTICE_MAX_CHARS = 2000
 const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
 
 // ---------------------------------------------------------------------------
-// ui.pane — live render site (P3 slice): mods register a component that the
-// host renders persistently above the prompt input, refreshed via
-// notifyPaneChanged(). Per-pane ErrorBoundary in ModPaneArea contains render
-// crashes (same-process substitute for upstream's Worker isolation). A
-// component may return null to take no space. Built-in mods pass real TSX
-// components; disk mods are limited to primitives-free components until the
-// UI-primitives whitelist decision (docs/mods-plan.md P3).
+// Pane registry — the host side of `$.ui.open` / `close` / `panes`.
+//
+// Upstream separates two moments that this host used to collapse into one:
+// a pane is first *asked for* (`isPlaced:false`, waiting for room), and only
+// becomes *placed* once the terminal is wide enough for it. The diff pane
+// lives on that distinction — it would rather say "resize to 110 columns"
+// than draw a 40-column truncated diff — so the wait is modelled rather than
+// approximated by refusing at draw time.
+//
+// `pane()` and `closePane()` remain as the compat entry points the existing
+// built-in mods call; they register through the same state machine, so a mod
+// can migrate one call site at a time.
 // ---------------------------------------------------------------------------
 
+export type PanePlacement = 'dock' | 'inline'
+
 export type ModPaneSpec = {
-  /** Unique within the mod; replaces a prior pane with the same id. */
+  /** Unique within the mod; becomes the Pane render site's `requestId`. */
   id: string
   title: string
   component: (props: Record<string, unknown>) => unknown
   props?: Record<string, unknown>
+  /** Upstream `ui.open` — a pane takes no width preference by default. */
+  columns?: number
+  rows?: number
+  /** Literal `true` or absent, matching upstream `QYo`. */
+  focus?: true
+  closeOnEscape?: true
+  holdToasts?: true
+  placement?: PanePlacement
 }
 
 export type RegisteredPane = {
@@ -72,12 +108,71 @@ export type RegisteredPane = {
   title: string
   component: (props: Record<string, unknown>) => unknown
   props: Record<string, unknown>
+  placement: PanePlacement
+  columns?: number
+  rows?: number
+  focus: boolean
+  closeOnEscape: boolean
+  holdToasts: boolean
+  /** Asked for, waiting on terminal width. */
+  isPlaced: boolean
+  isShown: boolean
+  isFocused: boolean
+}
+
+/** Upstream `pCt` @3648140 — 1 to 64 of letters, digits, `_` or `-`. */
+const PANE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+/**
+ * Upstream `QYo` @6017487. Returns undefined when the spec is acceptable,
+ * otherwise the reason — the wording is what a mod author reads.
+ */
+export function paneOpenProblem(spec: {
+  id?: unknown
+  title?: unknown
+  rows?: unknown
+  columns?: unknown
+  focus?: unknown
+  closeOnEscape?: unknown
+  holdToasts?: unknown
+}): string | undefined {
+  const { id, title, rows, columns, focus, closeOnEscape, holdToasts } = spec
+  if (typeof id !== 'string' || !PANE_ID_PATTERN.test(id)) {
+    return 'id is 1 to 64 of letters, digits, _ or -'
+  }
+  if (title !== undefined && typeof title !== 'string') {
+    return 'title must be a string'
+  }
+  // eslint-disable-next-line no-control-regex
+  if (typeof title === 'string' && /[\x00-\x1f]/.test(title)) {
+    return 'title holds a control character'
+  }
+  for (const [name, value] of [
+    ['focus', focus],
+    ['closeOnEscape', closeOnEscape],
+    ['holdToasts', holdToasts],
+  ] as const) {
+    if (value !== undefined && value !== true) {
+      return `${name} is true or left out`
+    }
+  }
+  for (const [name, value] of [
+    ['rows', rows],
+    ['columns', columns],
+  ] as const) {
+    if (value !== undefined && !(typeof value === 'number' && Number.isInteger(value) && value > 0)) {
+      return `${name} is a positive whole number or left out (got ${String(value)})`
+    }
+  }
+  return undefined
 }
 
 const modPanes = new Map<string, RegisteredPane>()
 const paneListeners = new Set<() => void>()
 let paneVersion = 0
 let paneSnapshot: RegisteredPane[] = []
+let shownPaneKey: string | null = null
+let focusedPaneKey: string | null = null
 
 export function getModPanesSnapshot(): readonly RegisteredPane[] {
   return paneSnapshot
@@ -94,33 +189,137 @@ export function subscribeModPanes(listener: () => void): () => void {
   }
 }
 
-function setModPane(modName: string, spec: ModPaneSpec): void {
+function publishPanes(): void {
+  paneSnapshot = [...modPanes.values()]
+  paneVersion++
+  for (const listener of paneListeners) listener()
+}
+
+/**
+ * Decide which panes can be placed at `columns`.
+ *
+ * Upstream reserves at most one shown pane (`shownId`) and queues the rest.
+ * This host keeps the wait all-or-nothing: a pane that declares a width it
+ * cannot get waits, and every pane waits with it, so the user never sees a
+ * queue implied by one narrow pane rendering beside another.
+ */
+function reevaluatePlacement(columns: number): void {
+  const placed = ![...modPanes.values()].some(pane => columns < (pane.columns ?? 0))
+  for (const pane of modPanes.values()) {
+    pane.isPlaced = placed
+  }
+  // A pane that was shown or focused but is now waiting should stop being
+  // either — otherwise `$.ui.panes()` reports a hidden pane as shown.
+  if (shownPaneKey !== null && !modPanes.get(shownPaneKey)?.isPlaced) shownPaneKey = null
+  if (focusedPaneKey !== null && !modPanes.get(focusedPaneKey)?.isPlaced) focusedPaneKey = null
+  syncPaneFlags()
+}
+
+/**
+ * Upstream `$.ui.focus` @10545990 — move focus to one of a mod's own panes.
+ *
+ * Returns a refusal rather than doing nothing silently, so a mod can tell
+ * "no such pane" from "moved".
+ */
+export function focusModPane(modName: string, id: string): { deny: string } | undefined {
+  const pane = modPanes.get(`${modName}:${id}`)
+  if (pane === undefined) return { deny: 'no pane with that id' }
+  if (!pane.isPlaced) return { deny: 'the pane is waiting for a wider terminal' }
+  focusedPaneKey = pane.key
+  syncPaneFlags()
+  publishPanes()
+  return undefined
+}
+
+function setModPane(modName: string, spec: ModPaneSpec): RegisteredPane | undefined {
+  const problem = paneOpenProblem(spec)
+  if (problem !== undefined) {
+    throw new Error(`ctx.ui.open: ${problem}`)
+  }
   const key = `${modName}:${spec.id}`
-  modPanes.set(key, {
+  const existing = modPanes.get(key)
+  const pane: RegisteredPane = {
     key,
     modName,
     id: spec.id,
     title: spec.title,
     component: spec.component,
     props: spec.props ?? {},
-  })
-  paneSnapshot = [...modPanes.values()]
-  paneVersion++
-  for (const listener of paneListeners) listener()
+    placement: spec.placement ?? 'dock',
+    columns: spec.columns,
+    rows: spec.rows,
+    focus: spec.focus === true,
+    closeOnEscape: spec.closeOnEscape === true,
+    holdToasts: spec.holdToasts === true,
+    isPlaced: existing?.isPlaced ?? true,
+    isShown: existing?.isShown ?? false,
+    isFocused: existing?.isFocused ?? false,
+  }
+  modPanes.set(key, pane)
+  if (pane.isPlaced) {
+    shownPaneKey = key
+    // Only one pane holds focus at a time, so asking for it moves it rather
+    // than adding a second holder — the same single-focus rule upstream keeps
+    // in `settleFocusRequest` @6016000.
+    if (pane.focus) focusedPaneKey = key
+  }
+  // The keys above are the source of truth; the booleans are what the host and
+  // `$.ui.panes()` read. Without this copy-back they never became true.
+  syncPaneFlags()
+  publishPanes()
+  return pane
 }
 
-function closeModPane(modName: string, id?: string): void {
+/** Project `shownPaneKey` / `focusedPaneKey` onto each pane's booleans. */
+function syncPaneFlags(): void {
+  for (const pane of modPanes.values()) {
+    pane.isShown = pane.key === shownPaneKey
+    pane.isFocused = pane.key === focusedPaneKey
+  }
+}
+
+/** Upstream `ZYo` @6017976 — one mod's panes, frozen. */
+export function getModPanesFor(modName: string): readonly Readonly<{
+  id: string
+  title: string
+  isShown: boolean
+  isFocused: boolean
+  isPlaced: boolean
+}>[] {
+  return Object.freeze(
+    [...modPanes.values()]
+      .filter(pane => pane.modName === modName)
+      .map(pane =>
+        Object.freeze({
+          id: pane.id,
+          title: pane.title,
+          isShown: pane.isShown,
+          isFocused: pane.isFocused,
+          isPlaced: pane.isPlaced,
+        }),
+      ),
+  )
+}
+
+/** Host-side: re-evaluate placement when the terminal resizes. */
+export function notifyPaneWidth(columns: number): void {
+  reevaluatePlacement(columns)
+  publishPanes()
+}
+
+function closeModPane(modName: string, id?: string): boolean {
   let removed = false
   for (const [key, pane] of modPanes) {
     if (pane.modName === modName && (id === undefined || pane.id === id)) {
       modPanes.delete(key)
+      if (shownPaneKey === key) shownPaneKey = null
+      if (focusedPaneKey === key) focusedPaneKey = null
       removed = true
     }
   }
-  if (!removed) return
-  paneSnapshot = [...modPanes.values()]
-  paneVersion++
-  for (const listener of paneListeners) listener()
+  if (!removed) return false
+  publishPanes()
+  return true
 }
 
 /** Called from recordEdit-style data updates: bump the render loop. */
@@ -131,23 +330,16 @@ export function notifyPaneChanged(): void {
 
 /** Remove all panes of a mod (unload path). */
 export function clearModPanes(modName: string): void {
-  let removed = false
-  for (const [key, pane] of modPanes) {
-    if (pane.modName === modName) {
-      modPanes.delete(key)
-      removed = true
-    }
-  }
+  const removed = closeModPane(modName)
   if (!removed) return
-  paneSnapshot = [...modPanes.values()]
-  paneVersion++
-  for (const listener of paneListeners) listener()
 }
 
 /** Wipe the whole pane registry. For tests only. */
 export function __resetModPanesForTesting(): void {
   modPanes.clear()
   paneSnapshot = []
+  shownPaneKey = null
+  focusedPaneKey = null
   paneVersion++
 }
 
@@ -178,14 +370,55 @@ export type ModContext = {
   ui: {
     /** One-way push to the host UI (toast/notification slot). */
     notice(text: string): void
+    /**
+     * Upstream `$.ui.toast` @3831736. `timeoutMs` is accepted but not
+     * honoured — the notice bus carries no lifetime.
+     */
+    toast(text: string, options?: { timeoutMs?: number }): void
     /** Debug-log a line attributed to this mod. */
     log(text: string): void
     /** Persistent status segment (P2); empty string clears. */
     status(text: string): void
     /**
-     * Register a live pane above the prompt input (P3 render site).
-     * Component may return null (takes no space). Re-render via
-     * data-change notifications, not props identity.
+     * Upstream `$.ui.open` @3831735. Ask for a pane; the answer says whether
+     * it found room, so a mod can say "resize to N columns" itself rather
+     * than drawing a pane too narrow to read.
+     */
+    open(
+      spec: ModPaneOpenSpec,
+    ): Promise<{ isPlaced: true } | { isPlaced: false; reason: string }>
+    /** Upstream `$.ui.close` @3832432. */
+    close(spec: { id?: string }): void
+    /** Upstream `$.ui.panes` @6017976 — this mod's panes and their state. */
+    panes(): readonly Readonly<{
+      id: string
+      title: string
+      isShown: boolean
+      isFocused: boolean
+      isPlaced: boolean
+    }>[]
+    /**
+     * Upstream `$.ui.resolve(e)` @3830795 — the element table for a surface,
+     * frozen. This is how a mod gets components: it does not import them.
+     */
+    resolve(spec: { surface?: string }): ElementTable
+    /** Upstream `$.ui.scroll` @8747042 — refused until panes scroll. */
+    scroll(spec?: { to?: unknown; in?: unknown; block?: unknown }): Promise<{ deny: string }>
+    /** Upstream `$.ui.focus` @10545434 — focuses one of this mod's panes. */
+    focus(spec: { requestId?: string; key?: string }): Promise<{ deny: string } | undefined>
+    /** Upstream `$.ui.selection` @10101304. */
+    selection(): Promise<{ text: string; cursor: number } | undefined>
+    /** Upstream `$.ui.copy` @10541298. */
+    copy(spec: { text?: string; surface?: string }): Promise<
+      { isCopied: true } | { isCopied: false; reason: 'no-clipboard' | 'no-surface' }
+    >
+    /** Upstream `$.ui.blit` @3830531 — cell painting, not available here. */
+    blit(spec: { requestId?: string; key?: string; cells?: string }): void
+    /** Upstream `$.ui.invalidate` @10562833. */
+    invalidate(event: string): void
+    /**
+     * Register a live pane above the prompt input (compat with the pre-1:1
+     * shape; `open` is the upstream-named entry point).
      */
     pane(spec: ModPaneSpec): void
     /** Close one pane by id, or all of this mod's panes when omitted. */
@@ -548,6 +781,23 @@ export function createModContext(mod: LoadedMod): ModContext {
         if (typeof text !== 'string' || text.trim() === '') return
         emitModNotice(modName, text)
       },
+      /**
+       * Upstream `$.ui.toast` @3831736.
+       *
+       * Same channel as `notice` today: the notice bus carries no lifetime,
+       * so `timeoutMs` is accepted and ignored rather than silently dropped
+       * from the signature. Giving the bus a timeout means changing the host
+       * notification queue, which reaches past this surface.
+       */
+      toast(text: string, options?: { timeoutMs?: number }) {
+        if (typeof text !== 'string' || text.trim() === '') return
+        if (options?.timeoutMs !== undefined) {
+          logForDebugging(
+            `[mods:${modName}] ui.toast: timeoutMs is not honoured by this host; the toast will persist until dismissed`,
+          )
+        }
+        emitModNotice(modName, text)
+      },
       log(text: string) {
         logForDebugging(`[mods:${modName}] ${String(text)}`)
       },
@@ -555,6 +805,106 @@ export function createModContext(mod: LoadedMod): ModContext {
         if (typeof text !== 'string') return
         setModStatus(modName, text.trim() === '' ? undefined : text)
       },
+      /** Upstream `$.ui.open` @3831735 — returns whether the pane is placed. */
+      async open(spec: ModPaneOpenSpec) {
+        if (!spec || typeof spec !== 'object') {
+          throw new Error('ctx.ui.open(): spec object required')
+        }
+        if (typeof spec.component !== 'function') {
+          throw new Error('ctx.ui.open(): component must be a function')
+        }
+        if (typeof spec.title !== 'string' || spec.title.trim() === '') {
+          spec = { ...spec, title: spec.id }
+        }
+        const pane = setModPane(modName, spec as ModPaneSpec)
+        if (pane === undefined) return { isPlaced: false as const, reason: 'refused' }
+        if (!pane.isPlaced) {
+          return {
+            isPlaced: false as const,
+            reason: `waiting for a terminal at least ${pane.columns} columns wide`,
+          }
+        }
+        return { isPlaced: true as const }
+      },
+      /** Upstream `$.ui.close` @3832432. */
+      close(spec: { id?: string }) {
+        closeModPane(modName, typeof spec?.id === 'string' ? spec.id : undefined)
+      },
+      /** Upstream `$.ui.panes` @6017976 — this mod's panes, frozen. */
+      panes() {
+        return getModPanesFor(modName)
+      },
+      /**
+       * Upstream `$.ui.resolve` @3830795 — the element table for a surface.
+       *
+       * Elements are the host's own components; a mod draws with them rather
+       * than importing anything, which is what keeps the disk-mod import
+       * fence in validate.ts narrow.
+       */
+      resolve(spec: { surface?: string }) {
+        return resolveElementTable(spec?.surface)
+      },
+      /**
+       * Upstream `$.ui.scroll` @8747042. This host's panes are laid out by
+       * the terminal, not a scroll container, so there is nothing to scroll
+       * yet — the refusal names itself rather than pretending to work.
+       */
+      scroll() {
+        return Promise.resolve({ deny: 'this host has no scrollable pane region yet' })
+      },
+      /** Upstream `$.ui.focus` @10545434 — focuses one of this mod's panes. */
+      focus(spec: { requestId?: string; key?: string }) {
+        // Upstream takes { requestId, key } — a render site and an element
+        // drawn in it. This host's panes are addressed by their open() id,
+        // which is the same value upstream's Pane site carries as
+        // `requestId` (@29745160), so the mapping is 1:1 for the pane case.
+        const id = spec?.requestId
+        if (typeof id !== 'string' || id === '') {
+          return Promise.resolve({ deny: 'takes { requestId } naming one of this mod\'s panes' })
+        }
+        const refusal = focusModPane(modName, id)
+        return Promise.resolve(refusal)
+      },
+      /** Upstream `$.ui.selection` @10101304. */
+      selection() {
+        return Promise.resolve(undefined)
+      },
+      /** Upstream `$.ui.copy` @10541298. */
+      async copy(spec: { text?: string }) {
+        if (typeof spec?.text !== 'string') {
+          return { isCopied: false as const, reason: 'no-clipboard' as const }
+        }
+        try {
+          await setClipboard(spec.text)
+          return { isCopied: true as const }
+        } catch {
+          return { isCopied: false as const, reason: 'no-clipboard' as const }
+        }
+      },
+      /**
+       * Upstream `$.ui.blit` @3830531 — raw cell painting. Needs the raster
+       * pipeline this host does not have; refused by name.
+       */
+      blit() {
+        throw new Error('ctx.ui.blit(): cell painting is not available in this host')
+      },
+      /** Upstream `$.ui.invalidate` @10562833 — the events it may name. */
+      invalidate(event: string) {
+        if (!INVALIDATE_EVENTS.has(event)) {
+          throw new Error(
+            `ctx.ui.invalidate(): ${event} is not one of ${[...INVALIDATE_EVENTS].join(', ')}`,
+          )
+        }
+        notifyPaneChanged()
+      },
+      /**
+       * Upstream `$.ui.ask` is deliberately absent. The host's `local-jsx`
+       * path covers the same need without routing a synthetic
+       * `AskUserQuestion` through the permission queue, which deadlocks
+       * while a slash command is being handled.
+       */
+
+      // ---- compat entry points (pre-1:1 host shape) ----
       pane(spec: ModPaneSpec) {
         if (!spec || typeof spec !== 'object') {
           throw new Error('ctx.ui.pane(): spec object required')

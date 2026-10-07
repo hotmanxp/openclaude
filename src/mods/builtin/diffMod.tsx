@@ -7,7 +7,7 @@ import {
   resetDiffStore,
   setPaneOpen,
 } from './diff/store.js'
-import { setDiffOptions } from './diff/settings.js'
+import { setDiffOptions, diffMinColumns } from './diff/settings.js'
 
 /**
  * Built-in `diff` mod — opencc parity of upstream `cc-plugin-diff`
@@ -25,8 +25,17 @@ import { setDiffOptions } from './diff/settings.js'
  * second, smaller pane competing for the same space.
  */
 
-/** Upstream's string when the dialog closes without a selection. */
-const DISMISSED = 'Diff dialog dismissed'
+/**
+ * Upstream's strings for the toggle (bundle @35263677 region): `Ys = "Diff
+ * panel hidden"`, `Vs = "Diff panel shown"`.
+ *
+ * Not `Diff dialog dismissed` — the host drops any local-command result
+ * ending in " dismissed" when fullscreen, treating it as a modal-close
+ * notification (`skipTranscript`, processSlashCommand.tsx). Spelling it as
+ * the panel messages upstream uses keeps the toggle visible in scrollback.
+ */
+const PANE_HIDDEN = 'Diff panel hidden'
+const PANE_SHOWN = 'Diff panel shown'
 
 const PANE_ID = 'diff'
 
@@ -121,11 +130,8 @@ export const diffBuiltinMod: BuiltinModSpec = {
         // reveals the pane and opens the dialog over it.
         if (isPaneOpen()) {
           setPaneOpen(false)
-          // Unregister rather than render nothing: ModPaneArea draws the
-          // title and border for every registered pane, so a pane that
-          // returns null still leaves an empty box on screen.
-          ctx.ui.closePane(PANE_ID)
-          onDone(DISMISSED, { display: 'system' })
+          ctx.ui.close({ id: PANE_ID })
+          onDone(PANE_HIDDEN, { display: 'system' })
           return null
         }
         setPaneOpen(true)
@@ -133,10 +139,29 @@ export const diffBuiltinMod: BuiltinModSpec = {
           import('./diff/DiffDialog.jsx'),
           import('./diff/DiffPane.jsx'),
         ])
-        ctx.ui.pane({ id: PANE_ID, title: 'Diff', component: () => <DiffPane /> })
+        // Upstream's `cc-plugin-diff` declares minColumns=110
+        // (bundle `sX` @6003570) and refuses to draw below it, saying so in
+        // the status line rather than truncating. `open` answers whether the
+        // pane found room, so the same refusal happens before anything draws.
+        const opened = await ctx.ui.open({
+          id: PANE_ID,
+          title: 'Diff',
+          columns: diffMinColumns(),
+          component: () => <DiffPane />,
+        })
+        if (!opened.isPlaced) {
+          setPaneOpen(false)
+          // Unregister the waiting pane: it holds a slot in the pane list and
+          // would otherwise keep the toggle reporting "open".
+          ctx.ui.close({ id: PANE_ID })
+          onDone(opened.reason, { display: 'system' })
+          return null
+        }
         return (
           <DiffDialog
-            onDone={() => onDone(DISMISSED, { display: 'system' })}
+            // Closing the dialog leaves the pane showing, so the toggle's
+            // result is "shown", not "dismissed".
+            onDone={() => onDone(PANE_SHOWN, { display: 'system' })}
             setStatus={text => ctx.ui.status(text)}
           />
         )
