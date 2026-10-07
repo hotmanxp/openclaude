@@ -1,0 +1,4 @@
+read  via symlink : rejected: [mods:t] fs path escapes authorized roots: /tmp/bughunt-trae-code/fsrepro/inside/link.txt
+write via symlink : write() returned without error
+outside file now  : "PWNED-BY-MOD"
+REPRODUCED: write escaped the fence

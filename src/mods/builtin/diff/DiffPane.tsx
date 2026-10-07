@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { Box, Text } from '../../../ink.js'
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
-import { MIN_COLUMNS, POLL_WORKTREE_MS } from './constants.js'
+import { CURSOR_RESERVE, MIN_PATH_WIDTH } from './constants.js'
 import { DiffStatsCell } from './DiffFileList.jsx'
 import { diffTitle, listEmptyMessage, tooNarrowMessage } from './presentation.js'
 import { buildRows, noteFor, windowRows } from './rows.js'
+import { diffMinColumns, diffPollIntervalMs } from './settings.js'
 import { getDiffSnapshot, refreshDiff, subscribeToDiff } from './store.js'
 import { plural, sanitize, truncateTail } from './text.js'
 
@@ -22,7 +23,7 @@ export function DiffPane(): React.ReactNode {
 
   useEffect(() => {
     void refreshDiff()
-    const timer = setInterval(() => void refreshDiff(), POLL_WORKTREE_MS)
+    const timer = setInterval(() => void refreshDiff(), diffPollIntervalMs())
     return () => clearInterval(timer)
   }, [])
 
@@ -31,7 +32,7 @@ export function DiffPane(): React.ReactNode {
     [snapshot.data, snapshot.bodies],
   )
 
-  if (columns < MIN_COLUMNS) {
+  if (columns < diffMinColumns()) {
     return <Text dimColor={true}>{tooNarrowMessage()}</Text>
   }
 
@@ -71,7 +72,7 @@ export function DiffPane(): React.ReactNode {
             const note = noteFor(row)
             return (
               <Box key={row.path} flexDirection="row">
-                <Text>{`  ${truncateTail(sanitize(row.displayPath), Math.max(20, columns - 23))}`}</Text>
+                <Text>{`  ${truncateTail(sanitize(row.displayPath), Math.max(MIN_PATH_WIDTH, columns - CURSOR_RESERVE))}`}</Text>
                 <Box flexGrow={1} />
                 {note !== null ? (
                   <Text dimColor={true} italic={true}>

@@ -1,0 +1,3 @@
+with mod v1        : "[[v1]] Hello from the assistant."
+after /mods reload : "[[v1]] Hello from the assistant."
+RESULT: FAIL — /mods reload silently kept serving the PREVIOUS version output

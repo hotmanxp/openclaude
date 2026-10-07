@@ -1,0 +1,8 @@
+loaded mods          : [ "ghost" ]
+render (mod loaded)  : "[GHOSTED:hello world]"
+unloadMod(ghost)     : true
+loaded mods after    : []
+render (after unload): "hello world"
+render (mod2 loaded) : "[GHOSTED:hello world]"
+after unregisterMod  : "hello world"
+direct chain (bypass cache): "hello world"

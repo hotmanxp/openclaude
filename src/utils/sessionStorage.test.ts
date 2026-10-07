@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import { type UUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -19,6 +19,7 @@ import {
   loadTranscriptFile,
   loadTranscriptFromFile,
   recordGoalState,
+  recordTranscript,
   flushSessionStorage,
   resetProjectForTesting,
   resetSessionFilePointer,
@@ -27,6 +28,7 @@ import {
   stripPersistedToolUseResultsFromJSONLBuffer,
 } from './sessionStorage.ts'
 import { createGoalState } from '../services/goal/state.js'
+import { subscribeUserNotices } from './noticeBus.js'
 import {
   getSessionId,
   isSessionPersistenceDisabled,
@@ -745,4 +747,69 @@ test('recurring heartbeat progress types are ephemeral', () => {
   expect(isEphemeralToolProgress('waiting_for_task')).toBe(true)
   expect(isEphemeralToolProgress('agent_progress')).toBe(false)
   expect(isEphemeralToolProgress(undefined)).toBe(false)
+})
+
+// cc-011: a failed transcript append used to leave the uuid in the dedup set
+// forever, so every retry was skipped as a duplicate and the message was lost
+// for good — silently, since logError only writes to a log the user never
+// reads. The uuid must be rolled back so a later write can land.
+test('a failed transcript write can be retried instead of being deduped away', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-cc011-'))
+  tempDirs.push(dir)
+  const transcript = join(dir, 'session.jsonl')
+
+  await withSessionPersistence(async () => {
+    setSessionFileForTesting(transcript)
+
+    const first = user(id(71), null, 'first message')
+    await recordTranscript([first] as never)
+    await flushSessionStorage()
+    expect(await readFile(transcript, 'utf8')).toContain('first message')
+
+    // Break the write path: a read-only transcript rejects appends with EACCES.
+    await chmod(transcript, 0o444)
+    try {
+      const second = user(id(72), id(71), 'second message')
+      await recordTranscript([second] as never)
+      await flushSessionStorage().catch(() => {})
+    } finally {
+      await chmod(transcript, 0o600)
+    }
+
+    // Re-record the SAME message now that the disk is writable again. Before
+    // the fix this was a silent no-op: the uuid was still in the dedup set, so
+    // the write was skipped and 'second message' vanished for good.
+    await recordTranscript([user(id(72), id(71), 'second message')] as never)
+    await flushSessionStorage()
+
+    const body = await readFile(transcript, 'utf8')
+    expect(body).toContain('second message')
+  })
+})
+
+test('a failed transcript write surfaces a user-visible notice', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'opencc-cc011-notice-'))
+  tempDirs.push(dir)
+  const transcript = join(dir, 'session.jsonl')
+
+  await withSessionPersistence(async () => {
+    setSessionFileForTesting(transcript)
+
+    const seen: string[] = []
+    const unsubscribe = subscribeUserNotices(notice => seen.push(notice.text))
+
+    await recordTranscript([user(id(81), null, 'seed')] as never)
+    await flushSessionStorage()
+
+    // Stay read-only so the append fails and the user has to be told.
+    await chmod(transcript, 0o444)
+    try {
+      await recordTranscript([user(id(82), id(81), 'doomed')] as never)
+      await flushSessionStorage().catch(() => {})
+      expect(seen.join('\n')).toContain('transcript')
+    } finally {
+      await chmod(transcript, 0o600)
+      unsubscribe()
+    }
+  })
 })

@@ -1,0 +1,3 @@
+LF framing  (spec default): 3 events -> message_start,content_block_delta,message_stop
+CRLF framing (spec-legal): 0 events -> (none)
+RESULT: FAIL — CRLF-framed SSE yields ZERO events; the entire model response is silently dropped

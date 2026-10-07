@@ -1,0 +1,4 @@
+[phase1] created task #1
+[phase1] claimTask -> success=true
+[phase1] on-disk owner = "tasklist"
+[phase1] <<< process now dies here (crash / SIGKILL / closed terminal) >>>

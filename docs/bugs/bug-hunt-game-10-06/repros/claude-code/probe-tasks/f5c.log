@@ -1,0 +1,7 @@
+both tool_use blocks reported success: [ "A", "B" ]
+
+persisted metadata = {"agentB":"done"}
+both updates durable? NO — one silently lost
+
+after two concurrent blockTask calls on the same task:
+  task B blocks = ["3"] (both callers saw blocks=[])

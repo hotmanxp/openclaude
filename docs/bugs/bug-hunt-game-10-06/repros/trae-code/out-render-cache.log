@@ -1,0 +1,4 @@
+render with mod v1          : "HELLO WORLD"
+render after mod unloaded   : "hello world"
+render with reloaded mod v2 : "HELLO WORLD"
+REPRODUCED: stale cached transform survives unload/reload

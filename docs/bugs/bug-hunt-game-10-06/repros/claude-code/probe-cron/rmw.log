@@ -1,0 +1,16 @@
+=== Part 1: scheduler tick vs. user creating a cron ===
+  user wrote [A, B]
+  scheduler wrote [A + lastFiredAt]
+
+  final on disk : ["A"]
+  task B (the cron the user just scheduled) exists? false
+  -> LOST: the scheduler's stale write overwrote the user's new cron.
+
+=== Part 2: lost lastFiredAt ===
+  A.lastFiredAt = 1700000100000
+  ids on disk   = ["A","B"]
+  -> lastFiredAt survived this run.
+
+NOTE: Part 1/2 sequence the awaits deliberately (the functions have no
+      mutual exclusion, so this interleaving is permitted). Part 3 below
+      races them without any artificial ordering.

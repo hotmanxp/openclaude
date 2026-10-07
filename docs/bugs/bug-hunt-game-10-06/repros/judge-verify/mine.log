@@ -1,0 +1,24 @@
+########## CC-007 ##########
+BEFORE        : {"coordinatorMode":true,"model":"opus","env":{"FOO":"bar"}}
+  isCoordinatorMode() = true
+
+matchSessionMode("normal") returned: "Exited coordinator mode to match resumed session."
+AFTER         : {"env":{"FOO":"bar"},"model":"opus"}
+  coordinatorMode key present? false
+  siblings survived? model=opus env={"FOO":"bar"}
+  isCoordinatorMode() = false
+
+[mirror] matchSessionMode("coordinator") -> "Entered coordinator mode to match resumed session."
+[mirror] AFTER: {"model":"opus","coordinatorMode":true}
+
+[recover?] update {coordinatorMode: undefined} -> {"error":null}
+[recover?] file now: {"model":"opus"}
+[recover?] re-set via settings write works? true
+
+########## WB-003 ##########
+[all-valid      ] effective.model=opus errors=0
+[bad-typed-key  ] effective.model=opus errors=0
+[unknown-key    ] effective.model=opus errors=0
+[bad-nested-env ] effective.model=opus errors=0
+
+=== exit=0 ===

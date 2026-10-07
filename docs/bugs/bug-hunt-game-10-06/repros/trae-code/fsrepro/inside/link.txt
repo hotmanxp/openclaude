@@ -1,0 +1,1 @@
+/tmp/bughunt-trae-code/fsrepro/outside/secret.txt

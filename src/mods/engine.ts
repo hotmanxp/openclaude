@@ -2,6 +2,9 @@ import type { Tool } from '../Tool.js'
 import { MCPTool } from '../tools/MCPTool/MCPTool.js'
 import type { Command } from '../types/command.js'
 import { logForDebugging } from '../utils/debug.js'
+import { errorMessage } from '../utils/errors.js'
+import { loadPluginOptions, type PluginOptionValues } from '../utils/plugins/pluginOptionsStorage.js'
+import { emitUserNotice, subscribeUserNotices } from '../utils/noticeBus.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { realpath, readFile, writeFile, readdir } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
@@ -26,6 +29,7 @@ import {
   subscribeModProgress,
   type ModSupportedEvent,
 } from './dispatch.js'
+import { modPluginId } from './pluginView.js'
 
 /**
  * Mod runtime API surface (docs/mods-plan.md §3.3 "能力面 $ / ctx").
@@ -42,12 +46,6 @@ const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
 const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
-
-export type ModNotice = {
-  key: string
-  modName: string
-  text: string
-}
 
 // ---------------------------------------------------------------------------
 // ui.pane — live render site (P3 slice): mods register a component that the
@@ -206,44 +204,49 @@ export type ModContext = {
    * explicit, visible and revocable).
    */
   fs?: ModFsApi
+  /**
+   * The mod's saved `userConfig` values — declared in `opencc-mod.json`,
+   * edited via `/plugins` → Installed → Configure options.
+   *
+   * Always an object: empty when the mod declares no options or the user
+   * saved none. Schema `default`s are deliberately NOT applied here, because
+   * "the user chose the default" and "the user never touched this" are
+   * different states and only the mod knows whether the difference matters.
+   *
+   * Plugins read the same values through `${user_config.KEY}` substitution in
+   * MCP/LSP config, hook commands and skill prose. A mod is JavaScript, not
+   * substituted text, so it reads them here.
+   */
+  options: PluginOptionValues
 }
 
 // ---------------------------------------------------------------------------
 // ui.notice channel — REPL subscribes and maps to addNotification (the host's
 // existing notification queue). Bridge keeps mods decoupled from React state.
+// The bus itself lives in utils/noticeBus.ts so non-mods core code can raise
+// the same user-visible notice without importing the mods runtime.
 // ---------------------------------------------------------------------------
 
-const noticeListeners = new Set<(notice: ModNotice) => void>()
-let noticeSeq = 0
+export type ModNotice = {
+  key: string
+  modName: string
+  text: string
+}
 
 export function subscribeModNotices(
   listener: (notice: ModNotice) => void,
 ): () => void {
-  noticeListeners.add(listener)
-  return () => {
-    noticeListeners.delete(listener)
-  }
+  return subscribeUserNotices(notice =>
+    listener({
+      key: notice.key,
+      modName: notice.source,
+      text: notice.text,
+    }),
+  )
 }
 
 function emitModNotice(modName: string, text: string): void {
-  const trimmed =
-    text.length > MOD_NOTICE_MAX_CHARS
-      ? `${text.slice(0, MOD_NOTICE_MAX_CHARS)}…`
-      : text
-  const notice: ModNotice = {
-    key: `mod-notice-${modName}-${noticeSeq++}`,
-    modName,
-    text: trimmed,
-  }
-  for (const listener of noticeListeners) {
-    try {
-      listener(notice)
-    } catch (error) {
-      logForDebugging(
-        `[mods] notice listener error: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
+  emitUserNotice(modName, text)
 }
 
 // Streamed handler progress (P2 流式事件) rides the same notice channel.
@@ -351,6 +354,20 @@ async function buildFsApi(
     }
     return real
   }
+  /**
+   * Fence `path` when it already exists. Returns null when it is absent, so a
+   * file that is about to be created only needs its parent fenced.
+   */
+  const assertFencedIfExists = async (path: string): Promise<string | null> => {
+    try {
+      return await assertFenced(path)
+    } catch (error) {
+      if ((error as { cause?: NodeJS.ErrnoException }).cause?.code === 'ENOENT') {
+        return null
+      }
+      throw error
+    }
+  }
   return {
     async read(path) {
       return readFile(await assertFenced(path), 'utf8')
@@ -360,7 +377,14 @@ async function buildFsApi(
       // The file itself may not exist yet — fence on its parent directory.
       const parentReal = await assertFenced(resolve(abs, '..'))
       const fileName = abs.slice(abs.lastIndexOf('/') + 1)
-      await writeFile(resolve(parentReal, fileName), data, 'utf8')
+      const target = resolve(parentReal, fileName)
+      // Fence the final path too when it exists. writeFile follows a symlink
+      // sitting at the last segment, so parent-only fencing let a mod write
+      // through `link.txt -> /outside/secret.txt` and land outside the roots.
+      // read/list/exists already fence the final path; write was the odd one
+      // out, breaking the "containment check on every call" promise above.
+      await assertFencedIfExists(target)
+      await writeFile(target, data, 'utf8')
     },
     async list(path) {
       return readdir(await assertFenced(path))
@@ -392,6 +416,32 @@ function buildFsApiLazy(modName: string, allowedRoots: string[]): ModFsApi {
 // ctx construction
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a mod's saved option values.
+ *
+ * The storage key is the same `name@marketplace` id the plugin pipeline uses,
+ * which is what lets `/plugins` show and save a mod's options with the
+ * existing dialog and nothing mod-specific.
+ *
+ * `loadPluginOptions` merges settings.json (non-sensitive) with the keychain
+ * (sensitive) and is memoized per id, so a mod declaring sensitive options
+ * costs one keychain read per session — the same trade plugins already make.
+ *
+ * Never throws: a settings read failure must not take the whole mod down, and
+ * a mod that declared options but never saved them simply sees `{}`.
+ */
+function readModOptions(mod: LoadedMod): PluginOptionValues {
+  try {
+    const builtin = mod.root === BUILTIN_ORIGIN
+    return loadPluginOptions(modPluginId(mod.manifest.name, builtin))
+  } catch (error) {
+    logForDebugging(
+      `[mods] failed to read options for "${mod.manifest.name}": ${errorMessage(error)}`,
+    )
+    return {}
+  }
+}
+
 export function createModContext(mod: LoadedMod): ModContext {
   const modName = mod.manifest.name
   // P2 授权制: fs API only for whitelisted mods; presence is decided at
@@ -400,6 +450,7 @@ export function createModContext(mod: LoadedMod): ModContext {
     ? buildFsApiLazy(modName, [process.cwd(), mod.root])
     : undefined
   return {
+    options: readModOptions(mod),
     on(event, matcherOrHandler, maybeHandler?) {
       if (typeof event !== 'string' || !isModSupportedEvent(event)) {
         throw new Error(

@@ -8,6 +8,7 @@ import {
 } from '../bootstrap/state.js'
 import {
   loadMods,
+  reloadMods,
   unloadMod,
   resetModsLoaderForTesting,
   OPENCC_MODS_DIR_ENV,
@@ -74,9 +75,12 @@ describe('loadMods', () => {
     modsDir = join(tmpdir(), `opencc-mods-missing-${Date.now()}`)
     process.env[OPENCC_MODS_DIR_ENV] = modsDir
     const results = await loadMods()
-    // The built-in diff mod registers even without a mods dir.
+    // The built-in diff mod registers even without a mods dir. It hooks
+    // SessionStart (reset its store) + UserPromptSubmit (ride an armed file
+    // into the next turn), not PostToolUse.
     expect(results.map(r => r.name)).toContain('diff')
-    expect(getRegisteredHooks()?.PostToolUse).toHaveLength(2)
+    expect(getRegisteredHooks()?.SessionStart).toHaveLength(1)
+    expect(getRegisteredHooks()?.UserPromptSubmit).toHaveLength(1)
   })
 
   test('loads a valid mod end-to-end into the global hook registry', async () => {
@@ -115,11 +119,13 @@ describe('loadMods', () => {
     expect(getLoadedMods().length).toBeGreaterThanOrEqual(2)
 
     // Composite registered into the global registry under Stop + PostToolUse
-    // PostToolUse = greeter's {tool:Bash} + the built-in diff's
-    // {tool:FileEdit}/{tool:FileWrite} matchers.
+    // (PostToolUse = greeter's {tool:Bash} alone; the built-in diff mod hooks
+    // SessionStart/UserPromptSubmit instead) and under UserPromptSubmit
+    // (diff's armed-file injection).
     const registered = getRegisteredHooks()
     expect(registered?.Stop).toHaveLength(1)
-    expect(registered?.PostToolUse).toHaveLength(3)
+    expect(registered?.PostToolUse).toHaveLength(1)
+    expect(registered?.UserPromptSubmit).toHaveLength(1)
     expect(registered?.Stop![0]!.pluginName).toBe('mod:greeter')
 
     // Composite callback is invocable and chains to terminal continue
@@ -211,5 +217,59 @@ describe('loadMods', () => {
 
     await unloadMod('paneful')
     expect(getModPanesSnapshot().some(p => p.key === 'paneful:p')).toBe(false)
+  })
+})
+
+describe('mod state outlives the mod', () => {
+  // Both of these are the same shape: mod-owned state lives in registries keyed
+  // by mod name, and not every path that removes a mod cleared them.
+  test('a mod whose register() throws leaves no pane or status behind', async () => {
+    await setupModsDir()
+    await writeMod(
+      'leaky',
+      `export function register(ctx) {
+         ctx.ui.status('LEAKY')
+         ctx.ui.pane({ id: 'p', title: 'P', component: () => 'x' })
+         throw new Error('boom after claiming UI state')
+       }`,
+    )
+
+    await loadMods()
+
+    // The mod never loaded, so nothing will ever unload it — whatever it
+    // claimed during register() has to have been released on the way out.
+    expect(getModStatusSnapshot().leaky).toBeUndefined()
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'leaky'),
+    ).toHaveLength(0)
+  })
+
+  test('reloadMods clears panes and status of a mod that is gone', async () => {
+    await setupModsDir()
+    await writeMod(
+      'keeper',
+      `export function register(ctx) {
+         ctx.ui.status('KEEPER')
+         ctx.ui.pane({ id: 'k', title: 'K', component: () => 'x' })
+       }`,
+    )
+
+    await loadMods()
+    expect(getModStatusSnapshot().keeper).toBe('KEEPER')
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'keeper'),
+    ).toHaveLength(1)
+
+    // The user deletes the mod and reloads. Reload is a removal like any
+    // other, so its UI state must go with it. Before the fix reload dropped
+    // the registry entry but not the pane/status, so the deleted mod's UI
+    // stayed on screen — while unloadMod had always cleared them.
+    await rm(join(modsDir, 'keeper'), { recursive: true, force: true })
+    await reloadMods()
+
+    expect(getModStatusSnapshot().keeper).toBeUndefined()
+    expect(
+      getModPanesSnapshot().filter(p => p.modName === 'keeper'),
+    ).toHaveLength(0)
   })
 })

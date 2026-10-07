@@ -1,0 +1,4 @@
+load  (broken v1): [{"name":"syncfix","ok":false,"error":"v1 top-level boom"}]
+reload(fixed v2): [{"name":"syncfix","ok":false,"error":"v1 top-level boom"}]
+status after reload: {}
+RESULT: FAIL — reload still runs the OLD broken module; fix invisible until process restart

@@ -1033,6 +1033,11 @@ registerCleanup(async () => {
  * Migrates old autoUpdaterStatus to new installMethod and autoUpdates fields
  * @internal
  */
+/** @internal exported for testing only. */
+export function __migrateConfigFieldsForTesting(config: unknown): unknown {
+  return migrateConfigFields(config as GlobalConfig)
+}
+
 function migrateConfigFields(config: GlobalConfig): GlobalConfig {
   const { maxMessagesCompactionThreshold, ...restConfig } = config
   const normalizedConfig = {
@@ -1049,7 +1054,7 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
 
   // Already migrated
   if (config.installMethod !== undefined) {
-    return config
+    return normalizedConfig
   }
 
   // autoUpdaterStatus is removed from the type but may exist in old configs
@@ -1090,7 +1095,7 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
   }
 
   return {
-    ...config,
+    ...normalizedConfig,
     installMethod,
     autoUpdates,
   }

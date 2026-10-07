@@ -644,6 +644,17 @@ const PluginUserConfigOptionSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('For string type: allow an array of strings'),
+      options: z
+        .array(z.string())
+        .min(1)
+        .optional()
+        .describe(
+          'For string type: the complete set of accepted values. Such a field is ' +
+            'rendered as a ←/→ cycler instead of a free-text box, and ' +
+            'validateUserConfig rejects anything outside the set. This is how ' +
+            'upstream cc-plugin-agents-md declares `instructionFiles` (type ' +
+            '"string" + options) — NOT a separate enum type.',
+        ),
       sensitive: z
         .boolean()
         .optional()
@@ -665,7 +676,7 @@ const PluginUserConfigOptionSchema = lazySchema(() =>
  * Values are available as ${user_config.KEY} in MCP/LSP server config, hook
  * commands, and (non-sensitive only) skill/agent content.
  */
-const PluginManifestUserConfigSchema = lazySchema(() =>
+export const PluginManifestUserConfigSchema = lazySchema(() =>
   z.object({
     userConfig: z
       .record(

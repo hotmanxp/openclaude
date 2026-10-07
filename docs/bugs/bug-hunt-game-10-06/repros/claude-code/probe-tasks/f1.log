@@ -1,0 +1,12 @@
+created task 1  file=/tmp/bughunt-claude-code/probe-tasks/cfg/tasks/reprolist/1.json
+size before = 400130 bytes
+status written = in_progress
+
+size after interrupted write = 22 bytes (was 400130)
+file content now: "{\n  \"id\": \"1\",\n  \"subj"
+
+getTask()  -> null
+listTasks() -> [] (length 0)
+file is still on disk: [ ".lock", "1.json" ]
+
+VERDICT: previous good state recoverable? NO — lost

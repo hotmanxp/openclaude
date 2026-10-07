@@ -166,6 +166,12 @@ export async function runModChain(
   onError?: (modName: string, error: unknown) => void,
 ): Promise<Record<string, unknown>> {
   let index = 0
+  // `index` is shared by every nested next(), so a handler that calls next()
+  // more than once would otherwise advance the cursor twice and re-run the
+  // remaining handlers plus the core terminal tier for the same event. Once a
+  // branch has consumed a position, further calls on that handler's next()
+  // become no-ops returning the branch's own result.
+  const branchResults = new Map<() => Promise<Record<string, unknown>>, Promise<Record<string, unknown>>>()
   const runFrom = async (
     current: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => {
@@ -173,7 +179,13 @@ export async function runModChain(
     if (index >= chain.length) return terminal(current)
     const { modName, handler } = chain[index]!
     index++
-    const next = async (e?: Record<string, unknown>) => runFrom(e ?? current)
+    const next = (e?: Record<string, unknown>) => {
+      const prior = branchResults.get(next)
+      if (prior) return prior
+      const branch = runFrom(e ?? current)
+      branchResults.set(next, branch)
+      return branch
+    }
     try {
       const result = await invokeModHandler(modName, handler, current, next)
       recordModHandlerSuccess(modName)
@@ -321,9 +333,16 @@ export function runModRenderChainSync(input: string): string {
         out !== null &&
         typeof (out as Promise<unknown>).then === 'function'
       ) {
+        // The handler broke the synchronous contract, so its output is lost.
+        // Counting that as a success is what made these mods invisible: the
+        // breaker never tripped and the failure counter stayed at zero while
+        // every render silently skipped the transform (cluster A). Treat it as
+        // the failure it is so the breaker eventually unloads the mod.
         logForDebugging(
           `[mods] "${modName}" ui.render handler returned a promise — ignored (ui.render is a synchronous contract)`,
         )
+        recordModHandlerFailure(modName)
+        continue
       }
       recordModHandlerSuccess(modName)
     } catch (error) {

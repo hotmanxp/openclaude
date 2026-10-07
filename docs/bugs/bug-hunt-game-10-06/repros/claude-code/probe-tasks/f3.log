@@ -1,0 +1,7 @@
+blockTask(1, "7") returned: false
+
+persisted task.blocks = []
+TaskListTool view     = [{"id":"1","blocks":[]}]
+
+model is told: "Updated task #1 blocks"  (mapToolResultToToolResultBlockParam, TaskUpdateTool.ts:382)
+reality   : nothing was written — task 7 does not exist (blockTask returns false, tasks.ts:467-469)

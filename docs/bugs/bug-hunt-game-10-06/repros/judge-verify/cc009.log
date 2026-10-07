@@ -1,0 +1,14 @@
+247 |   };
+248 | }
+249 | 
+250 | // Output schema - multi-agent spawned schema added dynamically at runtime when enabled
+251 | export const outputSchema = lazySchema(() => {
+252 |   const syncOutputSchema = agentToolResultSchema().extend({
+                                 ^
+ReferenceError: Cannot access 'agentToolResultSchema' before initialization.
+      at <anonymous> (/Users/ethan/code/opencc/src/tools/AgentTool/AgentTool.tsx:252:28)
+      at <anonymous> (/Users/ethan/code/opencc/src/utils/lazySchema.ts:7:28)
+      at buildTool (/Users/ethan/code/opencc/src/Tool.ts:906:8)
+      at /Users/ethan/code/opencc/src/tools/AgentTool/AgentTool.tsx:309:26
+
+Bun v1.3.14 (macOS arm64)

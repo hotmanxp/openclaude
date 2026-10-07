@@ -17,6 +17,7 @@ Commands are CLI subcommands exposed via Commander.js as slash commands or direc
 | `/doctor` | `src/commands/doctor/index.ts` | local-jsx |
 | `/diff` | `src/mods/builtin/diffMod.ts` | local (built-in mod command; former `src/commands/diff` was removed) |
 | `/handoff` | `src/mods/builtin/handoffMod.tsx` | local-jsx (built-in mod command; former `src/commands/handoff` was removed) |
+| *(mods themselves)* | `src/mods/pluginView.ts` | no command — mods are listed, toggled and configured in `/plugin` → Installed, not by a `/mods` command (removed 2026-10-07) |
 | `/compact` | `src/commands/compact/index.ts` | local-jsx |
 | `/mcp` | `src/commands/mcp/index.ts` | local-jsx |
 | `/skills` | `src/commands/skills/index.ts` | local-jsx |

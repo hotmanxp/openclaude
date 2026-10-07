@@ -67,7 +67,8 @@ function isSensitivePath(path: string): boolean {
 // hex blobs, mixed-case+digit tokens) must not become durable facts because
 // they are later indexed and injected into prompts. Returns true when the
 // segment looks like a secret/token rather than a meaningful name.
-function looksLikeSecret(segment: string): boolean {
+/** @internal exported for testing */
+export function looksLikeSecret(segment: string): boolean {
   const s = segment.trim()
   if (s.length === 0) return true
   if (looksLikeMemorySecretValue(s)) return true
@@ -77,6 +78,32 @@ function looksLikeSecret(segment: string): boolean {
   if (s.length >= 16 && /^[a-f0-9]+$/.test(s)) return true
   if (s.length >= 12 && /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(s)) return true
   return false
+}
+
+/**
+ * Whether a filesystem path segment may be kept.
+ *
+ * The length heuristic cannot distinguish a credential from an ordinary
+ * directory name — "documentation" (13) and "internationalization" (20) are
+ * both lowercase alnum, so they were scrubbed out of real paths. The truncated
+ * remainder was then persisted as a "project path" fact that later sessions
+ * would treat as a real location.
+ *
+ * A segment that exists on disk is by definition a real directory, not a
+ * token, so the heuristic never applies to it. `parent` anchors the check to
+ * the part of the path built so far; without it a bare "src" would resolve
+ * against the process cwd and give the wrong answer.
+ */
+/** @internal exported for testing */
+export function isRealDirectorySegment(
+  segment: string,
+  parent: string,
+): boolean {
+  try {
+    return existsSync(parent ? join(parent, segment) : segment)
+  } catch {
+    return false
+  }
 }
 
 // Strip token-like path components from a URL path, keeping only the host and
@@ -254,7 +281,16 @@ export async function extractFactsIntoMemdir(
     const hasUNC = path.startsWith('\\\\')
     const hasSlash = path.startsWith('/')
     const segs = path.replace(/^[A-Za-z]:[\\/]/, '').replace(/^\\\\/, '').split(/[\\/]/).filter(Boolean)
-    const safeSegs = segs.filter(s => !looksLikeSecret(s))
+    // Walk the segments keeping a running parent so each existence check is
+    // anchored to the real path rather than the process cwd.
+    let parent = hasDrive ? path.slice(0, 3) : hasUNC ? '\\\\' : hasSlash ? '/' : ''
+    const safeSegs: string[] = []
+    for (const seg of segs) {
+      if (!looksLikeSecret(seg) || isRealDirectorySegment(seg, parent)) {
+        safeSegs.push(seg)
+        parent = join(parent, seg)
+      }
+    }
     if (safeSegs.length === 0) continue
 
     const separator = path.includes('\\') ? '\\' : '/'

@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import { lazySchema } from '../utils/lazySchema.js'
+import { PluginManifestUserConfigSchema } from '../utils/plugins/schemas.js'
 
 /**
  * Mod manifest (`opencc-mod.json`) schema.
@@ -34,6 +35,18 @@ export const ModManifestSchema = lazySchema(() =>
     entry: z
       .string()
       .regex(/^\.{1,2}\//, 'entry must be a relative path starting with ./'),
+    /**
+     * User-configurable values, surfaced by `/plugins` → Installed as a
+     * "Configure options" menu item and read by the mod through
+     * `ctx.options`.
+     *
+     * Same key name and same field schema as a plugin's `manifest.userConfig`
+     * — that is deliberate, not an accident of naming: it lets a mod reuse the
+     * plugin option storage, the validation and the config dialog unchanged,
+     * and keeps a mod's manifest readable by anyone who has written a plugin
+     * (upstream's own mods declare it this way too).
+     */
+    userConfig: PluginManifestUserConfigSchema().shape.userConfig,
   }),
 )
 

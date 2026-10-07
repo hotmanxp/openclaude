@@ -1,0 +1,9 @@
+--- user types "!" then presses Up ---
+1st Up -> entry shown   : "first-entry"
+   state historyIndex    : 1  | ref historyIndexRef: 0  <-- DESYNCED
+
+--- user presses Up again, expecting the 2nd entry ---
+2nd Up -> entry shown   : "first-entry"  <-- SAME entry again
+   state historyIndex    : 1  | ref historyIndexRef: 1
+
+RESULT: FAIL — Up is stuck on the first entry; the draft was re-captured at :137 and is now the same history entry

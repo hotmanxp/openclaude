@@ -1,0 +1,10 @@
+
+--- throwing hook settles FIRST (siblings pending) ---
+collected results   : []
+raw exception escaped: callback hook threw
+degraded to non_blocking_error: NO
+
+--- throwing hook settles LAST (siblings already yielded) ---
+collected results   : ["sibling-permission (permission decision)","sibling-command"]
+raw exception escaped: callback hook threw
+degraded to non_blocking_error: NO

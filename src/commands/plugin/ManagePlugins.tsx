@@ -45,6 +45,8 @@ import { getPluginEditableScopes } from '../../utils/plugins/pluginStartupCheck.
 import { getSettings_DEPRECATED, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { jsonParse } from '../../utils/slowOperations.js';
 import { plural } from '../../utils/stringUtils.js';
+import { reloadMods, setModEnabled } from '../../mods/hooks.js';
+import { getModsAsPlugins, type ModPluginInfo } from '../../mods/pluginView.js';
 import { formatErrorMessage, getErrorGuidance } from './PluginErrors.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
 import { PluginOptionsFlow } from './PluginOptionsFlow.js';
@@ -371,6 +373,27 @@ function PluginComponentsDisplay({
 }
 
 /**
+ * Mod components, in the shape the plugin detail view uses for its own
+ * "Installed components" block. A mod has no skills/agents/MCP servers —
+ * its whole surface is event handlers, tools and commands — so reusing the
+ * plugin slots would print misleadingly empty rows.
+ */
+function ModComponentsDisplay({ mod }: {
+  mod: ModPluginInfo;
+}): React.ReactNode {
+  const { handlerEvents, toolNames, commandNames } = mod;
+  if (handlerEvents.length === 0 && toolNames.length === 0 && commandNames.length === 0) {
+    return null;
+  }
+  return <Box flexDirection="column" marginBottom={1}>
+      <Text bold>Installed components:</Text>
+      {commandNames.length > 0 && <Text dimColor>• Commands: {commandNames.join(', ')}</Text>}
+      {handlerEvents.length > 0 && <Text dimColor>• Handlers: {handlerEvents.join(', ')}</Text>}
+      {toolNames.length > 0 && <Text dimColor>• Tools: {toolNames.join(', ')}</Text>}
+    </Box>;
+}
+
+/**
  * Check if a plugin is from a local source and cannot be remotely updated
  * @returns Error message if local, null if remote/updatable
  */
@@ -440,6 +463,12 @@ export function ManagePlugins({
   const [pluginStates, setPluginStates] = useState<PluginState[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingToggles, setPendingToggles] = useState<Map<string, 'will-enable' | 'will-disable'>>(new Map());
+  // Bumped after a mod toggle: enabling/disabling runs the mod loader, which
+  // can add or drop rows, so the list has to be re-read rather than patched.
+  const [reloadToken, setReloadToken] = useState(0);
+  // Transient one-line feedback (mod toggles apply immediately, so there is no
+  // dialog-closing result to hang them on).
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // Guard to prevent auto-navigation from re-triggering after the user
   // navigates away (targetPlugin is never cleared by the parent).
@@ -563,7 +592,10 @@ export function ManagePlugins({
       const errors = pluginErrors.filter(e => 'plugin' in e && e.plugin === state.plugin.name || e.source === pluginId || e.source.startsWith(`${state.plugin.name}@`));
 
       // Built-in plugins use 'builtin' scope; others look up from V2 data.
-      const originalScope = state.plugin.isBuiltin ? 'builtin' : state.scope || 'user';
+      // `state.scope` is already resolved by the loader (mods included), so
+      // it wins — otherwise a disk mod would inherit 'builtin' from its
+      // isBuiltin flag and be filed under the wrong section header.
+      const originalScope = state.scope ?? (state.plugin.isBuiltin ? 'builtin' : 'user');
       pluginsWithChildren.push({
         item: {
           type: 'plugin',
@@ -801,6 +833,18 @@ export function ManagePlugins({
   // Selection state
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // A child dialog owns raw input (←/→ cycles an option value). Those keys are
+  // ALSO the /plugins tab strip's navigation, and the Tabs header wins, so
+  // arrow keys would change tabs instead of the value. Standing the Tabs down
+  // runs through the same childSearchActive channel the list's search mode
+  // already uses — it exists precisely for "a child is handling raw keys".
+  React.useEffect(() => {
+    const childHasRawInput = typeof viewState === 'object' && (
+      viewState.type === 'configuring-options' || viewState.type === 'plugin-options'
+    );
+    setIsSearchMode(childHasRawInput);
+  }, [viewState, setIsSearchMode]);
+
   // Pagination for unified list (continuous scrolling)
   const pagination = usePagination<UnifiedInstalledItem>({
     totalItems: filteredItems.length,
@@ -858,9 +902,13 @@ export function ManagePlugins({
   }, [selectedPlugin]);
 
   // Load installed plugins grouped by marketplace
+  const hasLoadedPluginsOnce = useRef(false);
   useEffect(() => {
     async function loadInstalledPlugins() {
-      setLoading(true);
+      // Only the first pass blanks the list. Re-runs come from mod toggles,
+      // where tearing the whole pane down to "Loading installed plugins…"
+      // would be a visible flash for a list that is one row different.
+      if (!hasLoadedPluginsOnce.current) setLoading(true);
       try {
         const {
           enabled,
@@ -868,7 +916,14 @@ export function ManagePlugins({
         } = await loadAllPlugins();
         const mergedSettings = getSettings_DEPRECATED(); // Use merged settings to respect all layers
 
-        const allPlugins = filterManagedDisabledPlugins([...enabled, ...disabled]);
+        const allPlugins = filterManagedDisabledPlugins([
+          ...enabled,
+          ...disabled,
+          // Mods project into the plugin shape so built-ins land in the
+          // "Built-in" section and disk mods in "User" — same list, same
+          // toggle, same settings key as everything else above.
+          ...getModsAsPlugins(),
+        ]);
 
         // Group plugins by marketplace
         const pluginsByMarketplace: Record<string, LoadedPlugin[]> = {};
@@ -909,8 +964,11 @@ export function ManagePlugins({
         for (const marketplace of marketplaceInfos) {
           for (const plugin of marketplace.installedPlugins) {
             const pluginId = `${plugin.name}@${marketplace.name}`;
-            // Built-in plugins don't have V2 install entries — skip the lookup.
-            const scope = plugin.isBuiltin ? 'builtin' : getPluginInstallationFromV2(pluginId).scope;
+            // Mods carry no install record either, and `isBuiltin` would
+            // misfile them: a built-in mod belongs under "Built-in", but a
+            // mod the user dropped into ~/.claude/mods belongs under "User",
+            // exactly like a marketplace install they added themselves.
+            const scope = plugin.mod ? plugin.mod.builtin ? 'builtin' : 'user' : plugin.isBuiltin ? 'builtin' : getPluginInstallationFromV2(pluginId).scope;
             allStates.push({
               plugin,
               marketplace: marketplace.name,
@@ -921,13 +979,16 @@ export function ManagePlugins({
           }
         }
         setPluginStates(allStates);
-        setSelectedIndex(0);
+        // Don't yank the cursor back to the top when a mod toggle re-runs
+        // this — the row the user just pressed is where they want to be.
+        if (!hasLoadedPluginsOnce.current) setSelectedIndex(0);
       } finally {
+        hasLoadedPluginsOnce.current = true;
         setLoading(false);
       }
     }
     void loadInstalledPlugins();
-  }, []);
+  }, [reloadToken]);
 
   // Auto-navigate to target plugin if specified (once only)
   useEffect(() => {
@@ -1000,6 +1061,16 @@ export function ManagePlugins({
     if (!selectedPlugin) return;
     const pluginScope = selectedPlugin.scope || 'user';
     const isBuiltin = pluginScope === 'builtin';
+    const mod = selectedPlugin.plugin.mod;
+
+    // Mods are not installed from a marketplace: they have no update channel
+    // and no uninstall (the files are the user's, in ~/.claude/mods). Only the
+    // enable/disable toggle applies, and it goes through the mod loader so
+    // handlers stop firing now — not on the next start.
+    if (mod && (operation === 'update' || operation === 'uninstall')) {
+      setProcessError(operation === 'uninstall' ? 'Mods cannot be uninstalled from here — delete the mod folder to remove it.' : 'Mods cannot be updated from here — edit the mod folder and reload.');
+      return;
+    }
 
     // Built-in plugins can only be enabled/disabled, not updated/uninstalled.
     if (isBuiltin && (operation === 'update' || operation === 'uninstall')) {
@@ -1015,6 +1086,21 @@ export function ManagePlugins({
     setIsProcessing(true);
     setProcessError(null);
     try {
+      if (mod && (operation === 'enable' || operation === 'disable')) {
+        const modResult = await setModEnabled(mod.modName, operation === 'enable');
+        if (!modResult.success) {
+          throw new Error(modResult.message);
+        }
+        // Unlike plugins, the mod loader already applied the change — the
+        // list itself changed shape though (a reload can add or drop rows),
+        // so re-read it instead of leaving a dead row behind.
+        setReloadToken(t => t + 1);
+        setActionMessage(modResult.message);
+        setViewState('plugin-list');
+        setSelectedPlugin(null);
+        setIsProcessing(false);
+        return;
+      }
       const pluginId_3 = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
       let reverseDependents: string[] | undefined;
 
@@ -1168,6 +1254,19 @@ export function ManagePlugins({
       const isEnabled_0 = mergedSettings_0?.enabledPlugins?.[pluginId_4] !== false;
       const pluginScope_0 = item_7.scope;
       const isBuiltin_0 = pluginScope_0 === 'builtin';
+
+      // Mods apply at once, so they skip the pendingToggles deferral real
+      // plugins need (that one only takes effect on /reload-plugins) and go
+      // straight through the mod loader.
+      if (item_7.plugin.mod) {
+        void (async () => {
+          const modResult = await setModEnabled(item_7.plugin.mod!.modName, !isEnabled_0);
+          setActionMessage(modResult.success ? modResult.message : modResult.message);
+          if (modResult.success) setReloadToken(t => t + 1);
+        })();
+        return;
+      }
+
       if (isBuiltin_0 || isInstallableScope(pluginScope_0)) {
         const newPending = new Map(pendingToggles);
         // Omit scope — see handleSingleOperation's enable/disable comment.
@@ -1310,8 +1409,55 @@ export function ManagePlugins({
       action: () => void handleSingleOperation(isEnabled_1 ? 'disable' : 'enable')
     });
 
+    // Mods have no marketplace lifecycle. Reload is the meaningful verb —
+    // it re-reads the mod folder (or the built-in spec list) so edits to a
+    // mod's source take effect without restarting the session.
+    if (selectedPlugin.plugin.mod) {
+      menuItems.push({
+        label: 'Reload mod',
+        action: async () => {
+          setIsProcessing(true);
+          setProcessError(null);
+          const results = await reloadMods();
+          const ok = results.filter(r => r.ok && !r.disabled);
+          const failed = results.filter(r => !r.ok);
+          const skipped = results.filter(r => r.disabled);
+          setIsProcessing(false);
+          setReloadToken(t => t + 1);
+          if (failed.length > 0) {
+            setActionMessage(`Reloaded ${ok.length} mod${ok.length === 1 ? '' : 's'}, ${failed.length} failed: ${failed.map(f => f.name).join(', ')}`);
+            setProcessError(failed.map(f => f.error ?? 'unknown error').join('\n'));
+          } else {
+            const skipNote = skipped.length > 0 ? ` · ${skipped.length} disabled` : '';
+            setActionMessage(`Reloaded ${ok.length} mod${ok.length === 1 ? '' : 's'}${skipNote}`);
+          }
+        }
+      });
+    }
+
+    // Configure options belongs to anything that DECLARES options, which is not
+    // the same set as "installable from a marketplace": a mod has no update
+    // channel and no uninstall, but it does have a config dialog. Kept out of
+    // the block below so a mod's author gets the same UI an upstream bundled
+    // plugin gets. Declared last-but-one so "Back to plugin list" stays the
+    // final row, matching where it sat before.
+    if (selectedPlugin.plugin.mod) {
+      const modSchema = selectedPlugin.plugin.manifest.userConfig;
+      if (modSchema && Object.keys(modSchema).length > 0) {
+        menuItems.splice(menuItems.length - 1, 0, {
+          label: 'Configure options',
+          action: () => {
+            setViewState({
+              type: 'configuring-options',
+              schema: modSchema
+            });
+          }
+        });
+      }
+    }
+
     // Update/Uninstall options — not available for built-in plugins
-    if (!isBuiltin_1) {
+    if (!isBuiltin_1 && !selectedPlugin.plugin.mod) {
       menuItems.push({
         label: selectedPlugin.pendingUpdate ? 'Unmark for update' : 'Mark for update',
         action: async () => {
@@ -1864,6 +2010,14 @@ export function ManagePlugins({
             <Text>{selectedPlugin.plugin.manifest.author.name}</Text>
           </Box>}
 
+{/* Where a disk mod lives — the info /mods used to print as its header.
+            Empty while the mod is disabled: nothing is loaded, so there is no
+            resolved root to name. */}
+        {selectedPlugin.plugin.mod && !selectedPlugin.plugin.mod.builtin && selectedPlugin.plugin.mod.root && <Box>
+            <Text dimColor>Path: </Text>
+            <Text>{selectedPlugin.plugin.mod.root}</Text>
+          </Box>}
+
         {/* Current status */}
         <Box marginBottom={1}>
           <Text dimColor>Status: </Text>
@@ -1873,8 +2027,8 @@ export function ManagePlugins({
           {selectedPlugin.pendingUpdate && <Text color="suggestion"> · Marked for update</Text>}
         </Box>
 
-        {/* Installed components */}
-        <PluginComponentsDisplay plugin={selectedPlugin.plugin} marketplace={selectedPlugin.marketplace} />
+        {/* Installed components — mod surface differs from plugin surface */}
+        {selectedPlugin.plugin.mod ? <ModComponentsDisplay mod={selectedPlugin.plugin.mod} /> : <PluginComponentsDisplay plugin={selectedPlugin.plugin} marketplace={selectedPlugin.marketplace} />}
 
         {/* Plugin errors */}
         {pluginErrorsSection}
@@ -2208,11 +2362,19 @@ export function ManagePlugins({
         </Text>
       </Box>
 
-      {/* Reload disclaimer for plugin changes */}
+      {/* Reload disclaimer for plugin changes. Mod toggles never enter
+          pendingToggles (they apply through the loader immediately), so this
+          only fires for marketplace plugins that genuinely need a reload. */}
       {pendingToggles.size > 0 && <Box marginLeft={1}>
           <Text dimColor italic>
             Run /reload-plugins to apply changes
           </Text>
+        </Box>}
+
+      {/* Transient feedback for actions that stay in this view (mod toggles,
+          mod reloads) — unlike plugin ops there is no dialog-closing result. */}
+      {actionMessage && <Box marginLeft={1}>
+          <Text color="claude">{actionMessage}</Text>
         </Box>}
     </Box>;
 }

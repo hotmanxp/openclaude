@@ -3,7 +3,7 @@ import { Box, Text } from '../../../ink.js'
 import { Dialog } from '../../../components/design-system/Dialog.js'
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import { useKeybinding } from '../../../keybindings/useKeybinding.js'
-import { MIN_COLUMNS } from './constants.js'
+import { diffMinColumns } from './settings.js'
 import { DiffFileList, DiffStatsCell } from './DiffFileList.jsx'
 import {
   DiffBody,
@@ -150,7 +150,7 @@ export function DiffDialog({ onDone, setStatus }: DiffDialogProps): React.ReactN
   if (snapshot.isOutsideRepository) {
     return <Text dimColor={true}>{OUTSIDE_REPOSITORY_MESSAGE}</Text>
   }
-  if (columns < MIN_COLUMNS) {
+  if (columns < diffMinColumns()) {
     return <Text dimColor={true}>{tooNarrowMessage()}</Text>
   }
   // Upstream distinguishes "not read yet" from "read and found nothing":

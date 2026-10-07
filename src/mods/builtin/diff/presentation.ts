@@ -7,7 +7,7 @@
  * against the real thing.
  */
 
-import { MIN_COLUMNS } from './constants.js'
+import { diffMinColumns } from './settings.js'
 import type { DiffData } from './source.js'
 import { WORDS } from './source.js'
 
@@ -90,5 +90,5 @@ export const OUTSIDE_REPOSITORY_MESSAGE =
   'The diff panel shows git changes — the current directory isn’t in a git repository'
 
 export function tooNarrowMessage(): string {
-  return `Resize your terminal to at least ${MIN_COLUMNS} columns to show the diff panel`
+  return `Resize your terminal to at least ${diffMinColumns()} columns to show the diff panel`
 }

@@ -1,8 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, writeFileSync } from 'fs'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
-import { extractFactsIntoMemdir } from './autoExtractFacts.js'
+import {
+  extractFactsIntoMemdir,
+  isRealDirectorySegment,
+  looksLikeSecret,
+} from './autoExtractFacts.js'
 import { setGovernancePolicySettingsForSourceForTesting } from '../utils/governancePolicy.js'
 import { getIsInteractive, setIsInteractive } from '../bootstrap/state.js'
 
@@ -355,4 +359,40 @@ describe('autoExtractFacts governance gate (P1#1, P2#6)', () => {
     if (!existsSync(dir)) return 0
     return readdirSync(dir).filter(f => f.endsWith('.md')).length
   }
+})
+
+describe('autoExtractFacts path scrubbing (cc-006)', () => {
+  // cc-006: the >=12-char lowercase-alnum heuristic could not tell a
+  // credential from an ordinary directory name, so "documentation" (13) was
+  // scrubbed out of real paths and the truncated remainder was persisted as a
+  // "project path" fact that later sessions would treat as a real location.
+  //
+  // Tested at the unit level: the fix keeps a segment that exists on disk, so
+  // the assertion is about which segments survive — not about what a whole
+  // run of the extractor happens to persist.
+  it('keeps a directory segment that exists on disk', () => {
+    const real = mkdtempSync(join(tmpdir(), 'cc006-'))
+    try {
+      // Force a name long enough to trip the heuristic.
+      const name = 'documentation'
+      mkdirSync(join(real, name), { recursive: true })
+      expect(name.length).toBeGreaterThanOrEqual(12)
+
+      expect(looksLikeSecret(name)).toBe(true) // heuristic alone says secret
+      expect(isRealDirectorySegment(name, real)).toBe(true)
+    } finally {
+      rmSync(real, { recursive: true, force: true })
+    }
+  })
+
+  it('does not treat a fabricated segment as a real directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cc006-miss-'))
+    try {
+      expect(isRealDirectorySegment('super-secret-access-token', root)).toBe(
+        false,
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

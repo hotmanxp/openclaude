@@ -1,0 +1,12 @@
+  watcher round 1: available task = NONE — watcher idles
+  watcher round 2: available task = NONE — watcher idles
+  watcher round 3: available task = NONE — watcher idles
+
+  on-disk state : {"id":"1","status":"pending","owner":"tasklist"}
+  owner is still set, and nothing ever clears it:
+    - useTaskListWatcher.ts:117-124 releases ONLY if onSubmitTask returned false
+    - the unmount cleanup (:165-176) closes the watcher and clears the timer, nothing else
+    - claimTask (tasks.ts:597) stores no timestamp / lease / expiry
+    - unassignTeammateTasks is never wired into tasks mode
+
+VERDICT: the task is permanently unclaimable. It never runs, and nothing reports it.

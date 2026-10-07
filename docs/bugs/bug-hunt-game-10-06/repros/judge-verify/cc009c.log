@@ -1,0 +1,15 @@
+WORKER_AGENT.tools = ["*"]
+
+===== CLAUDE_CODE_SIMPLE=(unset) isCoordinatorMode=true =====
+parent pool = ["Agent","AskUserQuestion","BackgroundAgent","BackgroundAgentResult","Bash","CronCreate","CronDelete","CronList","Edit","EnterPlanMode","EnterWorktree","ExitPlanMode","ExitWorktree","Glob","Grep","Monitor","Read","Skill","snip","TaskStop","TodoWrite","Write"]
+WORKER resolved = ["Bash","Edit","EnterWorktree","ExitWorktree","Glob","Grep","Read","Skill","TodoWrite","Write"]
+WORKER COUNT = 10
+PROMPT claims : Workers spawned via the Agent tool have access to these tools: Bash, Edit, EnterWorktree, ExitWorktree, Glob, Grep, NotebookEdit, PowerShell, Read, Skill, TodoWrite, ToolSearch, WebFetch, WebSearch, Write
+SYSPROMPT line : Workers have access to standard tools, MCP tools from configured MCP servers, and project skills via the Skill tool. Delegate skill invocations (e.g. /commit or project workflow skills) to workers.
+
+===== CLAUDE_CODE_SIMPLE=1 isCoordinatorMode=true =====
+parent pool = ["Agent","Bash","Edit","Read","SendMessage","TaskStop"]
+WORKER resolved = ["Bash","Edit","Read"]
+WORKER COUNT = 3
+PROMPT claims : Workers spawned via the Agent tool have access to these tools: Bash, Edit, Read
+SYSPROMPT line : Workers have access to Bash, Read, and Edit tools, plus MCP tools from configured MCP servers.

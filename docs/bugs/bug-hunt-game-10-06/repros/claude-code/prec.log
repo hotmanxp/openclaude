@@ -1,0 +1,8 @@
+after message_stop #1: input_tokens = 0 (expected 7000 )
+after message_stop #2: input_tokens = 0 (expected 14000 )
+after message_stop #3: input_tokens = 0 (expected 21000 )
+
+control — correct form, same data:
+  after #1: 7000
+  after #2: 14000
+  after #3: 21000

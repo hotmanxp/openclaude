@@ -2,15 +2,23 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   __setBuiltinSpecsForTesting,
   isBuiltinMod,
+  isBuiltinModName,
   loadBuiltinMods,
   registerBuiltinMod,
 } from './builtin.js'
 import { diffBuiltinMod } from './builtin/diffMod.js'
 import { handoffBuiltinMod } from './builtin/handoffMod.js'
+import { mermaidBuiltinMod } from './builtin/mermaidMod.js'
 import {
   getLoadedMods,
   resetModsRegistryForTesting,
 } from './registry.js'
+
+// Every built-in the fixed manifest declares — this list must stay in sync
+// with the `registerBuiltinMod(...)` sequence at the bottom of builtin.ts.
+// Restoring a SHORT list here silently drops the omitted mods from the
+// process-wide manifest for every test file loaded after this one.
+const ALL_BUILTIN_MODS = [diffBuiltinMod, handoffBuiltinMod, mermaidBuiltinMod]
 
 beforeEach(() => {
   resetModsRegistryForTesting()
@@ -19,7 +27,7 @@ beforeEach(() => {
 afterEach(() => {
   // Restore the fixed manifest — module-level builtinSpecs would otherwise
   // leak test-only specs into other test files (cross-file pollution).
-  __setBuiltinSpecsForTesting([diffBuiltinMod, handoffBuiltinMod])
+  __setBuiltinSpecsForTesting(ALL_BUILTIN_MODS)
   resetModsRegistryForTesting()
 })
 
@@ -80,5 +88,12 @@ describe('built-in mod channel', () => {
     const diff = getLoadedMods().filter(m => m.manifest.name === 'diff')
     expect(diff).toHaveLength(1)
     expect(isBuiltinMod(diff[0]!)).toBe(false)
+  })
+
+  test('isBuiltinModName answers for unloaded built-ins', () => {
+    // /plugins needs the origin of a mod it is about to ENABLE — which by
+    // definition is not in the registry, and carries no origin marker.
+    expect(isBuiltinModName('diff')).toBe(true)
+    expect(isBuiltinModName('not-a-mod')).toBe(false)
   })
 })

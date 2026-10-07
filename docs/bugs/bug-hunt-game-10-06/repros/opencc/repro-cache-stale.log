@@ -1,0 +1,4 @@
+step1 modA registered, render "x" => "A(x)"
+step4 modB registered, render "x" => "A(x)"
+EXPECTED "B(x)" but GOT "A(x)"
+RESULT: FAIL — stale cache served modA output after unload

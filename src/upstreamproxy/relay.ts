@@ -116,6 +116,11 @@ type ConnState = {
   // data callback can fire again while the WS handshake is still in flight.
   // Both cases would silently drop bytes without this buffer.
   pending: Buffer[]
+  // Total bytes currently held in `pending`. The buffer exists to cover a
+  // handshake that is briefly slow, not to absorb an unbounded upload — so it
+  // has a ceiling, and crossing it tears the connection down rather than
+  // growing until the process runs out of memory (cc-007).
+  pendingBytes: number
   wsOpen: boolean
   // Set once the server's 200 Connection Established has been forwarded and
   // the tunnel is carrying TLS. After that, writing a plaintext 502 would
@@ -137,10 +142,44 @@ type ClientSocket = {
   end: () => void
 }
 
+/**
+ * Ceiling on bytes buffered while the WS handshake is in flight.
+ *
+ * The buffer only has to cover a handshake that is briefly slow — the CONNECT
+ * packet plus the start of a TLS ClientHello. Anything beyond that is a client
+ * streaming data at a connection that is not up yet, and holding it all costs
+ * unbounded memory for as long as the handshake stays pending.
+ */
+const MAX_PENDING_BYTES = 8 * 1024 * 1024
+
+/**
+ * Buffer bytes received before the WS is open.
+ *
+ * Returns false when the ceiling was crossed, in which case the connection is
+ * torn down: silently dropping bytes would corrupt the client's stream, and
+ * buffering them is exactly what the cap exists to prevent.
+ */
+function enqueuePending(
+  sock: ClientSocket,
+  st: ConnState,
+  data: Uint8Array,
+): boolean {
+  if (st.pendingBytes + data.byteLength > MAX_PENDING_BYTES) {
+    st.closed = true
+    sock.end()
+    return false
+  }
+  const buf = Buffer.from(data)
+  st.pending.push(buf)
+  st.pendingBytes += buf.byteLength
+  return true
+}
+
 function newConnState(): ConnState {
   return {
     connectBuf: Buffer.alloc(0),
     pending: [],
+    pendingBytes: 0,
     wsOpen: false,
     established: false,
     closed: false,
@@ -327,9 +366,7 @@ function handleData(
     // Stash any bytes that arrived after the CONNECT header so
     // openTunnel can flush them once the WS is open.
     const trailing = st.connectBuf.subarray(headerEnd + 4)
-    if (trailing.length > 0) {
-      st.pending.push(Buffer.from(trailing))
-    }
+    if (trailing.length > 0 && !enqueuePending(sock, st, trailing)) return
     st.connectBuf = Buffer.alloc(0)
     openTunnel(sock, st, firstLine, wsUrl, authHeader, wsAuthHeader)
     return
@@ -337,7 +374,7 @@ function handleData(
   // Phase 2: WS exists. If it isn't OPEN yet, buffer; ws.onopen will
   // flush. Once open, pump client bytes to WS in chunks.
   if (!st.wsOpen) {
-    st.pending.push(Buffer.from(data))
+    enqueuePending(sock, st, data)
     return
   }
   forwardToWs(st.ws, data)
@@ -392,6 +429,7 @@ function openTunnel(
       forwardToWs(ws, buf)
     }
     st.pending = []
+    st.pendingBytes = 0
     // Not all WS implementations expose ping(); empty chunk works as an
     // application-level keepalive the server can ignore.
     st.pinger = setInterval(sendKeepalive, PING_INTERVAL_MS, ws)

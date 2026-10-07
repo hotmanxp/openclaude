@@ -390,6 +390,21 @@ export function validateUserConfig(
       errors.push(`${fieldSchema.title || key} must be a path string`)
     }
 
+    // Constrained string: `options` is the complete accepted set. Without this
+    // check a hand-edited settings.json could hold a value the dialog can
+    // never produce again (the cycler only ever yields members of the set) —
+    // silently stranding the user on a value they can't cycle back to.
+    if (
+      fieldSchema.type === 'string' &&
+      Array.isArray(fieldSchema.options) &&
+      typeof value === 'string' &&
+      !fieldSchema.options.includes(value)
+    ) {
+      errors.push(
+        `${fieldSchema.title || key} must be one of: ${fieldSchema.options.join(', ')}`,
+      )
+    }
+
     // Number range validation
     if (fieldSchema.type === 'number' && typeof value === 'number') {
       if (fieldSchema.min !== undefined && value < fieldSchema.min) {

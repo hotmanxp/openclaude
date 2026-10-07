@@ -6,12 +6,20 @@ import {
   DEFAULT_TASKS_MODE_TASK_LIST_ID,
   ensureTasksDir,
   getTasksDir,
+  hasLiveLease,
   listTasks,
+  renewTaskLease,
   type Task,
   updateTask,
 } from '../utils/tasks.js'
 
 const DEBOUNCE_MS = 1000
+
+/**
+ * How often a held claim is renewed. Must be comfortably below TASK_LEASE_MS
+ * so a single slow tick can't lapse a live agent's lease.
+ */
+const HEARTBEAT_MS = 20_000
 
 type Props = {
   /** When undefined, the hook does nothing. The task list id is also used as the agent ID. */
@@ -163,11 +171,30 @@ export function useTaskListWatcher({
     // Initial check
     debouncedCheck()
 
+    // Heartbeat: while we hold a claim, renew its lease (cc-010). A lease that
+    // lapses mid-task lets another agent take the task over, so an agent that
+    // is alive but slow to tick must still look alive to the team. This is
+    // separate from debouncedCheck, which is event-driven and only fires when
+    // the tasks dir changes — a long task with no file activity would
+    // otherwise never renew.
+    const heartbeat = setInterval(() => {
+      const held = currentTaskRef.current
+      if (held === null) return
+      void renewTaskLease(taskListId, held, agentId).then(renewed => {
+        if (!renewed) {
+          // Task vanished or was taken over — stop tracking it.
+          currentTaskRef.current = null
+        }
+      })
+    }, HEARTBEAT_MS)
+    heartbeat.unref?.()
+
     return () => {
       // This cleanup only fires when taskListId changes or on unmount —
       // never per-turn. That keeps watcher.close() out of the Bun
       // PathWatcherManager deadlock window.
       scheduleCheckRef.current = () => {}
+      clearInterval(heartbeat)
       if (watcher) {
         watcher.close()
       }
@@ -201,7 +228,9 @@ function findAvailableTask(tasks: Task[]): Task | undefined {
 
   return tasks.find(task => {
     if (task.status !== 'pending') return false
-    if (task.owner) return false
+    // An expired lease means the previous owner died mid-task (cc-010);
+    // skipping those would strand the work forever.
+    if (hasLiveLease(task)) return false
     // Check all blockers are completed
     return task.blockedBy.every(id => !unresolvedTaskIds.has(id))
   })

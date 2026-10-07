@@ -1,0 +1,16 @@
+bun test v1.3.14 (0d9b296a)
+
+paused.test.ts:
+isTerminalTaskStatus('paused') = false
+getRunningTasks() after pause = []
+BackgroundTasksDialog kill key (status==='running') fires? false
+WorkflowsListDialog onKill provided (status==='running')? false
+evictedTaskIds: []
+updatedTaskOffsets (output polling): {}
+tasks still in AppState after GC pass: [ "wprobe0001" ]
+store notified subscribers? (no setAppState call was made by the pause handler)
+
+ 1 pass
+ 0 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [743.00ms]

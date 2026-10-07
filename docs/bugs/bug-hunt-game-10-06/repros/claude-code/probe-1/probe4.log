@@ -1,0 +1,9 @@
+[before stop] ["HTTP/1.1 200 Connection Established\r\n\r\n"]
+[after relay.stop()] can a NEW connection still be accepted?
+[after stop] new connect refused: ECONNREFUSED
+[after stop] newConn accepted = false
+[after stop] is the EXISTING tunnel still relaying?
+[after stop] client got: ["HTTP/1.1 200 Connection Established\r\n\r\n","ECHO-AFTER-STOP"]
+[after stop] active resources: 
+end of script (no process.exit); if relay leaked handles the WATCHDOG will fire
+WATCHDOG: process still pinned after 8s

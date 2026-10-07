@@ -1,7 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
 import { buildModCommands } from './mods/engine.js'
-import modsCommand from './commands/mods/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
@@ -340,7 +339,6 @@ const COMMANDS = memoize((): Command[] => [
   mcp,
   memory,
   mobile,
-  modsCommand,
   model,
   outputStyle,
   remoteEnv,
@@ -736,7 +734,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   statusline, // Status line toggle
   stickers, // Stickers
   mobile, // Mobile QR code
-  modsCommand, // Mods management (src/mods)
 ])
 
 /**

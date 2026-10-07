@@ -1,0 +1,12 @@
+BEFORE: { "coordinatorMode": true, "model": "opus", "env": { "FOO": "bar" } }
+26 |   JSON.stringify({ coordinatorMode: true, model: 'opus', env: { FOO: 'bar' } }, null, 2) + '\n',
+27 | )
+28 | console.log('BEFORE:', readFileSync(file, 'utf8').trim().replace(/\s+/g, ' '))
+29 | console.log(
+30 |   '  coordinatorMode present?',
+31 |   'coordinatorMode' in getSettingsForSource('userSettings')!,
+                            ^
+TypeError: null is not an Object. (evaluating '"coordinatorMode" in getSettingsForSource("userSettings")')
+      at /private/tmp/judge-verify/probe-coordinator.ts:31:24
+
+Bun v1.3.14 (macOS arm64)

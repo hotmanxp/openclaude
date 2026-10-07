@@ -1,0 +1,4 @@
+after 1st load   panes: ["leaky"] status: {"leaky":"LEAKED STATUS"}
+/mods reload -> [{"name":"leaky","ok":false,"error":"boom"},{"name":"diff","ok":true},{"name":"handoff","ok":true},{"name":"mermaid","ok":true}]
+after reload     panes: ["leaky"] status: {"leaky":"LEAKED STATUS"}
+after 2nd reload panes: ["leaky"] status: {"leaky":"LEAKED STATUS"}

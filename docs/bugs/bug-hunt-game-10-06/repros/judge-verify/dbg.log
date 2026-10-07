@@ -1,0 +1,6 @@
+config home = /var/folders/xd/vb8tqxt55bn3wg3rz0mr3q600000gn/T/judge-dbg-ykxdjB
+expected file = /var/folders/xd/vb8tqxt55bn3wg3rz0mr3q600000gn/T/judge-dbg-ykxdjB/settings.json
+raw bytes = "{\n  \"coordinatorMode\": true,\n  \"model\": \"opus\"\n}\n"
+errors = []
+settings = {"model":"opus","coordinatorMode":true,"permissions":{"allow":["mcp__codegraph__codegraph_search","mcp__codegraph__codegraph_context","mcp__codegraph__codegraph_callers","mcp__codegraph__codegraph_callees","mcp__codegraph__codegraph_impact","mcp__codegraph__codegraph_node","mcp__codegraph__codegraph_status"]},"enabledMcpjsonServers":["codegraph"],"autoFix":{"enabled":true,"lint":"bun typecheck","test":"bun test","maxRetries":3,"timeout":60000},"enableAllProjectMcpServers":true}
+per-source = {"model":"opus","coordinatorMode":true}

@@ -4,6 +4,7 @@ import {
   createCompositeModCallback,
   isModSupportedEvent,
   normalizeMatcherValue,
+  runModChain,
 } from './dispatch.js'
 import type { LoadedMod } from './registry.js'
 
@@ -188,5 +189,101 @@ describe('buildModHookMatchers', () => {
     expect(bashEntry.pluginName).toBe('mod:a+b')
     expect(bashEntry.hooks[0]!.type).toBe('callback')
     expect(byEvent.Stop![0]!.matcher).toBeUndefined()
+  })
+})
+
+describe('runModChain cursor safety', () => {
+  const entry = (name: string, handler: any) => ({ modName: name, handler })
+
+  // cluster C: `index` is shared across nested next() calls, so a handler
+  // calling next() twice advanced the shared cursor and re-ran the remaining
+  // handlers — including the core terminal tier — for the same event.
+  test('a handler calling next() twice does not re-run the chain', async () => {
+    const order: string[] = []
+    let terminalRuns = 0
+    const chain = [
+      entry('a', (_e: any, next: any) => {
+        order.push('a')
+        return next()
+      }),
+      entry('b', (_e: any, next: any) => {
+        order.push('b')
+        const first = next()
+        void next() // second call from the same handler
+        return first
+      }),
+      entry('c', (_e: any, next: any) => {
+        order.push('c')
+        return next()
+      }),
+    ]
+
+    await runModChain(chain as never, { v: 1 }, async (e: any) => {
+      terminalRuns++
+      order.push('terminal')
+      return e
+    })
+
+    expect(terminalRuns).toBe(1)
+    expect(order).toEqual(['a', 'b', 'c', 'terminal'])
+  })
+
+  test('the normal single-next chain is unaffected', async () => {
+    const order: string[] = []
+    let terminalRuns = 0
+    const chain = [
+      entry('a', (_e: any, next: any) => {
+        order.push('a')
+        return next()
+      }),
+      entry('b', (_e: any, next: any) => {
+        order.push('b')
+        return next()
+      }),
+    ]
+
+    await runModChain(chain as never, { v: 1 }, async (e: any) => {
+      terminalRuns++
+      order.push('terminal')
+      return e
+    })
+
+    expect(terminalRuns).toBe(1)
+    expect(order).toEqual(['a', 'b', 'terminal'])
+  })
+
+  test('a throwing handler is still skipped and the chain continues', async () => {
+    const order: string[] = []
+    let terminalRuns = 0
+    const errors: string[] = []
+    const chain = [
+      entry('a', (_e: any, next: any) => {
+        order.push('a')
+        return next()
+      }),
+      entry('bad', () => {
+        order.push('bad')
+        throw new Error('boom')
+      }),
+      entry('c', (_e: any, next: any) => {
+        order.push('c')
+        return next()
+      }),
+    ]
+
+    await runModChain(
+      chain as never,
+      { v: 1 },
+      async (e: any) => {
+        terminalRuns++
+        return e
+      },
+      undefined,
+      modName => errors.push(modName),
+    )
+
+    expect(errors).toEqual(['bad'])
+    expect(terminalRuns).toBe(1)
+    expect(order).toEqual(['a', 'bad', 'c'])
   })
 })
