@@ -1,6 +1,11 @@
-import type { HookEvent } from '../types/hooks.js'
 import type { LocalJSXCommandCall } from '../types/command.js'
 import type { ModManifest } from './manifest.js'
+import type {
+  ModEventName,
+  ModMatcher,
+  ModNext,
+  ModTier,
+} from './protocol.js'
 
 /**
  * Mod registry — lifecycle state for loaded mods (docs/mods-plan.md §3.4).
@@ -11,11 +16,57 @@ import type { ModManifest } from './manifest.js'
  * tool pool (REPL re-renders mod tools via a version counter).
  */
 
-/** Signature of a mod event handler (docs/mods-plan.md §3.3). */
+/**
+ * Signature of a mod event handler (docs/mods-plan.md §3.3).
+ *
+ * The return type is `unknown` because a handler on a STREAMING event is an
+ * async generator, not a promise: `async function* ($, e, next)` yields the
+ * event's chunks and returns its result. `next` is declared to return a
+ * promise because that is what the one-shot paths hand it; on the streaming
+ * paths it returns the stream beneath instead, and `runModStreamChain` is
+ * what actually drives it.
+ */
 export type ModHandler = (
   e: Record<string, unknown>,
-  next: (e?: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  next: ModNext,
 ) => unknown | Promise<unknown>
+
+/**
+ * `next` — run the layers beneath — with `next.to` to hand control to a named
+ * tier instead of the adjacent one.
+ *
+ * Upstream `d.ts:5241-5243`: "A managed hook's: prepend may name append,
+ * builtin or core, append core; it never skips a tier with more authority",
+ * and `d.ts:9642` `TargetTier = Exclude<Tier, 'prepend' | 'user'>` — a hook may
+ * only ever descend, never climb. `canDescend` holds the same table.
+ */
+
+
+/**
+ * A streaming event's `next` is the STREAM beneath, not a promise.
+ *
+ * Upstream has exactly two streaming events (`turn.step`, `process.spawn`)
+ * and gives them their own `StreamHook` type for this reason: the same
+ * `next(e)` call means "await the rest of the chain" on one event and "open
+ * a second stream" on the other, and one handler type cannot say both.
+ */
+export type ModStreamNext = (
+  e?: Record<string, unknown>,
+) => AsyncGenerator<unknown, unknown>
+
+/**
+ * `async function* ($, e, next)`: yields the event's chunks and returns its
+ * result. Three shapes are distinguishable — `return yield* next(e)` passes,
+ * `for await (c of next(e)) yield f(c)` transforms, yielding without calling
+ * `next` answers alone and nothing beneath runs.
+ */
+export type ModStreamHandler = (
+  e: Record<string, unknown>,
+  next: ModStreamNext,
+) => AsyncGenerator<unknown, unknown>
+
+/** The two events whose handlers are generators rather than functions. */
+export type ModStreamEvent = 'turn.step' | 'process.spawn'
 
 /**
  * Mod-only synchronous render event (upstream `ui.render` parity — the
@@ -32,12 +83,19 @@ export type ModRenderHandler = (
   next: (text?: string) => string,
 ) => string | void
 
-export type ModEventName = HookEvent | ModRenderEvent
+export type { ModEventName, ModMatcher, ModTier }
 
 export type ModHandlerSpec = {
   event: ModEventName
-  /** Normalized string matcher (object matchers are converted by dispatch). */
-  matcher?: string
+  /**
+   * Structured matcher, evaluated against the frozen event argument by
+   * `matchesMatcher`. Upstream also spells the tier here as `to`; the loader
+   * lifts it onto `tier` so a matcher can never match on an event field by
+   * that name.
+   */
+  matcher?: ModMatcher
+  /** Where in the chain this handler sits. Defaults to `builtin`. */
+  tier?: ModTier
   handler: ModHandler
 }
 
@@ -185,6 +243,9 @@ export function unregisterMod(name: string): LoadedMod | undefined {
 export function resetModsRegistryForTesting(): void {
   loadedMods = []
   clearKnownMods()
+  // Subscribers hold derived state (the op-event chains), so clearing the set
+  // without notifying leaves them dispatching against mods that are gone.
+  notifyModSetChanged()
   modToolsVersion++
   notifyModToolsChanged()
   failureCounts.clear()

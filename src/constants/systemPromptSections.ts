@@ -4,6 +4,10 @@ import {
   getSystemPromptSectionCache,
   setSystemPromptSectionCacheEntry,
 } from '../bootstrap/state.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
 
 type ComputeFn = () => string | null | Promise<string | null>
 
@@ -50,7 +54,22 @@ export async function resolveSystemPromptSections(
       if (!s.cacheBreak && cache.has(s.name)) {
         return cache.get(s.name) ?? null
       }
-      const value = await s.compute()
+      const computed = await s.compute()
+      // Upstream `prompt.section` — a mod rewrites what a named section says,
+      // or drops it by answering null.
+      //
+      // Between `compute` and the cache write, not after: a section is
+      // memoized by name, so a value stored before the hook ran would make
+      // every later turn serve the hook's answer out of the cache and never
+      // ask it again. The name itself is not dispatched as mutable — it is
+      // the cache key, and upstream pins it for the same reason.
+      const value = hasModHandlersFor('prompt.section')
+        ? await dispatchModEngine<string | null>(
+            'prompt.section',
+            { name: s.name, text: computed },
+            e => (typeof e.text === 'string' ? e.text : null),
+          )
+        : computed
       setSystemPromptSectionCacheEntry(s.name, value)
       return value
     }),

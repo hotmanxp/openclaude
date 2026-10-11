@@ -1166,4 +1166,16 @@ if (result?.success) {
     )
     for (const s of staleAllowlist) console.warn(`    ${s}`)
   }
+
+  // ── Guard: undefined names in @ts-nocheck files ────────────────────────────
+  // The guard above catches a missing MODULE; this catches the neighbouring
+  // failure — an identifier used but never imported or declared. Bun bundles a
+  // free variable happily, so the build, the unit tests and `tsc --noEmit` all
+  // pass, and the first run of that path throws a ReferenceError.
+  //
+  // It lives here rather than only in `typecheck` because CI gates on
+  // `bun run smoke` (= build), not on the root typecheck (see pr-checks.yml).
+  // It runs in-process via a dynamic import so the build inherits the exit code
+  // rather than needing a child process.
+  await import('./check-nocheck-names.js')
 }

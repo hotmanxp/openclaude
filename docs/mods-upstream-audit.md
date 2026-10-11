@@ -144,7 +144,25 @@ on("<event>", { to: "<tier>" }, hook)        // tier
 
 **注意：这不是 `register(on)` 导出式契约。** 上游靠**扫描 AST 里的 `on(...)` 调用点**发现注册。
 
-### 5.2 `$` 实际能力面（仅 4 个顶层命名空间）
+### 5.2 `$` 实际能力面 —— ⛔ 本节结论已证伪，勿引用
+
+> **2026-10-11 更正**：本节原标题为「`$` 实际能力面（仅 4 个顶层命名空间）」，正文断言 mod 拿不到宿主文件系统、**没有 `fs` / `store` / `clock`**。**该结论错误。**
+>
+> 官方 `mods/types/claude-code.d.ts` 的 `CoreEngineInterface`（:2016-3674）定义的是 **24 个 noun**：
+>
+> ```
+> plugin  ui  model  audio  mcp  session  turn  prompt  tool  command  config  agent
+> fs      store  clock  http  process  settings  env  terminal  desktop  mobile  vscode
+> ```
+>
+> `fs`（:2738，`read/write/list/exists/stat/ancestors`）、`store`（:2860）、`clock`（:2893）、`env`（:3012）**都在**。开源的 `mods/agents-md/hooks/register.ts` 源码实际调用了 `$.fs.ancestors({names, of, below})`、`$.session.root()`、`$.env.get('CLAUDE_CODE_SIMPLE')`、`$.telemetry.log(...)` —— 其中 `fs.ancestors` 是逐级目录 walk，AGENTS.md 的加载完全靠它。
+>
+> **原文的错误来源**：本节自述「`$` 方法名从 42 处调用点还原；minified 名有重名风险」—— 那是**一次有损抽样**，不是签名定义。上游把完整契约以 `.d.ts` 形式开源，正是为了让这件事不必靠考古。审计的其余章节（§四 静态扫描、§六 tier 链、§八 Worker 隔离）仍然有效。
+>
+> **权威来源改为 [`mods-upstream-contract.md`](./mods-upstream-contract.md) §二。** 本文余下内容保留为取证记录，不作为实现依据。
+
+<details>
+<summary>原文（已证伪，留档）</summary>
 
 ```
 agent.spawn            command.run          process.run / process.spawn
@@ -154,7 +172,7 @@ ui.ask / copy / invalidate / log / notice
 
 **不存在的**（`mods-plan.md` v1.0 曾设计）：
 
-| v1.0 提议 | 上游实况 |
+| v1.0 提议 | 原断定的"上游实况" |
 |---|---|
 | `fs: { read; write; list; exists }` | ❌ **mod 拿不到宿主文件系统** |
 | `store: { get; set }`（共享 KV） | ❌ mod 间协调靠 `telemetry` 流 + tier 下钻 |
@@ -164,6 +182,10 @@ ui.ask / copy / invalidate / log / notice
 | `agents: { register }` | ❌ `agent.spawn` 是**启动** agent，非注册 |
 
 **安全含义**：上游用**能力面收窄**替代沙箱。mod 能做的事完全由宿主注入的 API 面决定。
+
+</details>
+
+> 末句「上游用能力面收窄替代沙箱」这一**观察仍然成立**，只是能力面比本节列的大得多 —— 24 个 noun 里有 `process.run`（可执行子进程）与 `http.fetch`，收窄的边界比"拿不到文件系统"宽得多，实施时需按 [`mods-upstream-contract.md`](./mods-upstream-contract.md) 的完整清单重新评估。
 
 ### 5.3 静态扫描的产出结构
 
@@ -202,6 +224,128 @@ ui.ask / copy / invalidate / log / notice
 `next()` 参数与 `next.to()` 楼层**运行时校验**（`s(v,"next() argument")` / `s(x,"next.to() floors")`），传错类型才抛错。
 
 > **`mods-plan.md` v1.0 完全未提流式事件。** `prompt` / `turn` 类事件天然流式，砍掉等于砍掉一半可用场景。
+
+### 6.3 opencc 侧接线状态（2026-10-11）
+
+事件总数 **109** = engine 64 + op 52，去重后重叠 7。平衡恒等式：
+`109 == 已接线 + 桥接 + 按名拒绝 + 未接线`，每次改动后重跑校验，避免"删了多少行"式的误判。
+
+| 类别 | 数量 | 说明 |
+|---|---|---|
+| 源码层有触发点 | 73 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
+| 桥接 | 4 | `tool.call`→`PostToolUse`、`session.start`/`session.end`、`turn.complete`→`Stop` |
+| 按名拒绝 | 5 | `audio.play`/`audio.speak`/`ui.blit`/`ui.fault`/`ui.message` —— 终端无对应能力，**按名报错**而不是给一个永不触发的 `on()` |
+| 无触发点 | 27 | 见下 |
+
+#### 6.3.1 运行时实测（`/mod-probe`，真实 dist）
+
+首次端到端跑 `mod-probe`（`bun run build` 后的 `dist/cli.mjs`，pty 驱动真实 REPL）：
+
+```
+Event slots: 4 fired, 100 subscribed-but-never-fired, 5 refused — of 109.
+  command.describe ×434
+  prompt.section ×24
+  prompt.submit ×1
+  session.start ×1
+```
+
+**只有 4 个事件被证实会触发。** 源码审计说 73，这个差距就是"空壳"的确切定义 —— 本节就是为此存在。
+
+两个必须说清的点，否则这个数字会被误读：
+
+1. **52 个 op 事件本来就不该"触发"。** op 事件是 `$` 方法的调用点，没人调 `$.fs.read`，`fs.read` 就不会触发。probe 只注册 handler、从不调用任何 noun，所以 op 事件显示"未触发"是**正确行为**，不是缺口。（若某天有 mod 真的调了某个 noun 而它仍未触发，那才是 bug。）
+2. **`turn.start` 在本次实测中没有触发**，而源码里它有调用点（`src/query.ts:589`，`queryLoop` 内、`while` 之前）。已排除的假设：打包后 `mods/dispatch.js` 出现两份独立状态（实测 `dist/cli.mjs` 中 `refreshOpChains` 与 `hasModHandlersFor` 各只出现 1 次，打包器已去重）。**剩下的两种可能没有区分开**：(a) 那次驱动里查询循环根本没跑（回复为空、`turn.start` 在首个模型调用之前就该触发却没触发）；(b) 那一刻 `hasModHandlersFor('turn.start')` 为 false。**在跑通一个确认产生助手回复的会话之前，不得声称 `turn.start` 已接线。**
+
+**修正（2026-10-12）**：上述第 2 点的悬念已解开 —— 是 **(a)**，而且原因不是驱动问题。`turn.start` 的调用点里用了未 import 的 `extractTextContent`（见 §6.4），ReferenceError 抛在 `queryLoop` 的 `while (true)` 之前，**每个 turn 都在首次模型调用之前死掉**。所以那次"查询循环根本没跑"不是驱动没喂进去，是宿主自己崩的。
+
+修复后重跑，`turn.start` 确实触发：
+
+```
+Event slots: 9 fired, 95 subscribed-but-never-fired, 5 refused — of 109.
+  attribution.text ×4    command.describe ×444   prompt.section ×24
+  prompt.submit ×1        session.start ×1        tool.describe ×26
+  turn.complete ×1        turn.start ×1           ui.render ×1
+```
+
+新增的 5 个（`turn.start` / `turn.complete` / `tool.describe` / `attribution.text` / `ui.render`）全部是**修复前查询根本没跑**所以无从触发的。**这就是为什么空壳必须用运行时证据判定**：源码里的调用点在一次崩溃面前和不存在没有区别。
+
+> **`mod-probe` 现为 `optIn: true`（默认关闭）**。诊断类 mod 不该在每个用户会话里常驻，所以它不再自动加载 ——
+> 要复现上表须先在 `/plugins` → Installed 里启用它。上表是**启用状态下**的读数。
+
+> 驱动本身的两个坑（都会伪装成产品 bug）：
+> - opencc 冷启动要 **45 秒到 4 分钟**。固定 `settle` 的驱动器会在进程还没起来时就把输入打进去，于是"没回复"其实是没有接收方。
+> - **输入框提交后不会自动清空**。紧接着发下一条命令会被拼接成 `上一条/下一条` 的普通 prompt —— `/mod-probe` 变成一句提问，自然永远出不来报告。发命令前先发 `\x15`（Ctrl-U）清行。
+
+未接线按前缀：
+
+- `prompt.*` 9 —— 需要先做 `instructionFiles` 结构化重构（`prompt.context` 的 `instructionFiles` 匹配器依赖它）
+- `session.*` 6 —— `usage` 要接 `/context` + `/cost` 的读数
+- `agent.offer` / `agent.register` / `engine.create` / `plugin.register`
+- `mcp.call` / `mcp.connect` —— `mcp.call` 必须过权限路径，否则 mod 可无提示调用任意 MCP 工具
+- `ui.input` / `ui.press` / `ui.select` —— 需要输入管道重构
+- `turn.step` —— 见下
+
+#### `turn.step` 为什么还没接
+
+上游 `TurnStepChunk` 有 6 种 chunk：`text` / `thinking` / `tool` / **`input`**（工具参数的增量 JSON）/ `stop` / `engine`。**`input` 才是这个事件存在的理由** —— 上游明写 "a hook that saw it whole could not change what had already been shown"，指的就是参数在流式到达期间可改写。
+
+opencc 的 `deps.callModel`（`src/query.ts:1258`）按 **content block** 产出 message，不是按 delta，在那里接只能拿到 `text`/`thinking`/`tool`/`stop`，**拿不到 `input`**。真正的插槽点在 `src/services/api/claude.ts:2268` 的 `content_block_delta` 原始流循环里。
+
+因此选择不接，而不是接一个缺 `input` 的版本：缺了 `input` 的 `turn.step` 与一个普通 observe 事件无差别，接上去只会让 mod 以为能改参数。
+
+`process.spawn` 已接（同一个 `dispatchModStream`），端到端测试打真实子进程（`/bin/sh`、`/bin/cat`），含 stdout/stderr 分流、stdin、退出码、启动失败 reject。
+
+#### `agent.register` 为什么还没接（这是个特性，不是接线）
+
+上游 `$.agent.register(spec)` 注册一个 `<plugin>:<name>` 类型的 agent，返回 `{ agent }`。`AgentSpec` 的字段与 opencc 的 `BaseAgentDefinition` 几乎一一对应（`description`→`whenToUse`、`prompt`→`getSystemPrompt`，其余同名），**唯一的障碍是 `source`**。
+
+`getActiveAgentsFromList()`（`src/tools/AgentTool/loadAgentsDir.ts`）按 `source` 分六组再塞进 `Map`：
+
+```
+built-in | plugin | userSettings | projectSettings | flagSettings | policySettings
+```
+
+**任何不在这六组里的 `source`，会进 `allAgents` 但被静默丢出 `activeAgents`** —— 一个 mod 注册了 agent、`$.agent.list()` 列得出来、Agent 工具却永远 spawn 不到它。这正是"空壳"的另一种形态，而且不会有任何报错。
+
+所以正确做法是给 `source` 加一个 `'mod'` 成员并接进分组（外加 `isModAgent`），而不是硬塞进 `'plugin'`（那会谎报来源 —— `loadPluginAgents()` 是 marketplace 插件的路径）。这要穿过 agent schema、分组函数和 AgentsMenu，是**特性**不是接线，故与其它未接线项一起记在此处。
+
+### 6.4 一次真实回归：`@ts-nocheck` 让 typecheck 对本次全部改动失明
+
+**症状**：重新构建后，发送消息没有回复。已提交但无回复 —— TUI 与 `-p` 模式皆然。
+
+**根因**：`turn.start` 接线块里调用了 `extractTextContent(...)`，而 `src/query.ts` **从未 import 它**。ReferenceError 抛在 `queryLoop` 这个 generator 内部 —— 位于 `while (true)` 之前 —— 于是每一次 turn 都在首次模型调用之前死掉。
+
+**为什么所有闸门都没拦住**：
+
+| 闸门 | 结果 | 原因 |
+|---|---|---|
+| `bun run typecheck` | ✅ 绿（0 error） | `src/query.ts` 第 1 行是 `// @ts-nocheck` |
+| `bun run build` | ✅ 通过 | Bun 把自由变量当合法标识符打包，不报错 |
+| `bun test src/mods/` | ✅ 440 pass | 测试不经过 `queryLoop` 这条路径 |
+| `/mod-probe` | ⚠️ 只有间接信号 | `prompt.submit` 也没触发 —— 提示查询根本没起来 |
+
+**本次改动触及的 8 个文件，全部带 `// @ts-nocheck`**：
+
+```
+src/query.ts  src/ink/ink.tsx  src/services/api/claude.ts
+src/services/tools/toolExecution.ts  src/tools/AgentTool/AgentTool.tsx
+src/utils/forkedAgent.ts  src/utils/processUserInput/processUserInput.ts
+src/tools/AgentTool/AgentTool.spawnEvent.test.ts
+```
+
+也就是说，**整个 mods 对齐工作从头到尾没有任何类型检查覆盖**。这才是本次事故的真正教训：不是"少写了一个 import"，而是"我用来担保正确性的那道闸门对我改的每一个文件都是瞎的"。
+
+**已加的闸门** — `scripts/check-nocheck-names.ts`：
+
+把 `@ts-nocheck` 文件在**内存中**去掉 pragma 重新类型检查（不改工作树），**只报 TS2304 `Cannot find name`**。只取这一类而非全部诊断，是因为去掉 pragma 会暴露约 240 条既有类型债（五年代码库的松散可赋值性），一并报出则这道闸门永远转绿、也就永远不会被执行；而 TS2304 是唯一一类**必然是运行时崩溃**而非潜在类型松散的错误 —— 它既是最危险的一类，也是唯一可处理的一类。
+
+当前基线 **486 个 `@ts-nocheck` 文件、27 处既有 occurrence**，由机械扫描捕获而非手挑。手挑会漏（本次手写基线就漏了 3 条）。基线条目在 occurrence 消失时会告警，防止"修好了却仍留在名单里、日后复发时被继续掩盖"。
+
+**接入点**：挂在 `build.ts` 与 `typecheck` 两处。挂 build 是因为 CI 门禁的是 `bun run smoke`（= build），而 `pr-checks.yml` **不跑**根 typecheck（只跑 `bun run --cwd web typecheck`）—— 只接 typecheck 等于没接。
+
+**验收**：把 import 删掉重新引入同一个 bug，`bun run build` 以 `EXIT=1` 失败并点名 `src/query.ts: cannot find name 'extractTextContent'`。修复后 TUI 与 `-p` 均恢复回复（`PONG` / `PONG2` / `PONG3` / `PONG-FINAL` 四次实测）。
+
+> **可推广的教训**：一道闸门"通过"只有在它**看得见**你改的东西时才是证据。`tsc` 对 `@ts-nocheck` 文件的沉默不是通过，是缺席。
 
 ---
 
@@ -271,15 +415,18 @@ m("plugin_function_hooks_worker_mods", "turned_off", { worker_mods, native_mods 
 
 ## 十、对 opencc 的可借鉴 / 必须分叉
 
+> ⚠️ **「能力面」一行的上游值已证伪**（见 §5.2 更正）：上游实为 24 个 noun，含 `fs` / `store` / `clock` / `process.run` / `http.fetch`。原「4 个命名空间，无 `fs`」是一次有损抽样的产物，**该行的分叉理由因此不成立**。2026-10-11 起 opencc 按 [`mods-upstream-contract.md`](./mods-upstream-contract.md) 的完整清单重新推进能力面对齐（`mods-plan.md` v2.11 起）。其余行仍有效。
+
 | 维度 | 上游 | opencc 决策 | 理由 |
 |---|---|---|---|
 | mod 语言 | TypeScript | **JavaScript** | 消除转译依赖（R2 消解）；无类型提示为代价 |
-| 加载 | `Bun.Transpiler` + vm realm | **原生 `import()`** | 无 `Bun` 全局；`vm.SourceTextModule` 需 flag；窄能力面下隔离边际收益小 |
-| 注册契约 | AST 扫描 `on(...)` 调用点 | **导出式 `register(ctx)`** | 显式契约，静态分析压力小一个量级 |
-| 能力面 | 4 个命名空间，无 `fs` | **同款 + 运行时注册扩展** | 保持"能力面窄 ⇒ 沙箱可验证"不变量 |
+| 加载 | `Bun.Transpiler` + vm realm | **原生 `import()`** | 无 `Bun` 全局；`vm.SourceTextModule` 需 flag；隔离边际收益小 |
+| 注册契约 | AST 扫描 `on(...)` 调用点 | **导出式 `register(on, options)`** | 显式契约，静态分析压力小一个量级；`on("<event>", matcher, hook)` 的调用面与上游一致（v2.11） |
+| 能力面 | ⛔ 24 个 noun（`fs`/`store`/`clock`/`process`/`http`/…），见 §5.2 | **对齐中**（v2.11 起按 contract 清单推进） | 原"同款"的前提是错的；`fs.ancestors` 是 `agents-md` 的硬依赖 |
+| 事件名 | 109 个点分名 | **已对齐**（v2.11，旧名保留为别名） | 见 `src/mods/protocol.ts` |
 | 静态校验 | 完整拒斥式 AST | **精简版**（扩展名/体积/围栏/裸模块） | 换注册模型后大部分规则不再必要 |
 | Worker 隔离 | per-plugin Worker + 归因 + 熔断 | **同进程**（P1） | Node 无 Bun Worker；官方有 `SAME_THREAD` 逃生舱 |
-| tier | 5 层 + 下钻 + 三件套 dispatch | **2 档 + 同步**（流式列 P2） | 克制；`prompt`/`turn` 流式需求列 P2 |
+| tier | 5 层 + 下钻 + 三件套 dispatch | **5 层已对齐**（v2.11）；流式 dispatchStream 列 P2 | 下钻映射与官方一致 |
 
 ---
 

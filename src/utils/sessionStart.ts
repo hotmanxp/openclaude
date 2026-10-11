@@ -1,4 +1,5 @@
 import { getMainThreadAgentType } from '../bootstrap/state.js'
+import { setSessionFacts } from '../mods/nouns.js'
 import type { HookResultMessage } from '../types/message.js'
 import { createAttachmentMessage } from './attachments.js'
 import { logForDebugging } from './debug.js'
@@ -33,6 +34,40 @@ export function takeInitialUserMessage(): string | undefined {
 }
 
 // Note to CLAUDE: do not add ANY "warmup" logic. It is **CRITICAL** that you do not add extra work on startup.
+/**
+ * Publish the facts `$.session` answers with, for mods to read.
+ *
+ * Kept next to the loader rather than in the noun so the host decides what a
+ * mod can know; the noun only reads. `git` is the one that can fail, and a
+ * session outside a repository is normal rather than an error — the root is
+ * then the cwd, which is what "no project here" should read as.
+ */
+function publishModSessionFacts(sessionId: string | undefined): void {
+  void (async () => {
+    let repo: { toplevel: string } | undefined
+    try {
+      const { execFile } = await import('node:child_process')
+      const toplevel = await new Promise<string | undefined>(done => {
+        execFile(
+          'git',
+          ['rev-parse', '--show-toplevel'],
+          { cwd: process.cwd() },
+          (err, stdout) => done(err ? undefined : stdout.trim() || undefined),
+        )
+      })
+      if (toplevel) repo = { toplevel }
+    } catch {
+      repo = undefined
+    }
+    setSessionFacts({
+      id: sessionId ?? '',
+      cwd: process.cwd(),
+      root: repo?.toplevel,
+      repo,
+    })
+  })()
+}
+
 export async function processSessionStartHooks(
   source: 'startup' | 'resume' | 'clear' | 'compact',
   {
@@ -131,6 +166,13 @@ export async function processSessionStartHooks(
     // including SessionStart itself. Memoized like loadPluginHooks; per-mod
     // failures are attributed inside and never throw. Mods are untrusted
     // external code — same managed-only policy gate as plugin hooks.
+    //
+    // Publish what the `$.session` noun reads first, in the same breath: a
+    // `session.start` handler asking for `$.session.root()` has to get a real
+    // answer, and both the id and the root are already known at this point.
+    // Publishing after the load would leave the first hook of the session
+    // reading an empty session.
+    publishModSessionFacts(sessionId)
     try {
       await withDiagnosticsTiming('load_mods', () => loadMods())
     } catch (error) {

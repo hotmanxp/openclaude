@@ -7,6 +7,38 @@ type WriteRaw = (data: string) => void
 
 export const TerminalWriteContext = createContext<WriteRaw | null>(null)
 
+/**
+ * Module-level mirror of the context, for callers outside React.
+ *
+ * The hook form cannot serve the mod runtime: `ctx.ui.notify` is called from
+ * plain code, with no component tree and therefore no context to read. The
+ * provider registers its writer here on mount and clears it on unmount, so
+ * there is exactly one owner of the terminal writer and the two paths cannot
+ * disagree about multiplexing or wrapping.
+ */
+let registeredWriter: WriteRaw | null = null
+
+export function setTerminalWriter(fn: WriteRaw | null): void {
+  registeredWriter = fn
+}
+
+/** The current writer, or null when no provider is mounted. */
+export function getTerminalWriter(): WriteRaw | null {
+  return registeredWriter
+}
+
+/**
+ * Publishes `data` to the terminal, if a provider is mounted.
+ *
+ * Returns whether it went out, so a caller can tell "not rendered" from
+ * "rendered and nobody was listening".
+ */
+export function writeTerminalRaw(data: string): boolean {
+  if (!registeredWriter) return false
+  registeredWriter(data)
+  return true
+}
+
 export const TerminalWriteProvider = TerminalWriteContext.Provider
 
 export type TerminalNotification = {

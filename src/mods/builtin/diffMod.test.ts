@@ -29,11 +29,13 @@ function harness(): {
     if (!registration) throw new Error(`diff mod did not register ${event}`)
     return registration
   }
-  const next = async () => ({ continue: true })
+  const next = (async () => ({ continue: true })) as never
   return {
     mod,
-    userPromptSubmit: async e => find('UserPromptSubmit').handler(e, next),
-    sessionStart: async () => find('SessionStart').handler({ source: 'startup' }, next),
+    // The diff mod registers the dotted names directly; this indirection only
+    // lets the test reach a single handler without registering a whole mod.
+    userPromptSubmit: async e => find('prompt.submit').handler(e, next),
+    sessionStart: async () => find('session.start').handler({ source: 'startup' }, next),
   }
 }
 

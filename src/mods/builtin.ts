@@ -8,7 +8,7 @@ import {
   registerLoadedMod,
 } from './registry.js'
 import { createModContext, type ModContext } from './engine.js'
-import { isModEnabled } from './pluginView.js'
+import { isModEnabled, isModExplicitlyEnabled } from './pluginView.js'
 
 /**
  * Built-in mod channel (docs/mods-plan.md §4.3 / §九 — upstream parity of
@@ -26,6 +26,17 @@ export type BuiltinModSpec = {
   name: string
   version?: string
   description?: string
+  /**
+   * Ship the mod without loading it unless the user turns it on in `/plugins`.
+   *
+   * For a diagnostic that is itself a listener: `mod-probe` subscribes to
+   * every event, so leaving it on by default made `hasModHandlersFor` true
+   * everywhere and turned the zero-subscription fast path off permanently —
+   * every dispatch then paid a payload clone, a frozen copy and a budgeted
+   * hook, in a session that asked for none of it. The mod is still listed, so
+   * `/plugins` is where it gets switched on.
+   */
+  optIn?: boolean
   /**
    * User-configurable values, surfaced by `/plugins` → Installed as
    * "Configure options". Same schema and same storage as a disk mod's
@@ -91,7 +102,12 @@ export async function loadBuiltinMods(): Promise<{
     noteDiscoveredMod(spec.name, true, spec.userConfig)
     // Disabled in /plugins → Installed. Skipped BEFORE register() so a
     // built-in the user turned off never claims handlers, panes or status.
-    if (!isModEnabled(spec.name, true)) {
+    // `optIn` inverts the default: an absent key means OFF, so a diagnostic
+    // ships listed but dormant until someone turns it on.
+    const enabled = spec.optIn
+      ? isModExplicitlyEnabled(spec.name, true)
+      : isModEnabled(spec.name, true)
+    if (!enabled) {
       disabled.push(spec.name)
       continue
     }
@@ -131,7 +147,9 @@ export async function loadBuiltinMods(): Promise<{
 import { diffBuiltinMod } from './builtin/diffMod.js'
 import { handoffBuiltinMod } from './builtin/handoffMod.js'
 import { mermaidBuiltinMod } from './builtin/mermaidMod.js'
+import { modProbeBuiltinMod } from './builtin/modProbe.js'
 
 registerBuiltinMod(diffBuiltinMod)
 registerBuiltinMod(handoffBuiltinMod)
 registerBuiltinMod(mermaidBuiltinMod)
+registerBuiltinMod(modProbeBuiltinMod)

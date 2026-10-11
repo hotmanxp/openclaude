@@ -10,6 +10,7 @@ import { z } from 'zod/v4';
 import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from '../../bootstrap/state.js';
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
+import { dispatchModEngine, hasModHandlersFor } from '../../mods/dispatch.js';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
@@ -349,20 +350,24 @@ export const AgentTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema();
   },
-  async call({
-    prompt,
-    subagent_type,
-    description,
-    model: modelParam,
-    run_in_background,
-    name,
-    team_name,
-    mode: spawnMode,
-    isolation,
-    cwd
-  }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
+  async call(input: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
+    // `let`, not `const`: upstream `agent.spawn` fires before the agent is
+    // resolved and rewrites exactly these, and a rewrite read back as the
+    // tool's own parameters is the contract.
+    let {
+      prompt,
+      subagent_type,
+      description,
+      model: modelParam,
+      run_in_background,
+      name,
+      team_name,
+      mode: spawnMode,
+      isolation,
+      cwd
+    } = input;
     const startTime = Date.now();
-    const model = isCoordinatorMode() ? undefined : modelParam;
+    let model = isCoordinatorMode() ? undefined : modelParam;
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState();
@@ -480,6 +485,75 @@ export const AgentTool = buildTool({
       } as unknown as {
         data: Output;
       };
+    }
+
+    // Upstream `agent.spawn` — "what the Agent tool decided about the
+    // subagent it is about to start, before its model is resolved". It sits
+    // here for exactly that reason: below this point `subagent_type` has been
+    // resolved into a definition and `model` into a concrete id, and a hook
+    // that rewrote either would be writing to a value nothing reads again.
+    //
+    // The teammate branch above is a different call and returns on its own,
+    // so it never reaches here — which matches upstream, where `agent.spawn`
+    // is the Agent tool's spawn and not a teammate's.
+    if (hasModHandlersFor('agent.spawn')) {
+      const decided = await dispatchModEngine<{
+        deny?: string
+        prompt: string
+        description: string
+        subagentType?: string
+        model?: string
+        name?: string
+        cwd?: string
+        background: boolean
+      }>(
+        'agent.spawn',
+        {
+          tool_use_id: assistantMessage?.message?.id ?? '',
+          prompt,
+          description: description ?? '',
+          // The type as the call asked for it, not a resolved one: that is
+          // the only value a rewrite can still mean anything about.
+          subagentType: subagent_type,
+          model,
+          name,
+          cwd,
+          background: run_in_background === true,
+          fork: isForkSubagentEnabled() && subagent_type === undefined,
+          parentModel: toolUseContext.options.mainLoopModel,
+          parentAgentId: toolUseContext.agentId,
+          permissionMode: appState.toolPermissionContext.mode,
+        },
+        e => ({
+          // Carried explicitly: a core that rebuilt the result from the
+          // rewritable fields alone would drop the refusal on the floor and
+          // spawn anyway.
+          deny: typeof e.deny === 'string' ? e.deny : undefined,
+          prompt: typeof e.prompt === 'string' ? e.prompt : prompt,
+          description:
+            typeof e.description === 'string' ? e.description : (description ?? ''),
+          subagentType:
+            typeof e.subagentType === 'string'
+              ? e.subagentType
+              : subagent_type,
+          model: typeof e.model === 'string' ? e.model : model,
+          name: typeof e.name === 'string' ? e.name : name,
+          cwd: typeof e.cwd === 'string' ? e.cwd : cwd,
+          background: e.background === true,
+        }),
+      )
+      if (decided.deny !== undefined) {
+        // Upstream surfaces the reason as the tool's error, so the model
+        // reads why no subagent started rather than seeing an empty result.
+        throw new Error(decided.deny)
+      }
+      prompt = decided.prompt
+      description = decided.description
+      subagent_type = decided.subagentType
+      model = decided.model
+      name = decided.name
+      cwd = decided.cwd
+      run_in_background = decided.background
     }
 
     // Fork subagent experiment routing:

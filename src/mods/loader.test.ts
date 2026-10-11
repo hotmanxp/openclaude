@@ -26,6 +26,39 @@ import {
 let modsDir: string
 let savedEnv: string | undefined
 
+/**
+ * The hook entries ONE mod contributed under `event`.
+ *
+ * Every shipped built-in registers its own handlers — `diff` under
+ * `PostToolUse`, `mod-probe` under all 109 events — so a test that counts the
+ * whole registry is really asserting "no built-in has changed", and breaks
+ * the next time one does. What these tests actually care about is whether a
+ * PARTICULAR mod's registration landed, so they filter to it.
+ *
+ * Mods sharing a host event share ONE composite whose `pluginName` lists them
+ * all (`mod:mod-probe+greeter`), so the match is membership, not equality.
+ */
+function hooksFor(
+  event: string,
+  modName: string,
+): Array<{
+  hooks: Array<{
+    type?: string
+    callback?: (
+      input: unknown,
+      toolUseID: string | null,
+      signal: AbortSignal | undefined,
+    ) => Promise<unknown>
+  }>
+}> {
+  const all = getRegisteredHooks() as
+    | Record<string, Array<{ pluginName?: string }>>
+    | undefined
+  return (all?.[event] ?? []).filter(entry =>
+    entry.pluginName?.replace(/^mod:/, '').split('+').includes(modName),
+  ) as never
+}
+
 beforeEach(() => {
   savedEnv = process.env[OPENCC_MODS_DIR_ENV]
 })
@@ -76,11 +109,14 @@ describe('loadMods', () => {
     process.env[OPENCC_MODS_DIR_ENV] = modsDir
     const results = await loadMods()
     // The built-in diff mod registers even without a mods dir. It hooks
-    // SessionStart (reset its store) + UserPromptSubmit (ride an armed file
-    // into the next turn), not PostToolUse.
+    // `session.start` (reset its store), which still rides the host's
+    // SessionStart hook. Its `prompt.submit` does NOT: upstream's shape is
+    // `{text, context}` rather than the host hook's additionalContext, so it
+    // dispatches on its own at the submission site instead of being bridged —
+    // hence no UserPromptSubmit registration here.
     expect(results.map(r => r.name)).toContain('diff')
     expect(getRegisteredHooks()?.SessionStart).toHaveLength(1)
-    expect(getRegisteredHooks()?.UserPromptSubmit).toHaveLength(1)
+    expect(getRegisteredHooks()?.UserPromptSubmit).toBeUndefined()
   })
 
   test('loads a valid mod end-to-end into the global hook registry', async () => {
@@ -89,12 +125,12 @@ describe('loadMods', () => {
       'greeter',
       `import { greeting } from './lib/util.js'
        export function register(ctx) {
-         ctx.on('Stop', async (e, next) => {
+         ctx.on('turn.complete', async (e, next) => {
            const r = await next(e)
            ctx.ui.notice('stop seen')
            return r
          })
-         ctx.on('PostToolUse', { tool: 'Bash' }, async () => ({ continue: true }))
+         ctx.on('tool.call', { tool: 'Bash' }, async () => ({ continue: true }))
          ctx.registerCommand({ name: 'hi', handler: async () => greeting() })
          ctx.registerTool({
            name: 'greet',
@@ -118,23 +154,22 @@ describe('loadMods', () => {
     expect(results.map(r => r.name)).toContain('diff')
     expect(getLoadedMods().length).toBeGreaterThanOrEqual(2)
 
-    // Composite registered into the global registry under Stop + PostToolUse
-    // (PostToolUse = greeter's {tool:Bash} alone; the built-in diff mod hooks
-    // SessionStart/UserPromptSubmit instead) and under UserPromptSubmit
-    // (diff's armed-file injection).
+    // Composite registered into the global registry under Stop + PostToolUse.
+    // Nothing lands under UserPromptSubmit any more — the diff mod's
+    // prompt.submit moved off the host hook when it took upstream's shape.
     const registered = getRegisteredHooks()
-    expect(registered?.Stop).toHaveLength(1)
-    expect(registered?.PostToolUse).toHaveLength(1)
-    expect(registered?.UserPromptSubmit).toHaveLength(1)
-    expect(registered?.Stop![0]!.pluginName).toBe('mod:greeter')
+    expect(hooksFor('Stop', 'greeter')).toHaveLength(1)
+    expect(hooksFor('PreToolUse', 'greeter')).toHaveLength(1)
+    expect(hooksFor('UserPromptSubmit', 'greeter')).toHaveLength(0)
 
     // Composite callback is invocable and chains to terminal continue
-    const composite = registered?.Stop![0]!.hooks[0]
-    if (!composite || composite.type !== 'callback') {
+    const composite = hooksFor('Stop', 'greeter')[0]!.hooks[0]
+    if (!composite || composite.type !== 'callback' || !composite.callback) {
       throw new Error('expected a callback hook composite for Stop')
     }
-    const output = await composite.callback(
-      { hook_event_name: 'Stop' } as Parameters<typeof composite.callback>[0],
+    const callback = composite.callback
+    const output = await callback(
+      { hook_event_name: 'Stop' } as Parameters<typeof callback>[0],
       null,
       undefined,
     )
@@ -144,7 +179,7 @@ describe('loadMods', () => {
   test('a broken mod does not block other mods', async () => {
     await setupModsDir()
     await writeMod('broken', 'export function register( { throw new Error("syntax")')
-    await writeMod('healthy', 'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }')
+    await writeMod('healthy', 'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }')
 
     const results = await loadMods()
     const broken = results.find(r => r.name === 'broken')!
@@ -155,7 +190,7 @@ describe('loadMods', () => {
     // The disk mods are joined by every shipped built-in; don't pin that
     // count — adding a built-in must not require editing this test.
     expect(results.some(r => r.name === 'diff' && r.ok)).toBe(true)
-    expect(getRegisteredHooks()?.Stop).toHaveLength(1)
+    expect(hooksFor('Stop', 'healthy')).toHaveLength(1)
   })
 
   test('mod whose register() throws is unloaded (no orphan registrations)', async () => {
@@ -163,7 +198,7 @@ describe('loadMods', () => {
     await writeMod(
       'halfway',
       `export function register(ctx) {
-         ctx.on('Stop', async () => ({ continue: true }))
+         ctx.on('turn.complete', async () => ({ continue: true }))
          throw new Error('registration failed')
        }`,
     )
@@ -171,7 +206,7 @@ describe('loadMods', () => {
     expect(results[0]!.ok).toBe(false)
     // register() threw BEFORE registerLoadedMod — no Stop hook from halfway
     // (the built-in diff mod registers its own PostToolUse hooks regardless)
-    expect(getRegisteredHooks()?.Stop).toBeUndefined()
+    expect(hooksFor('Stop', 'halfway')).toHaveLength(0)
     expect(getLoadedMods().some(m => m.manifest.name === 'halfway')).toBe(false)
   })
 
@@ -179,14 +214,14 @@ describe('loadMods', () => {
     await setupModsDir()
     await writeMod(
       'removable',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
     )
     await loadMods()
     expect(getRegisteredHooks()?.Stop).toHaveLength(1)
 
     const removed = await unloadMod('removable')
     expect(removed).toBe(true)
-    expect(getRegisteredHooks()?.Stop).toBeUndefined()
+    expect(hooksFor('Stop', 'removable')).toHaveLength(0)
     expect(getLoadedMods().some(m => m.manifest.name === 'removable')).toBe(
       false,
     )
@@ -196,7 +231,7 @@ describe('loadMods', () => {
     await setupModsDir()
     await writeMod(
       'statusful',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })); ctx.ui.status("watching") }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })); ctx.ui.status("watching") }',
     )
     await loadMods()
     expect(getModStatusSnapshot()).toEqual({ statusful: 'watching' })
@@ -209,7 +244,7 @@ describe('loadMods', () => {
     await setupModsDir()
     await writeMod(
       'paneful',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })); ctx.ui.pane({ id: "p", title: "P", component: () => "content" }) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })); ctx.ui.pane({ id: "p", title: "P", component: () => "content" }) }',
     )
     await loadMods()
     // built-in diff's pane is also present; target paneful's pane by key

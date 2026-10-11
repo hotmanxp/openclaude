@@ -18,6 +18,10 @@ import type {
   BetaUsage,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../../mods/dispatch.js'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
@@ -1183,6 +1187,44 @@ async function* queryModel(
   if (useToolSearch) {
     for (const t of tools) {
       if (isDeferredTool(t)) deferredToolNames.add(t.name)
+    }
+  }
+
+  // Upstream `tool.describe` — a mod may rewrite what a tool says it is and
+  // whether the model reaches it directly or through tool search.
+  //
+  // Runs for every request, not only under `useToolSearch`: that flag decides
+  // whether deferred tools exist here, not whether the tools are being
+  // described. Gating the event on it would mean a session with tool search
+  // off never fires the event at all, which is most sessions.
+  //
+  // Skipped outright with no subscribers — this sits on the request path, and
+  // upstream gates the same way (`Jl("<event>")`).
+  if (hasModHandlersFor('tool.describe')) {
+    const described: Array<{ tool: string; isDeferred: boolean }> = []
+    for (const t of tools) {
+      const answer = await dispatchModEngine<{
+        tool: string
+        isDeferred: boolean
+      }>(
+        'tool.describe',
+        {
+          tool: t.name,
+          description: t.description ?? '',
+          provider: t.source ?? 'built-in',
+          isDeferred: deferredToolNames.has(t.name),
+        },
+        e => ({
+          tool: String(e.tool ?? t.name),
+          isDeferred: e.isDeferred === true,
+        }),
+      )
+      described.push(answer)
+    }
+    // A hook that deferred a tool has to actually defer it, or the next block
+    // re-derives the set from isDeferredTool and discards the hook's answer.
+    for (const { tool, isDeferred } of described) {
+      if (isDeferred) deferredToolNames.add(tool)
     }
   }
 

@@ -67,6 +67,7 @@ import {
   createToolUseSummaryMessage,
   createMicrocompactBoundaryMessage,
   createAssistantMessage,
+  extractTextContent,
 } from './utils/messages.js'
 import { buildInboxSystemReminder } from './utils/daemon/inboxSection.js'
 import { analyzeContinuationIntent } from './utils/continuation.js'
@@ -135,6 +136,8 @@ import {
 } from './utils/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
+import { dispatchModEngine, hasModHandlersFor } from './mods/dispatch.js'
+import { openModTurn } from './mods/nouns.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
@@ -579,6 +582,36 @@ async function* queryLoop(
     state.messages,
     state.toolUseContext,
   )
+
+  // Upstream `turn.start` — the turn begins before its first model call, and
+  // the id it mints is what `turn.complete` carries and `turn.abort` names.
+  // opencc has no turn id of its own, so one is minted here; the registry is
+  // what makes `$.turn.abort` able to reach this turn's controller at all.
+  const modTurnId = deps.uuid()
+  openModTurn(modTurnId, state.toolUseContext.abortController)
+  if (hasModHandlersFor('turn.start')) {
+    await dispatchModEngine<{ turnId: string }>(
+      'turn.start',
+      {
+        // Upstream's `text` is the user's turn as it proceeds — "" for a
+        // continuation, which is what a query with no fresh prompt is.
+        text: extractTextContent(
+          state.toolUseContext.messages
+            .filter(m => m.type === 'user' && m.message)
+            .slice(-1)
+            .flatMap(m => {
+              const content = m.message?.content
+              return Array.isArray(content) ? content : []
+            }),
+        ),
+        turnId: modTurnId,
+      },
+      e => ({
+        turnId:
+          typeof e.turnId === 'string' && e.turnId !== '' ? e.turnId : modTurnId,
+      }),
+    )
+  }
 
   // eslint-disable-next-line no-constant-condition
   while (true) {

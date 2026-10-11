@@ -12,6 +12,7 @@
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { PromptCommand } from '../commands.js'
+import { dispatchModEngine } from '../mods/dispatch.js'
 import type { QuerySource } from '../constants/querySource.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { query } from '../query.js'
@@ -201,9 +202,16 @@ export async function prepareForkedCommandContext(
 ): Promise<PreparedForkedContext> {
   // Get skill content with $ARGUMENTS replaced
   const skillPrompt = await command.getPromptForCommand(args, context)
-  const skillContent = skillPrompt
-    .map(block => (block.type === 'text' ? block.text : ''))
-    .join('\n')
+  const skillContent = await dispatchModEngine(
+    'skill.prompt',
+    {
+      skill: command.name,
+      text: skillPrompt
+        .map(block => (block.type === 'text' ? block.text : ''))
+        .join('\n'),
+    },
+    async e => String(e.text ?? ''),
+  )
 
   // Parse and prepare allowed tools
   const allowedTools = parseToolListFromCLI(command.allowedTools ?? [])

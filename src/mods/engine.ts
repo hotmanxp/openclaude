@@ -6,8 +6,8 @@ import { errorMessage } from '../utils/errors.js'
 import { loadPluginOptions, type PluginOptionValues } from '../utils/plugins/pluginOptionsStorage.js'
 import { emitUserNotice, subscribeUserNotices } from '../utils/noticeBus.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
-import { realpath, readFile, writeFile, readdir } from 'node:fs/promises'
-import { relative, resolve } from 'node:path'
+import { realpath, readFile, writeFile, readdir, stat } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type {
   LoadedMod,
   ModCommandSpec,
@@ -21,31 +21,55 @@ import {
   getModToolsVersion,
   type ModRenderEvent,
   type ModRenderHandler,
+  type ModStreamEvent,
+  type ModStreamHandler,
 } from './registry.js'
 import {
-  isModSupportedEvent,
-  MOD_SUPPORTED_EVENTS,
-  normalizeMatcherValue,
+  dispatchModOp,
+  dispatchModOpSync,
   subscribeModProgress,
-  type ModSupportedEvent,
 } from './dispatch.js'
+import {
+  buildModNouns,
+  type AncestorsArgs as ModAncestorsArgs,
+  type FsAncestor,
+  type ModClock,
+  type ModEnv,
+  type ModProcess,
+  type ModState,
+  type ModStore,
+  type ModSession,
+  type ModTelemetry,
+  type ModSettings,
+  type ModFlag,
+  type ModHttp,
+  type ModTool,
+  type ModCommand,
+  type ModAgent,
+  type ModModel,
+  type ModConfig,
+} from './nouns.js'
+import {
+  INVALIDATABLE_EVENTS,
+  MOD_EVENTS,
+  isModEventName,
+  splitTier,
+  unavailabilityReason,
+  type ModEventName,
+  type ModMatcher,
+} from './protocol.js'
 import { modPluginId } from './pluginView.js'
 import { resolveElementTable, type ElementTable } from './ui/elements.js'
 import { setClipboard } from '../ink/termio/osc.js'
+import { writeTerminalRaw } from '../ink/useTerminalNotification.js'
+import { osc, OSC, wrapForMultiplexer } from '../ink/termio/osc.js'
+import { BEL } from '../ink/termio/ansi.js'
 
 /**
- * Upstream `ui.invalidate` @10562833 — the only events a mod may name.
- * A typo here would otherwise silently redraw nothing.
+ * Upstream `ui.invalidate` — the only events a mod may name. A typo here would
+ * otherwise silently redraw nothing. The set is the upstream one, unchanged.
  */
-const INVALIDATE_EVENTS = new Set([
-  'ui.render',
-  'prompt.section',
-  'prompt.context',
-  'prompt.attachment',
-  'tool.describe',
-  'command.describe',
-  'config.describe',
-])
+const INVALIDATE_EVENTS = new Set<string>(INVALIDATABLE_EVENTS)
 
 /** `$.ui.open` without the component — the shape a caller builds before it has one. */
 export type ModPaneOpenSpec = Omit<ModPaneSpec, 'component'> & {
@@ -66,7 +90,16 @@ export type ModPaneOpenSpec = Omit<ModPaneSpec, 'component'> & {
 const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
-const SUPPORTED_EVENTS_HINT = `${MOD_SUPPORTED_EVENTS.join(', ')}, ${MOD_RENDER_EVENT}`
+/**
+ * Upstream teaches the call shape in its own refusal message; matching that
+ * beats listing 109 names nobody reads. The prefixes are enough to tell a
+ * dotted name from a classic hook name at a glance.
+ */
+const EVENT_PREFIXES = [...new Set(MOD_EVENTS.map(e => e.split('.')[0]!))]
+const SUPPORTED_EVENTS_HINT =
+  `on is always on("<event>", hook), where <event> is one of upstream's ` +
+  `${MOD_EVENTS.length} dotted names (${EVENT_PREFIXES.join(' / ')}.*) — ` +
+  `not a settings.json hook name like PreToolUse, which is tool.call here`
 
 // ---------------------------------------------------------------------------
 // Pane registry — the host side of `$.ui.open` / `close` / `panes`.
@@ -373,22 +406,54 @@ export type ModFsApi = {
   write(path: string, data: string): Promise<void>
   list(path: string): Promise<string[]>
   exists(path: string): Promise<boolean>
+  /**
+   * Upstream `$.fs.stat` — size and directory-ness of one path, or undefined
+   * when it is not there.
+   */
+  stat(path: string): Promise<{ size: number; isDirectory: boolean } | undefined>
+  /**
+   * Upstream `$.fs.ancestors({names, of?, below?})` — walk from `of` (default
+   * the session cwd) up one directory at a time, reading the first matching
+   * name in each, stopping after `below`.
+   *
+   * This is what makes instruction-file ancestry expressible: a mod resolves
+   * "every AGENTS.md between the project root and this file" with one call,
+   * the same way upstream's own AGENTS.md plugin does.
+   */
+  ancestors(args: ModAncestorsArgs): Promise<FsAncestor[]>
 }
 
+/** A dotted event name. The settings.json hook names are not accepted. */
+export type ModEventRef = ModEventName
+
 export type ModContext = {
-  on(event: ModSupportedEvent, handler: ModHandler): void
-  on(
-    event: ModSupportedEvent,
-    matcher: string | Record<string, unknown>,
-    handler: ModHandler,
-  ): void
   /**
    * Synchronous render transform (`ui.render`). The handler receives
    * `({text}, next)` and returns the rewritten text — or nothing to pass
    * through. Runs inside React render: must be synchronous and fast (a
    * returned promise is ignored). No matcher — it applies to every reply.
+   *
+   * Declared ahead of the generic overloads on purpose: `ui.render` is also a
+   * dotted name, and its handler has a different shape (synchronous, string
+   * `next`), so the generic one would claim it and mis-type every handler.
    */
   on(event: ModRenderEvent, handler: ModRenderHandler): void
+  /**
+   * A streaming event: `async function* ($, e, next)`, where `next(e)` is
+   * the stream beneath rather than a promise.
+   *
+   * Declared ahead of the generic overload for the same reason `ui.render`
+   * is: the handler's shape differs, and the generic one would claim it and
+   * mis-type every streaming hook.
+   */
+  on(event: ModStreamEvent, handler: ModStreamHandler): void
+  on(event: ModEventRef, handler: ModHandler): void
+  /**
+   * Upstream's matcher shape: a plain object nested against the event, with
+   * four leaf kinds (exact, RegExp, any-of, partial). `{ to: 'core' }` is
+   * lifted out as the tier rather than matched as an event field.
+   */
+  on(event: ModEventRef, matcher: ModMatcher, handler: ModHandler): void
   registerCommand(spec: ModCommandSpec): void
   registerTool(spec: ModToolSpec): void
   ui: {
@@ -453,14 +518,55 @@ export type ModContext = {
      * only be redrawn when some other mod happens to notify.
      */
     notify(): void
+    /**
+     * Upstream `$.ui.notify` — a terminal notification escape.
+     *
+     * Written through the module-level terminal writer rather than the hook,
+     * because there is no component tree here. Returns whether it reached the
+     * terminal, so a mod called outside the REPL learns that instead of
+     * assuming the bell rang.
+     */
+    notify(
+      text: string,
+      options?: { title?: string; channel?: string },
+    ): boolean | void
   }
   /**
-   * Fenced filesystem access. Present ONLY when the mod is listed in
-   * settings `mods.authorized` — otherwise undefined (P2 授权制: the narrow
-   * capability surface stays verifiable by default; authorization is
-   * explicit, visible and revocable).
+   * Fenced filesystem access. Always present, as upstream: the bound is the
+   * path fence (realpath containment against the session cwd and the mod
+   * root, checked per call) plus a per-read size cap — not an allowlist.
    */
-  fs?: ModFsApi
+  fs: ModFsApi
+  /** Cross-mod key/value state, session-scoped. Upstream `$.store`. */
+  store: ModStore
+  /** This mod's own key/value state, namespaced by mod name. Upstream `$.state`. */
+  state: ModState
+  /** Timers. Upstream `$.clock` — note `after`/`every` are fire-and-forget. */
+  clock: ModClock
+  /** Environment reads and writes. Upstream `$.env`. */
+  env: ModEnv
+  /** Subprocess execution. Upstream `$.process`. */
+  process: ModProcess
+  /** What the mod is running inside. Upstream `$.session`. */
+  session: ModSession
+  /** Usage rows. Upstream `$.telemetry`. */
+  telemetry: ModTelemetry
+  /** Host settings. Upstream `$.settings`. */
+  settings: ModSettings
+  /** Feature flag values. Upstream `$.flag`. */
+  flag: ModFlag
+  /** Outbound HTTP. Upstream `$.http`. */
+  http: ModHttp
+  /** Tool inventory. Upstream `$.tool`. */
+  tool: ModTool
+  /** Slash command inventory and dispatch. Upstream `$.command`. */
+  command: ModCommand
+  /** Subagent inventory. Upstream `$.agent`. */
+  agent: ModAgent
+  /** One-shot completions through the session's own client. Upstream `$.model`. */
+  model: ModModel
+  /** Settings read/write. Upstream `$.config`. */
+  config: ModConfig
   /**
    * The mod's saved `userConfig` values — declared in `opencc-mod.json`,
    * edited via `/plugins` → Installed → Configure options.
@@ -560,28 +666,26 @@ export function clearModStatus(modName: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// ctx.fs — fenced filesystem API (P2 授权制). Only mods listed in settings
-// `mods.authorized` receive the API; allowed roots are the session cwd and
-// the mod root. realpath + relative() containment check on every call.
+// ctx.fs — fenced filesystem API.
+//
+// Upstream hands every plugin `$.fs` unconditionally and bounds it by path, not
+// by identity: a path resolves against the working directory or is absolute, a
+// file the plugin ships is under `$.plugin.root`, and one read is capped
+// (`d.ts:2738-2751`). There is no allowlist to be listed in — so the gate that
+// used to live here was opencc's own, and it had two costs that outweighed the
+// one it bought: an authorized mod is indistinguishable from an unauthorized one
+// in the source, so a port of an official mod (`agents-md` calls
+// `$.fs.ancestors()`) either has to be patched or throws a TypeError on
+// `undefined`, and the failure surfaces in the mod, not in the plugin that
+// silently withheld a documented API.
+//
+// The bound is the fence: realpath on both the roots and the target, then a
+// `relative()` containment check on every call. A symlink out of the roots
+// resolves before the comparison, so it does not pass.
 // ---------------------------------------------------------------------------
 
-function isModFsAuthorized(modName: string): boolean {
-  if (fsAuthOverrideForTesting) return fsAuthOverrideForTesting(modName)
-  const authorized = getSettings_DEPRECATED()?.mods?.authorized
-  logForDebugging(
-    `[mods] fs auth check "${modName}": authorized=${JSON.stringify(authorized)}`,
-  )
-  return Array.isArray(authorized) && authorized.includes(modName)
-}
-
-let fsAuthOverrideForTesting: ((modName: string) => boolean) | undefined
-
-/** For tests only — bypass settings lookup. */
-export function setModFsAuthOverrideForTesting(
-  fn?: (modName: string) => boolean,
-): void {
-  fsAuthOverrideForTesting = fn
-}
+/** Upstream's per-read cap — `d.ts:2745`. */
+const MAX_FS_READ_BYTES = 4 * 1024 * 1024
 
 async function buildFsApi(
   modName: string,
@@ -627,9 +731,22 @@ async function buildFsApi(
   }
   return {
     async read(path) {
-      return readFile(await assertFenced(path), 'utf8')
+      return dispatchModOp('fs.read', { path }, async () => {
+        const abs = await assertFenced(path)
+        // Upstream d.ts:2745 — "Rejects when missing, or over 4 MiB, which
+        // bounds what one read copies into the plugin's environment."
+        const { size } = await stat(abs)
+        if (size > MAX_FS_READ_BYTES) {
+          throw new Error(
+            `[mods:${modName}] fs.read: ${path} is ${size} bytes, over the ` +
+              `${MAX_FS_READ_BYTES} byte limit`,
+          )
+        }
+        return readFile(abs, 'utf8')
+      })
     },
     async write(path, data) {
+      return dispatchModOp('fs.write', { path, data }, async () => {
       const abs = resolve(path)
       // The file itself may not exist yet — fence on its parent directory.
       const parentReal = await assertFenced(resolve(abs, '..'))
@@ -642,17 +759,84 @@ async function buildFsApi(
       // out, breaking the "containment check on every call" promise above.
       await assertFencedIfExists(target)
       await writeFile(target, data, 'utf8')
+      })
     },
     async list(path) {
-      return readdir(await assertFenced(path))
+      return dispatchModOp('fs.list', { path }, async () =>
+        readdir(await assertFenced(path)),
+      )
     },
     async exists(path) {
-      try {
-        await assertFenced(path)
-        return true
-      } catch {
-        return false
-      }
+      return dispatchModOp('fs.exists', { path }, async () => {
+        try {
+          await assertFenced(path)
+          return true
+        } catch {
+          return false
+        }
+      })
+    },
+    async stat(path) {
+      return dispatchModOp('fs.stat', { path }, async () => {
+        const real = await assertFencedIfExists(path)
+        if (real === null) return undefined
+        const info = await stat(real)
+        return { size: info.size, isDirectory: info.isDirectory() }
+      })
+    },
+    /**
+     * Upstream `$.fs.ancestors` — the walk upstream's own AGENTS.md plugin is
+     * built on, so it has to climb directories rather than touch one file.
+     *
+     * `below` is an *inclusive* bound: the directory itself is checked and the
+     * walk stops there. Upstream's plugin asks for `{below: root}` and then
+     * drops the root-level hits itself with its own "is below" test, so
+     * excluding it here would mean the plugin silently missed a file it
+     * expects to filter.
+     *
+     * A candidate outside the authorized roots is *skipped*, not an error. A
+     * walk is a "collect what you can see" query — refusing the whole call
+     * because one ancestor is out of bounds would make the common case (cwd
+     * inside the project, root above it) unusable, and fencing each hit as it
+     * is found is what stops a walk from reading outward one level at a time.
+     */
+    async ancestors(args: ModAncestorsArgs) {
+      return dispatchModOp('fs.ancestors', args, async () => {
+        const names = args.names ?? []
+        if (names.length === 0) return []
+        const start = resolve(args.of ?? process.cwd())
+        const stop = args.below ? resolve(args.below) : undefined
+        if (stop !== undefined) {
+          const rel = relative(stop, start)
+          // A `below` that is not an ancestor of `of` would otherwise walk all
+          // the way to `/`, handing over the whole filesystem in one call.
+          if (rel.startsWith('..') || isAbsolute(rel)) return []
+        }
+        const found: FsAncestor[] = []
+        let dir = start
+        for (;;) {
+          for (const name of names) {
+            try {
+              const real = await assertFencedIfExists(join(dir, name))
+              if (real === null) continue
+              found.push({
+                dir,
+                parts: [{ path: real, content: await readFile(real, 'utf8') }],
+              })
+            } catch {
+              // Out of the authorized roots, or unreadable — skip this
+              // candidate and try the next name in this directory.
+              continue
+            }
+            break
+          }
+          if (stop !== undefined && dir === stop) break
+          const parent = dirname(dir)
+          if (parent === dir) break
+          dir = parent
+        }
+        return found
+      })
     },
   }
 }
@@ -666,6 +850,8 @@ function buildFsApiLazy(modName: string, allowedRoots: string[]): ModFsApi {
     write: (path, data) => get().then(api => api.write(path, data)),
     list: path => get().then(api => api.list(path)),
     exists: path => get().then(api => api.exists(path)),
+    stat: path => get().then(api => api.stat(path)),
+    ancestors: args => get().then(api => api.ancestors(args)),
   }
 }
 
@@ -701,11 +887,10 @@ function readModOptions(mod: LoadedMod): PluginOptionValues {
 
 export function createModContext(mod: LoadedMod): ModContext {
   const modName = mod.manifest.name
-  // P2 授权制: fs API only for whitelisted mods; presence is decided at
-  // register() time (deterministic for mod authors).
-  const fsApi: ModFsApi | undefined = isModFsAuthorized(modName)
-    ? buildFsApiLazy(modName, [process.cwd(), mod.root])
-    : undefined
+  const nouns = buildModNouns(modName)
+  // Present for every mod. Upstream's bound is the path fence, not an
+  // allowlist, and the fence is enforced per call inside the API.
+  const fsApi: ModFsApi = buildFsApiLazy(modName, [process.cwd(), mod.root])
   // A pane the host closes on the user's behalf (Escape, a resize) has to
   // reach the mod, or a mod tracking its own open flag drifts from reality.
   setPaneCloseListener(modName, () => {
@@ -713,13 +898,36 @@ export function createModContext(mod: LoadedMod): ModContext {
   })
   return {
     options: readModOptions(mod),
+    // Every method below dispatches its own event, so a noun being present is
+    // the same fact as its op events being live (docs/mods-upstream-contract.md
+    // §1.2). Nothing here is a name without a call behind it.
+    store: nouns.store,
+    state: nouns.state,
+    clock: nouns.clock,
+    env: nouns.env,
+    process: nouns.process,
+    session: nouns.session,
+    telemetry: nouns.telemetry,
+    settings: nouns.settings,
+    flag: nouns.flag,
+    http: nouns.http,
+    tool: nouns.tool,
+    command: nouns.command,
+    agent: nouns.agent,
+    model: nouns.model,
+    config: nouns.config,
     on(event, matcherOrHandler, maybeHandler?) {
-      if (typeof event !== 'string' || !isModSupportedEvent(event)) {
+      if (typeof event !== 'string' || !isModEventName(event)) {
         throw new Error(
           `ctx.on(): unsupported event "${String(event)}". Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
       }
-      if (event === MOD_RENDER_EVENT) {
+      const canonical = event as ModEventName
+      const unavailable = unavailabilityReason(canonical)
+      if (unavailable !== undefined) {
+        throw new Error(`ctx.on("${canonical}"): ${unavailable}`)
+      }
+      if (canonical === MOD_RENDER_EVENT) {
         // Sync render transform: no matcher, single handler argument.
         if (typeof matcherOrHandler !== 'function' || maybeHandler !== undefined) {
           throw new Error(
@@ -727,17 +935,16 @@ export function createModContext(mod: LoadedMod): ModContext {
           )
         }
         mod.handlers.push({
-          event,
+          event: canonical,
           matcher: undefined,
           handler: matcherOrHandler as unknown as ModHandler,
         })
         return
       }
       const hasExplicitMatcher =
-        typeof matcherOrHandler === 'string' ||
-        (matcherOrHandler !== null &&
-          typeof matcherOrHandler === 'object' &&
-          typeof maybeHandler === 'function')
+        matcherOrHandler !== null &&
+        typeof matcherOrHandler === 'object' &&
+        typeof maybeHandler === 'function'
       if (!hasExplicitMatcher && typeof maybeHandler === 'function') {
         throw new Error('ctx.on(): too many arguments')
       }
@@ -747,15 +954,13 @@ export function createModContext(mod: LoadedMod): ModContext {
       if (typeof handler !== 'function') {
         throw new Error('ctx.on(): handler must be a function')
       }
-      const matcher = hasExplicitMatcher
-        ? normalizeMatcherValue(
-            event,
-            matcherOrHandler as string | Record<string, unknown>,
-          )
-        : undefined
-      mod.handlers.push({ event, matcher, handler })
+      const { matcher, tier } = hasExplicitMatcher
+        ? splitTier(matcherOrHandler as ModMatcher)
+        : { matcher: undefined, tier: undefined }
+      mod.handlers.push({ event: canonical, matcher, tier, handler })
     },
     registerCommand(spec) {
+      return dispatchModOpSync('command.register', { spec }, () => {
       if (!spec || typeof spec !== 'object') {
         throw new Error('ctx.registerCommand(): spec object required')
       }
@@ -778,8 +983,10 @@ export function createModContext(mod: LoadedMod): ModContext {
         )
       }
       mod.commands.push(spec)
+      })
     },
     registerTool(spec) {
+      return dispatchModOpSync('tool.register', { spec }, () => {
       if (!spec || typeof spec !== 'object') {
         throw new Error('ctx.registerTool(): spec object required')
       }
@@ -804,11 +1011,14 @@ export function createModContext(mod: LoadedMod): ModContext {
         )
       }
       mod.tools.push(spec)
+      })
     },
     ui: {
       notice(text: string) {
-        if (typeof text !== 'string' || text.trim() === '') return
-        emitModNotice(modName, text)
+        return dispatchModOpSync('ui.notice', { text }, () => {
+          if (typeof text !== 'string' || text.trim() === '') return
+          emitModNotice(modName, text)
+        })
       },
       /**
        * Upstream `$.ui.toast` @3831736.
@@ -819,49 +1029,61 @@ export function createModContext(mod: LoadedMod): ModContext {
        * notification queue, which reaches past this surface.
        */
       toast(text: string, options?: { timeoutMs?: number }) {
-        if (typeof text !== 'string' || text.trim() === '') return
-        if (options?.timeoutMs !== undefined) {
-          logForDebugging(
-            `[mods:${modName}] ui.toast: timeoutMs is not honoured by this host; the toast will persist until dismissed`,
-          )
-        }
-        emitModNotice(modName, text)
+        return dispatchModOpSync('ui.toast', { text, options }, () => {
+          if (typeof text !== 'string' || text.trim() === '') return
+          if (options?.timeoutMs !== undefined) {
+            logForDebugging(
+              `[mods:${modName}] ui.toast: timeoutMs is not honoured by this host; the toast will persist until dismissed`,
+            )
+          }
+          emitModNotice(modName, text)
+        })
       },
       log(text: string) {
-        logForDebugging(`[mods:${modName}] ${String(text)}`)
+        return dispatchModOpSync('ui.log', { text }, () => {
+          logForDebugging(`[mods:${modName}] ${String(text)}`)
+        })
       },
       status(text: string) {
-        if (typeof text !== 'string') return
-        setModStatus(modName, text.trim() === '' ? undefined : text)
+        return dispatchModOpSync('ui.status', { text }, () => {
+          if (typeof text !== 'string') return
+          setModStatus(modName, text.trim() === '' ? undefined : text)
+        })
       },
       /** Upstream `$.ui.open` @3831735 — returns whether the pane is placed. */
       async open(spec: ModPaneOpenSpec) {
-        if (!spec || typeof spec !== 'object') {
-          throw new Error('ctx.ui.open(): spec object required')
-        }
-        if (typeof spec.component !== 'function') {
-          throw new Error('ctx.ui.open(): component must be a function')
-        }
-        if (typeof spec.title !== 'string' || spec.title.trim() === '') {
-          spec = { ...spec, title: spec.id }
-        }
-        const pane = setModPane(modName, spec as ModPaneSpec)
-        if (pane === undefined) return { isPlaced: false as const, reason: 'refused' }
-        if (!pane.isPlaced) {
-          return {
-            isPlaced: false as const,
-            reason: `waiting for a terminal at least ${pane.columns} columns wide`,
+        return dispatchModOp('ui.open', { spec }, async () => {
+          if (!spec || typeof spec !== 'object') {
+            throw new Error('ctx.ui.open(): spec object required')
           }
-        }
-        return { isPlaced: true as const }
+          if (typeof spec.component !== 'function') {
+            throw new Error('ctx.ui.open(): component must be a function')
+          }
+          if (typeof spec.title !== 'string' || spec.title.trim() === '') {
+            spec = { ...spec, title: spec.id }
+          }
+          const pane = setModPane(modName, spec as ModPaneSpec)
+          if (pane === undefined) {
+            return { isPlaced: false as const, reason: 'refused' }
+          }
+          if (!pane.isPlaced) {
+            return {
+              isPlaced: false as const,
+              reason: `waiting for a terminal at least ${pane.columns} columns wide`,
+            }
+          }
+          return { isPlaced: true as const }
+        })
       },
       /** Upstream `$.ui.close` @3832432. */
       close(spec: { id?: string }) {
-        closeModPane(modName, typeof spec?.id === 'string' ? spec.id : undefined)
+        return dispatchModOpSync('ui.close', { spec }, () => {
+          closeModPane(modName, typeof spec?.id === 'string' ? spec.id : undefined)
+        })
       },
       /** Upstream `$.ui.panes` @6017976 — this mod's panes, frozen. */
       panes() {
-        return getModPanesFor(modName)
+        return dispatchModOpSync('ui.panes', {}, () => getModPanesFor(modName))
       },
       /**
        * Upstream `$.ui.resolve` @3830795 — the element table for a surface.
@@ -871,44 +1093,55 @@ export function createModContext(mod: LoadedMod): ModContext {
        * fence in validate.ts narrow.
        */
       resolve(spec: { surface?: string }) {
-        return resolveElementTable(spec?.surface)
+        return dispatchModOpSync('ui.resolve', { spec }, () =>
+          resolveElementTable(spec?.surface),
+        )
       },
       /**
        * Upstream `$.ui.scroll` @8747042. This host's panes are laid out by
        * the terminal, not a scroll container, so there is nothing to scroll
        * yet — the refusal names itself rather than pretending to work.
        */
-      scroll() {
-        return Promise.resolve({ deny: 'this host has no scrollable pane region yet' })
+      scroll(spec?: { to?: unknown; in?: unknown; block?: unknown }) {
+        return dispatchModOp('ui.scroll', { spec }, () =>
+          Promise.resolve({ deny: 'this host has no scrollable pane region yet' }),
+        )
       },
       /** Upstream `$.ui.focus` @10545434 — focuses one of this mod's panes. */
       focus(spec: { requestId?: string; key?: string }) {
-        // Upstream takes { requestId, key } — a render site and an element
-        // drawn in it. This host's panes are addressed by their open() id,
-        // which is the same value upstream's Pane site carries as
-        // `requestId` (@29745160), so the mapping is 1:1 for the pane case.
-        const id = spec?.requestId
-        if (typeof id !== 'string' || id === '') {
-          return Promise.resolve({ deny: 'takes { requestId } naming one of this mod\'s panes' })
-        }
-        const refusal = focusModPane(modName, id)
-        return Promise.resolve(refusal)
+        return dispatchModOp('ui.focus', { spec }, () => {
+          // Upstream takes { requestId, key } — a render site and an element
+          // drawn in it. This host's panes are addressed by their open() id,
+          // which is the same value upstream's Pane site carries as
+          // `requestId` (@29745160), so the mapping is 1:1 for the pane case.
+          const id = spec?.requestId
+          if (typeof id !== 'string' || id === '') {
+            return Promise.resolve({
+              deny: 'takes { requestId } naming one of this mod\'s panes',
+            })
+          }
+          return Promise.resolve(focusModPane(modName, id))
+        })
       },
       /** Upstream `$.ui.selection` @10101304. */
       selection() {
-        return Promise.resolve(undefined)
+        return dispatchModOp('ui.selection', {}, () =>
+          Promise.resolve(undefined),
+        )
       },
       /** Upstream `$.ui.copy` @10541298. */
-      async copy(spec: { text?: string }) {
-        if (typeof spec?.text !== 'string') {
-          return { isCopied: false as const, reason: 'no-clipboard' as const }
-        }
-        try {
-          await setClipboard(spec.text)
-          return { isCopied: true as const }
-        } catch {
-          return { isCopied: false as const, reason: 'no-clipboard' as const }
-        }
+      async copy(spec: { text?: string; surface?: string }) {
+        return dispatchModOp('ui.copy', { spec }, async () => {
+          if (typeof spec?.text !== 'string') {
+            return { isCopied: false as const, reason: 'no-clipboard' as const }
+          }
+          try {
+            await setClipboard(spec.text)
+            return { isCopied: true as const }
+          } catch {
+            return { isCopied: false as const, reason: 'no-clipboard' as const }
+          }
+        })
       },
       /**
        * Upstream `$.ui.blit` @3830531 — raw cell painting. Needs the raster
@@ -919,12 +1152,14 @@ export function createModContext(mod: LoadedMod): ModContext {
       },
       /** Upstream `$.ui.invalidate` @10562833 — the events it may name. */
       invalidate(event: string) {
-        if (!INVALIDATE_EVENTS.has(event)) {
-          throw new Error(
-            `ctx.ui.invalidate(): ${event} is not one of ${[...INVALIDATE_EVENTS].join(', ')}`,
-          )
-        }
-        notifyPaneChanged()
+        return dispatchModOpSync('ui.invalidate', { event }, () => {
+          if (!INVALIDATE_EVENTS.has(event)) {
+            throw new Error(
+              `ctx.ui.invalidate(): ${event} is not one of ${[...INVALIDATE_EVENTS].join(', ')}`,
+            )
+          }
+          notifyPaneChanged()
+        })
       },
       /**
        * Upstream `$.ui.ask` is deliberately absent. The host's `local-jsx`
@@ -952,11 +1187,50 @@ export function createModContext(mod: LoadedMod): ModContext {
       closePane(id?: string) {
         closeModPane(modName, typeof id === 'string' ? id : undefined)
       },
-      notify() {
-        notifyPaneChanged()
+      notify(text?: string, options?: { title?: string; channel?: string }) {
+        // Two meanings on one name. With no argument this is the long-standing
+        // "redraw my panes" request; with text it is upstream's terminal
+        // notification escape. Splitting them would mean renaming one and
+        // breaking every published mod that calls the no-arg form.
+        if (text === undefined) {
+          notifyPaneChanged()
+          return undefined
+        }
+        return dispatchModOpSync('ui.notify', { text, options }, () => {
+          const channel = options?.channel ?? 'auto'
+          if (channel === 'terminal_bell') {
+            return writeTerminalRaw(BEL)
+          }
+          if (channel === 'kitty') {
+            const id = Math.floor(Date.now() % 2 ** 31)
+            const wroteTitle = writeTerminalRaw(
+              wrapForMultiplexer(
+                osc(OSC.KITTY, `i=${id}:d=0:p=title`, options?.title ?? text),
+              ),
+            )
+            const wroteBody = writeTerminalRaw(
+              wrapForMultiplexer(
+                osc(OSC.KITTY, `i=${id}:p=body`, text),
+              ),
+            )
+            return wroteTitle && wroteBody
+          }
+          if (channel === 'ghostty') {
+            return writeTerminalRaw(
+              wrapForMultiplexer(
+                osc(OSC.GHOSTTY, 'notify', options?.title ?? '', text),
+              ),
+            )
+          }
+          // `auto` and `iterm2` share the one escape opencc already emits.
+          const display = options?.title ? `${options.title}:\n${text}` : text
+          return writeTerminalRaw(
+            wrapForMultiplexer(osc(OSC.ITERM2, `\n\n${display}`)),
+          )
+        })
       },
     },
-    ...(fsApi ? { fs: fsApi } : {}),
+    fs: fsApi,
   }
 }
 
