@@ -232,10 +232,10 @@ ui.ask / copy / invalidate / log / notice
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 源码层有触发点 | 73 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
+| 源码层有触发点 | 74 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
 | 桥接 | 4 | `tool.call`→`PostToolUse`、`session.start`/`session.end`、`turn.complete`→`Stop` |
 | 按名拒绝 | 5 | `audio.play`/`audio.speak`/`ui.blit`/`ui.fault`/`ui.message` —— 终端无对应能力，**按名报错**而不是给一个永不触发的 `on()` |
-| 无触发点 | 27 | 见下 |
+| 无触发点 | 26 | 见下（`turn.step` 已接，见下节） |
 
 #### 6.3.1 运行时实测（`/mod-probe`，真实 dist）
 
@@ -283,17 +283,35 @@ Event slots: 9 fired, 95 subscribed-but-never-fired, 5 refused — of 109.
 - `agent.offer` / `agent.register` / `engine.create` / `plugin.register`
 - `mcp.call` / `mcp.connect` —— `mcp.call` 必须过权限路径，否则 mod 可无提示调用任意 MCP 工具
 - `ui.input` / `ui.press` / `ui.select` —— 需要输入管道重构
-- `turn.step` —— 见下
+- `turn.step` —— 已接，见下
 
-#### `turn.step` 为什么还没接
+#### `turn.step`：接在原始 delta 循环，不是 `deps.callModel`
 
 上游 `TurnStepChunk` 有 6 种 chunk：`text` / `thinking` / `tool` / **`input`**（工具参数的增量 JSON）/ `stop` / `engine`。**`input` 才是这个事件存在的理由** —— 上游明写 "a hook that saw it whole could not change what had already been shown"，指的就是参数在流式到达期间可改写。
 
-opencc 的 `deps.callModel`（`src/query.ts:1258`）按 **content block** 产出 message，不是按 delta，在那里接只能拿到 `text`/`thinking`/`tool`/`stop`，**拿不到 `input`**。真正的插槽点在 `src/services/api/claude.ts:2268` 的 `content_block_delta` 原始流循环里。
+opencc 的 `deps.callModel` 按 **content block** 产出 message，不是按 delta，在那里接只能拿到 `text`/`thinking`/`tool`/`stop`，**拿不到 `input`**。插槽点在 `src/services/api/claude.ts` 的 `content_block_delta` 原始流循环里 —— 已在那里接。
 
-因此选择不接，而不是接一个缺 `input` 的版本：缺了 `input` 的 `turn.step` 与一个普通 observe 事件无差别，接上去只会让 mod 以为能改参数。
+**接法是 PUSH 适配 PULL**：那个循环是手写的 `while (true)` + `iterator.next()`，内含 abort 竞态、空闲看门狗、停顿统计 —— 全仓库最脆弱的一段。把它改写成 generator 等于重排这些逻辑，收益为零。所以改成：`openTurnStepSink`（`src/mods/turnStepStream.ts`）把链的**底座**做成一个队列驱动的 generator，pump 把 chunk 推进去、把 hooks 处理后的结果取回来再累积 —— 即上游的 "what leaves the outermost hook is what is shown and recorded"。
 
-`process.spawn` 已接（同一个 `dispatchModStream`），端到端测试打真实子进程（`/bin/sh`、`/bin/cat`），含 stdout/stderr 分流、stdin、退出码、启动失败 reject。
+零订阅时 `sink` 为 `null`，每个 `exchange` 就是恒等函数，累积路径与该事件存在之前逐字相同。
+
+**踩过的三个坑**（都由测试暴露，不是靠推理）：
+
+1. **微任务竞态不可用**。原想用 `Promise.race([pull(), Promise.resolve()])` 判边界，但已兑现的 promise 永远赢过挂起的 pull —— 结果是每个 exchange 只拿到 1 个 chunk，静默截断响应。正确做法是**两个只会settle其一的真 future**：链要么产出一个 chunk，要么回到底座要下一个（`bottom.asked()`）。
+2. **`runModStreamChain` 每次 `next(e)` 都新建一层委托 generator**，而上游文档的 hook 形态正是**每 chunk 调一次 `next(e)`** —— 底座被反复重入。底座必须可重入：共享一个游标，每个 chunk 只交付出一次。
+3. **`push` 必须只交给一个消费者**。同时入队**并**兑现 waiter，会让同一个 chunk 被消费两次 —— 表现为模型在每个 exchange 的最后重复一次。
+
+**端到端实测**（真实 dist、真实 REPL、带真实工具调用）：
+
+| mod 行为 | 结果 |
+|---|---|
+| 只统计不改写 | `tool, input, stop, thinking, text` 五种 chunk 全部触发 |
+| 把每个 `input` chunk 改写成非法 JSON | **API 直接 400 拒绝** —— 证明改的是**真的发出去的内容**，不是副本 |
+| 丢弃所有 `input` chunk | 工具**拿不到参数**，命令没按原样执行 —— 即上游 "a block whose `tool` chunk never comes out of the chain is no tool call" |
+
+第二行是决定性的：它证明 `turn.step` 不是 observe 事件的伪装。
+
+`process.spawn` 与它共用 `dispatchModStream`，端到端测试打真实子进程（`/bin/sh`、`/bin/cat`），含 stdout/stderr 分流、stdin、退出码、启动失败 reject。
 
 #### `agent.register` 为什么还没接（这是个特性，不是接线）
 

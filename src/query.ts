@@ -613,6 +613,11 @@ async function* queryLoop(
     )
   }
 
+  // `turn.step`'s position in this turn, from 0 — one per model request. The
+  // agentic loop below issues one request per iteration, so the counter is
+  // incremented where the request is made rather than tracked separately.
+  let modStepIndex = 0
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // Destructure state at the top of each iteration. toolUseContext alone
@@ -1268,6 +1273,10 @@ async function* queryLoop(
                 return appState.toolPermissionContext
               },
               model: currentModel,
+              // The step's identity for `turn.step`. Indexed here, where the
+              // request is actually issued, so a fallback that re-enters this
+              // call still reports a position rather than a stale one.
+              modTurn: { turnId: modTurnId, index: modStepIndex++ },
               ...(config.gates.fastModeEnabled && {
                 fastMode: appState.fastMode,
               }),
