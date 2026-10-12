@@ -47,19 +47,39 @@ const SENSITIVE_ENV_NAME = /(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH)$/i
 
 ## 二、从不触发的事件
 
-事件表声明 109 个。按「事件名字面量在生产代码中出现」判定，**25 个没有 dispatch 点**：
+事件表声明 109 个。**88 个已接、21 个仍无 dispatch 点**（脚本重跑于 2026-10-12）。
+
+判定脚本必须**剥掉注释**再匹配调用点，否则会假通过：本轮第一次跑出的
+「97/12」里，`agent.offer` 被算成已接 —— 唯一提到它的地方是 `subscriberGate.test.ts`
+的注释和一个测试夹具。**名字出现在散文里不等于有 dispatch 点。**
+另外 `HOST_EVENT_BRIDGE` 的键是带引号的属性（`'tool.call': 'PreToolUse'`），
+不匹配 `dispatchMod*(` 的裸调用式样，也要单独计。
+
+21 个按「是否有意」再分一次账：
+
+**按名拒绝 6 个**（`UNAVAILABLE_EVENTS`，见 `protocol.ts`）—— 不是漏接，是本机没有对应能力，
+拒掉比留一个永不触发的名字诚实：
+
+```
+audio.play   audio.speak   ui.blit   ui.fault   ui.message   prompt.autocomplete
+```
+
+**真待接 15 个**：
 
 ```
 agent.offer        agent.register      engine.create      mcp.call
-mcp.connect        plugin.register     prompt.attachment  prompt.autocomplete
-prompt.compose     prompt.context      prompt.edit        prompt.fill
-prompt.mention     prompt.read         prompt.suggest     session.attach
-session.authorize  session.compact     session.detach     session.measure
-session.receive    session.usage       ui.input           ui.press
-ui.select
+mcp.connect        plugin.register     session.attach      session.authorize
+session.compact    session.detach      session.measure     session.receive
+ui.input           ui.press            ui.select
 ```
 
-注册会成功、handler 永远不触发。
+| 事件 | 为什么难 |
+|---|---|
+| `agent.offer` / `agent.register` | 后者需要「插件可注册 agent」整条路。**分组本身不用改** —— 上游用 `source:"plugin"`（见审计 §6.3 更正） |
+| `plugin.register` | 需要 `uses:{events,calls,env,state}` 静态扫描，opencc 无 validate 环节 |
+| `ui.press` / `ui.input` / `ui.select` | 不是三个事件，是一套：`ui.render` 元素树 + press-hold 注册表 + surface + 焦点模型 |
+| `mcp.call` / `mcp.connect` | 包一层已有 MCP 连接池即可，但需 server 名归一化 |
+| `session.*`（5 个） | 尚未定位 opencc 的对应触发点 |
 
 > **`/mod-probe` 不能单独判定这件事。** 该内置 mod 订阅全部事件并报告哪些被触发过，
 > 但它区分不了「没接线」和「本次没调用」：op 事件要等对应的 `$` 方法被调用才触发。
