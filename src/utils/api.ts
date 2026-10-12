@@ -6,6 +6,11 @@ import type {
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from 'src/constants/prompts.js'
 import { getSystemContext, getUserContext } from 'src/context.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
+import { resolveInstructionFileKind } from '../mods/instructionFiles.js'
 import { isAnalyticsDisabled } from 'src/services/analytics/config.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -182,6 +187,13 @@ export async function toolToAPISchema(
     agents: AgentDefinition[]
     allowedAgentTypes?: string[]
     model?: string
+    /**
+     * The description as `tool.describe` already resolved it. Passed in rather
+     * than read off the tool because the text the model gets is what
+     * `tool.prompt()` returns — `tool.description` is undefined for the
+     * built-in tools — so a mod's rewrite has to BE that rendered text.
+     */
+    description?: string
     /** When true, mark this tool with defer_loading for tool search */
     deferLoading?: boolean
     cacheControl?: {
@@ -226,12 +238,14 @@ export async function toolToAPISchema(
 
     base = {
       name: tool.name,
-      description: await tool.prompt({
-        getToolPermissionContext: options.getToolPermissionContext,
-        tools: options.tools,
-        agents: options.agents,
-        allowedAgentTypes: options.allowedAgentTypes,
-      }),
+      description:
+        options.description ??
+        (await tool.prompt({
+          getToolPermissionContext: options.getToolPermissionContext,
+          tools: options.tools,
+          agents: options.agents,
+          allowedAgentTypes: options.allowedAgentTypes,
+        })),
       input_schema,
     }
 
@@ -504,10 +518,67 @@ export function appendSystemContext(
   ].filter(Boolean)
 }
 
-export function prependUserContext(
+/**
+ * Upstream `prompt.context`'s body: the blocks a conversation's first user
+ * message carries, and the files behind `claudeMd`, after the chain has had
+ * both.
+ *
+ * Split out of `prependUserContext` because that function returns early under
+ * `NODE_ENV === 'test'`, which would leave this event with no test coverage at
+ * all — a hook on it could be broken and every test would still pass.
+ */
+export async function resolvePromptContext(context: {
+  [k: string]: string
+}): Promise<{
+  blocks: Array<{ name: string; text: string }>
+  instructionFiles: Array<{
+    path: string
+    kind: string
+    content: string
+    parent?: string
+  }>
+}> {
+  // The files are read here rather than passed in because opencc already has
+  // them structured (`getMemoryFiles()`), which earlier notes on this event
+  // wrongly assumed it did not.
+  const core = {
+    blocks: Object.entries(context).map(([name, text]) => ({ name, text })),
+    instructionFiles: await import('./claudemd.js')
+      .then(m => m.getMemoryFiles())
+      .catch(
+        () =>
+          [] as Awaited<
+            ReturnType<typeof import('./claudemd.js')['getMemoryFiles']>
+          >,
+      )
+      .then(files =>
+        files.map(f => ({
+          path: f.path,
+          kind: resolveInstructionFileKind(f.type),
+          content: f.content,
+          ...(f.parent ? { parent: f.parent } : {}),
+        })),
+      ),
+  }
+
+  if (!hasModHandlersFor('prompt.context')) return core
+
+  return dispatchModEngine('prompt.context', core, e => ({
+    blocks: Array.isArray(e.blocks)
+      ? (e.blocks as Array<{ name: string; text: string }>)
+      : core.blocks,
+    // Left out, the files from below stand — upstream's "the files now behind
+    // claudeMd; left out, the ones from below stand".
+    ...(Array.isArray(e.instructionFiles)
+      ? { instructionFiles: e.instructionFiles as typeof core.instructionFiles }
+      : { instructionFiles: core.instructionFiles }),
+  }))
+}
+
+export async function prependUserContext(
   messages: Message[],
   context: { [k: string]: string },
-): Message[] {
+): Promise<Message[]> {
   if (process.env.NODE_ENV === 'test') {
     return messages
   }
@@ -516,13 +587,17 @@ export function prependUserContext(
     return messages
   }
 
+  // Upstream `prompt.context` (d.ts:6802) — the blocks the engine prepends to a
+  // conversation's first user message, plus the files behind `claudeMd`. The
+  // `<system-reminder>` wrapper goes AROUND whatever the chain answers, never
+  // inside it, so a hook rewrites content without rewriting the framing.
+  const decided = await resolvePromptContext(context)
+
   return [
     // @ts-ignore
     createUserMessage({
-      content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${Object.entries(
-        context,
-      )
-        .map(([key, value]) => `# ${key}\n${value}`)
+      content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${decided.blocks
+        .map(b => `# ${b.name}\n${b.text}`)
         .join('\n')}
 
       IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n`,

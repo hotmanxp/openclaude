@@ -9,7 +9,6 @@ import {
   getModPanesSnapshot,
   getModPanesVersion,
   getModStatusSnapshot,
-  setModFsAuthOverrideForTesting,
   subscribeModNotices,
 } from './engine.js'
 import { subscribeModProgress } from './dispatch.js'
@@ -40,7 +39,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  setModFsAuthOverrideForTesting(undefined)
   resetModsRegistryForTesting()
   __resetModPanesForTesting()
 })
@@ -201,7 +199,7 @@ describe('circuit breaker (P2 崩溃熔断)', () => {
   })
 })
 
-describe('ctx.fs (P2 授权制)', () => {
+describe('ctx.fs (fenced, upstream-shaped)', () => {
   let dir: string
 
   beforeEach(async () => {
@@ -212,14 +210,25 @@ describe('ctx.fs (P2 授权制)', () => {
     if (dir) await rm(dir, { recursive: true, force: true })
   })
 
-  test('ctx.fs is undefined without authorization', () => {
-    setModFsAuthOverrideForTesting(() => false)
-    const ctx = createModContext(freshMod())
-    expect(ctx.fs).toBeUndefined()
+  test('is present for every mod — no allowlist gates it', () => {
+    // Upstream d.ts:2738 hands `$.fs` to every plugin and bounds it by path.
+    // The gate this replaced made an official port (`agents-md` calls
+    // `$.fs.ancestors()`) throw a TypeError on `undefined`, so its absence is
+    // the contract now, not a default.
+    expect(createModContext(freshMod()).fs).toBeDefined()
   })
 
-  test('authorized mod gets fenced fs: read/write/list/exists inside root', async () => {
-    setModFsAuthOverrideForTesting(() => true)
+  test('read rejects a file over the 4 MiB cap (d.ts:2745)', async () => {
+    const mod = freshMod()
+    mod.root = dir
+    const ctx = createModContext(mod)
+    await ctx.fs.write(join(dir, 'big.txt'), 'x'.repeat(4 * 1024 * 1024 + 1))
+    await expect(ctx.fs.read(join(dir, 'big.txt'))).rejects.toThrow(
+      /over the 4194304 byte limit/,
+    )
+  })
+
+  test('a mod gets fenced fs: read/write/list/exists inside root', async () => {
     const mod = freshMod()
     mod.root = dir
     const ctx = createModContext(mod)
@@ -232,7 +241,6 @@ describe('ctx.fs (P2 授权制)', () => {
   })
 
   test('fence rejects paths outside allowed roots', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const mod = freshMod()
     mod.root = join(dir, 'modroot')
     await mkdir(mod.root, { recursive: true })
@@ -246,7 +254,6 @@ describe('ctx.fs (P2 授权制)', () => {
   })
 
   test('write can create new files inside an existing fenced dir', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const mod = freshMod()
     mod.root = dir
     const ctx = createModContext(mod)
@@ -258,7 +265,6 @@ describe('ctx.fs (P2 授权制)', () => {
   // the final segment was followed by writeFile and landed outside the roots.
   // read/list/exists already fenced the final path; write was the odd one out.
   test('write rejects a symlink whose target escapes the fence', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const inside = join(dir, 'inside')
     const outside = join(dir, 'outside')
     await mkdir(inside, { recursive: true })
@@ -278,7 +284,6 @@ describe('ctx.fs (P2 授权制)', () => {
   })
 
   test('write still overwrites a regular file inside the fence', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const mod = freshMod()
     mod.root = dir
     const ctx = createModContext(mod)
@@ -288,7 +293,6 @@ describe('ctx.fs (P2 授权制)', () => {
   })
 
   test('write follows a symlink that stays inside the fence', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const inside = join(dir, 'inside')
     await mkdir(inside, { recursive: true })
     const target = join(inside, 'real.txt')
@@ -303,7 +307,6 @@ describe('ctx.fs (P2 授权制)', () => {
   })
 
   test('write creates a new file even when its parent has no entries yet', async () => {
-    setModFsAuthOverrideForTesting(() => true)
     const nested = join(dir, 'fresh-subdir')
     await mkdir(nested, { recursive: true })
     const mod = freshMod()

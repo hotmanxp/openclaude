@@ -30,6 +30,24 @@ import {
  * if the loader honours that key on the next start.
  */
 
+/**
+ * Whether `modName` still has a hook entry under `event`.
+ *
+ * `mod-probe` registers all 109 events, so `Stop` is never empty in a session
+ * that has it loaded — asserting the whole registry is undefined would fail
+ * for reasons that have nothing to do with the mod under test. Mods sharing a
+ * host event share one composite, so this is a membership check.
+ */
+function modHasHook(event: string, modName: string): boolean {
+  const all = getRegisteredHooks() as
+    | Record<string, Array<{ pluginName?: string }>>
+    | undefined
+  return (all?.[event] ?? []).some(entry =>
+    entry.pluginName?.replace(/^mod:/, '').split('+').includes(modName),
+  )
+}
+
+
 let configDir: string
 let modsDir: string
 let savedConfigDir: string | undefined
@@ -88,7 +106,7 @@ describe('getModsAsPlugins', () => {
     await writeMod(
       'greeter',
       `export function register(ctx) {
-         ctx.on('Stop', async () => ({ continue: true }))
+         ctx.on('turn.complete', async () => ({ continue: true }))
          ctx.registerCommand({ name: 'hi', handler: async () => 'hi' })
          ctx.registerTool({ name: 'greet', description: 'greet', inputSchema: { type: 'object' }, execute: async () => 'hi' })
        }`,
@@ -103,7 +121,9 @@ describe('getModsAsPlugins', () => {
     expect(diff.source).toBe('diff@builtin')
     expect(diff.isBuiltin).toBe(true)
     expect(diff.mod?.builtin).toBe(true)
-    expect(diff.mod?.handlerEvents).toContain('UserPromptSubmit')
+    // Events report under their dotted names: the diff mod registers
+    // `UserPromptSubmit`, which the loader folds onto `prompt.submit`.
+    expect(diff.mod?.handlerEvents).toContain('prompt.submit')
 
     // Disk mod → @mods id and a real on-disk path, "User" section.
     expect(greeter.source).toBe('greeter@mods')
@@ -111,7 +131,7 @@ describe('getModsAsPlugins', () => {
     expect(greeter.path).toBe(join(modsDir, 'greeter'))
     expect(greeter.mod?.commandNames).toEqual(['hi'])
     expect(greeter.mod?.toolNames).toEqual(['greet'])
-    expect(greeter.mod?.handlerEvents).toEqual(['Stop'])
+    expect(greeter.mod?.handlerEvents).toEqual(['turn.complete'])
     // Manifest fields carry over so the detail view has something to show.
     expect(greeter.manifest.version).toBe('1.2.3')
   })
@@ -124,7 +144,7 @@ describe('getModsAsPlugins', () => {
   test('a disabled mod keeps its row so it can be enabled again', async () => {
     await writeMod(
       'optional',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
     )
     await writeUserSettings({ enabledPlugins: { 'optional@mods': false } })
     await loadMods()
@@ -156,7 +176,7 @@ describe('getModsAsPlugins', () => {
   test('a deleted mod folder stops being listed on the next load', async () => {
     await writeMod(
       'temporary',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
     )
     await loadMods()
     expect(getModsAsPlugins().some(p => p.name === 'temporary')).toBe(true)
@@ -202,11 +222,11 @@ describe('setModEnabled', () => {
   test('disable writes the enabledPlugins key and unloads the mod now', async () => {
     await writeMod(
       'removable',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
     )
     await loadMods()
     expect(getLoadedMods().some(m => m.manifest.name === 'removable')).toBe(true)
-    expect(getRegisteredHooks()?.Stop).toHaveLength(1)
+    expect(modHasHook('Stop', 'removable')).toBe(true)
 
     const result = await setModEnabled('removable', false)
 
@@ -217,13 +237,13 @@ describe('setModEnabled', () => {
     expect(settings.enabledPlugins['removable@mods']).toBe(false)
     // Runtime moved with the setting — not deferred to a reload.
     expect(getLoadedMods().some(m => m.manifest.name === 'removable')).toBe(false)
-    expect(getRegisteredHooks()?.Stop).toBeUndefined()
+    expect(modHasHook('Stop', 'removable')).toBe(false)
   })
 
   test('disable then enable restores the mod across a reload', async () => {
     await writeMod(
       'toggle',
-      'export function register(ctx) { ctx.on("Stop", async () => ({ continue: true })) }',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
     )
     await loadMods()
 

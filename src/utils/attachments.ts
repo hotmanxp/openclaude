@@ -4,6 +4,10 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
 import { getFileExtensionForAnalytics } from 'src/services/analytics/metadata.js'
 import {
   toolMatchesName,
@@ -129,6 +133,7 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { filterAgentsByMcpRequirements } from '../tools/AgentTool/loadAgentsDir.js'
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js'
 import {
+  filterOfferedAgents,
   formatAgentLine,
   shouldInjectAgentListInMessages,
 } from '../tools/AgentTool/prompt.js'
@@ -1605,6 +1610,11 @@ export function getAgentListingDeltaAttachment(
   if (allowedAgentTypes) {
     filtered = filtered.filter(a => allowedAgentTypes.includes(a.agentType))
   }
+  // The same `agent.offer` veto the inline description applies — see
+  // `filterOfferedAgents`. Leaving it out here would let a mod withhold an
+  // agent from the tool description and have it announced in a
+  // system-reminder anyway, which is the one outcome the veto exists to stop.
+  filtered = filterOfferedAgents(filtered)
 
   // Reconstruct announced set from prior deltas in the transcript.
   const announced = new Set<string>()
@@ -2057,9 +2067,31 @@ async function processAtMentionedFilesWithDependencies(
   const files = extractAtMentionedFiles(input)
   if (files.length === 0) return []
 
+  // Upstream `prompt.mention` — the chain a mention's path runs before anything
+  // is attached (bundle's `runPromptMentionChain`). It sits ahead of the read so
+  // a hook can DENY a path, and so it sees the path as written rather than a
+  // finished attachment it could only inspect.
+  const mentionPaths = hasModHandlersFor('prompt.mention')
+    ? await Promise.all(
+        files.map(file =>
+          dispatchModEngine<{ allow: boolean }>(
+            'prompt.mention',
+            { path: file },
+            // The core reads the event, not the fact that it ran: with a core
+            // that answered `{allow: true}` unconditionally the chain still
+            // fired and every path still came out allowed, so the gate ahead of
+            // the read was a no-op that looked like it worked.
+            e => ({ allow: e.allow !== false }),
+          ).then(d => (d.allow ? file : null)),
+        ),
+      )
+    : files
+  const allowed = mentionPaths.filter((f): f is string => f !== null)
+  if (allowed.length === 0) return []
+
   const appState = toolUseContext.getAppState()
   const results = await mapWithConcurrency(
-    files,
+    allowed,
     ATTACHMENT_FILE_IO_CONCURRENCY,
     async file => {
       try {

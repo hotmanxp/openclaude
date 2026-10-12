@@ -1166,4 +1166,14 @@ if (result?.success) {
     )
     for (const s of staleAllowlist) console.warn(`    ${s}`)
   }
+
+  // ── Guard: undefined names in @ts-nocheck files ────────────────────────────
+  // OFF the build. It catches a real failure — an identifier used but never
+  // imported or declared, which Bun bundles happily so that the build, the
+  // unit tests and `tsc --noEmit` all pass and the first run of that path
+  // throws a ReferenceError — but it walks all 486 @ts-nocheck files and
+  // costs ~11s, which is not worth paying on every build.
+  //
+  // Run it deliberately instead:
+  //     bun scripts/check-nocheck-names.ts
 }

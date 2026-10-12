@@ -100,7 +100,7 @@ export const diffBuiltinMod: BuiltinModSpec = {
     // "toggle on or off", and the registry is the truth for that.
     const isShown = () => ctx.ui.panes().some(pane => pane.isShown)
 
-    ctx.on('SessionStart', async (e, next) => {
+    ctx.on('session.start', async (e, next) => {
       resetDiffStore()
       return next(e)
     })
@@ -108,15 +108,17 @@ export const diffBuiltinMod: BuiltinModSpec = {
     // An armed file rides the next prompt. The arming is consumed here
     // rather than on submit failure: the attachment belongs to the turn the
     // user asked for, and re-arming it would silently duplicate the diff.
-    ctx.on('UserPromptSubmit', async (e, next) => {
+    //
+    // Upstream's `prompt.submit` carries `e.context` — what the model reads
+    // beside the prompt and the user never sees — which is exactly what an
+    // armed diff is, so it goes there rather than into the host hook's
+    // `additionalContext` this used to fill.
+    ctx.on('prompt.submit', async (e, next) => {
       const armed = consumeArmedDiff()
       if (armed === null) return next(e)
       return next({
         ...e,
-        hookSpecificOutput: {
-          hookEventName: 'UserPromptSubmit',
-          additionalContext: armed,
-        },
+        context: [...((e.context as string[] | undefined) ?? []), armed],
       })
     })
 

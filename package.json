@@ -60,7 +60,7 @@
     "test:provider-recommendation": "bun test src/utils/providerRecommendation.test.ts src/utils/providerProfile.test.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:type-tests": "bun run scripts/typecheck-type-tests.ts",
-    "smoke": "bun run build && node dist/cli.mjs --version",
+    "smoke": "bun run build && node dist/cli.mjs --version && bun scripts/check-nocheck-names.ts",
     "smoke:bg-agent-view": "bash scripts/smoke-bg-agent-view.sh",
     "check": "bun run smoke && bun run typecheck:type-tests && bun run test:full",
     "verify:privacy": "bun run scripts/verify-no-phone-home.ts",

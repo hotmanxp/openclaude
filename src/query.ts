@@ -67,6 +67,7 @@ import {
   createToolUseSummaryMessage,
   createMicrocompactBoundaryMessage,
   createAssistantMessage,
+  extractTextContent,
 } from './utils/messages.js'
 import { buildInboxSystemReminder } from './utils/daemon/inboxSection.js'
 import { analyzeContinuationIntent } from './utils/continuation.js'
@@ -135,6 +136,9 @@ import {
 } from './utils/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
+import { dispatchModEngine, hasModHandlersFor } from './mods/dispatch.js'
+import { openModTurn, setSessionFacts } from './mods/nouns.js'
+import { sessionStartedAt, setSessionUsageFacts } from './mods/sessionUsage.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
@@ -197,6 +201,36 @@ type AgentStepLimitConfig = {
 type AgentStepLimitState = AgentStepLimitConfig & {
   stepsUsed: number
   summaryRequested: boolean
+}
+
+/**
+ * The `text` upstream's `turn.start` carries (bundle @29857458):
+ * `n.findLast(M => M.type === "user" && !M.isMeta)`, then that message's text
+ * content, `""` when there is none.
+ *
+ * Two details the obvious implementation gets wrong, both verified against
+ * upstream rather than assumed:
+ *
+ * - `isMeta` messages are model-visible but hidden from the person, so the last
+ *   one is not necessarily what the user typed.
+ * - upstream's `rb` (bundle, content extractor) returns a string `content`
+ *   AS IS. A user message whose content is a plain string — which opencc
+ *   produces for several paths — would flatten to `""` under a
+ *   `Array.isArray(content) ? … : []` guard, handing a mod an empty turn.
+ */
+export function turnStartText(messages: readonly Message[]): string {
+  let last: Message | undefined
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!
+    if (m.type === 'user' && !m.isMeta) {
+      last = m
+      break
+    }
+  }
+  if (!last) return ''
+  const content = last.message?.content
+  if (typeof content === 'string') return content
+  return extractTextContent(Array.isArray(content) ? content : [])
 }
 
 function normalizeAgentStepLimit(
@@ -580,12 +614,62 @@ async function* queryLoop(
     state.toolUseContext,
   )
 
+  // Upstream `turn.start` — the turn begins before its first model call, and
+  // the id it mints is what `turn.complete` carries and `turn.abort` names.
+  // opencc has no turn id of its own, so one is minted here; the registry is
+  // what makes `$.turn.abort` able to reach this turn's controller at all.
+  const modTurnId = deps.uuid()
+  openModTurn(modTurnId, state.toolUseContext.abortController)
+
+  // `$.session.usage()` reads the session's start time, and `$.session
+  // .messages()` reads the live transcript — which this loop is the only place
+  // that holds outside React, since mods run with no component tree.
+  //
+  // Guarded by a subscription check: these are property writes, not work worth
+  // doing for a session nobody is watching. The usage token/cost figures are
+  // NOT published here — those come from the cost ledger, which any caller can
+  // read directly.
+  const modUsageWatched =
+    hasModHandlersFor('session.usage') || hasModHandlersFor('session.messages')
+  if (modUsageWatched) {
+    setSessionUsageFacts({ startedAt: sessionStartedAt() })
+  }
+
+  if (hasModHandlersFor('turn.start')) {
+    await dispatchModEngine<{ turnId: string }>(
+      'turn.start',
+      {
+        // Upstream `e0r` (bundle @29857458): the LAST user message that is not
+        // `isMeta`, its text content, "" when there is none. `isMeta` is
+        // model-visible but hidden from the person, so counting it would hand
+        // a mod text the user never typed.
+        text: turnStartText(state.toolUseContext.messages),
+        turnId: modTurnId,
+      },
+      e => ({
+        turnId:
+          typeof e.turnId === 'string' && e.turnId !== '' ? e.turnId : modTurnId,
+      }),
+    )
+  }
+
+  // `turn.step`'s position in this turn, from 0 — one per model request. The
+  // agentic loop below issues one request per iteration, so the counter is
+  // incremented where the request is made rather than tracked separately.
+  let modStepIndex = 0
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // Destructure state at the top of each iteration. toolUseContext alone
     // is reassigned within an iteration (queryTracking, messages updates);
     // the rest are read-only between continue sites.
     let { toolUseContext } = state
+
+    // Refresh what `$.session.messages()` reads. Per iteration, because
+    // `toolUseContext.messages` is rebuilt as the turn progresses.
+    if (modUsageWatched) {
+      setSessionFacts({ messages: toolUseContext.messages })
+    }
     const {
       messages,
       autoCompactTracking,
@@ -1223,8 +1307,14 @@ async function* queryLoop(
         try {
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
+          // Awaited: `prompt.context` is dispatched inside, and a hook may add
+          // or drop a context block before the request goes out.
+          const messagesWithUserContext = await prependUserContext(
+            messagesForQuery,
+            userContext,
+          )
           for await (const message of deps.callModel({
-            messages: prependUserContext(messagesForQuery, userContext),
+            messages: messagesWithUserContext,
             systemPrompt: fullSystemPrompt,
             thinkingConfig: toolUseContext.options.thinkingConfig,
             tools: toolsForModel,
@@ -1235,6 +1325,10 @@ async function* queryLoop(
                 return appState.toolPermissionContext
               },
               model: currentModel,
+              // The step's identity for `turn.step`. Indexed here, where the
+              // request is actually issued, so a fallback that re-enters this
+              // call still reports a position rather than a stale one.
+              modTurn: { turnId: modTurnId, index: modStepIndex++ },
               ...(config.gates.fastModeEnabled && {
                 fastMode: appState.fastMode,
               }),
@@ -2755,5 +2849,12 @@ if (
       transition: { reason: 'next_turn' },
     }
     state = next
+
+    // Publish again, now that the assistant messages exist. The per-iteration
+    // write above only ever sees the messages as they were when the request
+    // went out — the assistant reply lands in `next`.
+    if (modUsageWatched) {
+      setSessionFacts({ messages: next.messages })
+    }
   } // while (true)
 }

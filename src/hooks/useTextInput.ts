@@ -2,6 +2,33 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { isInputModeCharacter } from 'src/components/PromptInput/inputModes.js'
 import { useNotifications } from 'src/context/notifications.js'
 import { stripVTControlCharacters as stripAnsi } from 'node:util'
+import {
+  dispatchModEngineSync,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
+
+/** Longest shared prefix, capped so `start`/`end` never overlap. */
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length)
+  let i = 0
+  while (i < max && a[i] === b[i]) i++
+  return i
+}
+
+/** Longest shared suffix, given the prefix already consumed. */
+function commonSuffixLength(a: string, b: string, prefix: number): number {
+  const max = Math.min(a.length, b.length) - prefix
+  let i = 0
+  while (i < max && a[a.length - 1 - i] === b[b.length - 1 - i]) i++
+  return i
+}
+
+/** A hook may hand back nonsense offsets; the box has to survive that. */
+function clamp(value: unknown, min: number, max: number): number {
+  return typeof value === 'number' && value >= min && value <= max
+    ? value
+    : min
+}
 import { markBackslashReturnUsed } from '../commands/terminalSetup/terminalSetup.js'
 import { addToHistory } from '../history.js'
 import type { Key } from '../ink.js'
@@ -147,6 +174,59 @@ export function useTextInput({
     const previousOffset = liveOffsetRef.current
 
     if (previousValue === nextValue && previousOffset === nextOffset) {
+      return
+    }
+
+    // Upstream `prompt.edit` — the person editing the composer (d.ts:6889). This
+    // is the one prompt edit there is: every keystroke, paste and history jump
+    // lands here.
+    //
+    // SYNC deliberately. Awaiting a dispatch on the key path would push the
+    // write to a later microtask, by which time `liveValueRef` has moved on to
+    // the next key — so two fast keystrokes would edit against each other's
+    // stale mirror. Same reasoning as `getAttributionTexts` (see dispatch.ts on
+    // why it also dispatches synchronously).
+    //
+    // The splice is recovered by diffing the two strings, which is exact for
+    // the single contiguous edit each keypress makes.
+    let value = nextValue
+    if (hasModHandlersFor('prompt.edit')) {
+      const head = commonPrefixLength(previousValue, value)
+      const tail = commonSuffixLength(previousValue, value, head)
+      const edited = dispatchModEngineSync<{ text: string; cursor: number }>(
+        'prompt.edit',
+        {
+          origin: { kind: 'composer' },
+          text: previousValue,
+          cursor: previousOffset,
+          start: head,
+          end: previousValue.length - tail,
+          inputText: value.slice(head, value.length - tail),
+        },
+        // `e.text` is the draft BEFORE the edit (upstream d.ts:6845), so the
+        // core re-applies the splice rather than passing it through — that is
+        // also what lets a hook rewrite `start`/`end`/`inputText` and have the
+        // box take the rewritten edit.
+        e => {
+          const before = typeof e.text === 'string' ? e.text : previousValue
+          const start = clamp(e.start, 0, before.length)
+          const end = clamp(e.end, start, before.length)
+          const typed = typeof e.inputText === 'string' ? e.inputText : ''
+          const applied = before.slice(0, start) + typed + before.slice(end)
+          return {
+            text: applied,
+            cursor: clamp(nextOffset, 0, applied.length),
+          }
+        },
+      )
+      value = edited.text
+      updateRenderedInput(value, edited.cursor)
+      if (previousValue !== value) {
+        onChange(value)
+      }
+      if (previousOffset !== edited.cursor) {
+        onOffsetChange(edited.cursor)
+      }
       return
     }
 

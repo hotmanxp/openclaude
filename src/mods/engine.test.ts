@@ -31,26 +31,58 @@ afterEach(() => {
 })
 
 describe('ctx.on', () => {
-  test('registers handler without matcher', () => {
+  test('registers a dotted event without matcher', () => {
     const mod = freshMod()
     const ctx = createModContext(mod)
-    ctx.on('Stop', async () => ({}))
+    ctx.on('turn.complete', async () => ({}))
     expect(mod.handlers).toHaveLength(1)
-    expect(mod.handlers[0]!.event).toBe('Stop')
+    expect(mod.handlers[0]!.event).toBe('turn.complete')
     expect(mod.handlers[0]!.matcher).toBeUndefined()
   })
 
-  test('registers handler with object matcher normalized to string', () => {
+  test('a legacy settings.json name is folded onto its dotted event', () => {
     const mod = freshMod()
     const ctx = createModContext(mod)
-    ctx.on('PostToolUse', { tool: 'Bash' }, async () => ({}))
-    expect(mod.handlers[0]!.matcher).toBe('Bash')
+    ctx.on('turn.complete', async () => ({}))
+    expect(mod.handlers[0]!.event).toBe('turn.complete')
+  })
+
+  test('a structured matcher is kept, not flattened to a string', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    ctx.on('tool.call', { tool: 'Bash' }, async () => ({}))
+    expect(mod.handlers[0]!.event).toBe('tool.call')
+    expect(mod.handlers[0]!.matcher).toEqual({ tool: 'Bash' })
+  })
+
+  test("a matcher's `to` becomes the tier, not an event field to match", () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    ctx.on('tool.call', { tool: 'Bash', to: 'prepend' }, async () => ({}))
+    expect(mod.handlers[0]!.tier).toBe('prepend')
+    expect(mod.handlers[0]!.matcher).toEqual({ tool: 'Bash' })
+  })
+
+  test('a matcher that is only `to` leaves no matcher behind', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    ctx.on('tool.call', { to: 'core' }, async () => ({}))
+    expect(mod.handlers[0]!.tier).toBe('core')
+    expect(mod.handlers[0]!.matcher).toBeUndefined()
+  })
+
+  test('an unknown tier is refused by name', () => {
+    const mod = freshMod()
+    const ctx = createModContext(mod)
+    expect(() =>
+      ctx.on('tool.call', { to: 'sideways' } as never, async () => ({})),
+    ).toThrow(/matcher "to" must be one of/)
   })
 
   test('rejects unsupported events', () => {
     const mod = freshMod()
     const ctx = createModContext(mod)
-    expect(() => ctx.on('PreCompact' as 'Stop', async () => ({}))).toThrow(
+    expect(() => ctx.on('PreCompact' as 'turn.complete', async () => ({}))).toThrow(
       /unsupported event/,
     )
   })
@@ -59,7 +91,7 @@ describe('ctx.on', () => {
     const mod = freshMod()
     const ctx = createModContext(mod)
     // @ts-expect-error — mod is JS, wrong types must be rejected at runtime
-    expect(() => ctx.on('Stop', 'not-a-function')).toThrow(/handler/)
+    expect(() => ctx.on('turn.complete', 'not-a-function')).toThrow(/handler/)
   })
 })
 

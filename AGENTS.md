@@ -44,7 +44,6 @@
 5. **Feature flags** — `scripts/build.ts` strips internal features (voice, proactive, kairos)
 6. **Build output `dist/cli.mjs` is generated** — never edit directly
 7. **Functional verification uses `tui-func-verifier`** — when validating TUI/CLI flows, new features, or UI behavior, dispatch the `tui-func-verifier` subagent to run commands in tmux and capture output. Do **not** rely on `bun test` + manual visual checks alone. Standalone `-p` mode is fallback only when the agent is unavailable.
-8. **Local repo, no remote** — after `commit`, report hash + line count only; never ask "should I push?"
 
 ## Anti-Patterns (NEVER)
 
@@ -117,7 +116,5 @@ Root cause: some tests in this repo **depend on shared in-process state** — SD
 ## Release
 
 `bun run release` — bumps patch version by default. Major/minor only on explicit request.
-
-**Local repo, no remote.**
 
 <!-- updated: 2026-06-26 -->

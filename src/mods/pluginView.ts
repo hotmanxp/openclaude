@@ -83,6 +83,19 @@ export function isModEnabled(modName: string, builtin: boolean): boolean {
 }
 
 /**
+ * Whether the user has turned a mod ON, as opposed to never having touched it.
+ *
+ * `isModEnabled` reads an absent key as enabled — right for a feature mod,
+ * wrong for an `optIn` one, where absent has to mean off. Without this an
+ * opt-in mod ships dormant and can never be started, because writing `true` is
+ * the only state that differs from the default.
+ */
+export function isModExplicitlyEnabled(modName: string, builtin: boolean): boolean {
+  const id = modPluginId(modName, builtin)
+  return getSettings_DEPRECATED()?.enabledPlugins?.[id] === true
+}
+
+/**
  * Project every known mod into the plugin shape.
  *
  * Known ≠ loaded: a mod /plugins has disabled is deliberately NOT in the

@@ -502,10 +502,11 @@ export const SettingsSchema = lazySchema(() =>
             .array(z.string())
             .optional()
             .describe(
-              'Mod names granted ctx.fs filesystem access (P2 authorization ' +
-                'model, docs/mods-plan.md §3.3). Unauthorized mods see ' +
-                'ctx.fs === undefined. Paths are fenced to the session cwd ' +
-                'and the mod root.',
+              'DEPRECATED and ignored. This gated ctx.fs behind an allowlist; ' +
+                'upstream `$.fs` has no such gate (`claude-code.d.ts:2738`) — ' +
+                'access is bounded by a path fence against the session cwd ' +
+                'and the mod root, checked on every call. Kept so a settings ' +
+                'file written against 0.30.0 still validates.',
             ),
         })
         .optional()

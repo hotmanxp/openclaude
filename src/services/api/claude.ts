@@ -18,6 +18,14 @@ import type {
   BetaUsage,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+  hasModStreamHandlers,
+} from '../../mods/dispatch.js'
+import { resolveToolDescriptions } from '../../mods/toolDescribe.js'
+import { openTurnStepSink, type TurnStepSink } from '../../mods/turnStepStream.js'
+import type { TurnStepChunk } from '../../mods/turnStep.js'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
@@ -718,6 +726,16 @@ export type Options = {
   // (query.ts decrements across the agentic loop).
   taskBudget?: { total: number; remaining?: number }
   providerOverride?: { model: string; baseURL: string; apiKey: string }
+  /**
+   * The `turn.step` identity for this model request — the turn's id and this
+   * step's position in it.
+   *
+   * Set by query.ts, which owns both: `turn.start` mints the id and the agentic
+   * loop counts the steps. The API layer cannot derive them, and a step whose
+   * input carries someone else's turnId is worse than one that carries none —
+   * so an absent pair means no `turn.step` dispatch at all.
+   */
+  modTurn?: { turnId: string; index: number }
   messageNormalizationTools?: Tools
 }
 
@@ -1186,6 +1204,46 @@ async function* queryModel(
     }
   }
 
+  // Upstream `tool.describe` — a mod may rewrite what a tool says it is and
+  // whether the model reaches it directly or through tool search. The chain
+  // body is `resolveToolDescriptions` (src/mods/toolDescribe.ts); it has to run
+  // HERE rather than inside `toolToAPISchema`, because `isDeferred` decides
+  // which tools are filtered and serialized below, and a hook that defers a
+  // tool after that decision has already been made defers nothing.
+  //
+  // The half it used to lose is the description: it was offered
+  // `t.description ?? ''` — undefined for the built-in tools, so a hook was
+  // handed an empty string to rewrite — and the answer had nowhere to go, since
+  // the text the model reads is what `tool.prompt()` renders. Both are fixed in
+  // the extracted body, which renders the real text once per session and hands
+  // the resolved one back to hand to `toolToAPISchema`.
+  //
+  // Runs for every request, not only under `useToolSearch`: that flag decides
+  // whether deferred tools exist here, not whether the tools are being
+  // described. Gating the event on it would mean a session with tool search
+  // off never fires the event at all, which is most sessions.
+  //
+  // Skipped outright with no subscribers — this sits on the request path, and
+  // upstream gates the same way (`Jl("<event>")`).
+  const describedDescriptions = hasModHandlersFor('tool.describe')
+    ? await resolveToolDescriptions({
+        tools,
+        promptOptions: {
+          getToolPermissionContext: options.getToolPermissionContext,
+          agents: options.agents,
+          allowedAgentTypes: options.allowedAgentTypes,
+        },
+        isDeferredByHost: name => deferredToolNames.has(name),
+      })
+    : null
+  if (describedDescriptions) {
+    // A hook that deferred a tool has to actually defer it, or the next block
+    // re-derives the set from isDeferredTool and discards the hook's answer.
+    for (const tool of describedDescriptions.deferred) {
+      deferredToolNames.add(tool)
+    }
+  }
+
   // Even if tool search mode is enabled, skip if there are no deferred tools
   // AND no MCP servers are still connecting. When servers are pending, keep
   // ToolSearch available so the model can discover tools after they connect.
@@ -1292,6 +1350,7 @@ async function* queryModel(
         agents: options.agents,
         allowedAgentTypes: options.allowedAgentTypes,
         model: options.model,
+        description: describedDescriptions?.descriptions.get(tool.name),
         deferLoading: willDefer(tool),
       }),
     ),
@@ -2105,6 +2164,42 @@ async function* queryModel(
       let totalStallTime = 0
       let stallCount = 0
 
+      // Upstream `turn.step` — the model's response as it arrives, chunk by
+      // chunk, so a hook can change what has already been shown. `null` when no
+      // mod subscribes, and then every `exchange` below is skipped and the
+      // accumulation is exactly what it was before this event existed.
+      const stepSink: TurnStepSink | null = options.modTurn
+        ? openTurnStepSink(
+            {
+              turnId: options.modTurn.turnId,
+              index: options.modTurn.index,
+              model: resolvedModel,
+              messageCount: messages.length,
+              ...(options.agentId && { agentId: options.agentId }),
+            },
+            hasModStreamHandlers('turn.step'),
+          )
+        : null
+
+      /**
+       * Offer a chunk and accumulate what comes back.
+       *
+       * With no sink this is the identity, which is why the call sites below
+       * read the same either way: the branch is here rather than at each of
+       * them, so "a mod rewrote this" and "nothing was listening" cannot drift
+       * apart as the accumulation points are edited.
+       */
+      const step = async (
+        chunk: TurnStepChunk,
+        accumulate: (c: TurnStepChunk) => void,
+      ): Promise<void> => {
+        if (!stepSink) {
+          accumulate(chunk)
+          return
+        }
+        for (const out of await stepSink.exchange(chunk)) accumulate(out)
+      }
+
       const streamIterator = stream[Symbol.asyncIterator]()
       while (true) {
         const streamResult = await readNextStreamPart(streamIterator)
@@ -2168,10 +2263,28 @@ async function* queryModel(
           case 'content_block_start':
             switch (part.content_block.type) {
               case 'tool_use':
-                contentBlocks[part.index] = {
-                  ...part.content_block,
-                  input: '',
-                }
+                // Upstream's `tool` chunk: "A block whose `tool` chunk never
+                // comes out of the chain is no tool call: the engine records
+                // none and runs none." So the chain gets a say here, and a hook
+                // that drops it leaves no block to accumulate into.
+                await step(
+                  {
+                    kind: 'tool',
+                    ref: stepSink?.nextRef() ?? 0,
+                    index: part.index,
+                    id: part.content_block.id,
+                    name: part.content_block.name,
+                  },
+                  c => {
+                    contentBlocks[part.index] = {
+                      ...part.content_block,
+                      ...(c.kind === 'tool'
+                        ? { id: c.id, name: c.name }
+                        : {}),
+                      input: '',
+                    }
+                  },
+                )
                 break
               case 'server_tool_use':
                 contentBlocks[part.index] = {
@@ -2281,7 +2394,22 @@ async function* queryModel(
                     })
                     throw new Error('Content block input is not a string')
                   }
-                  contentBlock.input += delta.partial_json
+                  // The `input` chunk — the reason `turn.step` exists. A hook
+                  // rewriting `json` rewrites the arguments the tool RUNS WITH,
+                  // which is only possible because this is the partial text and
+                  // not the parsed result.
+                  await step(
+                    {
+                      kind: 'input',
+                      ref: stepSink?.nextRef() ?? 0,
+                      index: part.index,
+                      json: delta.partial_json,
+                    },
+                    c => {
+                      contentBlock.input +=
+                        c.kind === 'input' ? c.json : delta.partial_json
+                    },
+                  )
                   break
                 case 'text_delta':
                   if (contentBlock.type !== 'text') {
@@ -2295,7 +2423,22 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a text block')
                   }
-                  contentBlock.text += delta.text
+                  // Upstream: "the text the person watches stream and the text
+                  // the transcript records are both the concatenation of
+                  // these" — so a rewrite here changes both, and a hook that
+                  // drops them all drops the block.
+                  await step(
+                    {
+                      kind: 'text',
+                      ref: stepSink?.nextRef() ?? 0,
+                      index: part.index,
+                      text: delta.text,
+                    },
+                    c => {
+                      contentBlock.text +=
+                        c.kind === 'text' ? c.text : delta.text
+                    },
+                  )
                   break
                 case 'signature_delta':
                   if (
@@ -2330,7 +2473,18 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a thinking block')
                   }
-                  contentBlock.thinking += delta.thinking
+                  await step(
+                    {
+                      kind: 'thinking',
+                      ref: stepSink?.nextRef() ?? 0,
+                      index: part.index,
+                      text: delta.thinking,
+                    },
+                    c => {
+                      contentBlock.thinking +=
+                        c.kind === 'thinking' ? c.text : delta.thinking
+                    },
+                  )
                   break
               }
             }
@@ -2412,7 +2566,22 @@ async function* queryModel(
             // replacement ({ ...lastMsg.message, usage }) would disconnect
             // the queued reference; direct mutation ensures the transcript
             // captures the final values.
-            stopReason = part.delta.stop_reason
+            // Upstream's `stop` chunk — "the response is whole: why the model
+            // stopped and what the request cost". A hook may rewrite either,
+            // so the values recorded below are the ones the chain returned.
+            await step(
+              {
+                kind: 'stop',
+                ref: stepSink?.nextRef() ?? 0,
+                stopReason: part.delta.stop_reason,
+                usage: usage as never,
+              },
+              c => {
+                if (c.kind !== 'stop') return
+                stopReason = (c.stopReason ??
+                  part.delta.stop_reason) as typeof stopReason
+              },
+            )
 
             const lastMsg = newMessages.at(-1)
             if (lastMsg) {
@@ -2472,6 +2641,10 @@ async function* queryModel(
           ...(part.type === 'message_start' ? { ttftMs } : undefined),
         }
       }
+      // The response is whole. Closing lets the chain finish, so the step's
+      // result — the outermost hook's return value — is produced rather than
+      // abandoned with the generator still suspended.
+      await stepSink?.close()
       // Clear the idle timeout watchdog now that the stream loop has exited
       clearStreamIdleTimers()
 
