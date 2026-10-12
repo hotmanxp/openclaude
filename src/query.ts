@@ -202,6 +202,36 @@ type AgentStepLimitState = AgentStepLimitConfig & {
   summaryRequested: boolean
 }
 
+/**
+ * The `text` upstream's `turn.start` carries (bundle @29857458):
+ * `n.findLast(M => M.type === "user" && !M.isMeta)`, then that message's text
+ * content, `""` when there is none.
+ *
+ * Two details the obvious implementation gets wrong, both verified against
+ * upstream rather than assumed:
+ *
+ * - `isMeta` messages are model-visible but hidden from the person, so the last
+ *   one is not necessarily what the user typed.
+ * - upstream's `rb` (bundle, content extractor) returns a string `content`
+ *   AS IS. A user message whose content is a plain string — which opencc
+ *   produces for several paths — would flatten to `""` under a
+ *   `Array.isArray(content) ? … : []` guard, handing a mod an empty turn.
+ */
+export function turnStartText(messages: readonly Message[]): string {
+  let last: Message | undefined
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!
+    if (m.type === 'user' && !m.isMeta) {
+      last = m
+      break
+    }
+  }
+  if (!last) return ''
+  const content = last.message?.content
+  if (typeof content === 'string') return content
+  return extractTextContent(Array.isArray(content) ? content : [])
+}
+
 function normalizeAgentStepLimit(
   limit: AgentStepLimitConfig | undefined,
 ): AgentStepLimitState | undefined {
@@ -593,17 +623,11 @@ async function* queryLoop(
     await dispatchModEngine<{ turnId: string }>(
       'turn.start',
       {
-        // Upstream's `text` is the user's turn as it proceeds — "" for a
-        // continuation, which is what a query with no fresh prompt is.
-        text: extractTextContent(
-          state.toolUseContext.messages
-            .filter(m => m.type === 'user' && m.message)
-            .slice(-1)
-            .flatMap(m => {
-              const content = m.message?.content
-              return Array.isArray(content) ? content : []
-            }),
-        ),
+        // Upstream `e0r` (bundle @29857458): the LAST user message that is not
+        // `isMeta`, its text content, "" when there is none. `isMeta` is
+        // model-visible but hidden from the person, so counting it would hand
+        // a mod text the user never typed.
+        text: turnStartText(state.toolUseContext.messages),
         turnId: modTurnId,
       },
       e => ({
