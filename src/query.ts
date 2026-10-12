@@ -137,7 +137,8 @@ import {
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
 import { dispatchModEngine, hasModHandlersFor } from './mods/dispatch.js'
-import { openModTurn } from './mods/nouns.js'
+import { openModTurn, setSessionFacts } from './mods/nouns.js'
+import { sessionStartedAt, setSessionUsageFacts } from './mods/sessionUsage.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
@@ -619,6 +620,21 @@ async function* queryLoop(
   // what makes `$.turn.abort` able to reach this turn's controller at all.
   const modTurnId = deps.uuid()
   openModTurn(modTurnId, state.toolUseContext.abortController)
+
+  // `$.session.usage()` reads the session's start time, and `$.session
+  // .messages()` reads the live transcript — which this loop is the only place
+  // that holds outside React, since mods run with no component tree.
+  //
+  // Guarded by a subscription check: these are property writes, not work worth
+  // doing for a session nobody is watching. The usage token/cost figures are
+  // NOT published here — those come from the cost ledger, which any caller can
+  // read directly.
+  const modUsageWatched =
+    hasModHandlersFor('session.usage') || hasModHandlersFor('session.messages')
+  if (modUsageWatched) {
+    setSessionUsageFacts({ startedAt: sessionStartedAt() })
+  }
+
   if (hasModHandlersFor('turn.start')) {
     await dispatchModEngine<{ turnId: string }>(
       'turn.start',
@@ -648,6 +664,12 @@ async function* queryLoop(
     // is reassigned within an iteration (queryTracking, messages updates);
     // the rest are read-only between continue sites.
     let { toolUseContext } = state
+
+    // Refresh what `$.session.messages()` reads. Per iteration, because
+    // `toolUseContext.messages` is rebuilt as the turn progresses.
+    if (modUsageWatched) {
+      setSessionFacts({ messages: toolUseContext.messages })
+    }
     const {
       messages,
       autoCompactTracking,
@@ -2827,5 +2849,12 @@ if (
       transition: { reason: 'next_turn' },
     }
     state = next
+
+    // Publish again, now that the assistant messages exist. The per-iteration
+    // write above only ever sees the messages as they were when the request
+    // went out — the assistant reply lands in `next`.
+    if (modUsageWatched) {
+      setSessionFacts({ messages: next.messages })
+    }
   } // while (true)
 }

@@ -19,6 +19,7 @@ import { homedir } from 'node:os'
 
 import type { Message } from '../types/message.js'
 import { dispatchModOp, dispatchModStream } from './dispatch.js'
+import { readSessionUsage } from './sessionUsage.js'
 
 // ---------------------------------------------------------------------------
 // fs walk types
@@ -208,6 +209,75 @@ export type ModSession = {
   }>
   /** Upstream `$.session.append` — attach a message to this session. */
   append(args: { message: unknown }): Promise<{ isAppended: boolean; reason?: string }>
+  /**
+   * Upstream `$.session.usage` — what the status line and `/context` show.
+   *
+   * A pure read. `breakdown` is what makes it expensive: `'full'` counts
+   * tokens per tool and memory file the way `/context` does (one request per
+   * file), `'summary'` estimates locally and sends none, and omitting it
+   * computes no breakdown at all.
+   */
+  usage(args?: ModSessionUsageArgs): Promise<ModSessionUsage>
+}
+
+/** Upstream `SessionUsageArgs` (d.ts:11744). */
+export type ModSessionUsageArgs = {
+  /**
+   * `'summary'` estimates every category locally; `'full'` sends one
+   * token-count request per tool and memory file, as `/context` does.
+   */
+  breakdown?: 'summary' | 'full'
+  /**
+   * The width the breakdown's grid is drawn in, in terminal columns. A
+   * rendering hint, not a filter — read only when `breakdown` is present, and
+   * under 80 upstream picks the narrow 5-column layout.
+   */
+  columns?: number
+}
+
+/** Upstream `SessionUsage` (d.ts:11711). */
+export type ModSessionUsage = {
+  /**
+   * When this session began, in `$.clock.now()` milliseconds. Upstream's
+   * documented use is staleness: `stat.mtimeMs < (await $.session.usage()).startedAt`.
+   */
+  startedAt: number
+  context: ModSessionContextUsage
+  /** Empty when the last response carried no rate-limit headers. */
+  rateLimits: ModSessionRateLimit[]
+  /** Absent only where the host keeps no cost ledger; opencc always has one. */
+  cost?: { usd: number }
+}
+
+/** Upstream `SessionContextUsage` (d.ts:10957). */
+export type ModSessionContextUsage = {
+  /**
+   * Input tokens the last response was answered over — uncached,
+   * cache-written and cache-read together. Absent when no API response has
+   * been seen yet, which is a real state in a session that only rendered a
+   * slash command.
+   */
+  tokens?: number
+  /** The model's context window, in tokens. */
+  window: number
+  percent?: number
+  /** Only when the caller passed `breakdown`. */
+  breakdown?: {
+    categories: Array<{ name: string; tokens: number }>
+    totalTokens: number
+    /**
+     * The window the breakdown measures against, which is the compaction
+     * window and may be smaller than `window`. It is carried separately
+     * because the two must not be divided into each other.
+     */
+    maxTokens: number
+  }
+}
+
+export type ModSessionRateLimit = {
+  kind: string
+  percentUsed: number
+  resetsAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +868,41 @@ export function clearPromptBoxFacts(): void {
   promptBoxFacts = undefined
 }
 
+/**
+ * Upstream `INs` (bundle @10911854), verbatim in its error text:
+ *
+ * ```js
+ * function INs(e){
+ *   let r = e?.breakdown, n = e?.columns;
+ *   if (!(r === void 0 || r === "summary" || r === "full"))
+ *     return `takes breakdown "summary" or "full" (got ${String(r)})`;
+ *   return n === void 0 || (typeof n === "number" && Number.isInteger(n) && n > 0)
+ *     ? void 0
+ *     : `takes columns, a positive whole number (got ${String(n)})`;
+ * }
+ * ```
+ *
+ * Rejecting rather than coercing is the point: a `breakdown` of `'FULL'` or a
+ * `columns` of `0` means the caller believes it asked for something it did not,
+ * and answering with a differently-shaped breakdown would hide that.
+ */
+function validateUsageArgs(
+  args: ModSessionUsageArgs | undefined,
+): string | undefined {
+  const breakdown = args?.breakdown
+  const columns = args?.columns
+  if (breakdown !== undefined && breakdown !== 'summary' && breakdown !== 'full') {
+    return `takes breakdown "summary" or "full" (got ${String(breakdown)})`
+  }
+  if (
+    columns === undefined ||
+    (typeof columns === 'number' && Number.isInteger(columns) && columns > 0)
+  ) {
+    return undefined
+  }
+  return `takes columns, a positive whole number (got ${String(columns)})`
+}
+
 /** Upstream `PromptBox` (d.ts:6643); the cursor is a UTF-16 code-unit offset. */
 export type ModPromptBox = { text: string; cursor: number }
 
@@ -1039,6 +1144,17 @@ export function buildModNouns(modName: string): ModNouns {
         isAppended: false,
         reason: 'appending to the live transcript needs the REPL message bus',
       })),
+    usage: args =>
+      dispatchModOp<ModSessionUsage>('session.usage', args ?? {}, () => {
+        const invalid = validateUsageArgs(args)
+        if (invalid !== undefined) {
+          // Upstream rejects rather than coerces (its validator `INs` returns
+          // the same strings). A mod that passed 'FULL' should learn it did
+          // not get what it asked for, not receive a differently-shaped answer.
+          throw new Error(`${modName}: $.session.usage ${invalid}`)
+        }
+        return readSessionUsage(args)
+      }),
   }
 
   const telemetry: ModTelemetry = {

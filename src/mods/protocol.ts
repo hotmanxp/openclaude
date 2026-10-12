@@ -66,7 +66,6 @@ export const MOD_ENGINE_EVENTS = [
   'session.repo',
   'session.surfaces',
   'session.surface',
-  'session.usage',
   'session.version',
   'session.compact',
   'session.authorize',
@@ -160,6 +159,10 @@ export const MOD_OP_EVENTS = [
   'config.set',
   'agent.register',
   'agent.list',
+  // Upstream types this as `OpEventOf['session.usage']` (d.ts:6936) — it is
+  // `$.session.usage()`, a method on `$`, so a hook observes the CALL rather
+  // than waiting for the host to raise one.
+  'session.usage',
   'prompt.submit',
   'prompt.read',
   'prompt.compose',
