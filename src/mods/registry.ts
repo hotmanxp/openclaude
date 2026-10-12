@@ -25,11 +25,33 @@ import type {
  * promise because that is what the one-shot paths hand it; on the streaming
  * paths it returns the stream beneath instead, and `runModStreamChain` is
  * what actually drives it.
+ *
+ * Always the TWO-parameter shape, because that is what the dispatch layer
+ * invokes. A handler written upstream's way — `($: EngineInterface, e, next)`,
+ * `MatchedHook` at d.ts:5758 — is accepted at registration and normalized to
+ * this shape by `withEngineInterface`; see `ModHandlerInput`.
  */
 export type ModHandler = (
   e: Record<string, unknown>,
   next: ModNext,
 ) => unknown | Promise<unknown>
+
+/**
+ * What `ctx.on()` accepts: opencc's own `(e, next)`, or upstream's
+ * `($: EngineInterface, e, next)` with the engine first.
+ *
+ * Two types rather than one union because the dispatch layer INVOKES a
+ * `ModHandler`, and a union that includes the three-parameter form is not
+ * callable with two arguments. Keeping the union at the registration boundary
+ * lets both be written while everything downstream stays one shape.
+ */
+export type ModHandlerInput =
+  | ModHandler
+  | ((
+      $: unknown,
+      e: Record<string, unknown>,
+      next: ModNext,
+    ) => unknown | Promise<unknown>)
 
 /**
  * `next` — run the layers beneath — with `next.to` to hand control to a named

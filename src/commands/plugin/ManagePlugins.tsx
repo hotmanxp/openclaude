@@ -46,6 +46,7 @@ import { getSettings_DEPRECATED, getSettingsForSource, updateSettingsForSource }
 import { jsonParse } from '../../utils/slowOperations.js';
 import { plural } from '../../utils/stringUtils.js';
 import { reloadMods, setModEnabled } from '../../mods/hooks.js';
+import { isBuiltinModOptIn } from '../../mods/builtin.js';
 import { getModsAsPlugins, type ModPluginInfo } from '../../mods/pluginView.js';
 import { formatErrorMessage, getErrorGuidance } from './PluginErrors.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
@@ -588,7 +589,16 @@ export function ManagePlugins({
     const pluginsWithChildren: PluginWithChildren[] = [];
     for (const state of pluginStates) {
       const pluginId = `${state.plugin.name}@${state.marketplace}`;
-      const isEnabled = mergedSettings?.enabledPlugins?.[pluginId] !== false;
+      const enabledKey = mergedSettings?.enabledPlugins?.[pluginId];
+      // An `optIn` built-in (mod-probe) ships dormant: the loader gates it on
+      // `=== true`, so an absent key means OFF. Reading it as `!== false` here
+      // rendered such a row as "✓ enabled" while it had never loaded — and the
+      // row's own toggle is the only control that turns one on, so the one
+      // control that could fix it was showing as already on.
+      const isEnabled =
+        state.plugin.isBuiltin && isBuiltinModOptIn(state.plugin.name)
+          ? enabledKey === true
+          : enabledKey !== false;
       const errors = pluginErrors.filter(e => 'plugin' in e && e.plugin === state.plugin.name || e.source === pluginId || e.source.startsWith(`${state.plugin.name}@`));
 
       // Built-in plugins use 'builtin' scope; others look up from V2 data.

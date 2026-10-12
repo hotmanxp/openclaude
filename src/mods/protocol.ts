@@ -524,10 +524,27 @@ export type ModTargetTier = Exclude<ModTier, 'prepend' | 'user'>
  * Lives here rather than beside the handler type because three modules need it
  * and two of them would otherwise import each other.
  */
+export type ModNextOrigin = {
+  /** The mod whose hook raised this dispatch, and the tier it sits in. */
+  plugin: string
+  tier: ModTier
+}
+
 export type ModNext = ((
   e?: Record<string, unknown>,
 ) => Promise<Record<string, unknown>>) & {
   to: (e: Record<string, unknown>, tier: ModTargetTier) => Promise<Record<string, unknown>>
+  /**
+   * Upstream `Next.event` (d.ts:6543): the event this dispatch is for, so a
+   * mod routing several hooks through one handler can tell which fired.
+   */
+  event?: string
+  /**
+   * Upstream `Next.origin`: who raised this dispatch. Set by the host from the
+   * mod and tier the handler belongs to — a hook reads it to decide whether to
+   * descend (`next.origin.tier === 'prepend' ? next.to(e, 'append') : next(e)`).
+   */
+  origin?: ModNextOrigin
 }
 
 export function matchesMatcher(matcher: ModMatcher, e: unknown, depth = 0): boolean {

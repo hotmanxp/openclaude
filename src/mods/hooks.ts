@@ -37,6 +37,7 @@ import {
   clearModPanes,
   emitModsSystemNotice,
 } from './engine.js'
+import { clearModTimers } from './nouns.js'
 import {
   ModValidationError,
   validateEntryPath,
@@ -166,6 +167,7 @@ async function loadSingleMod(root: string): Promise<LoadedMod | null> {
     // on screen permanently (oc-001). Release what it claimed.
     clearModStatus(name)
     clearModPanes(name)
+    clearModTimers(name)
     throw error
   }
   return mod
@@ -318,6 +320,10 @@ function ensureBreakerWired(): void {
 function purgeModState(name: string): void {
   clearModStatus(name)
   clearModPanes(name)
+  // A timer outliving its mod keeps firing against a registry it no longer
+  // belongs to; `clock.after`/`every` hand back a handle, and this is where
+  // the ones a mod never cancelled get dropped.
+  clearModTimers(name)
   // The render cache and breaker count are keyed by mod registration, so they
   // clear when the mod leaves the registry — see registry.unregisterMod.
   unregisterMod(name)

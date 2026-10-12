@@ -12,6 +12,7 @@ import type {
   LoadedMod,
   ModCommandSpec,
   ModHandler,
+  ModHandlerInput,
   ModToolSpec,
 } from './registry.js'
 import {
@@ -57,6 +58,7 @@ import {
   splitTier,
   unavailabilityReason,
   type ModEventName,
+  type ModNext,
   type ModMatcher,
 } from './protocol.js'
 import { modPluginId } from './pluginView.js'
@@ -448,13 +450,13 @@ export type ModContext = {
    * mis-type every streaming hook.
    */
   on(event: ModStreamEvent, handler: ModStreamHandler): void
-  on(event: ModEventRef, handler: ModHandler): void
+  on(event: ModEventRef, handler: ModHandlerInput): void
   /**
    * Upstream's matcher shape: a plain object nested against the event, with
    * four leaf kinds (exact, RegExp, any-of, partial). `{ to: 'core' }` is
    * lifted out as the tier rather than matched as an event field.
    */
-  on(event: ModEventRef, matcher: ModMatcher, handler: ModHandler): void
+  on(event: ModEventRef, matcher: ModMatcher, handler: ModHandlerInput): void
   registerCommand(spec: ModCommandSpec): void
   registerTool(spec: ModToolSpec): void
   ui: {
@@ -888,6 +890,36 @@ function readModOptions(mod: LoadedMod): PluginOptionValues {
   }
 }
 
+/**
+ * Put the engine back in front of a handler that expects to find it there.
+ *
+ * Upstream's hook is `($: EngineInterface, e, next)` — three parameters, `$`
+ * FIRST. `MatchedHook` at d.ts:5758 says so, and `@cmodjs/core` is written to
+ * it: its `session.start` handler opens `startMod($, eventInput, passOn)` and
+ * builds the whole `claude` surface from `$.plugin`, `$.session`, `$.fs`.
+ * Called as `handler(e, next)` that `$` is the event, `$.plugin` is undefined,
+ * and the mod's lifecycle never starts — the handler throws, the dispatch layer
+ * attributes it and moves on, and the mod looks installed and inert.
+ *
+ * Arity, not a flag: a handler that declares three parameters is asking for
+ * the engine, and one that declares two is the older `(e, next)` shape that
+ * opencc's own built-ins and mods are written in. Both run; neither is rewritten
+ * at the call site.
+ */
+function withEngineInterface(
+  ctx: ModContext,
+  handler: ModHandlerInput,
+): ModHandler {
+  if (handler.length < 3) return handler as ModHandler
+  const wantsEngine = handler as unknown as (
+    $: ModContext,
+    e: Record<string, unknown>,
+    next: ModNext,
+  ) => unknown
+  return ((e: Record<string, unknown>, next: ModNext) =>
+    wantsEngine(ctx, e, next)) as ModHandler
+}
+
 export function createModContext(mod: LoadedMod): ModContext {
   const modName = mod.manifest.name
   const nouns = buildModNouns(modName)
@@ -899,7 +931,7 @@ export function createModContext(mod: LoadedMod): ModContext {
   setPaneCloseListener(modName, () => {
     notifyPaneChanged()
   })
-  return {
+  const ctx: ModContext = {
     options: readModOptions(mod),
     // Every method below dispatches its own event, so a noun being present is
     // the same fact as its op events being live (docs/mods-upstream-contract.md
@@ -954,14 +986,19 @@ export function createModContext(mod: LoadedMod): ModContext {
       }
       const handler = (
         hasExplicitMatcher ? maybeHandler : matcherOrHandler
-      ) as ModHandler | undefined
+      ) as ModHandlerInput | undefined
       if (typeof handler !== 'function') {
         throw new Error('ctx.on(): handler must be a function')
       }
       const { matcher, tier } = hasExplicitMatcher
         ? splitTier(matcherOrHandler as ModMatcher)
         : { matcher: undefined, tier: undefined }
-      mod.handlers.push({ event: canonical, matcher, tier, handler })
+      mod.handlers.push({
+        event: canonical,
+        matcher,
+        tier,
+        handler: withEngineInterface(ctx, handler),
+      })
     },
     registerCommand(spec) {
       return dispatchModOpSync('command.register', { spec }, () => {
@@ -1236,6 +1273,7 @@ export function createModContext(mod: LoadedMod): ModContext {
     },
     fs: fsApi,
   }
+  return ctx
 }
 
 // ---------------------------------------------------------------------------
