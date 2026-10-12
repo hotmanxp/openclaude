@@ -2323,7 +2323,12 @@ export function normalizeAttachmentForAPI(
   attachment: Attachment,
 ): UserMessage[] {
   const rendered = normalizeAttachmentForAPIInner(attachment)
-  if (!hasModHandlersFor('prompt.attachment')) return rendered
+  // Upstream gates on the attachment kind: `Jl("prompt.attachment",
+  // {type: r.attachment.type})`. A mod that only rewrites `file` attachments
+  // should not make every other kind pay to render its text first.
+  if (!hasModHandlersFor('prompt.attachment', { type: attachment.type })) {
+    return rendered
+  }
 
   const text = rendered
     .map(m => (typeof m.message.content === 'string' ? m.message.content : ''))

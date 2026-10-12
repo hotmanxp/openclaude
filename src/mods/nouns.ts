@@ -18,7 +18,11 @@ import { join, sep } from 'node:path'
 import { homedir } from 'node:os'
 
 import type { Message } from '../types/message.js'
-import { dispatchModOp, dispatchModStream } from './dispatch.js'
+import {
+  dispatchModOp,
+  dispatchModStream,
+  hasModHandlersFor,
+} from './dispatch.js'
 import { readSessionUsage } from './sessionUsage.js'
 
 // ---------------------------------------------------------------------------
@@ -1347,8 +1351,15 @@ export function buildModNouns(modName: string): ModNouns {
         // A mod that hides or renames a row therefore sees the rename on the
         // one path that actually enumerates rows in opencc.
         await Promise.all(
-          getAllKeys().map(key =>
-            dispatchModOp(
+          getAllKeys().map(key => {
+            // Upstream gates per key: `Jl("config.describe", {key: e.key})`.
+            // Without this a mod watching one setting still pays a dispatch
+            // for every other setting `getAllKeys()` enumerates — and this is
+            // the one site where the loop is genuinely per-item.
+            if (!hasModHandlersFor('config.describe', { key })) {
+              return undefined
+            }
+            return dispatchModOp(
               'config.describe',
               {
                 key,
@@ -1357,8 +1368,8 @@ export function buildModNouns(modName: string): ModNouns {
                 isHidden: false,
               },
               () => ({ label: key, description: undefined, isHidden: false }),
-            ),
-          ),
+            )
+          }),
         )
         return getAllKeys()
       }),

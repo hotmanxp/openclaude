@@ -1140,7 +1140,13 @@ export async function checkPermissionsAndCallTool(
   // reached. That rule is upstream's verbatim — it is what stops a mod from
   // being a way to *widen* access — so a widening answer is logged and
   // discarded rather than honoured.
-  if (hasModHandlersFor('tool.check')) {
+  // Upstream gates on the tool too: `Jl("tool.check", {tool: …})`. This is the
+  // hottest site in the list — it runs before every tool call — so a mod that
+  // only watches `Bash` should not make every other tool pay for a dispatch.
+  // The probe is deliberately `{tool}` alone, not the input: a matcher that
+  // narrows on `input` would then have to be evaluated against data this call
+  // has not validated yet, and upstream gates the same field here.
+  if (hasModHandlersFor('tool.check', { tool: tool.name })) {
     const decided = await dispatchModEngine<{
       decision: string
       reason?: string

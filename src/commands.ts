@@ -571,6 +571,17 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   }
   const described: Command[] = []
   for (const c of computed) {
+    // Upstream gates per command: `Jl("command.describe", {command: n.command})`.
+    // Without this a mod whose matcher names two of thirty commands still pays
+    // a dispatch and a `next(e)` round trip for the other twenty-eight.
+    //
+    // The command still gets pushed either way — skipping the DISPATCH is not
+    // skipping the command, and dropping it here would silently remove a
+    // command from the list.
+    if (!hasModHandlersFor('command.describe', { command: c.name })) {
+      described.push(c)
+      continue
+    }
     const answer = await dispatchModEngine<{
       command: string
       description: string
