@@ -461,7 +461,39 @@ built-in | plugin | userSettings | projectSettings | flagSettings | policySettin
 
 **任何不在这六组里的 `source`，会进 `allAgents` 但被静默丢出 `activeAgents`** —— 一个 mod 注册了 agent、`$.agent.list()` 列得出来、Agent 工具却永远 spawn 不到它。这正是"空壳"的另一种形态，而且不会有任何报错。
 
-所以正确做法是给 `source` 加一个 `'mod'` 成员并接进分组（外加 `isModAgent`），而不是硬塞进 `'plugin'`（那会谎报来源 —— `loadPluginAgents()` 是 marketplace 插件的路径）。这要穿过 agent schema、分组函数和 AgentsMenu，是**特性**不是接线，故与其它未接线项一起记在此处。
+所以正确做法是让 mod 注册的 agent 落进已有的某一组，而不是新造一个 `'mod'` 组。
+
+**更正（2026-10-12，bundle 取证后推翻本节原结论）**：原文主张"给 `source` 加一个 `'mod'` 成员"，
+理由是"硬塞进 `'plugin'` 会谎报来源 —— `loadPluginAgents()` 是 marketplace 插件的路径"。**该理由不成立**，
+按上游实现走恰好就是 `source: "plugin"`：
+
+```js
+// bundle @10654646，registeredAgents 的唯一读出口 L3t
+function L3t(){return[...it().registeredAgents.values()].flatMap(({plugin:e,pluginId:n,pluginRoot:r,spec:s})=>{
+  let{name:h,...y}=s, b=$3t(`${nH(e,n)}:${h}`,y,"userSettings");
+  if(b===null)return[];
+  let{source:w,baseDir:M,fromAdditionalDirectory:z,...V}=b;
+  return[{...V,source:"plugin",plugin:n,filename:h,registeredAtRunTime:!0,registeringPluginRoot:r}]
+})}
+```
+
+上游**没有**第七个 source 组：`bz`（@10651865）的分组顺序与 opencc 完全一致
+（`built-in → plugin → userSettings → projectSettings → flagSettings → policySettings`，后者覆盖前者），
+注册进来的 agent 由 `Xet`（@10655067）插在最后一个 `plugin`/`built-in` 之后。
+
+**而且它根本不会撞名**：`agentType` 是 `"<plugin>:<name>"`，而 `name` 经 `Sro`（@6533695）限定为
+`[A-Za-z0-9_-]{1,64}` —— `:` 不可表达。于是"项目的 `agents/foo.md` 与某插件注册的 `foo` 同名"这个
+担心的场景不存在：前者占 `foo`，后者只能叫 `plugin:foo`，spawn 是精确字符串匹配，两者并存。
+**新造 `'mod'` 组反而会引入一个上游没有的分组，并丢掉 `registeredAtRunTime` /
+`registeringPluginRoot` 这两个上游用来做"是否经过同步插件审批"的字段。**
+
+需要移植的是接线，不是新分组：
+
+1. `getActiveAgentsFromList()` 之后按 `Xet` 的规则插入（插在最后一个 `plugin`/`built-in` 之后）；
+2. `registeredAtRunTime: true` —— 上游 spawn 时对 `source === "plugin"` 的 agent 做同步插件审批
+   （bundle @16481943），且注册来的默认判定是 `"refused"` 而非 md 的 `"not judged"`，更严。
+
+`/agents` 命令上游已删除（@10202990 `"(removed)"`），故无显示标签可对齐。
 
 ### 6.4 一次真实回归：`@ts-nocheck` 让 typecheck 对本次全部改动失明
 
