@@ -29,6 +29,7 @@ import {
   withBudget,
   type ModEventName,
   type ModMatcher,
+  type ModMatcherLeaf,
   type ModNext,
   type ModTier,
 } from './protocol.js'
@@ -784,12 +785,111 @@ export function dispatchModEngineSync<T>(
 
 /**
  * Whether any mod subscribes to `event` — the check that lets a host site skip
- * building its payload when nothing is listening. Upstream gates its gated
- * plugins the same way (`Jl("<event>")`); without it every call site pays for a
- * dispatch nobody reads.
+ * building its payload when nothing is listening. Without it every call site
+ * pays for a dispatch nobody reads.
+ *
+ * `probe` narrows that to "subscribes AND could match this payload". Upstream's
+ * `Jl` (bundle @7020150, chunk `3ph567jx`):
+ *
+ * ```js
+ * function Jl(o, e, s){
+ *   let t = e && iRe(o);
+ *   return (s ?? it().loadedModules).some(r =>
+ *     r.hooks(o) && (e === void 0 || lUn(r.matcherFor(o), e, t)))
+ * }
+ * ```
+ *
+ * The `lUn` it leans on is an OVERLAP test, not equality — bundle
+ * `chunk-ed7zyzrn`:
+ *
+ * ```js
+ * lUn = (modMatcher, probe, schema) =>
+ *   Object.entries(probe).every(([field, value]) =>
+ *     b(modMatcher, {field, value}, schema && H(schema, field)))
+ * b  = (m, {field, value}, s) =>
+ *   Array.isArray(m) ? m.some(e => b(e, {field, value}, s))
+ *                    : !isPlain(m) || !Object.hasOwn(m, field)
+ *                      || aUn(m[field], value, s)
+ * aUn = (actual, pattern, s) => l(actual, pattern, {test: () => true, names: s})
+ * ```
+ *
+ * Three readings that decide the port, each taken from those lines:
+ *
+ * - A handler with NO matcher returns true for every probe (`!Object.hasOwn` on
+ *   a matcherless handler), so the gate stays conservative: "unknown" answers
+ *   yes, never no.
+ * - `b` walks arrays with `some` and `l` treats any-of on either side as a
+ *   match, so this is the SAME evaluator opencc already ships as
+ *   `matchesMatcher` — reuse it rather than writing a second overlap engine
+ *   that could drift from the dispatch-time one.
+ * - Upstream narrows further with a per-event schema (`iRe` → `{table, paths}`
+ *   from `H`), rejecting probe keys the event's input cannot carry. opencc has
+ *   no such schema table, and inventing one is a second contract to keep in
+ *   sync; a probe naming a field no matcher has answers true here, which is the
+ *   safe direction.
+ *
+ * The probe is deliberately a PARTIAL payload — upstream passes exactly that,
+ * e.g. `Jl("agent.offer", {agent: s.agentType})` (bundle @11638340).
  */
-export function hasModHandlersFor(event: string): boolean {
-  return (opChains.get(event)?.length ?? 0) > 0
+export function hasModHandlersFor(
+  event: string,
+  probe?: Record<string, unknown>,
+): boolean {
+  const chain = opChains.get(event)
+  if (chain === undefined || chain.length === 0) return false
+  if (probe === undefined) return true
+  return chain.some(entry => matcherCouldMatch(entry.matcher, probe))
+}
+
+/**
+ * Upstream's `lUn(modMatcher, probe)` — whether a declared matcher could
+ * possibly hold for an event carrying `probe`'s values.
+ *
+ *   lUn = (m, probe) => Object.entries(probe).every(
+ *     ([field, value]) => b(m, {field, value}))
+ *   b   = (m, {field, value}) => Array.isArray(m) ? m.some(e => b(e, …))
+ *     : !isPlainObject(m) || !Object.hasOwn(m, field) || holds(m[field], value)
+ *
+ * The iteration is over the PROBE's fields, not the matcher's, and that is the
+ * whole point: a matcher that says nothing about a field the probe names
+ * cannot rule the event out, so `b` answers true and the gate stays open. That
+ * is why this cannot be `matchesMatcher(matcher, probe)` — the real evaluator
+ * treats a matcher key the payload lacks as a miss, which here would silently
+ * skip a live handler.
+ *
+ * `holds` IS `matchesMatcher`: upstream's `aUn` delegates to `l` with a
+ * wildcard test, and opencc's `matchesMatcher` implements the same leaf
+ * dispatch (=== / RegExp / any-of on either side / object partial).
+ */
+function matcherCouldMatch(
+  matcher: ModMatcher | undefined,
+  probe: Record<string, unknown>,
+): boolean {
+  if (matcher === undefined) return true
+  return Object.entries(probe).every(([field, value]) =>
+    fieldCouldMatch(matcher, field, value),
+  )
+}
+
+function fieldCouldMatch(
+  matcher: ModMatcher,
+  field: string,
+  value: unknown,
+): boolean {
+  if (Array.isArray(matcher)) {
+    return (matcher as readonly ModMatcherLeaf[]).some(m =>
+      fieldCouldMatch(m, field, value),
+    )
+  }
+  // A RegExp or string leaf is not a field-map; upstream's `!isPlain(m)` makes
+  // the same check, and answers true — the gate must not narrow on a shape the
+  // loader already rejected at registration.
+  if (matcher === null || typeof matcher !== 'object') return true
+  if (!Object.hasOwn(matcher, field)) return true
+  return matchesMatcher(
+    (matcher as Record<string, ModMatcherLeaf>)[field],
+    value,
+  )
 }
 
 /**
