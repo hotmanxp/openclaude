@@ -73,6 +73,13 @@ export async function resolveToolDescriptions(params: {
 
   const { tools, promptOptions, isDeferredByHost } = params
   for (const tool of tools) {
+    // Upstream gates per tool, not per session: `Jl("tool.describe", {tool:
+    // e.name})` (bundle @10911854). Without this the loop below builds a
+    // payload, awaits the tool's own `prompt()`, and dispatches for every tool
+    // in the session — including for a mod whose matcher names one tool, which
+    // is the expensive case the gate exists for.
+    if (!hasModHandlersFor('tool.describe', { tool: tool.name })) continue
+
     const prior = getToolDescribeAnswer(tool.name)
     // The chain is shown the text the model would otherwise read, which is the
     // one already resolved for this session — not `tool.description`, which is

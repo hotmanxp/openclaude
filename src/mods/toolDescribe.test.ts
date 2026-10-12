@@ -220,4 +220,49 @@ describe('tool.describe', () => {
     expect(out.descriptions.get('Bash')).toBe('ONLY THIS')
     expect(await schemaFor(tool, out.descriptions.get('Bash'))).toBe('ONLY THIS')
   })
+  test('a matcher naming one tool does not pay for the others', async () => {
+    // Upstream gates per tool: `Jl("tool.describe", {tool: e.name})`. The
+    // cost being avoided is real — `tool.prompt()` renders each tool's whole
+    // description, and `renders` counts exactly that.
+    const mod = freshMod('narrow-mod')
+    createModContext(mod).on('tool.describe', { tool: 'Bash' }, () => ({
+      description: 'SHELL',
+      isDeferred: false,
+    }))
+    registerLoadedMod(mod)
+
+    const tools = [
+      fakeTool('Bash', 'RUNS A COMMAND'),
+      fakeTool('Read', 'READS A FILE'),
+      fakeTool('Edit', 'EDITS A FILE'),
+    ] as unknown as Tools
+
+    const out = await resolve(tools)
+    expect(out.descriptions.get('Bash')).toBe('SHELL')
+    // The two the matcher cannot match never rendered, and never got an
+    // override — which is what upstream's per-item gate buys.
+    expect(out.descriptions.get('Read')).toBeUndefined()
+    expect(out.descriptions.get('Edit')).toBeUndefined()
+    expect(renders).toBe(1)
+  })
+
+  test('a matcherless handler still sees every tool', async () => {
+    // The gate must only ever CLOSE on a positive mismatch. A mod that names
+    // no tool wants all of them.
+    const mod = freshMod('wide-mod')
+    createModContext(mod).on('tool.describe', () => ({
+      description: 'SAME',
+      isDeferred: false,
+    }))
+    registerLoadedMod(mod)
+
+    const tools = [
+      fakeTool('Bash', 'A'),
+      fakeTool('Read', 'B'),
+    ] as unknown as Tools
+    const out = await resolve(tools)
+    expect(out.descriptions.get('Bash')).toBe('SAME')
+    expect(out.descriptions.get('Read')).toBe('SAME')
+    expect(renders).toBe(2)
+  })
 })
