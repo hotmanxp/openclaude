@@ -1168,14 +1168,12 @@ if (result?.success) {
   }
 
   // ── Guard: undefined names in @ts-nocheck files ────────────────────────────
-  // The guard above catches a missing MODULE; this catches the neighbouring
-  // failure — an identifier used but never imported or declared. Bun bundles a
-  // free variable happily, so the build, the unit tests and `tsc --noEmit` all
-  // pass, and the first run of that path throws a ReferenceError.
+  // OFF the build. It catches a real failure — an identifier used but never
+  // imported or declared, which Bun bundles happily so that the build, the
+  // unit tests and `tsc --noEmit` all pass and the first run of that path
+  // throws a ReferenceError — but it walks all 486 @ts-nocheck files and
+  // costs ~11s, which is not worth paying on every build.
   //
-  // It lives here rather than only in `typecheck` because CI gates on
-  // `bun run smoke` (= build), not on the root typecheck (see pr-checks.yml).
-  // It runs in-process via a dynamic import so the build inherits the exit code
-  // rather than needing a child process.
-  await import('./check-nocheck-names.js')
+  // Run it deliberately instead:
+  //     bun scripts/check-nocheck-names.ts
 }
