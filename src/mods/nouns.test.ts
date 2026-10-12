@@ -10,8 +10,12 @@ import {
 import {
   clearModSessionFacts,
   clearModStores,
+  clearPromptBoxFacts,
+  clearPromptFillHook,
   clearTelemetryRows,
   openModTurn,
+  setPromptBoxFacts,
+  setPromptFillHook,
   setSessionFacts,
 } from './nouns.js'
 import type { ModEventName } from './protocol.js'
@@ -160,6 +164,106 @@ describe('op nouns', () => {
     const out = await ctx.process.run({ argv: ['echo', 'hi'] })
     expect(out.code).toBe(0)
     expect(out.stdout.trim()).toBe('hi')
+  })
+})
+
+describe('prompt noun', () => {
+  beforeEach(() => {
+    resetModsRegistryForTesting()
+    clearModStores()
+    clearPromptBoxFacts()
+  })
+
+  afterEach(() => {
+    resetModsRegistryForTesting()
+    clearPromptBoxFacts()
+    clearPromptFillHook()
+  })
+
+  test('reads the box the host published', async () => {
+    setPromptBoxFacts({ text: 'hello', cursor: 3 })
+    const ctx = createModContext(freshMod())
+    expect(await ctx.prompt.read()).toEqual({ text: 'hello', cursor: 3 })
+  })
+
+  test('an unpublished box is an empty box, not a failure', async () => {
+    // Upstream d.ts:2518 — "never rejects: `{ text: '', cursor: 0 }` where the
+    // session draws no box". A `-p` run publishes nothing, and that is an
+    // answer rather than an error.
+    const ctx = createModContext(freshMod())
+    expect(await ctx.prompt.read()).toEqual({ text: '', cursor: 0 })
+  })
+
+  test('a mod intercepts the read — the event is live', async () => {
+    let ran = false
+    const mod = freshMod()
+    createModContext(mod).on('prompt.read', () => {
+      ran = true
+      return { replace: { text: 'rewritten', cursor: 0 } }
+    })
+    registerLoadedMod(mod)
+
+    setPromptBoxFacts({ text: 'hello', cursor: 3 })
+    const out = await createModContext(freshMod('other')).prompt.read()
+    expect(ran).toBe(true)
+    expect(out).toEqual({ text: 'rewritten', cursor: 0 })
+  })
+
+  test('prompt.autocomplete is refused by name, not left silent', () => {
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('prompt.autocomplete', async () => ({}))).toThrow(
+      /completes no token/,
+    )
+  })
+
+  test('fill writes through the host channel and reports the result', async () => {
+    setPromptBoxFacts({ text: '', cursor: 0 })
+    setPromptFillHook(({ text, mode }) =>
+      mode === 'replace'
+        ? { text, cursor: text.length }
+        : { text: 'prefix ' + text, cursor: text.length + 7 },
+    )
+    const ctx = createModContext(freshMod())
+    expect(await ctx.prompt.fill({
+      text: 'hi',
+      mode: 'replace',
+      origin: { kind: 'plugin', name: 'tester' },
+    })).toEqual({ isFilled: true, text: 'hi', cursor: 2 })
+  })
+
+  test('fill with no box is isFilled:false, not a rejection', async () => {
+    // Upstream: "false where no box can take it (a dialog holds the keys, a
+    // headless session has none)".
+    setPromptBoxFacts({ text: 'kept', cursor: 4 })
+    clearPromptFillHook()
+    const out = await createModContext(freshMod()).prompt.fill({
+      text: 'hi',
+      mode: 'append',
+      origin: { kind: 'plugin', name: 'tester' },
+    })
+    expect(out).toEqual({ isFilled: false, text: 'kept', cursor: 4 })
+  })
+
+  test('a mod rewrites what fill writes — and origin stays pinned', async () => {
+    let seen: Record<string, unknown> | undefined
+    const mod = freshMod()
+    createModContext(mod).on('prompt.fill', (e, next) => {
+      seen = e as Record<string, unknown>
+      return next({ ...e, text: 'REDACTED' })
+    })
+    registerLoadedMod(mod)
+
+    setPromptBoxFacts({ text: '', cursor: 0 })
+    setPromptFillHook(({ text }) => ({ text, cursor: text.length }))
+    const out = await createModContext(freshMod('other')).prompt.fill({
+      text: 'secret',
+      mode: 'replace',
+      origin: { kind: 'plugin', name: 'caller' },
+    })
+    // The core saw the caller's origin, and a hook's rewrite does not change
+    // who filled the box — upstream pins origin.
+    expect(seen).toMatchObject({ origin: { kind: 'plugin', name: 'caller' } })
+    expect(out.text).toBe('REDACTED')
   })
 })
 

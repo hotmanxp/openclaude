@@ -744,6 +744,8 @@ export type ModNouns = {
   agent: ModAgent
   model: ModModel
   config: ModConfig
+  /** Upstream `$.prompt.*`; the box the session draws, where it draws one. */
+  prompt: ModPrompt
   /** Set by the host at session start; read through `session.*`. */
   facts: SessionFacts
 }
@@ -768,6 +770,99 @@ export type SessionFacts = {
  * one is added.
  */
 const sessionFacts: SessionFacts = {}
+
+/**
+ * The prompt box as it stands, published by the REPL.
+ *
+ * Upstream's `PromptBox` is `{ text, cursor }` (d.ts:6643), and opencc splits
+ * that state across two owners: `text` lives in REPL's `inputValueRef`, while
+ * `cursor` is PromptInput-local `cursorOffset` that is never lifted. So there is
+ * no component that already holds the pair, and the noun needs one place both
+ * halves reach.
+ *
+ * `undefined` when nothing has published — a `-p` run, or before the REPL has
+ * rendered its input. Upstream is explicit that this is an answer, not a
+ * failure: "`$.prompt.read()` never rejects — `{ text: '', cursor: 0 }` where
+ * the session draws no box" (d.ts:2518).
+ */
+let promptBoxFacts: { text: string; cursor: number } | undefined
+
+export function setPromptBoxFacts(box: {
+  text: string
+  cursor: number
+}): void {
+  promptBoxFacts = box
+}
+
+export function clearPromptBoxFacts(): void {
+  promptBoxFacts = undefined
+}
+
+/** Upstream `PromptBox` (d.ts:6643); the cursor is a UTF-16 code-unit offset. */
+export type ModPromptBox = { text: string; cursor: number }
+
+/** Upstream `PromptFillMode` (d.ts:6977). */
+export type ModPromptFillMode = 'replace' | 'append' | 'insert'
+
+/** Upstream `PromptFillInput` (d.ts:6950); only `origin` is pinned. */
+export type ModPromptFillArgs = {
+  text: string
+  mode: ModPromptFillMode
+  origin: { kind: 'engine' } | { kind: 'plugin'; name: string }
+}
+
+/** Upstream `PromptFilled` (d.ts:6928). */
+export type ModPromptFilled = {
+  isFilled: boolean
+  text: string
+  cursor: number
+}
+
+/** Upstream `$.prompt.*` (d.ts:2518). */
+export type ModPrompt = {
+  /** The box as it stands; `{ text: '', cursor: 0 }` where there is none. */
+  read(): Promise<ModPromptBox>
+  /**
+   * Put `text` into the box.
+   *
+   * Upstream is explicit that only a PLUGIN raises this (d.ts:6988: the engine's
+   * own fill sites are "reserved for its own sites, none of which raises
+   * `prompt.fill` as shipped"), so this is the one prompt event opencc does not
+   * dispatch from a host call site — the write channel below is the whole of it.
+   *
+   * `origin` is pinned, so a hook cannot re-attribute a fill to another plugin.
+   */
+  fill(args: ModPromptFillArgs): Promise<ModPromptFilled>
+}
+
+/**
+ * The box's write channel, published by the REPL.
+ *
+ * `insertTextRef` is already the box's one channel outward and carries exactly
+ * the three primitives the modes need — splice at the caret, whole-box replace
+ * with a caret, and (as replace at the end) append.
+ */
+let promptFillHook:
+  | ((args: {
+      text: string
+      mode: ModPromptFillMode
+    }) => { text: string; cursor: number } | undefined)
+  | undefined
+
+export function setPromptFillHook(
+  hook:
+    | ((args: {
+        text: string
+        mode: ModPromptFillMode
+      }) => { text: string; cursor: number } | undefined)
+    | undefined,
+): void {
+  promptFillHook = hook
+}
+
+export function clearPromptFillHook(): void {
+  promptFillHook = undefined
+}
 
 export function setSessionFacts(facts: SessionFacts): void {
   Object.assign(sessionFacts, facts)
@@ -861,6 +956,35 @@ export function buildModNouns(modName: string): ModNouns {
         async e =>
           await spawnChild(modName, e as unknown as ModProcessSpawnArgs),
       ),
+  }
+
+  const prompt: ModPrompt = {
+    // The prompt nouns that exist here. Upstream's other `prompt.*` are events
+    // the engine raises while writing the box; those need call sites in the
+    // host rather than a method here, and `prompt.autocomplete` has no host
+    // equivalent at all (refused by name in protocol.ts).
+    read: () =>
+      dispatchModOp<ModPromptBox>(
+        'prompt.read',
+        {},
+        () => promptBoxFacts ?? { text: '', cursor: 0 },
+      ),
+    fill: (args: ModPromptFillArgs) =>
+      dispatchModOp<ModPromptFilled>('prompt.fill', args, e => {
+        const before = promptBoxFacts ?? { text: '', cursor: 0 }
+        // No box to fill — upstream's "false where no box can take it (a dialog
+        // holds the keys, a headless session has none)". An answer, not an error.
+        if (!promptFillHook) {
+          return { isFilled: false, text: before.text, cursor: before.cursor }
+        }
+        const text = typeof e.text === 'string' ? e.text : args.text
+        const mode = e.mode === 'append' || e.mode === 'insert' ? e.mode : 'replace'
+        const written = promptFillHook({ text, mode })
+        if (!written) {
+          return { isFilled: false, text: before.text, cursor: before.cursor }
+        }
+        return { isFilled: true, text: written.text, cursor: written.cursor }
+      }),
   }
 
   const session: ModSession = {
@@ -1195,6 +1319,7 @@ export function buildModNouns(modName: string): ModNouns {
     agent,
     model,
     config,
+    prompt,
     facts: sessionFacts,
   }
 }

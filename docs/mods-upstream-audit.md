@@ -232,10 +232,10 @@ ui.ask / copy / invalidate / log / notice
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 源码层有触发点 | 74 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
+| 源码层有触发点 | 79 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
 | 桥接 | 4 | `tool.call`→`PostToolUse`、`session.start`/`session.end`、`turn.complete`→`Stop` |
-| 按名拒绝 | 5 | `audio.play`/`audio.speak`/`ui.blit`/`ui.fault`/`ui.message` —— 终端无对应能力，**按名报错**而不是给一个永不触发的 `on()` |
-| 无触发点 | 26 | 见下（`turn.step` 已接，见下节） |
+| 按名拒绝 | 6 | `audio.play`/`audio.speak`/`ui.blit`/`ui.fault`/`ui.message`/`prompt.autocomplete` —— 无对应能力，**按名报错**而不是给一个永不触发的 `on()` |
+| 无触发点 | 20 | 见下 |
 
 #### 6.3.1 运行时实测（`/mod-probe`，真实 dist）
 
@@ -278,11 +278,36 @@ Event slots: 9 fired, 95 subscribed-but-never-fired, 5 refused — of 109.
 
 未接线按前缀：
 
-- `prompt.*` 9 —— 需要先做 `instructionFiles` 结构化重构（`prompt.context` 的 `instructionFiles` 匹配器依赖它）
+- `prompt.*` 3 —— `prompt.context` / `prompt.compose` / `prompt.attachment`，见下
 - `session.*` 6 —— `usage` 要接 `/context` + `/cost` 的读数
 - `agent.offer` / `agent.register` / `engine.create` / `plugin.register`
 - `mcp.call` / `mcp.connect` —— `mcp.call` 必须过权限路径，否则 mod 可无提示调用任意 MCP 工具
 - `ui.input` / `ui.press` / `ui.select` —— 需要输入管道重构
+
+> **更正**：本节此前记「`prompt.*` 9 个未接，需要先做 `instructionFiles` 结构化重构」。**后半句是错的** —— `getMemoryFiles(): Promise<MemoryFileInfo[]>`（`src/utils/claudemd.ts`）**已经是结构化的**，且与上游 `InstructionFile` 几乎同构：`path` / `type`(↔`kind`) / `content` / `parent?` 四个字段一一对应。不需要重构，需要的是决定枚举映射（见下）。
+
+#### `prompt.*` 的五个已接事件，以及两个必须按名拒绝的判断
+
+**`prompt.autocomplete` —— 按名拒绝。** 上游入参是 `{text, cursor, token, start}`，即光标处补全 token。opencc 最接近的是 PromptSuggestion：它从**空输入框**预测「下一句要问什么」，不接受 text/cursor/token，显示条件是 `inputValue.length > 0 ? null : suggestionText`，即输入中有任何字符就不出现。接上去、从上游移植的 token 补全器会拿到完全不同的行为 —— 那是空壳。
+
+**`prompt.fill` —— 做成 op 事件，不做宿主调用点。** 上游 `PromptFillOrigin` 明写：引擎侧的写入 "reserved for its own sites, **none of which raises `prompt.fill` as shipped**"。也就是说**引擎从不 raise 这个事件，只有插件的 `$.prompt.fill` 会**。若在 `insertTextAtCursor` 上 dispatch，等于给从上游移植的 mod 发送上游从不发送的事件 —— 比不接更糟。
+
+**opencc 的 prompt 状态所有权是分裂的**，这是这批接线的主要难点：`text` 归 REPL（`inputValueRef`，REPL.tsx:1468），`cursor` 是 PromptInput 局部 `cursorOffset`（PromptInput.tsx:264），**从不向上传**。两值唯一同时在作用域内的只有 REPL。解法是沿用仓里既有的 facts 通道模式（`setSessionFacts`）新建两个通道：REPL 每次渲染发布 `setPromptBoxFacts`，并把已有的 `insertTextRef` 适配成 `setPromptFillHook` —— 那个 ref 本来就是输入框唯一的对外通道，且已带齐三种模式需要的三种原语（光标处 splice、整篇替换带光标、末尾追加）。
+
+**`prompt.edit` —— 同步 dispatch，且这是刻意的。** 自然站点在按键热路径（`useTextInput.ts` 的 `setValue`）。在那里 `await` 会把写入推到更晚的微任务，期间 `liveValueRef` 已被下一个按键改写 —— 快速连打两键就会基于彼此过期的镜像编辑。仓里已有先例：`attribution.ts` 的 `getAttributionTexts` 正因不能改 async 而选 sync dispatch。
+
+**E2E 抓到一个单测抓不到的 bug**：core 最初返回 `e.text`，但上游 `PromptEditInput.text` 是**编辑前**的草稿（d.ts:6845）—— 于是每次按键都被回退，输入框永远空着。正确做法是 core 重新施加 splice（这也让 hook 改写 `start`/`end`/`inputText` 真正生效）。这个 bug 表现为「装了 mod 就打不了字」，单测层面完全看不出来，只有真跑一次 REPL 才发现。
+
+**端到端实测**（真实 dist、真实 REPL）：
+
+| 验证 | 结果 |
+|---|---|
+| `prompt.edit` 随每次按键触发 | `E:edit`，输入框照常填充与提交 |
+| hook 改写 `inputText` | 敲 `abcdef` → 框里显示 6 个 `*`，`abcdef` 从未出现 |
+| `prompt.suggest` | 生成点 `executePromptSuggestion`（async）可拦截 |
+| `prompt.mention` | `processAtMentionedFiles` 在读文件**之前**过链，可 deny 路径 |
+
+`prompt.edit` 的 splice 用最长公共前缀/后缀还原，8 种编辑形态（追加、中段替换、插入、删除、清空）逐一验证重建结果与原串逐字相同。
 - `turn.step` —— 已接，见下
 
 #### `turn.step`：接在原始 delta 循环，不是 `deps.callModel`

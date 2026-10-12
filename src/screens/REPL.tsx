@@ -29,6 +29,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, useLayoutEffect, useSyncExternalStore, type RefObject } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { subscribeModNotices } from '../mods/engine.js';
+import { setPromptBoxFacts, setPromptFillHook } from '../mods/nouns.js';
 import { getLoadedMods, getModToolsVersion, subscribeModTools } from '../mods/registry.js';
 import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js';
 import { ModStatusLine } from '../components/ModStatusLine.js';
@@ -1473,6 +1474,39 @@ export function REPL({
     setInputWithCursor: (value: string, cursor: number) => void;
     cursorOffset: number;
   } | null>(null);
+
+  // Upstream `$.prompt.read()` needs the box as one value, and opencc splits it:
+  // the draft is REPL's `inputValue`, the caret is PromptInput-local
+  // `cursorOffset` that never leaves the component. REPL is the only place both
+  // halves are in scope — PromptInput publishes the caret through
+  // `insertTextRef`, which is already the box's one channel outward.
+  //
+  // Published on every render rather than through an effect because a mod may
+  // read the box from a keypress handler that runs before an effect would.
+  setPromptBoxFacts({
+    text: inputValue,
+    cursor: insertTextRef.current?.cursorOffset ?? inputValue.length,
+  });
+
+  // Upstream `$.prompt.fill` — a PLUGIN's fill, never the engine's (d.ts:6988).
+  // `insertTextRef` already carries the three primitives the modes need, so the
+  // channel is a thin adapter rather than a second way into the box.
+  setPromptFillHook(args => {
+    const channel = insertTextRef.current
+    if (!channel) return undefined
+    const before = inputValueRef.current
+    switch (args.mode) {
+      case 'insert':
+        channel.insert(args.text)
+        return { text: before + args.text, cursor: before.length + args.text.length }
+      case 'append':
+        channel.setInputWithCursor(before + args.text, before.length + args.text.length)
+        return { text: before + args.text, cursor: before.length + args.text.length }
+      default:
+        channel.setInputWithCursor(args.text, args.text.length)
+        return { text: args.text, cursor: args.text.length }
+    }
+  });
 
   // Wrap setInputValue to co-locate suppression state updates.
   // Both setState calls happen in the same synchronous context so React

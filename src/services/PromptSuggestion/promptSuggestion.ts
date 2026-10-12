@@ -1,4 +1,8 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../../mods/dispatch.js'
 import type { AppState } from '../../state/AppState.js'
 import type { Message } from '../../types/message.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
@@ -199,6 +203,23 @@ export async function executePromptSuggestion(
       'cli',
     )
     if (!result) return
+
+    // Upstream `prompt.suggest` — the ENGINE's own guess at the next prompt, so
+    // `origin.kind` is `'suggestion'` and this is a host-raised event rather
+    // than a `$.prompt.suggest` call (d.ts:7306).
+    //
+    // The hook returns `{ isShown }` and the text is not its to change, so what
+    // this gates is whether the suggestion reaches the box at all — which is
+    // the lever a mod needs to turn the feature off. Whether it is then
+    // *displayed* stays the render-time truth it already was.
+    if (hasModHandlersFor('prompt.suggest')) {
+      const decided = await dispatchModEngine<{ isShown: boolean }>(
+        'prompt.suggest',
+        { text: result.suggestion, origin: { kind: 'suggestion' } },
+        e => ({ isShown: typeof e.text === 'string' && e.text !== '' }),
+      )
+      if (!decided.isShown) return
+    }
 
     context.toolUseContext.setAppState(prev => ({
       ...prev,

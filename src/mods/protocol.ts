@@ -213,6 +213,8 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
     'opencc has no surface bus: `$.ui.message` delivers a message to a surface (desktop app, mobile, VS Code) and the only surface here is the terminal itself',
   'ui.fault':
     'opencc has no surface fault channel: `$.ui.fault` reports a failure to a non-terminal surface, and there is none to report to',
+  'prompt.autocomplete':
+    'opencc completes no token: `prompt.autocomplete` answers `{text, cursor, token, start}` with suggestions for the token under the cursor. The nearest thing here — PromptSuggestion — predicts the NEXT prompt from an EMPTY box (`inputValue.length > 0 ? null : suggestionText`), takes no text/cursor/token, and never runs mid-typing. Wiring that to this name would hand a ported token-completer silently different behaviour, which is the shell this event is refused to become.',
 }
 
 /** Why `event` cannot be dispatched here, or undefined if it can. */

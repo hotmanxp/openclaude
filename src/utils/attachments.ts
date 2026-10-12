@@ -4,6 +4,10 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
 import { getFileExtensionForAnalytics } from 'src/services/analytics/metadata.js'
 import {
   toolMatchesName,
@@ -2057,9 +2061,27 @@ async function processAtMentionedFilesWithDependencies(
   const files = extractAtMentionedFiles(input)
   if (files.length === 0) return []
 
+  // Upstream `prompt.mention` — the chain a mention's path runs before anything
+  // is attached (bundle's `runPromptMentionChain`). It sits ahead of the read so
+  // a hook can DENY a path, and so it sees the path as written rather than a
+  // finished attachment it could only inspect.
+  const mentionPaths = hasModHandlersFor('prompt.mention')
+    ? await Promise.all(
+        files.map(file =>
+          dispatchModEngine<{ allow: boolean }>(
+            'prompt.mention',
+            { path: file },
+            () => ({ allow: true }),
+          ).then(d => (d.allow ? file : null)),
+        ),
+      )
+    : files
+  const allowed = mentionPaths.filter((f): f is string => f !== null)
+  if (allowed.length === 0) return []
+
   const appState = toolUseContext.getAppState()
   const results = await mapWithConcurrency(
-    files,
+    allowed,
     ATTACHMENT_FILE_IO_CONCURRENCY,
     async file => {
       try {

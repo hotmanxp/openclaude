@@ -48,6 +48,7 @@ import {
   type ModAgent,
   type ModModel,
   type ModConfig,
+  type ModPrompt,
 } from './nouns.js'
 import {
   INVALIDATABLE_EVENTS,
@@ -567,6 +568,8 @@ export type ModContext = {
   model: ModModel
   /** Settings read/write. Upstream `$.config`. */
   config: ModConfig
+  /** The prompt box as it stands. Upstream `$.prompt`. */
+  prompt: ModPrompt
   /**
    * The mod's saved `userConfig` values — declared in `opencc-mod.json`,
    * edited via `/plugins` → Installed → Configure options.
@@ -916,6 +919,7 @@ export function createModContext(mod: LoadedMod): ModContext {
     agent: nouns.agent,
     model: nouns.model,
     config: nouns.config,
+    prompt: nouns.prompt,
     on(event, matcherOrHandler, maybeHandler?) {
       if (typeof event !== 'string' || !isModEventName(event)) {
         throw new Error(
