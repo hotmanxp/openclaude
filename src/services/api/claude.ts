@@ -23,6 +23,7 @@ import {
   hasModHandlersFor,
   hasModStreamHandlers,
 } from '../../mods/dispatch.js'
+import { resolveToolDescriptions } from '../../mods/toolDescribe.js'
 import { openTurnStepSink, type TurnStepSink } from '../../mods/turnStepStream.js'
 import type { TurnStepChunk } from '../../mods/turnStep.js'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
@@ -1204,7 +1205,18 @@ async function* queryModel(
   }
 
   // Upstream `tool.describe` — a mod may rewrite what a tool says it is and
-  // whether the model reaches it directly or through tool search.
+  // whether the model reaches it directly or through tool search. The chain
+  // body is `resolveToolDescriptions` (src/mods/toolDescribe.ts); it has to run
+  // HERE rather than inside `toolToAPISchema`, because `isDeferred` decides
+  // which tools are filtered and serialized below, and a hook that defers a
+  // tool after that decision has already been made defers nothing.
+  //
+  // The half it used to lose is the description: it was offered
+  // `t.description ?? ''` — undefined for the built-in tools, so a hook was
+  // handed an empty string to rewrite — and the answer had nowhere to go, since
+  // the text the model reads is what `tool.prompt()` renders. Both are fixed in
+  // the extracted body, which renders the real text once per session and hands
+  // the resolved one back to hand to `toolToAPISchema`.
   //
   // Runs for every request, not only under `useToolSearch`: that flag decides
   // whether deferred tools exist here, not whether the tools are being
@@ -1213,31 +1225,22 @@ async function* queryModel(
   //
   // Skipped outright with no subscribers — this sits on the request path, and
   // upstream gates the same way (`Jl("<event>")`).
-  if (hasModHandlersFor('tool.describe')) {
-    const described: Array<{ tool: string; isDeferred: boolean }> = []
-    for (const t of tools) {
-      const answer = await dispatchModEngine<{
-        tool: string
-        isDeferred: boolean
-      }>(
-        'tool.describe',
-        {
-          tool: t.name,
-          description: t.description ?? '',
-          provider: t.source ?? 'built-in',
-          isDeferred: deferredToolNames.has(t.name),
+  const describedDescriptions = hasModHandlersFor('tool.describe')
+    ? await resolveToolDescriptions({
+        tools,
+        promptOptions: {
+          getToolPermissionContext: options.getToolPermissionContext,
+          agents: options.agents,
+          allowedAgentTypes: options.allowedAgentTypes,
         },
-        e => ({
-          tool: String(e.tool ?? t.name),
-          isDeferred: e.isDeferred === true,
-        }),
-      )
-      described.push(answer)
-    }
+        isDeferredByHost: name => deferredToolNames.has(name),
+      })
+    : null
+  if (describedDescriptions) {
     // A hook that deferred a tool has to actually defer it, or the next block
     // re-derives the set from isDeferredTool and discards the hook's answer.
-    for (const { tool, isDeferred } of described) {
-      if (isDeferred) deferredToolNames.add(tool)
+    for (const tool of describedDescriptions.deferred) {
+      deferredToolNames.add(tool)
     }
   }
 
@@ -1347,6 +1350,7 @@ async function* queryModel(
         agents: options.agents,
         allowedAgentTypes: options.allowedAgentTypes,
         model: options.model,
+        description: describedDescriptions?.descriptions.get(tool.name),
         deferLoading: willDefer(tool),
       }),
     ),

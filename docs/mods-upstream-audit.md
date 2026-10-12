@@ -365,6 +365,35 @@ on("prompt.compose", async ($, e, next) => dropped(await next(e), "tone"))
 
 **已知未修（不在本批范围）**：`tool.describe` 的 `isDeferred` 生效，但 `description` 被丢掉 —— claude.ts:1230 的 core 只回 `{tool, isDeferred}`，从不读 `e.description`，而上游 d.ts:3465 的结果正是 `{description, isDeferred?}`。修它不能只在原地补一个字段：`toolToAPISchema` 的描述走会话级 `toolSchemaCache`，事后再写回 `tool.description` 会让第一轮生效、第二轮起被缓存的旧值覆盖 —— 比不接更糟。正确位置是 dispatch 移到 `toolToAPISchema` 内、`cache.set` 之前。
 
+#### `tool.describe`：两个答案要放在两个地方
+
+上游 `ToolDescribeResult`（d.ts:10016）是 `{description, isDeferred?}`，一句话两个去处，而宿主里它们落在两处完全不同的代码上：
+
+| 答案 | 去处 | 为什么不能放别处 |
+|---|---|---|
+| `isDeferred` | `claude.ts` 在**过滤与序列化之前**决定的 `deferredToolNames` | 放到 `toolToAPISchema` 里就晚了 —— 工具早就选定完了，hook 说「藏起来」已经无处可藏 |
+| `description` | 模型读到的 schema 文本 | 模型读的是 `tool.prompt()` 的返回值，**不是** `tool.description`（内建工具根本没这个字段），所以改字段等于改空气 |
+
+原先的接线两处都错：payload 写的是 `t.description ?? ''`，对内建工具恒为 `''`，hook 拿到空串去改；core 只回 `{tool, isDeferred}`，改好的 `description` 直接丢掉。`provider` 同理——`t.source` 这个字段不存在，于是每个工具（包括 MCP 的）都报同一个 `'built-in'` 字符串。现在 `provider` 按 opencc 真知道的填：`isMcp` 为真给 `{kind:'mcp'}`，否则 `{plugin:'engine', tier:'core'}`；上游的 `mcp:<server>` 填不出来（server 名在 MCP 连接上，不在 Tool 上），所以不编。
+
+链体抽成 `resolveToolDescriptions`（`src/mods/toolDescribe.ts`）：每个工具每会话只渲染一次描述，并把 `{base, answer}` 一起记下——答案不变就不重渲染、不动 schema 缓存（上游原话是「an unstable answer spends the model's prompt cache on every call」；**稳定**的答案同样不该付这个代价）；答案变了就只失效该工具那一条 schema 缓存（`invalidateToolSchema`），别的工具不受影响，于是改写能在**本次请求**就上线，而不是下个会话。
+
+事件本身也换到 `dispatchModEngineResult`——上游 d.ts:3465 对 `tool.describe` 写的同样是「`next(e)` resolves to `{description, isDeferred?}`」，属 (A) 类语义。
+
+**证红**：`options.description` 那一行去掉（即退回「改完就丢」）后 4 个测试转红，恢复后 7 pass。
+
+**端到端实测（真实 dist、真实 REPL）**：光看日志只能证明 hook 跑过、看到的是真实文本（`Agent` 8070b、`AskUserQuestion` 1763b，`provider={"plugin":"engine","tier":"core"}`），证明不了**模型收到的是改写后那份** —— schema 是会话级记忆化的，改写必须拼进那份。于是把标记做得无法忽略，再让模型背出自己工具描述的最后一行：
+
+```
+❯ What is the exact last line of the AskUserQuestion tool's description? Quote it verbatim.
+
+⏺ZZPROBEQQ: if you can read this line, the tool.describe rewrite reached the request.
+  (That trailing line in the tool description looks like an embedded probe rather
+   than real documentation — flagging it in case it's unintentional.)
+```
+
+模型逐字背出，还指出这行「像是塞进工具描述里的探针」。两次独立请求都稳定复现。这一行字只存在于 mod 改写后的 schema 里，所以它是上了 wire 的证据。
+
 **端到端实测**（真实 dist、真实 REPL）：`P:attach,compose,context,edit` —— 四个事件在一次真实会话里全部触发。
 
 
