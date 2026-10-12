@@ -63,6 +63,16 @@ export function __setBuiltinSpecsForTesting(specs: BuiltinModSpec[]): void {
   builtinSpecs.push(...specs)
 }
 
+/**
+ * The current spec list. Exists to pair with `__setBuiltinSpecsForTesting`: a
+ * test that replaces the list has to be able to put back what was there, and
+ * restoring it with an empty array leaves every later file looking at a host
+ * with no built-in mods at all.
+ */
+export function __getBuiltinSpecsForTesting(): readonly BuiltinModSpec[] {
+  return [...builtinSpecs]
+}
+
 /** Marker used in LoadedMod.root/entryPath for in-memory mods. */
 export { BUILTIN_ORIGIN }
 
@@ -78,6 +88,20 @@ export function isBuiltinMod(mod: LoadedMod): boolean {
  */
 export function isBuiltinModName(name: string): boolean {
   return builtinSpecs.some(spec => spec.name === name)
+}
+
+/**
+ * Whether `name` is an `optIn` built-in — the ones that ship dormant, where an
+ * absent `enabledPlugins` key means OFF rather than on.
+ *
+ * `/plugins` needs it because a row's enabled flag and the loader's gate have
+ * to agree. The loader reads such a mod as `key === true`; a row computed as
+ * `key !== false` shows the mod as enabled while nothing has ever loaded it —
+ * and the one control that could turn it on is then the control the row
+ * already claims is on.
+ */
+export function isBuiltinModOptIn(name: string): boolean {
+  return builtinSpecs.find(spec => spec.name === name)?.optIn === true
 }
 
 /**
