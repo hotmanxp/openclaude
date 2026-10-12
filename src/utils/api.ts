@@ -6,6 +6,10 @@ import type {
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from 'src/constants/prompts.js'
 import { getSystemContext, getUserContext } from 'src/context.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
 import { isAnalyticsDisabled } from 'src/services/analytics/config.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -504,10 +508,30 @@ export function appendSystemContext(
   ].filter(Boolean)
 }
 
-export function prependUserContext(
+/**
+ * The memory tiers opencc knows, as upstream's `InstructionFileKind`
+ * vocabulary. opencc splits what upstream calls `memory` into two (`AutoMem`
+ * and `TeamMem`), and BOTH collapse to `memory` here on purpose: a hook asking
+ * "is this a memory file?" wants the category, not which store it came from.
+ * Splitting them would hand every mod a filter that silently misses half the
+ * memories it meant to match.
+ */
+function toInstructionFileKind(type: string): string {
+  switch (type) {
+    case 'Managed':
+    case 'User':
+    case 'Project':
+    case 'Local':
+      return type.toLowerCase()
+    default:
+      return 'memory'
+  }
+}
+
+export async function prependUserContext(
   messages: Message[],
   context: { [k: string]: string },
-): Message[] {
+): Promise<Message[]> {
   if (process.env.NODE_ENV === 'test') {
     return messages
   }
@@ -516,13 +540,50 @@ export function prependUserContext(
     return messages
   }
 
+  // Upstream `prompt.context` (d.ts:6802) — the blocks the engine prepends to a
+  // conversation's first user message, plus the files behind `claudeMd`. The
+  // `<system-reminder>` wrapper goes AROUND whatever the chain answers, never
+  // inside it, so a hook rewrites content without rewriting the framing.
+  //
+  // The files are read here rather than passed in because opencc already has
+  // them structured (`getMemoryFiles()`), which earlier notes on this event
+  // wrongly assumed it did not.
+  const core = {
+    blocks: Object.entries(context).map(([name, text]) => ({ name, text })),
+    instructionFiles: await import('./claudemd.js')
+      .then(m => m.getMemoryFiles())
+      .catch(() => [] as Awaited<ReturnType<typeof import('./claudemd.js')['getMemoryFiles']>>)
+      .then(files =>
+        files.map(f => ({
+          path: f.path,
+          kind: toInstructionFileKind(f.type),
+          content: f.content,
+          ...(f.parent ? { parent: f.parent } : {}),
+        })),
+      ),
+  }
+
+  const decided = hasModHandlersFor('prompt.context')
+    ? await dispatchModEngine('prompt.context', core, e => ({
+        blocks: Array.isArray(e.blocks)
+          ? (e.blocks as Array<{ name: string; text: string }>)
+          : core.blocks,
+        // Left out, the files from below stand — upstream's "the files now
+        // behind claudeMd; left out, the ones from below stand".
+        ...(Array.isArray(e.instructionFiles)
+          ? {
+              instructionFiles:
+                e.instructionFiles as typeof core.instructionFiles,
+            }
+          : { instructionFiles: core.instructionFiles }),
+      }))
+    : core
+
   return [
     // @ts-ignore
     createUserMessage({
-      content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${Object.entries(
-        context,
-      )
-        .map(([key, value]) => `# ${key}\n${value}`)
+      content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${decided.blocks
+        .map(b => `# ${b.name}\n${b.text}`)
         .join('\n')}
 
       IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n`,

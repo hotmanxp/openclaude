@@ -42,17 +42,22 @@ export function DANGEROUS_uncachedSystemPromptSection(
 }
 
 /**
- * Resolve all system prompt sections, returning prompt strings.
+ * Resolve all system prompt sections, returning each one's name and text.
+ *
+ * The name travels with the text because upstream `prompt.compose` identifies
+ * a section BY its id (d.ts:6737) — a hook replaces, moves or drops by name.
+ * Returning positional strings threw that away and would have left every
+ * dynamic section addressable only by its index.
  */
 export async function resolveSystemPromptSections(
   sections: SystemPromptSection[],
-): Promise<(string | null)[]> {
+): Promise<Array<{ name: string; text: string }>> {
   const cache = getSystemPromptSectionCache()
 
-  return Promise.all(
+  const resolved = await Promise.all(
     sections.map(async s => {
       if (!s.cacheBreak && cache.has(s.name)) {
-        return cache.get(s.name) ?? null
+        return { name: s.name, text: cache.get(s.name) ?? null }
       }
       const computed = await s.compute()
       // Upstream `prompt.section` — a mod rewrites what a named section says,
@@ -71,8 +76,13 @@ export async function resolveSystemPromptSections(
           )
         : computed
       setSystemPromptSectionCacheEntry(s.name, value)
-      return value
+      return { name: s.name, text: value }
     }),
+  )
+  // A section a hook dropped is absent, not a hole — upstream's "a section left
+  // out is not sent".
+  return resolved.filter(
+    (s): s is { name: string; text: string } => s.text !== null,
   )
 }
 

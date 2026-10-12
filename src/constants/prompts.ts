@@ -53,6 +53,10 @@ import {
   DANGEROUS_uncachedSystemPromptSection,
   resolveSystemPromptSections,
 } from './systemPromptSections.js'
+import {
+  dispatchModEngine,
+  hasModHandlersFor,
+} from '../mods/dispatch.js'
 import { SLEEP_TOOL_NAME } from '../tools/SleepTool/prompt.js'
 import { TICK_TAG } from './xml.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -701,14 +705,89 @@ Before running a command that changes system state (such as restarts, deletes, o
         getTextOutputSection(),
       ]
 
+  // Upstream `prompt.compose` (d.ts:6665) — the hook that sees the system
+  // prompt as a LIST OF SECTIONS and may add, drop, reorder or rewrite them.
+  //
+  // The `scope` split is opencc's own cache boundary read the other way: text
+  // ahead of `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` is the shared half, text behind
+  // it the session half. The hook never sees the boundary itself — upstream
+  // has the engine "join each side, place the cache boundary between them and
+  // place every cache marker itself", so letting a hook move the boundary
+  // would move the prompt cache along with it.
+  const staticIds = [
+    'harness',
+    'intro',
+    'system',
+    'doing-tasks',
+    'actions',
+    'tools',
+    'tone',
+    'text-output',
+  ]
+  const shared = staticSections
+    .map((text, i) => ({ id: staticIds[i] ?? `static-${i}`, text }))
+    .filter((s): s is { id: string; text: string } => s.text !== null)
+  const dynamic = resolvedDynamicSections
+  const boundary = () =>
+    shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []
+
+  if (!hasModHandlersFor('prompt.compose')) {
+    return [
+      ...shared.map(s => s.text),
+      ...boundary(),
+      ...dynamic.map(s => s.text),
+    ]
+  }
+
+  const composed = await dispatchModEngine<{
+    sections: Array<{
+      id: string
+      text: string
+      scope: 'shared' | 'session'
+    }>
+  }>(
+    'prompt.compose',
+    {
+      model,
+      promptModel: model,
+      surfaces: ['terminal'],
+      tools: [...enabledTools],
+      outputStyle: outputStyleConfig
+        ? {
+            name: outputStyleConfig.name,
+            isKeepingCodingInstructions:
+              outputStyleConfig.keepCodingInstructions === true,
+          }
+        : null,
+      // opencc has no traits to declare: there is no `--bare` prompt and no
+      // sdk-preset here, and the sections above are the full composition.
+      traits: [],
+    },
+    e => ({
+      sections: [
+        // `name` is opencc's field; upstream's is `id` (d.ts:6737). Renamed on
+        // the way out so a hook addresses sections the way the docs name them.
+        ...shared.map(s => ({ id: s.id, text: s.text, scope: 'shared' as const })),
+        ...dynamic.map(s => ({ id: s.name, text: s.text, scope: 'session' as const })),
+      ],
+    }),
+  )
+
+  // The engine places the boundary; the hook only chooses which sections are
+  // on each side of it. A section whose text is not a string is dropped rather
+  // than joined as `[object Object]`.
+  const before = composed.sections
+    .filter(
+      s => typeof s?.text === 'string' && s.scope === 'shared',
+    ) as Array<{ id: string; text: string }>
+  const after = composed.sections.filter(
+    s => typeof s?.text === 'string' && s.scope === 'session',
+  ) as Array<{ id: string; text: string }>
   return [
-    // --- Static content (cacheable) ---
-    ...staticSections,
-    // === BOUNDARY MARKER - DO NOT MOVE OR REMOVE ===
-    ...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
-    // --- Dynamic content (registry-managed) ---
-    ...resolvedDynamicSections,
-  ].filter(s => s !== null)
+    ...before.map(s => s.text),
+    ...boundary(),
+    ...after.map(s => s.text),
+  ]
 }
 
 function getMcpInstructions(mcpClients: MCPServerConnection[]): string | null {

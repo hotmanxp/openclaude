@@ -232,10 +232,10 @@ ui.ask / copy / invalidate / log / notice
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 源码层有触发点 | 79 | 存在 `dispatchModOp/Engine/Stream` 调用点。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
+| 源码层有触发点 | 83 | 82 个有 `dispatchModOp/Engine/Stream/Sync` 字面调用点；`ui.render` 走独立的 `transformModRenderText` 渲染链（`renderTap.ts:68`）。**这是源码计数，不等于事件会触发** —— 见 6.3.1 |
 | 桥接 | 4 | `tool.call`→`PostToolUse`、`session.start`/`session.end`、`turn.complete`→`Stop` |
 | 按名拒绝 | 6 | `audio.play`/`audio.speak`/`ui.blit`/`ui.fault`/`ui.message`/`prompt.autocomplete` —— 无对应能力，**按名报错**而不是给一个永不触发的 `on()` |
-| 无触发点 | 20 | 见下 |
+| 无触发点 | 16 | 见下 |
 
 #### 6.3.1 运行时实测（`/mod-probe`，真实 dist）
 
@@ -278,15 +278,31 @@ Event slots: 9 fired, 95 subscribed-but-never-fired, 5 refused — of 109.
 
 未接线按前缀：
 
-- `prompt.*` 3 —— `prompt.context` / `prompt.compose` / `prompt.attachment`，见下
 - `session.*` 6 —— `usage` 要接 `/context` + `/cost` 的读数
 - `agent.offer` / `agent.register` / `engine.create` / `plugin.register`
 - `mcp.call` / `mcp.connect` —— `mcp.call` 必须过权限路径，否则 mod 可无提示调用任意 MCP 工具
 - `ui.input` / `ui.press` / `ui.select` —— 需要输入管道重构
 
-> **更正**：本节此前记「`prompt.*` 9 个未接，需要先做 `instructionFiles` 结构化重构」。**后半句是错的** —— `getMemoryFiles(): Promise<MemoryFileInfo[]>`（`src/utils/claudemd.ts`）**已经是结构化的**，且与上游 `InstructionFile` 几乎同构：`path` / `type`(↔`kind`) / `content` / `parent?` 四个字段一一对应。不需要重构，需要的是决定枚举映射（见下）。
+`prompt.*` 十个事件**已全部落地**（5 个按名拒绝 / 5 个已接），下面记录三个最后接上的、以及一个必须写下来的映射决定。
 
-#### `prompt.*` 的五个已接事件，以及两个必须按名拒绝的判断
+> **更正**：本节此前记「`prompt.*` 9 个未接，需要先做 `instructionFiles` 结构化重构」。**后半句是错的** —— `getMemoryFiles(): Promise<MemoryFileInfo[]>`（`src/utils/claudemd.ts`）**已经是结构化的**，且与上游 `InstructionFile` 几乎同构：`path` / `type`(↔`kind`) / `content` / `parent?` 四个字段一一对应。不需要重构。
+
+#### 枚举映射：`AutoMem` 与 `TeamMem` 都算 `memory`
+
+上游 `INSTRUCTION_FILE_KINDS = ["managed","user","project","local","memory"]`，opencc 的 `MEMORY_TYPE_VALUES = ["User","Project","Local","Managed","AutoMem","TeamMem"]`。前四个直接对上；**上游的一档 `memory`，在 opencc 是两档**。
+
+决定：**两者都映射成 `memory`**。理由是 mod 问的是「这是不是记忆文件」，不关心它来自哪个存储；拆成两档等于给每个 mod 一个会静默漏掉一半记忆的过滤器 —— 那种失败不报错，只是 mod 以为自己覆盖了全部。
+
+#### `prompt.context` / `prompt.compose` / `prompt.attachment`
+
+- **`prompt.context`** —— 插槽点是 `prependUserContext`（`src/utils/api.ts`）。opencc 的 `context` 本来就是 `{key: text}` 渲染成 `# key\nvalue`，与上游 `PromptContextBlock {name, text}` 同构，所以 blocks 是现成的；`instructionFiles` 走上面那条 `getMemoryFiles()`。`<system-reminder>` 外壳包在链的答案**外面**，与上游一致。函数因此变成 async，两个调用点（query.ts、generateAgent.ts）改为 await。
+- **`prompt.compose`** —— 插槽点是 `getSystemPrompt` 的最终 return。`scope: shared|session` 正是 opencc 自己缓存分界线（`SYSTEM_PROMPT_DYNAMIC_BOUNDARY`）的反面读法：分界线之前是 shared，之后是 session。**分界线本身不进链** —— 上游明写引擎自己放置边界与所有 cache marker，让 hook 挪边界等于让它挪 prompt cache。为此 `resolveSystemPromptSections` 改为返回 `{name, text}` 而非位置化字符串，否则每个 section 只能靠下标寻址，hook 按 id 替换/移动/删除都无从谈起。
+- **`prompt.attachment`** —— 插槽点是 `normalizeAttachmentForAPI`。调用方在它**之后**才包 `<system-reminder>`，所以「外壳在链外」是结构保证而非靠自觉。同步 dispatch（与 `prompt.edit` 同理：`normalizeMessagesForAPI` 是整条 transcript 上的同步 pass）。
+
+**端到端实测**（真实 dist、真实 REPL）：`P:attach,compose,context,edit` —— 四个事件在一次真实会话里全部触发。
+
+
+#### `prompt.*` 里最需要判断的两处（read / fill / suggest / edit / mention 已接）
 
 **`prompt.autocomplete` —— 按名拒绝。** 上游入参是 `{text, cursor, token, start}`，即光标处补全 token。opencc 最接近的是 PromptSuggestion：它从**空输入框**预测「下一句要问什么」，不接受 text/cursor/token，显示条件是 `inputValue.length > 0 ? null : suggestionText`，即输入中有任何字符就不出现。接上去、从上游移植的 token 补全器会拿到完全不同的行为 —— 那是空壳。
 
