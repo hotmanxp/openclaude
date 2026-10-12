@@ -2,9 +2,21 @@
 
 > 本文件是**对齐工作的权威基准**。所有结论按证据强度标注来源，冲突时以本文件为准。
 > 取证源：
-> - **GitHub** `anthropics/claude-code` → `mods/`（`types/claude-code.d.ts` 13186 行 + 4 个开源 mod 源码）
+> - **引擎现写的类型声明（首选基准）** `~/source/claude-2.1.296/types/claude-code-2.1.296.d.ts`
+>   —— **21260 行**，首行 `// Written by Claude Code 2.1.296.`。每个事件的 input/result、每个 noun
+>   与 `$` 方法（含文档注释与示例）、每个 element 的 props 全在里面。
+>   **由引擎在 `plugin-authoring` 技能加载时写出，没有可手动运行的生成命令**；路径是该技能自身
+>   目录下的 `types/claude-code.d.ts`。本文档头部标称的 `/plugin-types` 在 2.1.296 未随会话安装，
+>   实测由加载 `/plugin-authoring` 触发。
+> - **GitHub** `anthropics/claude-code` → `mods/types/claude-code.d.ts`，**13186 行，首行
+>   `// Written by Claude Code 2.1.277.` —— 落后于二进制，不要当基准**。实测差异：
+>   `prompt.autocomplete` 在 2.1.296 的类型里有、在这份里**零命中**。同目录另有 4 个开源 mod 源码可用。
 > - **二进制** `~/source/claude-2.1.296/bundle.js`（43 MB，109 个点分事件名、事件协议守卫、`prompt.context` 合并算法）
 > - 三个版本的注册表逐字比对（2.1.287 / 2.1.292 / 2.1.296 插件集合一致）
+>
+> **踩过的坑**：npm 的 `@anthropic-ai/claude-code` 只带 `sdk-tools.d.ts`（4209 行，SDK 工具类型），
+> 不含 mod 协议；第三方转录本（如 `autotel-claude-code` 的 9880 行）系统性漏事件。凡「某个事件查不到
+> 契约」，先怀疑来源版本不对，再怀疑事件不存在。
 >
 > **本文件描述的是上游，不是 opencc 的现状。** 两者的差集见
 > [`mods-upstream-gaps.md`](./mods-upstream-gaps.md) —— 读本文前先读那份，

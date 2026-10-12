@@ -1,22 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { addToTotalSessionCost } from './cost-tracker.js'
+import { addToTotalSessionCost, resetCostState } from './cost-tracker.js'
 import { createModContext } from './mods/engine.js'
 import {
   registerLoadedMod,
   resetModsRegistryForTesting,
   type LoadedMod,
 } from './mods/registry.js'
-import { resetStateForTests } from './bootstrap/state.js'
+import { setInitialMainLoopModel } from './bootstrap/state.js'
+import type { ModMatcher } from './mods/protocol.js'
 
 /**
- * `session.measure` — the refresh signal a status line hangs off.
+ * `session.measure` — the figures `$.session.usage()` pushes to a hook.
  *
- * The point of every case is that the FIGURES a hook reads are the ones
- * `$.session.usage()` would answer with afterwards. A hook that refreshes on
- * this event and then reads a stale number is the failure the event exists to
- * prevent, and it is invisible unless the payload is checked against the
- * ledger rather than merely checked for being present.
+ * Asserted against the engine-written `SessionMeasureInput` (2.1.296):
+ * `{context, rateLimits, cost, changed}`, where `changed` names the units that
+ * moved. `changed` is the field that decides whether this event is worth
+ * dispatching at all, so every case below checks it rather than merely
+ * checking that a handler ran.
  */
 
 function freshMod(name: string): LoadedMod {
@@ -39,76 +40,119 @@ function usage(input: number, output: number, cacheRead = 0) {
   } as unknown as Parameters<typeof addToTotalSessionCost>[1]
 }
 
-function modMeasuring(onFire: (e: Record<string, unknown>) => void): LoadedMod {
+function modMeasuring(
+  onFire: (e: Record<string, unknown>) => void,
+  matcher?: Record<string, unknown>,
+): LoadedMod {
   const mod = freshMod('measure-mod')
-  createModContext(mod).on('session.measure', (e, next) => {
-    onFire(e as Record<string, unknown>)
+  const handler = (
+    e: Record<string, unknown>,
+    next: (x?: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  ) => {
+    onFire(e)
     return next(e)
-  })
+  }
+  if (matcher === undefined) createModContext(mod).on('session.measure', handler)
+  else
+    createModContext(mod).on('session.measure', matcher as ModMatcher, handler)
   registerLoadedMod(mod)
   return mod
 }
 
 beforeEach(() => {
   resetModsRegistryForTesting()
-  resetStateForTests()
+  resetCostState()
+  setInitialMainLoopModel('claude-sonnet-4-5')
 })
 
 afterEach(() => {
   resetModsRegistryForTesting()
-  resetStateForTests()
+  resetCostState()
 })
 
 describe('session.measure', () => {
-  test('fires once per priced response', () => {
-    let fired = 0
-    modMeasuring(() => fired++)
-
-    addToTotalSessionCost(0.01, usage(10, 5), 'test-model')
-    expect(fired).toBe(1)
-
-    addToTotalSessionCost(0.02, usage(20, 7), 'test-model')
-    expect(fired).toBe(2)
-  })
-
-  test('does not fire when no mod is listening', () => {
-    // Nothing to assert beyond the absence of a crash on the hottest path the
-    // session has: if the gate were missing, this would still pass, so the
-    // value is that a mod-free session pays nothing for the dispatch.
-    expect(() =>
-      addToTotalSessionCost(0.01, usage(1, 1), 'test-model'),
-    ).not.toThrow()
-  })
-
-  test('the payload carries the totals the session now holds', () => {
+  test('the payload is the upstream shape, not a bespoke one', () => {
     let seen: Record<string, unknown> | undefined
     modMeasuring(e => {
       seen = e
     })
 
-    addToTotalSessionCost(0.03, usage(100, 40, 900), 'test-model')
+    addToTotalSessionCost(0.03, usage(1234, 56), 'claude-sonnet-4-5')
 
-    expect(seen).toMatchObject({
-      model: 'test-model',
-      cost: 0.03,
-      inputTokens: 100,
-      outputTokens: 40,
-      cacheReadInputTokens: 900,
-      cacheCreationInputTokens: 0,
-    })
+    // Exactly the four keys `SessionMeasureInput` declares. A hook written
+    // against upstream reads `e.rateLimits` and `e.changed`; a payload with
+    // `inputTokens` on it instead gives both as undefined and the mod looks
+    // broken rather than mis-versioned.
+    expect(Object.keys(seen!).sort()).toEqual([
+      'changed',
+      'context',
+      'cost',
+      'rateLimits',
+    ])
+    expect(seen!.context).toMatchObject({ window: expect.any(Number) })
+    expect(seen!.cost).toMatchObject({ usd: expect.any(Number) })
+    expect(seen!.rateLimits).toEqual([])
   })
 
-  test('the totals accumulate across responses, as the ledger does', () => {
-    const readings: number[] = []
-    modMeasuring(e => readings.push(e.inputTokens as number))
+  test('changed names the units that moved, and is never empty when it fires', () => {
+    const changings: unknown[] = []
+    modMeasuring(e => changings.push(e.changed))
 
-    addToTotalSessionCost(0.01, usage(100, 0), 'test-model')
-    addToTotalSessionCost(0.01, usage(250, 0), 'test-model')
+    addToTotalSessionCost(0.01, usage(100, 0), 'claude-sonnet-4-5')
+    addToTotalSessionCost(0.01, usage(250, 0), 'claude-sonnet-4-5')
 
-    // The second reading is the running total, not this response's delta —
-    // that is what a status line needs, and what a per-response count would
-    // silently get wrong.
-    expect(readings).toEqual([100, 350])
+    expect(changings.length).toBeGreaterThan(0)
+    for (const changed of changings) {
+      expect(changed).toEqual(expect.arrayContaining(["context", "cost"]))
+    }
+  })
+
+  test('the context fill in the payload is the running total', () => {
+    const fills: unknown[] = []
+    modMeasuring(e => fills.push((e.context as { tokens?: number }).tokens))
+
+    addToTotalSessionCost(0.01, usage(100, 0), 'claude-sonnet-4-5')
+    addToTotalSessionCost(0.01, usage(250, 0), 'claude-sonnet-4-5')
+
+    // The second reading carries the running figure, not this response's
+    // delta: upstream's payload is `$.session.usage()` pushed whole.
+    expect(fills[0]).toBe(100)
+    expect(fills[fills.length - 1]).toBe(350)
+  })
+
+  test('a response that moves nothing raises nothing', () => {
+    let fired = 0
+    modMeasuring(() => fired++)
+
+    addToTotalSessionCost(0.01, usage(100, 0), 'claude-sonnet-4-5')
+    const afterFirst = fired
+
+    // Zero-priced, zero-token: no unit moved, so upstream's "fires when a unit
+    // moved" says no dispatch. This is also where "a burst folding into one
+    // more" comes from.
+    addToTotalSessionCost(0, usage(0, 0), 'claude-sonnet-4-5')
+    expect(fired).toBe(afterFirst)
+  })
+
+  test('clearing the ledger makes the next measurement raise again', () => {
+    let fired = 0
+    modMeasuring(() => fired++)
+
+    addToTotalSessionCost(0.01, usage(100, 0), 'claude-sonnet-4-5')
+    const afterFirst = fired
+
+    // `/clear` zeroes the ledger. Without dropping the snapshot the fresh
+    // session's first response would diff as "nothing moved" — the one update
+    // the event exists for, swallowed by a stale comparison.
+    resetCostState()
+    addToTotalSessionCost(0.01, usage(100, 0), 'claude-sonnet-4-5')
+    expect(fired).toBe(afterFirst + 1)
+  })
+
+  test('no subscriber means no dispatch on the hottest session path', () => {
+    expect(() =>
+      addToTotalSessionCost(0.01, usage(1, 1), 'claude-sonnet-4-5'),
+    ).not.toThrow()
   })
 
   test('a handler returning a promise is counted as a failure, not passed', () => {
@@ -118,27 +162,32 @@ describe('session.measure', () => {
     )
     registerLoadedMod(mod)
 
-    // The cost ledger has no await on this path. A hook that breaks the
-    // synchronous contract loses its output, and it has to be VISIBLE that way
-    // rather than counted as a success with every refresh silently skipped.
+    // The ledger has no await on this path, so a hook that breaks the
+    // synchronous contract loses its output and must be VISIBLE that way —
+    // counted as a pass it would refresh silently never.
     expect(() =>
-      addToTotalSessionCost(0.01, usage(1, 1), 'test-model'),
+      addToTotalSessionCost(0.01, usage(1, 1), 'claude-sonnet-4-5'),
     ).not.toThrow()
   })
 
-  test('a matcher on the model narrows which responses a hook sees', () => {
+  test('a matcher that does not hold for this payload skips the handler', () => {
     let fired = 0
-    const mod = freshMod('measure-mod')
-    createModContext(mod).on('session.measure', { model: 'other-model' }, e => {
-      fired++
-      return e
+    modMeasuring(() => fired++, {
+      rateLimits: [{ kind: 'five_hour', percentUsed: 99 }],
     })
-    registerLoadedMod(mod)
-
-    addToTotalSessionCost(0.01, usage(1, 1), 'test-model')
+    addToTotalSessionCost(0.01, usage(10, 0), 'claude-sonnet-4-5')
+    // `rateLimits` IS a key of the payload — opencc answers `[]`, which is
+    // upstream's own "empty off a subscription". A handler watching for a
+    // window that is not there must not run, and must not be counted as one
+    // that did.
     expect(fired).toBe(0)
 
-    addToTotalSessionCost(0.01, usage(1, 1), 'other-model')
-    expect(fired).toBe(1)
+    // And a matcher that does hold still runs on the same site, so the skip
+    // above is the matcher working rather than the event being dead.
+    let held = 0
+    resetModsRegistryForTesting()
+    modMeasuring(() => held++, { changed: ['context'] })
+    addToTotalSessionCost(0.01, usage(10, 0), 'claude-sonnet-4-5')
+    expect(held).toBe(1)
   })
 })
