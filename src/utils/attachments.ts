@@ -2071,7 +2071,11 @@ async function processAtMentionedFilesWithDependencies(
           dispatchModEngine<{ allow: boolean }>(
             'prompt.mention',
             { path: file },
-            () => ({ allow: true }),
+            // The core reads the event, not the fact that it ran: with a core
+            // that answered `{allow: true}` unconditionally the chain still
+            // fired and every path still came out allowed, so the gate ahead of
+            // the read was a no-op that looked like it worked.
+            e => ({ allow: e.allow !== false }),
           ).then(d => (d.allow ? file : null)),
         ),
       )

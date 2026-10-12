@@ -55,6 +55,7 @@ import {
 } from './systemPromptSections.js'
 import {
   dispatchModEngine,
+  dispatchModEngineResult,
   hasModHandlersFor,
 } from '../mods/dispatch.js'
 import { SLEEP_TOOL_NAME } from '../tools/SleepTool/prompt.js'
@@ -739,55 +740,93 @@ Before running a command that changes system state (such as restarts, deletes, o
     ]
   }
 
-  const composed = await dispatchModEngine<{
-    sections: Array<{
-      id: string
-      text: string
-      scope: 'shared' | 'session'
-    }>
-  }>(
-    'prompt.compose',
-    {
-      model,
-      promptModel: model,
-      surfaces: ['terminal'],
-      tools: [...enabledTools],
-      outputStyle: outputStyleConfig
-        ? {
-            name: outputStyleConfig.name,
-            isKeepingCodingInstructions:
-              outputStyleConfig.keepCodingInstructions === true,
-          }
-        : null,
-      // opencc has no traits to declare: there is no `--bare` prompt and no
-      // sdk-preset here, and the sections above are the full composition.
-      traits: [],
-    },
-    e => ({
-      sections: [
-        // `name` is opencc's field; upstream's is `id` (d.ts:6737). Renamed on
-        // the way out so a hook addresses sections the way the docs name them.
-        ...shared.map(s => ({ id: s.id, text: s.text, scope: 'shared' as const })),
-        ...dynamic.map(s => ({ id: s.name, text: s.text, scope: 'session' as const })),
-      ],
-    }),
+  return placeComposeBoundary(
+    await composePromptSections(
+      {
+        shared,
+        dynamic,
+        facts: {
+          model,
+          promptModel: model,
+          surfaces: ['terminal'],
+          tools: [...enabledTools],
+          outputStyle: outputStyleConfig
+            ? {
+                name: outputStyleConfig.name,
+                isKeepingCodingInstructions:
+                  outputStyleConfig.keepCodingInstructions === true,
+              }
+            : null,
+          // opencc has no traits to declare: there is no `--bare` prompt and
+          // no sdk-preset here, and the sections above are the whole
+          // composition.
+          traits: [],
+        },
+      },
+      boundary,
+    ),
+    boundary,
   )
+}
 
-  // The engine places the boundary; the hook only chooses which sections are
-  // on each side of it. A section whose text is not a string is dropped rather
-  // than joined as `[object Object]`.
-  const before = composed.sections
-    .filter(
-      s => typeof s?.text === 'string' && s.scope === 'shared',
-    ) as Array<{ id: string; text: string }>
-  const after = composed.sections.filter(
-    s => typeof s?.text === 'string' && s.scope === 'session',
-  ) as Array<{ id: string; text: string }>
-  return [
-    ...before.map(s => s.text),
-    ...boundary(),
-    ...after.map(s => s.text),
-  ]
+type ComposeSection = {
+  id: string
+  text: string
+  scope: 'shared' | 'session'
+}
+
+/**
+ * Upstream `prompt.compose`'s body, split out so it can be tested without
+ * composing a whole system prompt — `getSystemPrompt` is far too much machinery
+ * to stand up to prove that a dropped section stays dropped.
+ */
+export async function composePromptSections(
+  parts: {
+    shared: Array<{ id: string; text: string }>
+    dynamic: Array<{ name: string; text: string }>
+    facts: Record<string, unknown>
+  },
+  _boundary: () => string[],
+): Promise<ComposeSection[]> {
+  const core = (): { sections: ComposeSection[] } => ({
+    sections: [
+      // `name` is opencc's field; upstream's is `id` (d.ts:6737). Renamed on
+      // the way out so a hook addresses sections the way the docs name them.
+      ...parts.shared.map(s => ({ id: s.id, text: s.text, scope: 'shared' as const })),
+      ...parts.dynamic.map(s => ({ id: s.name, text: s.text, scope: 'session' as const })),
+    ],
+  })
+  if (!hasModHandlersFor('prompt.compose')) return core().sections
+  // Upstream d.ts:3435 — "`next(e)` resolves to `{ sections }` … The bottom is
+  // the engine's own composition". The answer is what the engine composed, so
+  // this is the `dispatchModEngineResult` path: a hook that awaits `next(e)` gets
+  // the sections to drop, replace, reorder or append to, and one that answers
+  // without `next` replaces the whole list (d.ts:3441).
+  const out = await dispatchModEngineResult<{ sections: ComposeSection[] }>(
+    'prompt.compose',
+    parts.facts,
+    core,
+  )
+  return Array.isArray(out?.sections) ? out.sections : core().sections
+}
+
+/**
+ * Join the composed sections, with the cache boundary between the two scopes.
+ *
+ * The boundary is placed HERE, by the engine, whatever the list says — upstream
+ * has the engine "join each side, place the cache boundary between them and
+ * place every cache marker itself". A hook choosing which sections sit on each
+ * side is the lever it gets; moving the marker is not.
+ */
+function placeComposeBoundary(
+  sections: ComposeSection[],
+  boundary: () => string[],
+): string[] {
+  // A section whose text is not a string is dropped rather than joined as
+  // `[object Object]`.
+  const before = sections.filter(s => typeof s?.text === 'string' && s.scope === 'shared')
+  const after = sections.filter(s => typeof s?.text === 'string' && s.scope === 'session')
+  return [...before.map(s => s.text), ...boundary(), ...after.map(s => s.text)]
 }
 
 function getMcpInstructions(mcpClients: MCPServerConnection[]): string | null {

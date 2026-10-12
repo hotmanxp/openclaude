@@ -2331,7 +2331,7 @@ export function normalizeAttachmentForAPI(
     .join('\n')
   if (text === '') return rendered
 
-  const decided = dispatchModEngineSync<{ text: string }>(
+  const decided = dispatchModEngineSync<{ text: string | null }>(
     'prompt.attachment',
     {
       type: attachment.type,
@@ -2341,8 +2341,14 @@ export function normalizeAttachmentForAPI(
       // can re-attribute one.
       origin: { kind: 'engine' },
     },
-    e => ({ text: typeof e.text === 'string' ? e.text : text }),
+    // `PromptAttachmentResult` (d.ts:6629) is `{text: string | null}` and null
+    // "leaves the attachment out of the request" — so the core answers null for
+    // anything that is not a string. Coercing a null back to the original text
+    // is what made `{text: null}` a silent no-op: the hook ran, answered, and
+    // the attachment went out anyway.
+    e => ({ text: typeof e.text === 'string' ? e.text : null }),
   )
+  if (decided.text === null) return []
   if (decided.text === text) return rendered
 
   // Rebuilt as one message: a hook that joins or splits has already had its

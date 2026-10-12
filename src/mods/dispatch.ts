@@ -653,6 +653,61 @@ export async function dispatchModEngine<T>(
 }
 
 /**
+ * The other engine-event shape: the one where `next(e)` resolves to what the
+ * CORE computed.
+ *
+ * `dispatchModEngine` cannot express it. There the terminal answers
+ * `{continue: true, ...event}` and the handler's return is what core runs on —
+ * which is right for an event whose answer core DERIVES from the event
+ * (`prompt.context`, whose documented spelling is `next({...e, blocks})`) and
+ * wrong for the events upstream documents as "`next(e)` resolves to `{ sections }`"
+ * (d.ts:3435 `prompt.compose`, d.ts:3450 `prompt.attachment`, d.ts:3470
+ * `tool.describe`). On those the answer is what the ENGINE composed: a handler
+ * cannot compute it for itself, so `next` has to answer with it. Handed
+ * `{continue: true, ...facts}` instead, the documented hook
+ * `dropped(await next(e), "tone")` throws on a missing `sections`, the chain
+ * skips it, and the rewrite is lost with no log.
+ *
+ * Both rules are upstream's:
+ *   - `await next(e)` → what the engine composed, for the hook to rewrite
+ *   - answering WITHOUT `next` → replaces it whole (d.ts:3425 `() => ({blocks: []})`)
+ *
+ * A handler that returns nothing at all, or that throws, leaves the core's
+ * answer standing — prompt.section's "a hook that fails passes it through".
+ */
+export async function dispatchModEngineResult<T>(
+  event: string,
+  payload: Record<string, unknown>,
+  core: (e: Record<string, unknown>) => T | Promise<T>,
+): Promise<T> {
+  const chain = opChains.get(event)
+  if (!chain || chain.length === 0) {
+    return core(payload)
+  }
+  const frozen = cloneAndFreeze(payload) as Record<string, unknown>
+  // The terminal IS the core: `next` resolves what the engine computed, rather
+  // than the event the handler was handed.
+  const outcome = await runModChain(chain, frozen, async current =>
+    (await core(current)) as unknown as Record<string, unknown>,
+  )
+  return (answersNothing(outcome) ? await core(frozen) : outcome) as T
+}
+
+/**
+ * Whether a chain result carries no answer.
+ *
+ * `invokeModHandler`'s stand-in for a handler that returned nothing and never
+ * called `next` is the host hook dialect's `{continue: true}` — which on this
+ * path means "pass it through", not an answer of its own.
+ */
+function answersNothing(outcome: unknown): boolean {
+  if (outcome === undefined || outcome === null) return true
+  if (typeof outcome !== 'object') return false
+  const keys = Object.keys(outcome as Record<string, unknown>)
+  return keys.length === 0 || (keys.length === 1 && keys[0] === 'continue')
+}
+
+/**
  * Synchronous engine dispatch, for host sites that cannot await.
  *
  * `getAttributionTexts()` is the case that forced this: it is called from

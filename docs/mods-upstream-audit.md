@@ -299,6 +299,72 @@ Event slots: 9 fired, 95 subscribed-but-never-fired, 5 refused — of 109.
 - **`prompt.compose`** —— 插槽点是 `getSystemPrompt` 的最终 return。`scope: shared|session` 正是 opencc 自己缓存分界线（`SYSTEM_PROMPT_DYNAMIC_BOUNDARY`）的反面读法：分界线之前是 shared，之后是 session。**分界线本身不进链** —— 上游明写引擎自己放置边界与所有 cache marker，让 hook 挪边界等于让它挪 prompt cache。为此 `resolveSystemPromptSections` 改为返回 `{name, text}` 而非位置化字符串，否则每个 section 只能靠下标寻址，hook 按 id 替换/移动/删除都无从谈起。
 - **`prompt.attachment`** —— 插槽点是 `normalizeAttachmentForAPI`。调用方在它**之后**才包 `<system-reminder>`，所以「外壳在链外」是结构保证而非靠自觉。同步 dispatch（与 `prompt.edit` 同理：`normalizeMessagesForAPI` 是整条 transcript 上的同步 pass）。
 
+##### 引擎事件其实有两种 `next` 语义，`dispatchModEngine` 只能表达其中一种
+
+上游 d.ts 对引擎事件的 `next` 写了两句不同的话，而它们要的是**两套不同的 dispatch**：
+
+| 语义 | 上游原话 | 事件 |
+|---|---|---|
+| **`next(e)` 解析为 core 算出的答案** | "`next(e)` resolves to `{ sections }` … The bottom is the engine's own composition"（d.ts:3435） | `prompt.compose`、`prompt.attachment`、`tool.describe` |
+| **改写事件，core 从事件推导答案** | "Append, drop, reorder or rewrite with `next({ ...e, blocks })`"（d.ts:3424） | `prompt.context` |
+
+区别在于**答案能不能从事件本身算出来**。`prompt.context` 的 blocks 就在事件里，所以 core 从 `e` 推导即可。而 `prompt.compose` 的 sections 是**引擎刚组装的** —— hook 自己算不出来，只能靠 `next(e)` 读到。
+
+`dispatchModEngine` 的 terminal 回答 `{continue: true, ...event}`，chain 结果再喂给 core：这正好是第一类语义做不到的事。实测后果（`src/mods/promptSections.test.ts` 抓到的）：
+
+```ts
+// 上游 d.ts:3441 官方示例
+on("prompt.compose", async ($, e, next) => dropped(await next(e), "tone"))
+//                                       ^^^^^^^^^^^ 拿到的是 {continue:true, model, ...}
+//                                                    没有 sections → dropped() 抛错
+//                                                    → 链跳过该 handler → 引擎送出自己的组装
+```
+
+**hook 触发了、返回了、什么都没改，而且没有任何日志。** 与 `prompt.edit` 那次「装了 mod 就打不了字」同型：症状是「mod 装了跟没装一样」。
+
+因此新增 `dispatchModEngineResult`（`src/mods/dispatch.ts`）：terminal **就是** core，`next(e)` 解析为引擎组装的答案；不调 `next` 直接返回则整体替换（上游 d.ts:3425 `() => ({blocks: []})`）；返回空或抛错则透传 core 的答案（上游 `prompt.section` 的 "a hook that fails passes it through"）。`prompt.compose` 改走这条路径。
+
+同一批修复里另外两处**静默空壳**，都是「hook 触发了但引擎没读它的答案」：
+
+- **`prompt.attachment` 的 `{text: null}` 丢弃是空操作** —— core 写的是 `typeof e.text === 'string' ? e.text : text`，把 null 又还原成原文，于是 d.ts:6629 的 `PromptAttachmentResult {text: string | null}` 里那个 null 永远丢不掉附件。改为 core 对非字符串一律回答 null，调用方收到 null 返回 `[]`。
+- **`prompt.mention` 的 deny 闸门是空操作** —— core 写的是 `() => ({allow: true})`，**完全不看事件**，所以链照常触发、每个路径照常放行；注释里「a hook can DENY a path」当时并不成立。改为 core 读 `e.allow`。
+
+两处都先证红再改：把修复逐个回退，对应测试确实转红（`prompt.attachment` 1 fail / `prompt.mention` 1 fail），恢复后 16 pass。
+
+**端到端实测**（真实 dist、真实 REPL、探针 mod 用上游文档写法注册）：探针打印的是 `next(e)` **实际解析到的东西**，而不是「事件触发了吗」—— 后者任何调用点都看得出来，前者才能证伪 dispatch 形状。
+
+```
+[pt] compose: 22 sections (shared=7 session=15) [harness,intro,system,doing-tasks,
+      actions,tools,tone,pronouns,action_caution,task_continuity,session_guidance,
+      tool_param_json,context_management,act_dont_rederive,delivering_work_max,
+      overcorrection,subagent_steer_delegation,memory,env_info_simple:...,
+      summarize_tool_results,token_budget,codegraph]
+[pt] context: blocks=[claudeMd,currentDate]
+      files=[user:AGENTS.md,project:AGENTS.md,project:AGENTS.md,
+             memory:MEMORY.md,memory:MEMORY.md]
+[pt] attach: type=agent_listing_delta   next(e).text=5113b
+[pt] attach: type=mcp_instructions_delta next(e).text=2234b
+[pt] attach: type=skill_listing         next(e).text=31963b
+```
+
+三件事一次说清：
+
+- `compose` 的 `next(e)` 解析出 **22 个 section id**、shared 7 / session 15 —— 缓存分界线的两半在真实会话里确实分开了，不是一个恒等于 `shared` 的摆设。
+- `context` 的 `files` 里 **两条 `MEMORY.md` 都报 `memory`** —— 就是本次裁定的那条映射（AutoMem 与 TeamMem 同档）在真实会话里生效的证据；其余四档 `user` / `project` 原样透传。
+- `attachment` 的 `next(e)` 解析出真实字节数，不是事件本身。
+
+**探针自己踩的两个坑**（都记在这里，因为它们和被测的 bug 是同一类）：`next` 解析的是 **Promise**，探针漏了 `await` 就去读 `res.sections`，读到 `undefined` 报成「引擎什么都没给」；`scope[0]` 打出来 22 个 `s` —— `shared` 和 `session` 首字母相同，于是「两半是否分开」这件事恰好被这个打印方式抹掉。测量装置和被测系统一样要独立验证。
+
+**`prompt.attachment` 是同步契约**（上游示例 `on("prompt.attachment", {type:'todo_reminder'}, () => ({text: null}))` 不是 async）。探针写成 `async` 时日志如实记下：
+
+```
+[mods] "ptprobe" prompt.attachment handler returned a promise — ignored (synchronous host site)
+```
+
+结果被丢弃，且计入熔断失败次数 —— 这是设计内的行为，但 mod 作者需要知道：这条事件写 `async` 等于静默失效。
+
+**已知未修（不在本批范围）**：`tool.describe` 的 `isDeferred` 生效，但 `description` 被丢掉 —— claude.ts:1230 的 core 只回 `{tool, isDeferred}`，从不读 `e.description`，而上游 d.ts:3465 的结果正是 `{description, isDeferred?}`。修它不能只在原地补一个字段：`toolToAPISchema` 的描述走会话级 `toolSchemaCache`，事后再写回 `tool.description` 会让第一轮生效、第二轮起被缓存的旧值覆盖 —— 比不接更糟。正确位置是 dispatch 移到 `toolToAPISchema` 内、`cache.set` 之前。
+
 **端到端实测**（真实 dist、真实 REPL）：`P:attach,compose,context,edit` —— 四个事件在一次真实会话里全部触发。
 
 

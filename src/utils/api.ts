@@ -10,6 +10,7 @@ import {
   dispatchModEngine,
   hasModHandlersFor,
 } from '../mods/dispatch.js'
+import { resolveInstructionFileKind } from '../mods/instructionFiles.js'
 import { isAnalyticsDisabled } from 'src/services/analytics/config.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -509,23 +510,60 @@ export function appendSystemContext(
 }
 
 /**
- * The memory tiers opencc knows, as upstream's `InstructionFileKind`
- * vocabulary. opencc splits what upstream calls `memory` into two (`AutoMem`
- * and `TeamMem`), and BOTH collapse to `memory` here on purpose: a hook asking
- * "is this a memory file?" wants the category, not which store it came from.
- * Splitting them would hand every mod a filter that silently misses half the
- * memories it meant to match.
+ * Upstream `prompt.context`'s body: the blocks a conversation's first user
+ * message carries, and the files behind `claudeMd`, after the chain has had
+ * both.
+ *
+ * Split out of `prependUserContext` because that function returns early under
+ * `NODE_ENV === 'test'`, which would leave this event with no test coverage at
+ * all — a hook on it could be broken and every test would still pass.
  */
-function toInstructionFileKind(type: string): string {
-  switch (type) {
-    case 'Managed':
-    case 'User':
-    case 'Project':
-    case 'Local':
-      return type.toLowerCase()
-    default:
-      return 'memory'
+export async function resolvePromptContext(context: {
+  [k: string]: string
+}): Promise<{
+  blocks: Array<{ name: string; text: string }>
+  instructionFiles: Array<{
+    path: string
+    kind: string
+    content: string
+    parent?: string
+  }>
+}> {
+  // The files are read here rather than passed in because opencc already has
+  // them structured (`getMemoryFiles()`), which earlier notes on this event
+  // wrongly assumed it did not.
+  const core = {
+    blocks: Object.entries(context).map(([name, text]) => ({ name, text })),
+    instructionFiles: await import('./claudemd.js')
+      .then(m => m.getMemoryFiles())
+      .catch(
+        () =>
+          [] as Awaited<
+            ReturnType<typeof import('./claudemd.js')['getMemoryFiles']>
+          >,
+      )
+      .then(files =>
+        files.map(f => ({
+          path: f.path,
+          kind: resolveInstructionFileKind(f.type),
+          content: f.content,
+          ...(f.parent ? { parent: f.parent } : {}),
+        })),
+      ),
   }
+
+  if (!hasModHandlersFor('prompt.context')) return core
+
+  return dispatchModEngine('prompt.context', core, e => ({
+    blocks: Array.isArray(e.blocks)
+      ? (e.blocks as Array<{ name: string; text: string }>)
+      : core.blocks,
+    // Left out, the files from below stand — upstream's "the files now behind
+    // claudeMd; left out, the ones from below stand".
+    ...(Array.isArray(e.instructionFiles)
+      ? { instructionFiles: e.instructionFiles as typeof core.instructionFiles }
+      : { instructionFiles: core.instructionFiles }),
+  }))
 }
 
 export async function prependUserContext(
@@ -544,40 +582,7 @@ export async function prependUserContext(
   // conversation's first user message, plus the files behind `claudeMd`. The
   // `<system-reminder>` wrapper goes AROUND whatever the chain answers, never
   // inside it, so a hook rewrites content without rewriting the framing.
-  //
-  // The files are read here rather than passed in because opencc already has
-  // them structured (`getMemoryFiles()`), which earlier notes on this event
-  // wrongly assumed it did not.
-  const core = {
-    blocks: Object.entries(context).map(([name, text]) => ({ name, text })),
-    instructionFiles: await import('./claudemd.js')
-      .then(m => m.getMemoryFiles())
-      .catch(() => [] as Awaited<ReturnType<typeof import('./claudemd.js')['getMemoryFiles']>>)
-      .then(files =>
-        files.map(f => ({
-          path: f.path,
-          kind: toInstructionFileKind(f.type),
-          content: f.content,
-          ...(f.parent ? { parent: f.parent } : {}),
-        })),
-      ),
-  }
-
-  const decided = hasModHandlersFor('prompt.context')
-    ? await dispatchModEngine('prompt.context', core, e => ({
-        blocks: Array.isArray(e.blocks)
-          ? (e.blocks as Array<{ name: string; text: string }>)
-          : core.blocks,
-        // Left out, the files from below stand — upstream's "the files now
-        // behind claudeMd; left out, the ones from below stand".
-        ...(Array.isArray(e.instructionFiles)
-          ? {
-              instructionFiles:
-                e.instructionFiles as typeof core.instructionFiles,
-            }
-          : { instructionFiles: core.instructionFiles }),
-      }))
-    : core
+  const decided = await resolvePromptContext(context)
 
   return [
     // @ts-ignore
