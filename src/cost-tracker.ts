@@ -55,6 +55,10 @@ import { formatDuration, formatNumber } from './utils/format.js'
 import type { FpsMetrics } from './utils/fpsTracker.js'
 import { getCanonicalName } from './utils/model/model.js'
 import { calculateUSDCost } from './utils/modelCost.js'
+import {
+  dispatchModEngineSync,
+  hasModHandlersFor,
+} from './mods/dispatch.js'
 export {
   getTotalCostUSD as getTotalCost,
   getTotalDuration,
@@ -422,5 +426,48 @@ export function addToTotalSessionCost(
       advisorUsage.model,
     )
   }
+
+  measureSession(cost, model, modelUsage, totalCost)
   return totalCost
+}
+
+/**
+ * Upstream `session.measure` — "a measurement of the session changed; if you
+ * cached one, recompute it".
+ *
+ * Sits at the cost ledger rather than at the turn, because that is the only
+ * place the figures a status line reads actually move. `$.session.usage()`
+ * answers entirely out of `addToTotalCostState`, so a hook told to refresh
+ * here and refresh one turn later would read the same numbers twice and miss
+ * the one update that mattered.
+ *
+ * Synchronous, like `attribution.text` beside it: this runs on the response
+ * path with no `await` anywhere in it, and a hook that answers with a promise
+ * is counted as the failure it is rather than silently dropped.
+ *
+ * The payload is what core recomputed, not a copy of it — a mod reading
+ * `e.inputTokens` gets the figure as of this response, which is the whole
+ * point of the event.
+ */
+function measureSession(
+  cost: number,
+  model: string,
+  modelUsage: ModelUsage,
+  totalCost: number,
+): void {
+  if (!hasModHandlersFor('session.measure')) return
+  dispatchModEngineSync(
+    'session.measure',
+    {
+      model,
+      cost,
+      totalCost,
+      inputTokens: modelUsage.inputTokens,
+      outputTokens: modelUsage.outputTokens,
+      cacheReadInputTokens: modelUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: modelUsage.cacheCreationInputTokens,
+      contextWindow: modelUsage.contextWindow,
+    },
+    () => undefined,
+  )
 }

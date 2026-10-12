@@ -217,7 +217,63 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
   'ui.fault':
     'opencc has no surface fault channel: `$.ui.fault` reports a failure to a non-terminal surface, and there is none to report to',
   'prompt.autocomplete':
-    'opencc completes no token: `prompt.autocomplete` answers `{text, cursor, token, start}` with suggestions for the token under the cursor. The nearest thing here — PromptSuggestion — predicts the NEXT prompt from an EMPTY box (`inputValue.length > 0 ? null : suggestionText`), takes no text/cursor/token, and never runs mid-typing. Wiring that to this name would hand a ported token-completer silently different behaviour, which is the shell this event is refused to become.',
+    'opencc completes no token. The contract is real and was verified against the 2.1.296 bundle — `{text, cursor, token, start}` in, `{suggestions: [{text, label?, description?}]}` out, all four input keys pinned — but opencc has nowhere to SHOW a suggestion: PromptSuggestion predicts the NEXT prompt from an EMPTY box (`inputValue.length > 0 ? null : suggestionText`) and never runs mid-typing, so there is no list to draw and no "take this row" gesture (upstream routes Tab, Shift-Tab and click through one `autocompleteText` apply). Dispatching the event without that UI would report a ported token-completer as installed while the person saw nothing, which is the shell this event is refused to become. The refusal lifts the moment a completion row exists.',
+
+  // The element trio. All three address an element by `{plugin, element,
+  // component, requestId}` — a row the plugin's own `ui.render` hook drew,
+  // looked up in a registry that `ui.render` populates. opencc's `ui.render`
+  // is a text transform (`runModRenderChainSync(input: string): string`), not
+  // an element tree, so there is no registry and nothing to put a row's
+  // address into. opencc DOES have interactive mod elements — `Button` and
+  // `Select` in mods/ui/ draw and take keys — but a pane element has no
+  // `component` and its pane id is not a `requestId` upstream recognises.
+  // Dispatching with those two fields invented would hand every hook a matcher
+  // key that silently never matches, which is worse than the refusal.
+  'ui.press':
+    'no drawn-element registry: `ui.press` addresses an element as `{plugin, element, component, requestId}`, the address a plugin\'s own `ui.render` hook drew it under. opencc\'s `ui.render` transforms text rather than building an element tree, so no such address exists. Lifts with one.',
+  'ui.select':
+    'same missing element registry as `ui.press`, and the same missing `component`/`requestId`. opencc\'s `Select` takes keys and reports a pick to its own `onSelect`, but not through this event.',
+  'ui.input':
+    'same missing element registry as `ui.press`. Independently, opencc\'s `Input` element renders as a plain `Text` (see `UNSUPPORTED_ELEMENTS` in mods/ui/elements.tsx) and its `onInput` never fires, so there is no typing to report.',
+
+  // One writer, so no inbound delivery to observe. The person at the terminal
+  // is the only source; `session.receive` is about a relay or a peer client
+  // (`{origin: "peer"}`), which opencc has no surface to receive from.
+  'session.receive':
+    'opencc has no inbound delivery but the person\'s own keystrokes: the terminal is the single writer to the transcript. `session.receive` is one inbound relay/peer delivery, and there is no second client to relay from.',
+
+  // Upstream\'s own doc says the terminal\'s attachment raises nothing: "the
+  // terminal\'s attachment is the REPL\'s binding and raises nothing". That is
+  // exactly opencc\'s situation — one client, attached before the REPL binds.
+  'session.attach':
+    'one client, attached at process start: upstream itself documents that "the terminal\'s attachment is the REPL\'s binding and raises nothing". opencc has no roster a second client could join.',
+  'session.detach':
+    'the same single-client roster as `session.attach`; there is no second client to leave.',
+
+  // Not an event at all upstream — a `$` method. Refusing it as an event stops
+  // a mod reading a hook position as a credential position.
+  'session.authorize':
+    'not an event upstream but a `$` method: `$.session.authorize()` answers an opaque HANDLE for the session\'s Anthropic credential, spent through `$.http.fetch(url, {auth})`. There is no event to raise, and handing a mod a live credential handle is a decision this host has not made.',
+
+  // `uses` is a STATIC scan of the module: the event names its `on(...)` calls
+  // and the `noun.method` calls it makes, read from the source before it runs.
+  // opencc validates imports and size but does not parse a mod\'s body, and an
+  // empty `uses` would assert "this mod registers nothing" to every hook that
+  // reads it.
+  'plugin.register':
+    '`uses` is a static scan of the mod\'s own source — every `on(...)` event name and every `noun.method` call, read before the module runs — and the contract requires it. opencc does not parse mod bodies, and shipping `{events: [], calls: []}` would tell every hook that reads it the mod registers nothing.',
+
+  'engine.create':
+    'deliberately not reproduced: upstream `engine.create` is how a plugin ADDS a noun to `$` (upstream\'s `$.telemetry`), which needs a third-party plugin host adding nouns to a shared surface. opencc declares `$.telemetry` directly instead — see the note atop mods/nouns.ts.',
+
+  // Op events whose `$` method does not exist. Each is a noun this host has no
+  // counterpart for, so there is no call for the event to observe.
+  'agent.register':
+    'op event with no method: upstream `$.agent.register()` adds an agent type at runtime. opencc builds agent definitions from `.claude/agents/*.md` and settings, and has no runtime registration to observe. `$.agent.list()` and `agent.spawn` both work.',
+  'mcp.call':
+    'op event with no method: there is no `$.mcp.call()`. An MCP tool call runs as an ordinary tool call under its `mcp__server__name` tool name, where `tool.call` and `tool.check` both see it.',
+  'mcp.connect':
+    'op event with no method: opencc has no `mcp` noun on `$` at all, so there is no `$.mcp.connect()` for the event to observe. (Upstream carries it in its binary but not in its published `d.ts` — the same lag mods/nouns.ts records for `process.spawn`.)',
 }
 
 /** Why `event` cannot be dispatched here, or undefined if it can. */

@@ -487,6 +487,51 @@ export const AgentTool = buildTool({
       };
     }
 
+    // Upstream `agent.offer` at dispatch — "whether the model is offered the
+    // agent type, in its listing AND at dispatch". The listing half is
+    // `filterOfferedAgents`, applied where the description and the
+    // `agent_listing_delta` attachment are built; this is the other half.
+    //
+    // It has to exist separately because the listing is a cache. The gate that
+    // carries the list is off by default and the attachment path re-announces
+    // from the transcript, so a model can name a `subagent_type` it was never
+    // shown — and one a mod withheld — with no handler left to stop it.
+    //
+    // Only asked when the call named a type. A fork (no `subagent_type`) is
+    // the current thread, not an agent type being offered, and asking about
+    // `undefined` would hand every `agent.offer` hook a match it cannot use.
+    if (subagent_type !== undefined) {
+      const offeredDef = toolUseContext.options.agentDefinitions.activeAgents.find(
+        a => a.agentType === subagent_type,
+      )
+      if (offeredDef !== undefined) {
+        const stillOffered = await dispatchModEngine<{ isOffered: boolean }>(
+          'agent.offer',
+          {
+            agent: offeredDef.agentType,
+            description: offeredDef.whenToUse,
+            source: offeredDef.source,
+            provider:
+              offeredDef.source === 'plugin'
+                ? { plugin: offeredDef.plugin, tier: 'user' }
+                : offeredDef.source === 'built-in'
+                  ? { plugin: 'engine', tier: 'core' }
+                  : { plugin: 'engine', tier: 'user' },
+            tool_use_id: assistantMessage?.message?.id ?? '',
+          },
+          e => ({ isOffered: e.isOffered !== false }),
+        )
+        if (!stillOffered.isOffered) {
+          // Surfaced as the tool's error so the model reads WHY no subagent
+          // started, the same way `agent.spawn`'s own `deny` is — the model is
+          // the one that asked, and it has to learn the answer changed.
+          throw new Error(
+            `Agent type '${subagent_type}' is not available.`,
+          )
+        }
+      }
+    }
+
     // Upstream `agent.spawn` — "what the Agent tool decided about the
     // subagent it is about to start, before its model is resolved". It sits
     // here for exactly that reason: below this point `subagent_type` has been
