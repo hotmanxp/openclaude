@@ -276,6 +276,8 @@ export type HookCallback = {
 /** One mod's handler in a composite chain (src/mods/dispatch.ts). */
 export type ModChainEntry = {
   modName: string
+  /** The event this chain was built for; what `next.event` answers. */
+  event?: string
   handler: (
     e: Record<string, unknown>,
     next: ModNext,
