@@ -137,4 +137,21 @@ describe('upstream hook shape', () => {
     registerLoadedMod(mod)
     expect(hasModHandlersFor('session.measure')).toBe(true)
   })
+
+  test('the engine names the plugin it belongs to', async () => {
+    const mod = freshMod('identity-mod')
+    let seen: unknown
+    createModContext(mod).on('session.start', ($, e, next) => {
+      seen = (($ as { plugin?: unknown }).plugin)
+      return next(e)
+    })
+    registerLoadedMod(mod)
+
+    await dispatchModEngine('session.start', { text: '', turnId: 't1' }, () => undefined)
+
+    // `$.plugin` is the first thing a framework's own lifecycle reads —
+    // @cmodjs/core's `startMod` opens `$.plugin.name` before anything else,
+    // and without it the mod installs and its `setup()` never runs.
+    expect(seen).toEqual({ name: 'identity-mod', root: '/tmp/identity-mod' })
+  })
 })

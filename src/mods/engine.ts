@@ -586,6 +586,18 @@ export type ModContext = {
    * substituted text, so it reads them here.
    */
   options: PluginOptionValues
+  /**
+   * Upstream `$.plugin` (d.ts:2325) — "This plugin, as loaded: its manifest
+   * name and its directory". The first noun every mod's own lifecycle reads:
+   * `@cmodjs/core` opens `startMod($, …)` with `$.plugin.name` and dies
+   * without it, and it is the only member of upstream's 21-noun `$` that
+   * costs nothing to answer — the loader already resolved both.
+   */
+  plugin: {
+    name: string
+    /** The mod's directory, absolute. */
+    root: string
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -933,6 +945,7 @@ export function createModContext(mod: LoadedMod): ModContext {
   })
   const ctx: ModContext = {
     options: readModOptions(mod),
+    plugin: { name: modName, root: mod.root },
     // Every method below dispatches its own event, so a noun being present is
     // the same fact as its op events being live (docs/mods-upstream-contract.md
     // §1.2). Nothing here is a name without a call behind it.
