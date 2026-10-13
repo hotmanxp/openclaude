@@ -152,6 +152,19 @@ export const HOOK_TIMING_DISPLAY_THRESHOLD_MS = 500
  * BashTool's PROGRESS_THRESHOLD_MS — the collapsed view feels stuck past this. */
 const SLOW_PHASE_LOG_THRESHOLD_MS = 2000
 
+/**
+ * The verbs a mod's `tool.check` hook may answer with. Anything else is a mod
+ * typo and is refused rather than passed on — see the use site, where an
+ * unrecognised verb degrades to `deny` so a misspelt decision can never widen
+ * access.
+ */
+const MOD_TOOL_CHECK_BEHAVIORS: ReadonlySet<string> = new Set([
+  'allow',
+  'ask',
+  'deny',
+  'passthrough',
+])
+
 function getAlreadyAbortedToolResultMessage(reason: unknown): string {
   if (reason === 'interrupt' || shouldCreateUserInterruptionMessage(reason)) {
     return CANCEL_MESSAGE
@@ -1155,19 +1168,50 @@ export async function checkPermissionsAndCallTool(
       { tool: tool.name, input: processedInput, tool_use_id: toolUseID },
       e => ({
         decision:
-          typeof e.decision === 'string' ? e.decision : permissionDecision,
+          typeof e.decision === 'string'
+            ? e.decision
+            : permissionDecision.behavior,
         reason: typeof e.reason === 'string' ? e.reason : undefined,
       }),
     )
-    if (decided.decision === 'allow' && permissionDecision === 'deny') {
+    // A mod answers with a VERB; everything downstream reads a
+    // `PermissionResult`. Assigning the string straight into
+    // `permissionDecision` left `.behavior` undefined, so the mod's `deny`
+    // travelled the allow path and its `ask` was demoted to a deny carrying
+    // an undefined message. The sibling check
+    // `permissionDecision === 'deny'` compared an object to a string and so
+    // was never true either — which is why a mod's widening `allow` was
+    // discarded in silence instead of being logged.
+    const modDecision = decided.decision
+    if (modDecision === 'allow' && permissionDecision.behavior === 'deny') {
       logForDebugging(
         '[mods] tool.check: ignored a mod\'s allow and kept the permission check\'s deny; plugins can only tighten',
       )
-    } else if (decided.decision !== 'allow') {
-      permissionDecision = decided.decision as typeof permissionDecision
-      if (decided.reason !== undefined && hookPermissionResult) {
-        hookPermissionResult.permissionDecisionReason = decided.reason
+    } else if (modDecision !== 'allow') {
+      const behavior = MOD_TOOL_CHECK_BEHAVIORS.has(modDecision)
+        ? (modDecision as PermissionResult['behavior'])
+        : // An unrecognised verb is a mod typo. Fail closed and say so: the
+          // alternative — keeping the current decision — would let a
+          // misspelled `deny` widen access.
+          'deny'
+      if (!MOD_TOOL_CHECK_BEHAVIORS.has(modDecision)) {
+        logForDebugging(
+          `[mods] tool.check: unrecognised decision ${JSON.stringify(modDecision)}, treating as deny`,
+          { level: 'warn' },
+        )
       }
+      permissionDecision = {
+        behavior,
+        message:
+          decided.reason ??
+          `Blocked by a mod's tool.check hook (${modDecision})`,
+        decisionReason: {
+          type: 'hook',
+          hookName: 'tool.check',
+          reason: decided.reason,
+        },
+        toolUseID,
+      } as typeof permissionDecision
     }
   }
   const permissionDurationMs = Date.now() - permissionStart

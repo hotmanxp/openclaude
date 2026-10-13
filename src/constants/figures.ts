@@ -22,6 +22,7 @@ export const REFRESH_ARROW = '\u21bb' // ↻ - used for resource update indicato
 export const CHANNEL_ARROW = '\u2190' // ← - inbound channel message indicator
 export const INJECTED_ARROW = '\u2192' // → - cross-session injected message indicator
 export const FORK_GLYPH = '\u2442' // ⑂ - fork directive indicator
+export const BRANCH_ICON = '⑂' // ⑂ - git branch indicator in the prompt footer
 
 // Review status indicators (ultrareview diamond states)
 export const DIAMOND_OPEN = '\u25c7' // ◇ - running

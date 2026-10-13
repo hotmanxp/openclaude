@@ -2,6 +2,9 @@
 
 OpenCC supports multiple search backends through a provider adapter system.
 
+Web search is **enabled by default**. To turn the tool off entirely, set
+`CLAUDE_CODE_WEBTOOL_ENABEL=0` (also accepts `false` / `no` / `off`).
+
 ## Supported Providers
 
 | Provider | Env Var | Auth Header | Method |
@@ -20,6 +23,8 @@ OpenCC supports multiple search backends through a provider adapter system.
 | Mojeek | `MOJEEK_API_KEY` | `Authorization: Bearer` | GET |
 | Linkup | `LINKUP_API_KEY` | `Authorization: Bearer` | POST |
 | DuckDuckGo | *(default)* | — | SDK |
+| MiniMax native | `WEB_SEARCH_PROVIDER=minimax` / `IS_HOME_NETWORK=1` + `MINIMAX_API_KEY` | `x-api-key` | `POST /v1/messages` (server-side `web_search_20250305`) |
+| Chat Completions `enable_search` | `WEB_SEARCH_PROVIDER=nova` + `WEB_SEARCH_NOVA_API_KEY` | `Authorization: Bearer` | `POST /chat/completions` |
 
 ## Quick Start
 
@@ -54,6 +59,8 @@ export WEB_SEARCH_API=https://search.example.com/search
 | `custom` | Custom API only — throws on failure. **Not in the auto chain** — must be explicitly selected |
 | `firecrawl` | Firecrawl only — throws on failure |
 | `ddg` | DuckDuckGo only — throws on failure |
+| `minimax` | MiniMax native server-side search only. **Not in the auto chain** |
+| `nova` | OpenAI-compatible `/chat/completions` with `enable_search` only |
 | `native` | Anthropic native / Codex only |
 
 **Auto mode priority:** firecrawl → tavily → exa → you → jina → bing → mojeek → linkup → ddg
@@ -66,6 +73,44 @@ export WEB_SEARCH_PROVIDER=tavily
 
 # Try everything, fall through gracefully
 export WEB_SEARCH_PROVIDER=auto
+```
+
+### MiniMax native (`minimax`) and `IS_HOME_NETWORK`
+
+`minimax` is deliberately **not** in the `auto` chain: it is only reached via
+`WEB_SEARCH_PROVIDER=minimax`, or by setting `IS_HOME_NETWORK` to a truthy value
+while leaving `WEB_SEARCH_PROVIDER` unset. It speaks the Anthropic `/v1/messages`
+protocol with the server-side `web_search_20250305` tool, so the model decides
+how many searches to run (up to `max_uses: 10`) inside a single request — that is
+why it carries a longer (60s) timeout than the single-shot HTTP adapters.
+Optional overrides: `MINIMAX_BASE_URL`, `MINIMAX_WEB_SEARCH_MODEL`.
+
+```bash
+export WEB_SEARCH_PROVIDER=minimax
+export MINIMAX_API_KEY=your-minimax-key
+
+# or, on a home/trusted network with MINIMAX_API_KEY already set:
+export IS_HOME_NETWORK=1
+```
+
+### Chat Completions `enable_search` (`nova`)
+
+`nova` posts the query to an OpenAI-compatible `/chat/completions` endpoint with
+`enable_search: true` and returns the composed answer plus any markdown links it
+cites. Defaults target the zn-nova gateway — `WEB_SEARCH_NOVA_BASE_URL`
+(default `https://zn-nova.paic.com.cn/novai/v1`) and `WEB_SEARCH_NOVA_MODEL`
+(default `qwen3.7-plus`).
+
+Credential resolution order: `WEB_SEARCH_NOVA_API_KEY` → `ANTHROPIC_AUTH_TOKEN`
+→ opencc's auth layer (`ANTHROPIC_API_KEY` / `apiKeyHelper`) → `OPENAI_API_KEY`.
+Anthropic provider profiles delete `ANTHROPIC_AUTH_TOKEN` at startup, and the
+gateway answers an unauthenticated request with `200` and an empty body — so if
+the search fails with `non-JSON body` or `invalid_api_key`, set
+`WEB_SEARCH_NOVA_API_KEY` explicitly.
+
+```bash
+export WEB_SEARCH_PROVIDER=nova
+export WEB_SEARCH_NOVA_API_KEY=your-gateway-token
 ```
 
 ## Built-in Provider Timeout

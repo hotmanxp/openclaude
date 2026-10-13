@@ -1,6 +1,10 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ProviderOutput } from './providers/types.js'
-import { __test } from './WebSearchTool.js'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../../test/sharedMutationLock.js'
+import { WebSearchTool, __test } from './WebSearchTool.js'
 
 const {
   buildEmptyAdapterResultHint,
@@ -102,5 +106,83 @@ describe('buildAdapterUnavailableError', () => {
     const msg = buildAdapterUnavailableError('nvidia-nim', 'timeout')
     expect(msg).toMatch(/Anthropic/)
     expect(msg).toMatch(/Codex/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isEnabled — on by default; CLAUDE_CODE_WEBTOOL_ENABEL is an opt-out
+// ---------------------------------------------------------------------------
+
+describe('WebSearchTool isEnabled', () => {
+  const saved = {
+    gate: process.env.CLAUDE_CODE_WEBTOOL_ENABEL,
+    provider: process.env.WEB_SEARCH_PROVIDER,
+    minimaxKey: process.env.MINIMAX_API_KEY,
+    homeNetwork: process.env.IS_HOME_NETWORK,
+  }
+
+  function restoreEnv(key: string, value: string | undefined): void {
+    if (value === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
+
+  beforeEach(async () => {
+    await acquireSharedMutationLock('WebSearchTool/WebSearchTool.test.ts')
+    delete process.env.CLAUDE_CODE_WEBTOOL_ENABEL
+    delete process.env.WEB_SEARCH_PROVIDER
+    delete process.env.MINIMAX_API_KEY
+    delete process.env.IS_HOME_NETWORK
+  })
+
+  afterEach(() => {
+    try {
+      restoreEnv('CLAUDE_CODE_WEBTOOL_ENABEL', saved.gate)
+      restoreEnv('WEB_SEARCH_PROVIDER', saved.provider)
+      restoreEnv('MINIMAX_API_KEY', saved.minimaxKey)
+      restoreEnv('IS_HOME_NETWORK', saved.homeNetwork)
+    } finally {
+      releaseSharedMutationLock()
+    }
+  })
+
+  test('enabled by default when the gate env var is unset', () => {
+    expect(WebSearchTool.isEnabled()).toBe(true)
+  })
+
+  test('still enabled when the gate env var is explicitly truthy', () => {
+    process.env.CLAUDE_CODE_WEBTOOL_ENABEL = '1'
+    expect(WebSearchTool.isEnabled()).toBe(true)
+  })
+
+  for (const value of ['0', 'false', 'no', 'off', 'FALSE']) {
+    test(`disabled when the gate env var is ${value}`, () => {
+      process.env.CLAUDE_CODE_WEBTOOL_ENABEL = value
+      expect(WebSearchTool.isEnabled()).toBe(false)
+    })
+  }
+
+  test('nova mode is enabled without any adapter configured', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'nova'
+    expect(WebSearchTool.isEnabled()).toBe(true)
+  })
+
+  test('minimax mode is disabled without MINIMAX_API_KEY', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'minimax'
+    expect(WebSearchTool.isEnabled()).toBe(false)
+  })
+
+  test('minimax mode is enabled with MINIMAX_API_KEY', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'minimax'
+    process.env.MINIMAX_API_KEY = 'mm-test-key'
+    expect(WebSearchTool.isEnabled()).toBe(true)
+  })
+
+  test('the explicit opt-out wins over an otherwise-enabled mode', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'nova'
+    process.env.CLAUDE_CODE_WEBTOOL_ENABEL = 'off'
+    expect(WebSearchTool.isEnabled()).toBe(false)
   })
 })

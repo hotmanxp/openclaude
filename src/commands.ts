@@ -53,7 +53,6 @@ import session from './commands/session/index.js'
 import setContextWindow from './commands/set-context-window/index.js'
 import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
-import skillDoctor from './commands/skill-doctor/index.js'
 import status from './commands/status/index.js'
 import setTicket from './commands/setTicket/index.js'
 import tasks from './commands/tasks/index.js'
@@ -355,7 +354,6 @@ const COMMANDS = memoize((): Command[] => [
   resume,
   session,
   setContextWindow,
-  skillDoctor,
   skills,
   status,
   statusline,

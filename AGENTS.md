@@ -1,12 +1,14 @@
 # AGENTS.md - OpenCC
 
-`@zn-ai/opencc` — fork of [`Gitlawb/openclaude`](https://github.com/Gitlawb/openclaude) (Claude Code derivative) on top of an ink React TUI.
+## Project Overview
+
+`@zn-ai/opencc` — fork of [`Gitlawb/openclaude`](https://github.com/Gitlawb/openclaude) (Claude Code derivative) on top of an ink React TUI. Opens coding-agent workflows to any LLM (OpenAI, Gemini, DeepSeek, Ollama, 200+ models).
 
 ## Tech Stack
 | Layer | Tech |
 |-------|------|
 | Language | TypeScript 5.9.3 (strict) |
-| **Build tool** | **Bun** — `bun run build` / `bun test` / `bun run dev` |
+| **Build tool** | **Bun 1.3.14** — `bun run build` / `bun test` / `bun run dev` |
 | **Runtime** | **Node ≥22** — the build output `dist/cli.mjs` is executed by `bin/opencc` (`#!/usr/bin/env node`); `package.json` sets `engines.node >= 22.0.0`; `scripts/build.ts` uses `target: 'node'` |
 | TUI | React 19.2.4 + Ink 7 |
 | Module | ESM only (`.js` import suffixes) |
@@ -24,7 +26,7 @@
 ## Repository Layout
 | Path | Purpose |
 |------|---------|
-| `src/commands/` | Slash commands (`/help`, `/story-log`, `/set-ticket`, ...) |
+| `src/commands/` | Slash commands (`/help`, `/set-ticket`, ...) |
 | `src/tools/` | Tool implementations (FileRead, Bash, Grep, Glob, ...) |
 | `src/mods/` | Mods system — user JS extensions (events / tools / commands / UI slots). **Fork-original, explicitly excluded from the upstream sync list** (route B, see `docs/mods-plan.md` §1.3; upstream has no file of the same name, so the fork causes no sync conflicts) |
 | `src/services/api/` | API clients |
@@ -33,6 +35,12 @@
 | `src/grpc/` | gRPC headless server |
 | `scripts/` | Build, bootstrap, system checks |
 | `docs/` | Contributor + sync docs |
+| `skills/`, `agents/` | Fork skill + subagent definitions |
+| `tests/` | Integration tests (`tests/sdk/`) |
+| `web/` | `opencc-web` companion web app |
+| `vendor/ripgrep/` | Runtime `rg` binaries — sole runtime source, do not remove |
+| `python/` | Python-side providers (atomic_chat, ollama, smart_router) |
+| `vscode-extension/` | VS Code extension |
 | `bin/`, `dist/` | CLI entrypoint, build output |
 
 ## Project Rules
@@ -44,6 +52,7 @@
 5. **Feature flags** — `scripts/build.ts` strips internal features (voice, proactive, kairos)
 6. **Build output `dist/cli.mjs` is generated** — never edit directly
 7. **Functional verification uses `tui-func-verifier`** — when validating TUI/CLI flows, new features, or UI behavior, dispatch the `tui-func-verifier` subagent to run commands in tmux and capture output. Do **not** rely on `bun test` + manual visual checks alone. Standalone `-p` mode is fallback only when the agent is unavailable.
+8. **Do not push, and never ask to push** — local-first workflow. After `commit`, report the hash + line count only; pushing happens only on explicit request.
 
 ## Anti-Patterns (NEVER)
 
@@ -62,15 +71,14 @@
 | `bun run dev` | Build + interactive run |
 | `bun run typecheck` | TypeScript type check |
 | `bun run smoke` | Build + quick smoke |
-| `bun test` | Run all tests |
+| `bun test <file>` | Run one test file — never the full suite (see Verification) |
 
 ## Specs & Conventions
 | Category | Path |
 |----------|------|
 | Upstream sync workflow | [`docs/sync-upstream.md`](docs/sync-upstream.md) |
 | Verification protocol | [`docs/verification-checklist.md`](docs/verification-checklist.md) |
-| Agent routing | `~/.claude.json` (`agentRouting` field) |
-| Silenced tests / dead code | git commits `352afa86`, `1b586849` |
+| Mods design | [`docs/mods-plan.md`](docs/mods-plan.md) |
 
 ## Verification
 
@@ -89,10 +97,9 @@ Skipping the debug log scan is incomplete — runtime errors hide behind success
 ✅ bun test src/components/Foo.test.tsx src/utils/bar.test.ts
 ❌ bun test
 ❌ bun test --feature=UNATTENDED_RETRY
-❌ bun run test / test:full / test:coverage
 ```
 
-Rationale: the repo has 772 test files and 6000 cases; a full run takes ~36 seconds and **the output is drowned by the `test-env-preload` preamble plus heavy console noise** (in a non-TTY, `bun test` only prints `(fail)`, never `(pass)`, so thousands of passing cases give zero feedback and it looks hung). This has repeatedly caused false "the tests aren't responding" diagnoses and wasteful re-runs in both time and tokens.
+Rationale: the repo has 816 test files and ~6081 cases; a full run takes ~36 seconds and **the output is drowned by the `test-env-preload` preamble plus heavy console noise** (in a non-TTY, `bun test` only prints `(fail)`, never `(pass)`, so thousands of passing cases give zero feedback and it looks hung). This has repeatedly caused false "the tests aren't responding" diagnoses and wasteful re-runs in both time and tokens.
 
 Hard companion constraints:
 - When running tests you **must redirect to a log file first**: `bun test <file> > /tmp/t.log 2>&1; tail -5 /tmp/t.log`. **Do not pipe to `| tail`** — the pipe buffers until the process exits, which again looks like "no response".
@@ -103,18 +110,22 @@ Hard companion constraints:
 
 `bun:test`'s `mock.module` writes to a **process-level global registry**, and `mock.restore()` does **not** undo module-level mocks. Any test that calls `mock.module('./X.js', ...)` without reinstalling the real implementation in an `afterEach` pollutes **every test file loaded after `X.js`**, and it only shows up in a full run — the files all pass in isolation.
 
-Known polluters and victims (this has been hit repeatedly; see the comments in `betas.test.ts`, `compact.test.ts`, `providerProfiles.test.ts`, `modelOptions.picker.test.ts`, `config.backupRecovery.test.ts`):
-- `providerFallback.test.ts`'s last test, `getActiveProviderProfile: () => a` → pollutes `model/providers.test.ts` (already fixed surgically in `229daa63`)
+Known polluters and victims (see the comments in `betas.test.ts`, `compact.test.ts`, `providerProfiles.test.ts`, `modelOptions.picker.test.ts`, `config.backupRecovery.test.ts`):
+- `providerFallback.test.ts`'s last test, `getActiveProviderProfile: () => a` → pollutes `model/providers.test.ts`
 - The leaked `providerProfiles[]` from `providerProfiles.test.ts` → pollutes the firstParty checks in `betas.test.ts` / `compact.test.ts`
 
 **Do not work around it with `--isolate` / `--parallel`** (both supported by bun 1.3.14, both empirically verified):
 - `--isolate` does eliminate the pollution (the paired tests pass), but a full run **hangs** at `openclaudePaths.test.ts` and memory climbs to 4.6GB
 - `--parallel=N` likewise hangs at `tests/sdk/permissions.test.ts` and adds 11 new failures
 
-Root cause: some tests in this repo **depend on shared in-process state** — SDK permission-callback IPC timing (the 50ms timeout path in `tests/sdk/permissions.test.ts`), the subprocess wait in `runAutoFixCheck`, the corrupted-config-file recovery logic. Process isolation breaks all of these, and the cost far outweighs the benefit. If a new test introduces `mock.module`, it **must restore in `afterEach`**, or follow the `229daa63` pattern of a **targeted guard on the polluted side**.
+Root cause: some tests in this repo **depend on shared in-process state** — SDK permission-callback IPC timing (the 50ms timeout path in `tests/sdk/permissions.test.ts`), the subprocess wait in `runAutoFixCheck`, the corrupted-config-file recovery logic. Process isolation breaks all of these, and the cost far outweighs the benefit. If a new test introduces `mock.module`, it **must restore in `afterEach`**.
+
+## Commit Conventions
+
+Format: `HRMSV3-ZN-WEBSITE#668 <type>(scope): 描述` — e.g. `HRMSV3-ZN-WEBSITE#668 feat(publisher): 支持多平台安装`. Ticket comes from the `ZN_COMMIT_ID` shell env var; do not ask.
 
 ## Release
 
 `bun run release` — bumps patch version by default. Major/minor only on explicit request.
 
-<!-- updated: 2026-06-26 -->
+<!-- updated: 2026-10-13 -->

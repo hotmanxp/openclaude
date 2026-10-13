@@ -29,12 +29,15 @@ export type BuiltinModSpec = {
   /**
    * Ship the mod without loading it unless the user turns it on in `/plugins`.
    *
-   * For a diagnostic that is itself a listener: `mod-probe` subscribes to
-   * every event, so leaving it on by default made `hasModHandlersFor` true
-   * everywhere and turned the zero-subscription fast path off permanently —
-   * every dispatch then paid a payload clone, a frozen copy and a budgeted
+   * For a diagnostic that is itself a listener: such a mod subscribes to every
+   * event, so leaving it on by default would make `hasModHandlersFor` true
+   * everywhere and turn the zero-subscription fast path off permanently —
+   * every dispatch then pays a payload clone, a frozen copy and a budgeted
    * hook, in a session that asked for none of it. The mod is still listed, so
    * `/plugins` is where it gets switched on.
+   *
+   * No built-in sets this today; it stays as the extension point for the next
+   * listener-shaped diagnostic that ships.
    */
   optIn?: boolean
   /**
@@ -171,9 +174,11 @@ export async function loadBuiltinMods(): Promise<{
 import { diffBuiltinMod } from './builtin/diffMod.js'
 import { handoffBuiltinMod } from './builtin/handoffMod.js'
 import { mermaidBuiltinMod } from './builtin/mermaidMod.js'
-import { modProbeBuiltinMod } from './builtin/modProbe.js'
+import { skillDoctorBuiltinMod } from './builtin/skillDoctorMod.js'
 
 registerBuiltinMod(diffBuiltinMod)
 registerBuiltinMod(handoffBuiltinMod)
 registerBuiltinMod(mermaidBuiltinMod)
-registerBuiltinMod(modProbeBuiltinMod)
+// `skill-doctor` is not a listener and costs nothing when idle, so it ships on
+// like the others.
+registerBuiltinMod(skillDoctorBuiltinMod)

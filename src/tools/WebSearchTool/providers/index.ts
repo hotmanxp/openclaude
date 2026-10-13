@@ -14,6 +14,10 @@
  *   "mojeek"    — use Mojeek only (fail loudly)
  *   "linkup"    — use Linkup only (fail loudly)
  *   "ddg"       — use DuckDuckGo only (fail loudly)
+ *   "minimax"   — use MiniMax native (server-side web_search tool) only (fail loudly)
+ *   "nova"      — use the OpenAI-compatible chat/completions path with
+ *                 `enable_search` (handled inside WebSearchTool.ts, not by an
+ *                 adapter — see runChatCompletionsWebSearch)
  *   "native"    — use Anthropic native / Codex only (fail loudly)
  *
  * "auto" mode is the only mode that silently falls through to the next provider.
@@ -21,8 +25,16 @@
  *
  * NOTE: "custom" is NOT included in the "auto" fallback chain.
  *       It is only used when WEB_SEARCH_PROVIDER=custom is explicitly selected.
+ * NOTE: "minimax" is likewise NOT in the auto chain — it is only reached via
+ *       WEB_SEARCH_PROVIDER=minimax or the IS_HOME_NETWORK shortcut below.
+ *
+ * IS_HOME_NETWORK: when this env var is truthy and no explicit
+ * WEB_SEARCH_PROVIDER is set, the provider mode resolves to "minimax" so
+ * web search transparently uses MiniMax's native server-side search —
+ * useful for routing to a home-network endpoint that exposes a local key.
  */
 
+import { isEnvTruthy } from '../../../utils/envUtils.js'
 import type { SearchInput, SearchProvider } from './types.js'
 import type { ProviderOutput } from './types.js'
 
@@ -36,7 +48,9 @@ import { jinaProvider } from './jina.js'
 import { bingProvider } from './bing.js'
 import { mojeekProvider } from './mojeek.js'
 import { linkupProvider } from './linkup.js'
+import { minimaxProvider } from './minimax.js'
 
+export { minimaxProvider }
 export { type SearchInput, type SearchProvider, type ProviderOutput, type SearchHit } from './types.js'
 export { applyDomainFilters, safeHostname, hostMatchesDomain } from './types.js'
 export { extractHits } from './custom.js'
@@ -62,6 +76,11 @@ const ALL_PROVIDERS: SearchProvider[] = [
   duckduckgoProvider,
 ]
 
+// MiniMax is intentionally NOT in ALL_PROVIDERS — it must only be selected
+// explicitly via WEB_SEARCH_PROVIDER=minimax or the IS_HOME_NETWORK shortcut.
+// Putting it in auto would silently route every search through MiniMax when
+// MINIMAX_API_KEY is present in the shell, which is rarely what users want.
+
 export function getAvailableProviders(): SearchProvider[] {
   return ALL_PROVIDERS.filter(p => p.isConfigured())
 }
@@ -82,6 +101,8 @@ export type ProviderMode =
   | 'bing'
   | 'mojeek'
   | 'linkup'
+  | 'minimax'
+  | 'nova'
   | 'native'
 
 const PROVIDER_BY_NAME: Record<string, SearchProvider> = {
@@ -95,13 +116,28 @@ const PROVIDER_BY_NAME: Record<string, SearchProvider> = {
   bing: bingProvider,
   mojeek: mojeekProvider,
   linkup: linkupProvider,
+  minimax: minimaxProvider,
 }
 
-const VALID_MODES = new Set<string>(Object.keys(PROVIDER_BY_NAME).concat(['auto', 'native']))
+// "nova" has no adapter entry on purpose: its chat/completions + enable_search
+// request is built in WebSearchTool.ts, which short-circuits before the adapter
+// chain. It still has to be a valid mode so getProviderMode() returns it.
+const VALID_MODES = new Set<string>(
+  Object.keys(PROVIDER_BY_NAME).concat(['auto', 'native', 'nova']),
+)
 
 export function getProviderMode(): ProviderMode {
-  const raw = process.env.WEB_SEARCH_PROVIDER ?? 'auto'
-  if (VALID_MODES.has(raw)) return raw as ProviderMode
+  // IS_HOME_NETWORK shortcut: when truthy and the user has not set an
+  // explicit WEB_SEARCH_PROVIDER, route every web search through MiniMax's
+  // native (server-side) search. This is intended for users on a home /
+  // trusted network who have already configured MINIMAX_API_KEY.
+  const raw = process.env.WEB_SEARCH_PROVIDER
+  const explicit = typeof raw === 'string' && raw.length > 0
+  if (!explicit && isEnvTruthy(process.env.IS_HOME_NETWORK)) {
+    return 'minimax'
+  }
+  const mode = raw ?? 'auto'
+  if (VALID_MODES.has(mode)) return mode as ProviderMode
   return 'auto'
 }
 

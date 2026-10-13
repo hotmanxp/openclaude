@@ -17,9 +17,11 @@ import {
  * loaded it — and that row's toggle is the only control that turns one on, so
  * the control that could fix it shows as already on.
  *
- * mod-probe is the casualty: it reported itself enabled, so its `/mod-probe`
+ * mod-probe was the casualty: it reported itself enabled, so its `/mod-probe`
  * command never appeared and the only way to get the diagnostic was to read the
- * loader's source and conclude the mod was already on.
+ * loader's source and conclude the mod was already on. It is no longer in the
+ * manifest, so these cases stand up their own spec — the `optIn` contract
+ * remains and the next listener-shaped diagnostic will hit it.
  *
  * The spec list is module state other test files replace wholesale, so each
  * case sets it rather than reading whatever the last file left behind.

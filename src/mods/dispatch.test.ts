@@ -521,6 +521,58 @@ describe('runModChain cursor safety', () => {
     expect(terminalRuns).toBe(1)
     expect(order).toEqual(['a', 'bad', 'c'])
   })
+
+  // A handler that calls `await next(e)` and THEN throws had already advanced
+  // the shared cursor to the end of the chain. The catch branch resumes from
+  // the PRE-rewrite argument, so it walked straight back into `terminal` and
+  // ran the core a second time — and the value it returned was the one
+  // computed from the event the mod had already replaced. `dispatchModEngineResult`
+  // puts real host core in that seat, so this was duplicate work plus a
+  // silently dropped rewrite.
+  test('a handler that throws AFTER next() does not re-run the core, and its rewrite survives', async () => {
+    const terminalSaw: Record<string, unknown>[] = []
+    const chain = [
+      entry('rewriter', async (_e: any, next: any) => {
+        await next({ v: 'rewritten' })
+        throw new Error('boom after next')
+      }),
+    ]
+
+    const result = await runModChain(
+      chain as never,
+      { v: 'original' },
+      async (e: any) => {
+        terminalSaw.push(e)
+        return e
+      },
+    )
+
+    expect(terminalSaw).toHaveLength(1)
+    expect(terminalSaw[0]).toEqual({ v: 'rewritten' })
+    expect(result).toEqual({ v: 'rewritten' })
+  })
+
+  test('a throwing handler that never called next() still reaches the core', async () => {
+    let terminalRuns = 0
+    const chain = [
+      entry('a', async (_e: any, next: any) => {
+        await next()
+        throw new Error('boom')
+      }),
+    ]
+
+    const result = await runModChain(
+      chain as never,
+      { v: 'original' },
+      async (e: any) => {
+        terminalRuns++
+        return e
+      },
+    )
+
+    expect(terminalRuns).toBe(1)
+    expect(result).toEqual({ v: 'original' })
+  })
 })
 
 /**
@@ -530,6 +582,68 @@ describe('runModChain cursor safety', () => {
  * here therefore asserts what the CONSUMER saw, not that a handler ran.
  */
 describe('runModStreamChain', () => {
+  // A handler that throws after the stream is already flowing must degrade its
+  // own transform, not truncate the stream: everything it already yielded stays
+  // on the wire and the rest of the stream beneath it flows on.
+  //
+  // The boundary of "already yielded" is the chunk the handler was holding when
+  // it broke. A handler that throws while INSPECTING a chunk it has not yet
+  // forwarded loses exactly that one chunk — `pulled` counted it, so the resume
+  // skips past it. Re-delivering it instead was tried and is wrong: it
+  // duplicates the chunk in the common shape where the handler yields the chunk
+  // and then throws on the basis of it. Both shapes are indistinguishable from
+  // beneath(), so the loss is the documented cost of a handler that breaks.
+  test('a handler that throws mid-stream keeps what it yielded and the rest flows on', async () => {
+    const chain = [{
+      modName: 'half',
+      handler: async function* (_e: unknown, next: any) {
+        for await (const c of next()) {
+          if (c === 'd') throw new Error('boom mid-stream')
+          yield c
+        }
+      },
+    }]
+    const out = await drain(
+      runModStreamChain(
+        chain as never,
+        {} as never,
+        () => core(['a', 'b', 'c', 'd', 'e', 'f', 'g'], 'r'),
+      ),
+    )
+    // 'd' is the chunk the handler died holding; the stream does not end there.
+    expect(out.chunks).toEqual(['a', 'b', 'c', 'e', 'f', 'g'])
+    expect(out.chunks).toContain('e')
+    expect(out.chunks).toContain('g')
+  })
+
+  // Guards the other direction: a chunk the consumer already holds must never
+  // be handed to it twice.
+  test('a consumer that throws mid-stream does not get a duplicate chunk', async () => {
+    const chain = [{
+      modName: 'passthru',
+      handler: async function* (_e: unknown, next: any) {
+        return yield* next()
+      },
+    }]
+    const gen = runModStreamChain(
+      chain as never,
+      {} as never,
+      () => core(['a', 'b', 'c'], 'r'),
+    )
+    const seen: unknown[] = []
+    try {
+      let step = await gen.next()
+      while (!step.done) {
+        seen.push(step.value)
+        if (step.value === 'b') throw new Error('consumer died')
+        step = await gen.next()
+      }
+    } catch {
+      // expected — the consumer aborted the turn
+    }
+    expect(seen).toEqual(['a', 'b'])
+  })
+
   function core(parts: string[], result: string = 'done') {
     return (async function* () {
       for (const p of parts) yield p

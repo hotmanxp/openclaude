@@ -196,11 +196,30 @@ export async function runModChain(
   // branch has consumed a position, further calls on that handler's next()
   // become no-ops returning the branch's own result.
   const branchResults = new Map<() => Promise<Record<string, unknown>>, Promise<Record<string, unknown>>>()
+  // The terminal tier runs AT MOST ONCE per dispatch, for the same reason
+  // branchResults exists for `next()`: `index` is a single shared cursor, so
+  // once the last handler has advanced it past the chain there is no way back.
+  //
+  // Without this latch a handler that called `await next(e)` and THEN threw
+  // sent the catch branch — which resumes from the PRE-rewrite `current` —
+  // straight into a second `terminal(current)`. The core ran twice and the
+  // answer that came back was the one computed from the event the mod had
+  // already replaced. On the streaming path and on the budget-timeout path the
+  // same thing happened when the abandoned body kept a reference to `next`.
+  //
+  // Memoizing the promise (not the value) also collapses concurrent callers,
+  // and `dispatchModEngineResult` puts the real host core here, so a duplicate
+  // call was duplicate prompt composition / duplicate tool description work.
+  let terminalPromise: Promise<Record<string, unknown>> | undefined
+  const runTerminal = (
+    e: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> =>
+    (terminalPromise ??= terminal(e))
   const runFrom = async (
     current: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => {
     if (signal?.aborted) return { continue: true }
-    if (index >= chain.length) return terminal(current)
+    if (index >= chain.length) return runTerminal(current)
     const entry = chain[index]!
     const { modName, handler } = entry
     index++

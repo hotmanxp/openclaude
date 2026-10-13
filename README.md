@@ -1,4 +1,4 @@
-# OpenClaude
+# OpenCC
 
 OpenClaude is an open-source coding-agent CLI for cloud and local model providers.
 

@@ -21,6 +21,7 @@ import { count } from '../../utils/array.js';
 import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getBranch } from '../../utils/git.js';
+import { BRANCH_ICON } from '../../constants/figures.js';
 import { getCwd } from '../../utils/cwd.js';
 import { TeamStatus } from '../teams/TeamStatus.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
@@ -454,7 +455,7 @@ const prStatus = usePrStatus(isLoading, active && isPrStatusEnabled());
   if (hasTeammatePills) {
     // Don't append spinner hints when viewing a completed teammate —
     // the "esc to return to team lead" hint already replaces "esc to interrupt"
-    const branchPart = branch ? <Text dimColor key="branch">{branch}</Text> : null;
+    const branchPart = branch ? <Text dimColor key="branch">{BRANCH_ICON}{' '}{branch}</Text> : null;
     const otherParts = [...(modePart ? [modePart] : []), ...(branch ? [branchPart] : []), ...parts, ...(isViewingCompletedTeammate ? [] : hintParts)];
     return <Box flexDirection="column">
         <Box>
@@ -547,7 +548,7 @@ const prStatus = usePrStatus(isLoading, active && isPrStatusEnabled());
       {parts.some(Boolean) && <Text wrap="truncate">
           <Byline>{parts}</Byline>
         </Text>}
-      {branch && <><Text dimColor> · </Text><Text color="success">{branch}</Text></>}
+      {branch && <><Text dimColor> · </Text><Text color="success">{BRANCH_ICON}{' '}{branch}</Text></>}
       {project && <><Text dimColor> · </Text><Text color="warning">{project}</Text></>}
       <Text dimColor> · </Text><Text color="claude">{modelDisplay}</Text><Text dimColor> · </Text>
     </Box>;
