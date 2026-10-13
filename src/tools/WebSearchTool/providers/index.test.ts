@@ -91,12 +91,24 @@ function stalledJsonResponse(): Response {
 
 describe('getProviderMode', () => {
   const savedEnv = process.env.WEB_SEARCH_PROVIDER
+  const savedHomeNetwork = process.env.IS_HOME_NETWORK
+
+  beforeEach(() => {
+    // getProviderMode() short-circuits to minimax when IS_HOME_NETWORK is set,
+    // so the block is only hermetic if that var is cleared for every case.
+    delete process.env.IS_HOME_NETWORK
+  })
 
   afterEach(() => {
     if (savedEnv === undefined) {
       delete process.env.WEB_SEARCH_PROVIDER
     } else {
       process.env.WEB_SEARCH_PROVIDER = savedEnv
+    }
+    if (savedHomeNetwork === undefined) {
+      delete process.env.IS_HOME_NETWORK
+    } else {
+      process.env.IS_HOME_NETWORK = savedHomeNetwork
     }
   })
 
@@ -124,6 +136,52 @@ describe('getProviderMode', () => {
     process.env.WEB_SEARCH_PROVIDER = 'nonexistent_provider'
     expect(getProviderMode()).toBe('auto')
   })
+
+  test('returns minimax mode', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'minimax'
+    expect(getProviderMode()).toBe('minimax')
+  })
+
+  test('returns nova mode', () => {
+    process.env.WEB_SEARCH_PROVIDER = 'nova'
+    expect(getProviderMode()).toBe('nova')
+  })
+
+  test('IS_HOME_NETWORK selects minimax when WEB_SEARCH_PROVIDER is unset', () => {
+    const savedHomeNetwork = process.env.IS_HOME_NETWORK
+    try {
+      delete process.env.WEB_SEARCH_PROVIDER
+      process.env.IS_HOME_NETWORK = '1'
+      expect(getProviderMode()).toBe('minimax')
+    } finally {
+      if (savedHomeNetwork === undefined) delete process.env.IS_HOME_NETWORK
+      else process.env.IS_HOME_NETWORK = savedHomeNetwork
+    }
+  })
+
+  test('explicit WEB_SEARCH_PROVIDER wins over IS_HOME_NETWORK', () => {
+    const savedHomeNetwork = process.env.IS_HOME_NETWORK
+    try {
+      process.env.IS_HOME_NETWORK = '1'
+      process.env.WEB_SEARCH_PROVIDER = 'tavily'
+      expect(getProviderMode()).toBe('tavily')
+    } finally {
+      if (savedHomeNetwork === undefined) delete process.env.IS_HOME_NETWORK
+      else process.env.IS_HOME_NETWORK = savedHomeNetwork
+    }
+  })
+
+  test('falsy IS_HOME_NETWORK does not select minimax', () => {
+    const savedHomeNetwork = process.env.IS_HOME_NETWORK
+    try {
+      delete process.env.WEB_SEARCH_PROVIDER
+      process.env.IS_HOME_NETWORK = '0'
+      expect(getProviderMode()).toBe('auto')
+    } finally {
+      if (savedHomeNetwork === undefined) delete process.env.IS_HOME_NETWORK
+      else process.env.IS_HOME_NETWORK = savedHomeNetwork
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -141,6 +199,23 @@ describe('getProviderChain', () => {
   test('auto mode does NOT include custom provider', () => {
     const chain = getProviderChain('auto')
     expect(chain.some(p => p.name === 'custom')).toBe(false)
+  })
+
+  test('auto mode does NOT include minimax even when MINIMAX_API_KEY is set', () => {
+    const savedKey = process.env.MINIMAX_API_KEY
+    try {
+      process.env.MINIMAX_API_KEY = 'minimax-test-key'
+      expect(getProviderChain('auto').some(p => p.name === 'minimax')).toBe(false)
+    } finally {
+      if (savedKey === undefined) delete process.env.MINIMAX_API_KEY
+      else process.env.MINIMAX_API_KEY = savedKey
+    }
+  })
+
+  test('minimax mode explicitly returns the minimax provider', () => {
+    const chain = getProviderChain('minimax' as ProviderMode)
+    expect(chain).toHaveLength(1)
+    expect(chain[0].name).toBe('minimax')
   })
 
   test('custom mode explicitly returns custom provider', () => {

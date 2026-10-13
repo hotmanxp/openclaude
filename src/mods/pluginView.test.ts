@@ -33,10 +33,11 @@ import {
 /**
  * Whether `modName` still has a hook entry under `event`.
  *
- * `mod-probe` registers all 109 events, so `Stop` is never empty in a session
- * that has it loaded — asserting the whole registry is undefined would fail
- * for reasons that have nothing to do with the mod under test. Mods sharing a
- * host event share one composite, so this is a membership check.
+ * The shipped built-ins register handlers of their own, so a shared event is
+ * never empty in a session that has one loaded — asserting the whole registry
+ * is undefined would fail for reasons that have nothing to do with the mod
+ * under test. Mods sharing a host event share one composite, so this is a
+ * membership check.
  */
 function modHasHook(event: string, modName: string): boolean {
   const all = getRegisteredHooks() as

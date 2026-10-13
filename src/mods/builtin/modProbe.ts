@@ -15,6 +15,11 @@
  * `next(e)` unchanged, so having it loaded cannot alter behaviour — which is
  * also why it is safe to ship as an ordinary built-in rather than a test-only
  * hook.
+ *
+ * NOT in the manifest: `builtin.ts` no longer registers it, so it does not
+ * appear in `/plugins` and `/mod-probe` is not a command. The file stays so a
+ * future listener-shaped diagnostic has the machinery ready; to bring it back,
+ * add `registerBuiltinMod(modProbeBuiltinMod)` to that file's list.
  */
 
 import type { ModContext } from '../engine.js'

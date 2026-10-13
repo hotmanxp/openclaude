@@ -590,7 +590,7 @@ export function ManagePlugins({
     for (const state of pluginStates) {
       const pluginId = `${state.plugin.name}@${state.marketplace}`;
       const enabledKey = mergedSettings?.enabledPlugins?.[pluginId];
-      // An `optIn` built-in (mod-probe) ships dormant: the loader gates it on
+      // An `optIn` built-in ships dormant: the loader gates it on
       // `=== true`, so an absent key means OFF. Reading it as `!== false` here
       // rendered such a row as "✓ enabled" while it had never loaded — and the
       // row's own toggle is the only control that turns one on, so the one

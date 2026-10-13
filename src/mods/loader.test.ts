@@ -30,13 +30,13 @@ let savedEnv: string | undefined
  * The hook entries ONE mod contributed under `event`.
  *
  * Every shipped built-in registers its own handlers — `diff` under
- * `PostToolUse`, `mod-probe` under all 109 events — so a test that counts the
- * whole registry is really asserting "no built-in has changed", and breaks
- * the next time one does. What these tests actually care about is whether a
- * PARTICULAR mod's registration landed, so they filter to it.
+ * `PostToolUse`, and so on — so a test that counts the whole registry is
+ * really asserting "no built-in has changed", and breaks the next time one
+ * does. What these tests actually care about is whether a PARTICULAR mod's
+ * registration landed, so they filter to it.
  *
  * Mods sharing a host event share ONE composite whose `pluginName` lists them
- * all (`mod:mod-probe+greeter`), so the match is membership, not equality.
+ * all (`mod:diff+greeter`), so the match is membership, not equality.
  */
 function hooksFor(
   event: string,

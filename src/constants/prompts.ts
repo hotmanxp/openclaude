@@ -691,20 +691,32 @@ Before running a command that changes system state (such as restarts, deletes, o
   // Upstream 2.1.280 `KE()`: when the model resolves to a lean prompt, the six
   // static sections collapse into the single `# Harness` section. Dynamic
   // sections are appended either way.
-  const staticSections = isLeanSystemPrompt()
-    ? [getHarnessSection(outputStyleConfig)]
-    : [
-        getSimpleIntroSection(outputStyleConfig),
-        getSimpleSystemSection(),
-        outputStyleConfig === null ||
-        outputStyleConfig.keepCodingInstructions === true
-          ? getSimpleDoingTasksSection()
-          : null,
-        getActionsSection(),
-        getUsingYourToolsSection(enabledTools),
-        getSimpleToneAndStyleSection(),
-        getTextOutputSection(),
-      ]
+  //
+  // The id is bound to its text HERE, never derived from an index: the two
+  // shapes have different lengths (1 vs 7) and `doing-tasks` is itself
+  // optional, so any index-aligned table slips by one in the non-lean path and
+  // by two when the output style drops `doing-tasks` — a hook doing
+  // `drop(next(e), 'tools')` would then delete the tone section instead, in
+  // silence, because no id would ever fail to match.
+  const staticSections: { id: string; text: string | null }[] =
+    isLeanSystemPrompt()
+      ? [{ id: 'harness', text: getHarnessSection(outputStyleConfig) }]
+      : [
+          { id: 'intro', text: getSimpleIntroSection(outputStyleConfig) },
+          { id: 'system', text: getSimpleSystemSection() },
+          {
+            id: 'doing-tasks',
+            text:
+              outputStyleConfig === null ||
+              outputStyleConfig.keepCodingInstructions === true
+                ? getSimpleDoingTasksSection()
+                : null,
+          },
+          { id: 'actions', text: getActionsSection() },
+          { id: 'tools', text: getUsingYourToolsSection(enabledTools) },
+          { id: 'tone', text: getSimpleToneAndStyleSection() },
+          { id: 'text-output', text: getTextOutputSection() },
+        ]
 
   // Upstream `prompt.compose` (d.ts:6665) — the hook that sees the system
   // prompt as a LIST OF SECTIONS and may add, drop, reorder or rewrite them.
@@ -715,19 +727,9 @@ Before running a command that changes system state (such as restarts, deletes, o
   // has the engine "join each side, place the cache boundary between them and
   // place every cache marker itself", so letting a hook move the boundary
   // would move the prompt cache along with it.
-  const staticIds = [
-    'harness',
-    'intro',
-    'system',
-    'doing-tasks',
-    'actions',
-    'tools',
-    'tone',
-    'text-output',
-  ]
-  const shared = staticSections
-    .map((text, i) => ({ id: staticIds[i] ?? `static-${i}`, text }))
-    .filter((s): s is { id: string; text: string } => s.text !== null)
+  const shared = staticSections.filter(
+    (s): s is { id: string; text: string } => s.text !== null,
+  )
   const dynamic = resolvedDynamicSections
   const boundary = () =>
     shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []

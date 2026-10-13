@@ -4,8 +4,11 @@ import type {
   BetaWebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvDefinedFalsy } from '../../utils/envUtils.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import { fetchWithProxyRetry } from '../../services/api/fetchWithProxyRetry.js'
+import { resolveProviderRequest } from '../../services/api/providerConfig.js'
+import { getAnthropicApiKey } from '../../utils/auth.js'
 
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -29,6 +32,7 @@ import {
   runSearch,
   getProviderMode,
   getAvailableProviders,
+  minimaxProvider,
   type ProviderOutput,
 } from './providers/index.js'
 
@@ -170,6 +174,58 @@ function hasNativeSearchFallback(): boolean {
   if (isCodexResponsesWebSearchEnabled()) return true
   const provider = getAPIProvider()
   return provider === 'firstParty' || provider === 'vertex' || provider === 'foundry'
+}
+
+/**
+ * Chat Completions (`enable_search`) web search — the zn-nova gateway path.
+ *
+ * Selected via `WEB_SEARCH_PROVIDER=nova`. Deliberately NOT a condition on the
+ * resolved transport: the endpoint is an internal gateway whose key model name
+ * only exists there, so inferring it from `transport === 'chat_completions'`
+ * would hijack every plain OpenAI-compatible provider (and hard-wiring
+ * `return true` would route every search to the gateway). Explicit opt-in is
+ * the only safe trigger.
+ */
+function isChatCompletionsWebSearchEnabled(): boolean {
+  return getProviderMode() === 'nova'
+}
+
+const NOVA_DEFAULT_BASE_URL = 'https://zn-nova.paic.com.cn/novai/v1'
+const NOVA_DEFAULT_MODEL = 'qwen3.7-plus'
+
+/**
+ * Credential for the Chat Completions search path.
+ *
+ * `ANTHROPIC_AUTH_TOKEN` is NOT enough on its own: applying an anthropic
+ * provider profile deletes it (utils/providerProfiles.ts) and installs the
+ * profile's key as `ANTHROPIC_API_KEY` instead, so reading the token directly
+ * sent no Authorization header — and the gateway answers an unauthenticated
+ * request with `200` + an empty body, which surfaced as "Unexpected end of
+ * JSON input" from the tool. Resolve through the same auth layer the main loop
+ * uses, then fall back to the raw env vars.
+ */
+function resolveChatCompletionsApiKey(): string | undefined {
+  if (process.env.WEB_SEARCH_NOVA_API_KEY) {
+    return process.env.WEB_SEARCH_NOVA_API_KEY
+  }
+  // The gateway itself is authenticated by ANTHROPIC_AUTH_TOKEN in the
+  // deployments that use this path, so prefer it when it survived startup.
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    return process.env.ANTHROPIC_AUTH_TOKEN
+  }
+  // Applying an anthropic provider profile deletes ANTHROPIC_AUTH_TOKEN
+  // (utils/providerProfiles.ts) and installs the profile key as
+  // ANTHROPIC_API_KEY instead, so fall back to opencc's own auth layer — and
+  // note that the profile key is not always accepted by this gateway, which is
+  // why WEB_SEARCH_NOVA_API_KEY stays the documented knob.
+  try {
+    const key = getAnthropicApiKey()
+    if (key) return key
+  } catch {
+    // getAnthropicApiKey throws under CI/NODE_ENV=test with no key configured;
+    // fall through to the OpenAI-compatible key instead of failing the search.
+  }
+  return process.env.OPENAI_API_KEY
 }
 
 function makeCodexWebSearchTool(input: Input): Record<string, unknown> {
@@ -440,6 +496,113 @@ async function runCodexWebSearch(
   )
 }
 
+// ---------------------------------------------------------------------------
+// Chat Completions API search (OpenAI-compatible gateways with enable_search)
+// ---------------------------------------------------------------------------
+
+async function runChatCompletionsWebSearch(
+  input: Input,
+  signal: AbortSignal,
+): Promise<Output> {
+  const startTime = performance.now()
+  const baseUrl = process.env.WEB_SEARCH_NOVA_BASE_URL ?? NOVA_DEFAULT_BASE_URL
+  const model = process.env.WEB_SEARCH_NOVA_MODEL ?? NOVA_DEFAULT_MODEL
+  // resolveProviderRequest normalizes the base URL and applies route-catalog
+  // model aliases, so a gateway alias still lands on the endpoint's real name.
+  const request = resolveProviderRequest({ model, baseUrl })
+  const apiKey = resolveChatCompletionsApiKey()
+
+  // Only attach the header when a key resolved: a gateway that accepts
+  // anonymous requests serves a real body without it, and one that doesn't
+  // answers with 200 + an empty body (handled by the parse guard below).
+
+  const body: Record<string, unknown> = {
+    model: request.resolvedModel,
+    messages: [
+      {
+        role: 'user',
+        content: input.query,
+      },
+    ],
+    // Non-streaming: the gateway returns the composed answer in a single JSON
+    // body. Streaming is unreliable here — the gateway emits SSE frames as
+    // `data:{...}` (no space, which a `data: ` prefix check would skip
+    // entirely) and carries most content in `delta.reasoning_content`; the
+    // question-answering tool only needs the final result anyway.
+    stream: false,
+    enable_search: true,
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+
+  const response = await fetchWithProxyRetry(
+    `${request.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    },
+  )
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => 'unknown error')
+    throw new Error(
+      `Chat Completions web search error ${response.status}: ${errorBody}. ` +
+      `Check the credential for ${request.baseUrl} — set WEB_SEARCH_NOVA_API_KEY ` +
+      `to override the resolved key.`,
+    )
+  }
+
+  let payload: any
+  try {
+    payload = await response.json()
+  } catch {
+    // The gateway answers an unauthenticated request with 200 + an empty body,
+    // so a JSON parse failure here almost always means the credential was
+    // missing or rejected rather than a protocol error.
+    throw new Error(
+      `Chat Completions web search got a non-JSON body from ` +
+      `${request.baseUrl}/chat/completions (HTTP ${response.status}). ` +
+      `If the body is empty, the endpoint rejected the credentials — set ` +
+      `WEB_SEARCH_NOVA_API_KEY or configure provider auth.`,
+    )
+  }
+  const fullText = payload?.choices?.[0]?.message?.content ?? ''
+
+  const endTime = performance.now()
+  const durationSeconds = (endTime - startTime) / 1000
+
+  // Extract URLs from the response text (markdown links)
+  const urlRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  const hits: { title: string; url: string }[] = []
+  let match: RegExpExecArray | null
+  while ((match = urlRegex.exec(fullText)) !== null) {
+    hits.push({ title: match[1], url: match[2] })
+  }
+
+  const results: (SearchResult | string)[] = []
+  if (fullText.trim()) results.push(fullText.trim())
+  if (hits.length > 0) {
+    results.push({
+      tool_use_id: 'chat-completions-search',
+      content: hits,
+    })
+  }
+  if (results.length === 0) results.push('No results found.')
+
+  return {
+    query: input.query,
+    results,
+    durationSeconds,
+  }
+}
+
 function makeOutputFromSearchResponse(
   result: BetaContentBlock[],
   query: string,
@@ -576,11 +739,24 @@ export const WebSearchTool = buildTool({
     return summary ? `Searching for ${summary}` : 'Searching the web'
   },
   isEnabled() {
-    // 检查环境变量控制
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_WEBTOOL_ENABEL)) {
+    // 默认开启：只有显式关闭时才禁用
+    // （CLAUDE_CODE_WEBTOOL_ENABEL=0/false/no/off）。
+    if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_WEBTOOL_ENABEL)) {
       return false
     }
     const mode = getProviderMode()
+
+    // Chat Completions (enable_search) mode: call() builds the request itself.
+    if (mode === 'nova') {
+      return true
+    }
+
+    // MiniMax native mode: needs MINIMAX_API_KEY. It is deliberately absent
+    // from the auto chain, so the adapter check below would report it as
+    // unconfigured and disable the tool.
+    if (mode === 'minimax') {
+      return minimaxProvider.isConfigured()
+    }
 
     // Specific provider mode: enabled if any adapter is configured
     if (mode !== 'auto' && mode !== 'native') {
@@ -667,6 +843,34 @@ export const WebSearchTool = buildTool({
     return { result: true }
   },
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
+    // --- MiniMax native path (server-side web_search_20250305) ---
+    // Activated by IS_HOME_NETWORK=1 / true / yes / on (with no explicit
+    // WEB_SEARCH_PROVIDER), or by WEB_SEARCH_PROVIDER=minimax. Bypasses the
+    // Chat Completions path below because MiniMax speaks the Anthropic
+    // /v1/messages protocol, not OpenAI-compatible enable_search.
+    if (getProviderMode() === 'minimax') {
+      const providerOutput = await runSearch(
+        {
+          query: input.query,
+          allowed_domains: input.allowed_domains,
+          blocked_domains: input.blocked_domains,
+        },
+        context.abortController.signal,
+      )
+      return {
+        data: formatProviderOutput(providerOutput, input.query),
+      }
+    }
+
+    // --- Chat Completions API search path (gateway with enable_search) ---
+    if (isChatCompletionsWebSearchEnabled()) {
+      const chatData = await runChatCompletionsWebSearch(
+        input,
+        context.abortController.signal,
+      )
+      return { data: chatData }
+    }
+
     // --- Adapter-based providers (custom, firecrawl, ddg) ---
     // runSearch handles fallback semantics based on WEB_SEARCH_PROVIDER mode:
     //   - "auto": tries each provider, falls through on failure

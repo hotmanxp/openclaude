@@ -110,7 +110,7 @@ const KNOWN_PREEXISTING = new Map<string, Set<string>>([
   ],
   [
     "src/tools/WebSearchTool/WebSearchTool.ts",
-    new Set(["collectCodexCompletedResponse", "fetchWithProxyRetry", "resolveCodexApiCredentials", "resolveProviderRequest"]),
+    new Set(["collectCodexCompletedResponse", "resolveCodexApiCredentials"]),
   ],
   [
     "src/utils/sessionStorage.ts",

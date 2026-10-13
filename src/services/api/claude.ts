@@ -26,6 +26,7 @@ import {
 import { resolveToolDescriptions } from '../../mods/toolDescribe.js'
 import { openTurnStepSink, type TurnStepSink } from '../../mods/turnStepStream.js'
 import type { TurnStepChunk } from '../../mods/turnStep.js'
+import { MOD_HOOK_BUDGET_MS, withBudget } from '../../mods/protocol.js'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
@@ -1888,6 +1889,17 @@ async function* queryModel(
   let ttftMs = 0
   let partialMessage: BetaMessage | undefined = undefined
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
+  // Content-block indices whose `tool` chunk a `turn.step` hook dropped.
+  //
+  // Upstream's contract: "a block whose `tool` chunk never comes out of the
+  // chain is no tool call: the engine records none and runs none." Recording
+  // none has to mean the WHOLE block is skipped, not just the start event —
+  // the `input_json_delta` and `content_block_stop` that follow carry no
+  // `contentBlocks` entry to attach to, and the stock handlers turned that
+  // into `RangeError('Content block not found')`, which failed the entire
+  // request and forced a non-streaming retry. A mod trying to shield the user
+  // from one tool call was taking the whole reply down with it.
+  const droppedToolBlocks = new Set<number>()
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
   let stopReason: BetaStopReason | null = null
@@ -2192,12 +2204,56 @@ async function* queryModel(
       const step = async (
         chunk: TurnStepChunk,
         accumulate: (c: TurnStepChunk) => void,
-      ): Promise<void> => {
+      ): Promise<number> => {
         if (!stepSink) {
           accumulate(chunk)
-          return
+          return 1
         }
-        for (const out of await stepSink.exchange(chunk)) accumulate(out)
+        // A hook is user-supplied code, and the STREAMING chain applies no
+        // per-handler budget — `withBudget` guards the async chain only.
+        // `readNextStreamPart` disposes its abort listener and idle timers the
+        // instant it resolves, so at this point a hook whose await never
+        // settles used to hang the turn outright: no watchdog left to fire, no
+        // Ctrl-C left to work, nothing but killing the process.
+        //
+        // Race the exchange against the same two guards the stream read itself
+        // has — the user's abort, and the shared hook budget. Timing out
+        // degrades to "this chunk passes through untouched", which is the state
+        // the turn would have been in with no mod installed at all.
+        let onAbort: (() => void) | undefined
+        const aborted = new Promise<never>((_, reject) => {
+          if (signal.aborted) {
+            reject(new APIUserAbortError())
+            return
+          }
+          onAbort = () => reject(new APIUserAbortError())
+          signal.addEventListener('abort', onAbort, { once: true })
+        })
+        // If the exchange wins the race this promise is left pending, and if
+        // the abort lands afterwards it rejects with nothing listening — an
+        // unhandled rejection on a path that is otherwise healthy.
+        aborted.catch(() => {})
+        try {
+          const budgeted = await withBudget(() =>
+            Promise.race([stepSink.exchange(chunk), aborted]),
+          )
+          if (budgeted.timedOut) {
+            logForDebugging(
+              `[mods] turn.step hooks exceeded their ${MOD_HOOK_BUDGET_MS}ms budget — this chunk passes through untouched`,
+              { level: 'warn' },
+            )
+            accumulate(chunk)
+            return 1
+          }
+          // How many chunks actually came back. Zero means a hook dropped this
+          // one, which is a legitimate answer — not a failure — so the caller
+          // has to be able to tell it from "nothing was listening".
+          const out = (budgeted.value ?? []) as TurnStepChunk[]
+          for (const c of out) accumulate(c)
+          return out.length
+        } finally {
+          if (onAbort) signal.removeEventListener('abort', onAbort)
+        }
       }
 
       const streamIterator = stream[Symbol.asyncIterator]()
@@ -2267,7 +2323,7 @@ async function* queryModel(
                 // comes out of the chain is no tool call: the engine records
                 // none and runs none." So the chain gets a say here, and a hook
                 // that drops it leaves no block to accumulate into.
-                await step(
+                const delivered = await step(
                   {
                     kind: 'tool',
                     ref: stepSink?.nextRef() ?? 0,
@@ -2285,6 +2341,16 @@ async function* queryModel(
                     }
                   },
                 )
+                if (delivered === 0) {
+                  // A hook that swallows the `tool` chunk cancels the whole
+                  // block. Record the index so the `input_json_delta` and
+                  // `content_block_stop` still to come are consumed and
+                  // discarded instead of throwing on the missing entry.
+                  droppedToolBlocks.add(part.index)
+                  logForDebugging(
+                    `[mods] turn.step dropped the tool chunk at index ${part.index}; the block will be neither recorded nor run`,
+                  )
+                }
                 break
               case 'server_tool_use':
                 contentBlocks[part.index] = {
@@ -2337,6 +2403,12 @@ async function* queryModel(
             }
             break
           case 'content_block_delta': {
+            if (droppedToolBlocks.has(part.index)) {
+              // Its `tool` chunk never came out of the chain, so this block
+              // does not exist. Consume the delta and move on — throwing here
+              // would fail the request over a mod's deliberate drop.
+              break
+            }
             const contentBlock = contentBlocks[part.index]
             const delta = part.delta as typeof part.delta | ConnectorTextDelta
             if (!contentBlock) {
@@ -2496,6 +2568,10 @@ async function* queryModel(
             break
           }
           case 'content_block_stop': {
+            // Upstream: "the engine records none and runs none." No block was
+            // accumulated, so no assistant message is emitted for it — which is
+            // what keeps the dropped tool from ever reaching the executor.
+            if (droppedToolBlocks.has(part.index)) break
             const contentBlock = contentBlocks[part.index]
             if (!contentBlock) {
               logEvent('tengu_streaming_error', {
@@ -2644,7 +2720,40 @@ async function* queryModel(
       // The response is whole. Closing lets the chain finish, so the step's
       // result — the outermost hook's return value — is produced rather than
       // abandoned with the generator still suspended.
-      await stepSink?.close()
+      //
+      // Budgeted and abortable for the same reason `step()` is: `close()`
+      // drains the chain, so a hook still suspended in an await it never
+      // leaves would otherwise hang here, at the very end of a turn the user
+      // has already been waiting through.
+      if (stepSink) {
+        const closing = await withBudget(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              const onAbortClose = () => reject(new APIUserAbortError())
+              if (signal.aborted) {
+                reject(new APIUserAbortError())
+                return
+              }
+              signal.addEventListener('abort', onAbortClose, { once: true })
+              stepSink!.close().then(
+                () => {
+                  signal.removeEventListener('abort', onAbortClose)
+                  resolve()
+                },
+                error => {
+                  signal.removeEventListener('abort', onAbortClose)
+                  reject(error)
+                },
+              )
+            }),
+        )
+        if (closing.timedOut) {
+          logForDebugging(
+            `[mods] turn.step hooks did not settle within ${MOD_HOOK_BUDGET_MS}ms while closing — the step's result is abandoned`,
+            { level: 'warn' },
+          )
+        }
+      }
       // Clear the idle timeout watchdog now that the stream loop has exited
       clearStreamIdleTimers()
 
