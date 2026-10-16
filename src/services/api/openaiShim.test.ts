@@ -19,6 +19,7 @@ const originalEnv = {
   OPENAI_AUTH_HEADER: process.env.OPENAI_AUTH_HEADER,
   OPENAI_AUTH_SCHEME: process.env.OPENAI_AUTH_SCHEME,
   OPENAI_AUTH_HEADER_VALUE: process.env.OPENAI_AUTH_HEADER_VALUE,
+  MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
   CLAUDE_CODE_USE_GITHUB: process.env.CLAUDE_CODE_USE_GITHUB,
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   GH_TOKEN: process.env.GH_TOKEN,
@@ -341,6 +342,10 @@ beforeEach(() => {
   delete process.env.OPENAI_AUTH_HEADER
   delete process.env.OPENAI_AUTH_SCHEME
   delete process.env.OPENAI_AUTH_HEADER_VALUE
+  // apiKey 的取值链是 providerOverride?.apiKey ?? OPENAI_API_KEY ?? MINIMAX_API_KEY,
+  // 用例删掉 OPENAI_API_KEY 制造「无 auth」时会兜底到这里。不清掉的话,开发者
+  // 机器上的真实 key 会被顶上来,断言失败还会把 key 原文打进测试输出。
+  delete process.env.MINIMAX_API_KEY
   delete process.env.CLAUDE_CODE_USE_GITHUB
   delete process.env.GITHUB_TOKEN
   delete process.env.GH_TOKEN
@@ -364,6 +369,7 @@ afterEach(() => {
   restoreEnv('OPENAI_API_FORMAT', originalEnv.OPENAI_API_FORMAT)
   restoreEnv('OPENAI_AUTH_HEADER', originalEnv.OPENAI_AUTH_HEADER)
   restoreEnv('OPENAI_AUTH_SCHEME', originalEnv.OPENAI_AUTH_SCHEME)
+  restoreEnv('MINIMAX_API_KEY', originalEnv.MINIMAX_API_KEY)
   restoreEnv('OPENAI_AUTH_HEADER_VALUE', originalEnv.OPENAI_AUTH_HEADER_VALUE)
   restoreEnv('CLAUDE_CODE_USE_GITHUB', originalEnv.CLAUDE_CODE_USE_GITHUB)
   restoreEnv('GITHUB_TOKEN', originalEnv.GITHUB_TOKEN)
@@ -518,7 +524,7 @@ test.skip('uses custom OpenAI-compatible auth header value when configured', asy
   })
 
   expect(capturedHeaders?.get('api-key')).toBe('hicap-header-value')
-  expect(capturedHeaders?.get('authorization')).toBeNull()
+  expect(capturedHeaders?.has('authorization')).toBe(false)
 })
 
 test('defaults Authorization custom auth header to bearer scheme', async () => {
@@ -586,7 +592,7 @@ test.skip('honors bearer scheme for custom OpenAI-compatible auth headers', asyn
   })
 
   expect(capturedHeaders?.get('x-custom-authorization')).toBe('Bearer custom-key')
-  expect(capturedHeaders?.get('authorization')).toBeNull()
+  expect(capturedHeaders?.has('authorization')).toBe(false)
 })
 
 test('ignores custom auth header value when no custom header is configured', async () => {
@@ -619,7 +625,7 @@ test('ignores custom auth header value when no custom header is configured', asy
     stream: false,
   })
 
-  expect(capturedHeaders?.get('authorization')).toBeNull()
+  expect(capturedHeaders?.has('authorization')).toBe(false)
 })
 
 test('strips canonical Anthropic headers from per-request shim headers too', async () => {
@@ -1664,7 +1670,7 @@ test('does not infer Gemini mode from OPENAI_BASE_URL path substrings', async ()
     stream: false,
   })
 
-  expect(capturedAuthorization).toBeNull()
+  expect(capturedAuthorization === null).toBe(true)
 })
 
 
