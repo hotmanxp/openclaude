@@ -91,8 +91,6 @@ const KNOWN_PREEXISTING = new Map<string, Set<string>>([
     "src/query.ts",
     new Set([
       "TurnRoutingDecision",
-      "effectiveMaxOutputTokensOverride",
-      "providerMaxOutputTokensCap",
       "assistantMessage",
     ]),
   ],
@@ -110,7 +108,7 @@ const KNOWN_PREEXISTING = new Map<string, Set<string>>([
   ],
   [
     "src/tools/WebSearchTool/WebSearchTool.ts",
-    new Set(["collectCodexCompletedResponse", "resolveCodexApiCredentials"]),
+    new Set(["resolveCodexApiCredentials"]),
   ],
   [
     "src/utils/sessionStorage.ts",
