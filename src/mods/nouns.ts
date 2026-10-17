@@ -329,8 +329,10 @@ export type ModSession = {
 /** Upstream `SessionUsageArgs` (d.ts:11744). */
 export type ModSessionUsageArgs = {
   /**
-   * `'summary'` estimates every category locally; `'full'` sends one
-   * token-count request per tool and memory file, as `/context` does.
+   * Upstream: `'summary'` estimates every category locally; `'full'` sends one
+   * token-count request per tool and memory file, as `/context` does. Neither
+   * is wired here — see the header in `sessionUsage.ts`. The value is still
+   * validated, so a mod spelling it wrong is told so rather than ignored.
    */
   breakdown?: 'summary' | 'full'
   /**
@@ -367,7 +369,12 @@ export type ModSessionContextUsage = {
   /** The model's context window, in tokens. */
   window: number
   percent?: number
-  /** Only when the caller passed `breakdown`. */
+  /**
+   * Only when the caller passed `breakdown` AND the host published one. No
+   * production call site publishes it today, so in practice this is always
+   * absent and `undefined` is the "not computed" signal — nothing computes a
+   * substitute locally. See the header in `sessionUsage.ts`.
+   */
   breakdown?: {
     categories: Array<{ name: string; tokens: number }>
     totalTokens: number
