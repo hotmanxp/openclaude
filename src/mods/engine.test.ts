@@ -387,3 +387,22 @@ describe('ctx.on patterns', () => {
     expect(register('ui.render')).toEqual(['ui.render'])
   })
 })
+
+  test('a classic.* name is refused with the dialect reason, not "unsupported"', () => {
+    // The decision is only worth anything if the mod author reads it. An
+    // "unsupported event" error would send them hunting for a typo.
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('classic.Stop' as never, async () => ({}))).toThrow(
+      /host dialect/,
+    )
+    expect(() => ctx.on('classic.Stop' as never, async () => ({}))).toThrow(
+      /ClassicResult/,
+    )
+  })
+
+  test('an unknown name still says unsupported (control)', () => {
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('nonesuch.event' as never, async () => ({}))).toThrow(
+      /unsupported event/,
+    )
+  })

@@ -22,6 +22,56 @@
  */
 
 // ---------------------------------------------------------------------------
+// CLASSIC EVENTS — a decision, not an omission
+// ---------------------------------------------------------------------------
+
+/**
+ * `classic.*` is upstream's spelling for the settings.json hook channel:
+ * `ClassicEventName = `classic.${ClassicHookEvent}``, where `ClassicHookEvent`
+ * is `HookInput['hook_event_name']` (d.ts:1284). So the namespace is DERIVED
+ * from the host's own hook union, not a list anyone maintains — which is why
+ * adding it is a matter of a template string rather than thirty-odd lines.
+ *
+ * It is deliberately not registered, and the reason is the RESULT vocabulary,
+ * not the spelling. Upstream keeps two dialects apart on purpose:
+ *
+ *   - a dotted mod event answers in the mod dialect — `{deny}`, `{value}`,
+ *     `{drop}` — and its refusals are this host's own (the sites in section 6);
+ *   - a classic hook answers in the host's dialect — `block` / `continue` /
+ *     `stopReason` / `permissionDecision` — read by the very code that runs the
+ *     user's own hook scripts.
+ *
+ * Registering `classic.Stop` without an adapter would put one handler in a
+ * position where it must answer in the host dialect while every other mod event
+ * registered beside it answers in the mod dialect, and `block` would read to
+ * the mod as an unknown key. Upstream keeps the two channels separate inside one
+ * table for the same reason; folding them together is what the guard test in
+ * protocol.test.ts pins.
+ *
+ * What landing it would take, in order:
+ *
+ *   1. the derived table — `HOOK_EVENTS.map(e => `classic.${e}`)`,
+ *      mechanical, and 27 names here where upstream lists 33;
+ *   2. a `ClassicResult → {deny | value}` adapter at the composition site, so a
+ *      mod writes one dialect and the host reads its own;
+ *   3. a decision about `classic.PreToolUse`, whose `e` upstream types as
+ *      `ToolCallEnvelope` while every other classic event is the whole hook
+ *      input — so it is not even one shape to adapt;
+ *   4. a decision about ordering: opencc bridges four dotted events ONTO these
+ *      very hooks (dispatch.ts `HOST_EVENT_BRIDGE`), so a classic handler and a
+ *      bridged handler would run in the same chain and would have to agree on
+ *      which speaks first.
+ *
+ * Steps 2 to 4 are contract decisions rather than a port, so they are not taken
+ * here — this batch took the mechanical gaps. What opencc exposes today is the
+ * four events whose payload a mod genuinely needs in the MOD dialect:
+ * `tool.call` / `session.start` / `session.end` / `turn.complete`. That is the
+ * opposite trade from adding 27 more in the host's dialect, and it is the one
+ * already made.
+ */
+const CLASSIC_NAMESPACE = 'classic.'
+
+// ---------------------------------------------------------------------------
 // 1. Event table
 // ---------------------------------------------------------------------------
 
@@ -270,6 +320,21 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
 
 /** Why `event` cannot be dispatched here, or undefined if it can. */
 export function unavailabilityReason(event: string): string | undefined {
+  // Refused as a CLASS rather than name by name: the reason is one sentence
+  // about the result dialect, and repeating it for 27 names here (upstream
+  // lists 33) would add cases without adding information.
+  if (event.startsWith(CLASSIC_NAMESPACE)) {
+    return (
+      'the classic hook channel is not exposed as mod events. A `classic.*` ' +
+      'hook answers in the host dialect (`block` / `continue` / `stopReason` ' +
+      '/ `permissionDecision`) while every other mod event answers in the mod ' +
+      'dialect (`deny` / `value` / `drop`), so registering one would put a ' +
+      'handler in a position where it has to speak two dialects at once. ' +
+      'Landing it needs a `ClassicResult` adapter, and `classic.PreToolUse` ' +
+      'carries an envelope rather than a hook input — so it is not even one ' +
+      'shape to adapt. See the CLASSIC EVENTS decision in protocol.ts.'
+    )
+  }
   return UNAVAILABLE_EVENTS[event]
 }
 

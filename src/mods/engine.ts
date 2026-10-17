@@ -982,16 +982,21 @@ export function createModContext(mod: LoadedMod): ModContext {
           `ctx.on(): event must be a string. Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
       }
-      // A bare name keeps the two refusals it always had, with the wording it
-      // always had: an unknown name is "unsupported", and a known one this
-      // host cannot dispatch keeps the reason that says WHY. Both say more to
-      // a mod author than a resolver's "selects nothing" ever would.
-      if (isModEventName(event)) {
-        const unavailable = unavailabilityReason(event)
-        if (unavailable !== undefined) {
-          throw new Error(`ctx.on("${event}"): ${unavailable}`)
-        }
-      } else if (!event.includes('*') && !event.startsWith('!')) {
+      // The refusal comes FIRST, before the "is this a name at all" question:
+      // `classic.Stop` is not in the table, so a table lookup would call it
+      // unsupported and a mod author would be sent looking for a typo instead
+      // of at the reason. A bare name keeps the two refusals it always had,
+      // with the wording it always had: an unknown name is "unsupported", and a
+      // known one this host cannot dispatch keeps the reason that says WHY.
+      const unavailable = unavailabilityReason(event)
+      if (unavailable !== undefined) {
+        throw new Error(`ctx.on("${event}"): ${unavailable}`)
+      }
+      if (
+        !isModEventName(event) &&
+        !event.includes('*') &&
+        !event.startsWith('!')
+      ) {
         throw new Error(
           `ctx.on(): unsupported event "${event}". Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
