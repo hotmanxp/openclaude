@@ -135,10 +135,12 @@ export async function detectRepository(
   ) {
     return null
   }
-  // The flags are passed in upstream's order, and so is the destructuring:
-  // `--git-common-dir` lands in `gitDir`. Kept verbatim because the two
-  // differ exactly where it matters (worktrees), where the swap is correct.
-  const [toplevel = '', gitDir = '', commonDir = ''] = lines
+  // The flags are passed in upstream's order, so the destructuring has to
+  // match it: line 2 is `--git-common-dir`, line 3 is `--git-dir`. They come
+  // apart exactly where it matters — under a linked worktree `gitDir` is
+  // `<common>/worktrees/<name>` and is the only one of the two that holds the
+  // rebase/merge markers `isTransientGitState` looks for.
+  const [toplevel = '', commonDir = '', gitDir = ''] = lines
   return { toplevel, gitDir, commonDir }
 }
 
