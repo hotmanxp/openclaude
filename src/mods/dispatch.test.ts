@@ -10,6 +10,7 @@ import {
   runModStreamChain,
 } from './dispatch.js'
 import { isModEventName, type ModNext } from './protocol.js'
+import type { ModChainEntry } from '../types/hooks.js'
 import {
   BUILTIN_ORIGIN,
   getModFailureCount,
@@ -924,5 +925,124 @@ describe('synchronous hook budget', () => {
     const out = dispatchModOpSync('ui.status', { text: 'x' }, () => 'CORE')
     expect(out).toBe('SLOW')
     expect(getModFailureCount('test-mod')).toBe(0)
+  })
+})
+
+// G-02 — `on(...).catch(handler)` (upstream `d.ts:1205`). Before this a failing
+// hook could only be skipped: a mod could neither recover the event nor learn
+// why it failed. Each test pairs a handler WITH a `.catch` against the same
+// handler WITHOUT one, so the group cannot pass on an uninstalled chain, and
+// cannot pass on a blanket "recover everything" rule.
+describe('on(...).catch()', () => {
+  const statusChain = (entries: ModChainEntry[]): Map<string, unknown[]> =>
+    new Map([['ui.status', entries]])
+
+  test('a throwing hook with a .catch has its answer taken from the handler', async () => {
+    const seen: { kind?: string; message?: string; called?: boolean } = {}
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+      catchHandler: (_e, next) => {
+        seen.kind = next.error.kind
+        seen.message = next.error.message
+        seen.called = next.called
+        return { replace: 'RECOVERED' }
+      },
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('RECOVERED')
+    expect(coreCalls).toBe(0)
+    expect(seen).toEqual({ kind: 'throw', message: 'mod exploded', called: false })
+  })
+
+  test('the same handler with no .catch still skips to core (control)', async () => {
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('CORE')
+    expect(coreCalls).toBe(1)
+  })
+
+  test('a .catch that returns undefined leaves the hook absent (control)', async () => {
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+      catchHandler: () => undefined,
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('CORE')
+    expect(coreCalls).toBe(1)
+  })
+
+  test('called is true when the failed hook had already run next()', async () => {
+    // The subtle half. `next` inside a `.catch` handler is replay-safe:
+    // `runModChain` memoises every call in `branchResults`, so a `called: true`
+    // next(e) resolves to what the failed hook's own last call settled to and
+    // what is beneath does NOT run a second time.
+    let beneathRuns = 0
+    const beneath: ModChainEntry = {
+      modName: 'beneath-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: async () => {
+        beneathRuns++
+        return { replace: 'BENEATH' }
+      },
+    }
+    let sawCalled: boolean | undefined
+    const failing: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'prepend',
+      handler: async (_e, next) => {
+        await next({ text: 'hi' })
+        throw new Error('failed after next')
+      },
+      catchHandler: async (_e, next) => {
+        sawCalled = next.called
+        return (await next({ text: 'IGNORED' })) as Record<string, unknown>
+      },
+    }
+    const chain = [failing, beneath]
+    __setOpChainsForTesting(statusChain(chain) as never)
+
+    const out = await runModChain(chain, { text: 'hi' }, async () => ({
+      replace: 'CORE',
+    }))
+    // The hook's own last next() had already settled to BENEATH. The replay
+    // must not run beneath again, so beneathRuns stays at 1 — and the argument
+    // passed to the replay is unread.
+    expect(sawCalled).toBe(true)
+    expect(out.replace).toBe('BENEATH')
+    expect(beneathRuns).toBe(1)
   })
 })

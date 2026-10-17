@@ -18,6 +18,7 @@ import {
 } from './registry.js'
 import {
   MOD_EVENTS,
+  MOD_HOOK_CATCH_MS,
   canDescend,
   cloneAndFreeze,
   freeze,
@@ -28,7 +29,9 @@ import {
   tierRank,
   withBudget,
   withSyncBudget,
+  type ModCaughtNext,
   type ModEventName,
+  type ModHookFailure,
   type ModMatcher,
   type ModMatcherLeaf,
   type ModNext,
@@ -272,6 +275,38 @@ export async function runModChain(
       }
       return runFrom(targetE)
     }
+    // `on(...).catch(handler)` — upstream `d.ts:1205`: the handler runs afresh
+    // when the hook throws, returns a shape the site refuses, or overruns.
+    // Returning a value inside the grace makes it the hook's result; returning
+    // `undefined` leaves the hook absent, which is what a bare throw already
+    // did, so an unhandled failure is unchanged by this existing at all.
+    const runCatch = async (
+      failure: ModHookFailure,
+    ): Promise<Record<string, unknown> | undefined> => {
+      if (entry.catchHandler === undefined) return undefined
+      // `branchResults` memoises every `next` call, so when `called` is true a
+      // `next(e)` inside the handler replays the failed hook's own last call
+      // instead of running what is beneath a second time. Upstream calls this
+      // replay-safe; here it falls out of the memoisation that already existed.
+      const caughtNext = Object.assign(next, {
+        error: failure,
+        called: branchResults.has(next),
+      }) as ModCaughtNext
+      const budgeted = await withBudget(
+        () => Promise.resolve(entry.catchHandler!(current, caughtNext)),
+        failure.budget,
+      )
+      if (budgeted.timedOut) {
+        logForDebugging(
+          `[mods] "${modName}" ${entry.event} .catch handler exceeded its ${failure.budget}ms grace — the hook stays absent`,
+        )
+        return undefined
+      }
+      const answer = budgeted.value
+      return answer !== null && typeof answer === 'object'
+        ? (answer as Record<string, unknown>)
+        : undefined
+    }
     try {
       const budgeted = await withBudget((hookSignal) => {
         // Unlinked in `finally`: `{ once: true }` only fires if the signal
@@ -292,6 +327,11 @@ export async function runModChain(
         )
         recordModHandlerFailure(modName)
         onError?.(modName, new Error('hook budget exceeded'))
+        const caught = await runCatch({
+          kind: 'timeout',
+          budget: MOD_HOOK_CATCH_MS,
+        })
+        if (caught !== undefined) return caught
         // The branch this handler never entered still has to run: skipping it
         // means running what is beneath it, exactly like a throw.
         return runFrom(current)
@@ -309,6 +349,12 @@ export async function runModChain(
       )
       recordModHandlerFailure(modName)
       onError?.(modName, error)
+      const caught = await runCatch({
+        kind: 'throw',
+        message: error instanceof Error ? error.message : String(error),
+        budget: MOD_HOOK_CATCH_MS,
+      })
+      if (caught !== undefined) return caught
       // Attribute and skip to the next handler — a broken mod must not
       // tear the chain or the pipeline (R8 mitigation).
       return runFrom(current)

@@ -1,6 +1,7 @@
 import type { LocalJSXCommandCall } from '../types/command.js'
 import type { ModManifest } from './manifest.js'
 import type {
+  ModCatchHandler,
   ModEventName,
   ModMatcher,
   ModNext,
@@ -119,6 +120,13 @@ export type ModHandlerSpec = {
   /** Where in the chain this handler sits. Defaults to `builtin`. */
   tier?: ModTier
   handler: ModHandler
+  /**
+   * `on(...).catch(handler)` — run afresh when `handler` throws, returns a
+   * shape the site refuses, or overruns its budget. Upstream `CatchHandler`
+   * (`d.ts:1205`). Absent means no error handler, which is the state every
+   * handler written before this was in.
+   */
+  catchHandler?: ModCatchHandler
 }
 
 export type ModCommandSpec = {

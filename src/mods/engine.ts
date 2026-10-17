@@ -20,6 +20,7 @@ import {
   MOD_RENDER_EVENT,
   getLoadedMods,
   getModToolsVersion,
+  type ModHandlerSpec,
   type ModRenderEvent,
   type ModRenderHandler,
   type ModStreamEvent,
@@ -57,9 +58,11 @@ import {
   isModEventName,
   splitTier,
   unavailabilityReason,
+  type ModCatchHandler,
   type ModEventName,
   type ModNext,
   type ModMatcher,
+  type ModRegistration,
 } from './protocol.js'
 import { modPluginId } from './pluginView.js'
 import { resolveElementTable, type ElementTable } from './ui/elements.js'
@@ -440,7 +443,7 @@ export type ModContext = {
    * dotted name, and its handler has a different shape (synchronous, string
    * `next`), so the generic one would claim it and mis-type every handler.
    */
-  on(event: ModRenderEvent, handler: ModRenderHandler): void
+  on(event: ModRenderEvent, handler: ModRenderHandler): ModRegistration
   /**
    * A streaming event: `async function* ($, e, next)`, where `next(e)` is
    * the stream beneath rather than a promise.
@@ -449,14 +452,14 @@ export type ModContext = {
    * is: the handler's shape differs, and the generic one would claim it and
    * mis-type every streaming hook.
    */
-  on(event: ModStreamEvent, handler: ModStreamHandler): void
-  on(event: ModEventRef, handler: ModHandlerInput): void
+  on(event: ModStreamEvent, handler: ModStreamHandler): ModRegistration
+  on(event: ModEventRef, handler: ModHandlerInput): ModRegistration
   /**
    * Upstream's matcher shape: a plain object nested against the event, with
    * four leaf kinds (exact, RegExp, any-of, partial). `{ to: 'core' }` is
    * lifted out as the tier rather than matched as an event field.
    */
-  on(event: ModEventRef, matcher: ModMatcher, handler: ModHandlerInput): void
+  on(event: ModEventRef, matcher: ModMatcher, handler: ModHandlerInput): ModRegistration
   registerCommand(spec: ModCommandSpec): void
   registerTool(spec: ModToolSpec): void
   ui: {
@@ -988,7 +991,15 @@ export function createModContext(mod: LoadedMod): ModContext {
           matcher: undefined,
           handler: matcherOrHandler as unknown as ModHandler,
         })
-        return
+        return {
+          catch() {
+            throw new Error(
+              'ctx.on("ui.render").catch(): the render path runs synchronously ' +
+                'inside React, so there is no async failure for a handler to ' +
+                'catch — it has no budget and no replay to offer.',
+            )
+          },
+        }
       }
       const hasExplicitMatcher =
         matcherOrHandler !== null &&
@@ -1006,12 +1017,25 @@ export function createModContext(mod: LoadedMod): ModContext {
       const { matcher, tier } = hasExplicitMatcher
         ? splitTier(matcherOrHandler as ModMatcher)
         : { matcher: undefined, tier: undefined }
-      mod.handlers.push({
+      const entry: ModHandlerSpec = {
         event: canonical,
         matcher,
         tier,
         handler: withEngineInterface(ctx, handler),
-      })
+      }
+      mod.handlers.push(entry)
+      // Upstream `on(...).catch(handler)` (d.ts:1205) — the registration is a
+      // builder, not a void call. Returning the entry lets the handler be given
+      // an error handler, which runs afresh when the hook throws, returns a
+      // shape the site refuses, or overruns its budget.
+      return {
+        catch(catchHandler) {
+          entry.catchHandler = withEngineInterface(
+            ctx,
+            catchHandler,
+          ) as unknown as ModCatchHandler
+        },
+      }
     },
     registerCommand(spec) {
       return dispatchModOpSync('command.register', { spec }, () => {

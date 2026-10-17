@@ -1,6 +1,11 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { z } from 'zod/v4'
-import type { ModMatcher, ModNext, ModTier } from '../mods/protocol.js'
+import type {
+  ModCatchHandler,
+  ModMatcher,
+  ModNext,
+  ModTier,
+} from '../mods/protocol.js'
 import { lazySchema } from '../utils/lazySchema.js'
 import {
   type HookEvent,
@@ -286,6 +291,13 @@ export type ModChainEntry = {
   tier?: ModTier
   /** Structured matcher; a handler whose matcher misses the event is skipped. */
   matcher?: ModMatcher
+  /**
+   * `on(...).catch(handler)` — run afresh when `handler` throws, returns a
+   * shape the site refuses, or overruns its budget. Upstream `CatchHandler`
+   * (`d.ts:1205`). Absent means the hook has no error handler, which is the
+   * state every handler written before this was in.
+   */
+  catchHandler?: ModCatchHandler
 }
 
 export type HookCallbackMatcher = {

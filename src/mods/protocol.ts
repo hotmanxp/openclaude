@@ -661,6 +661,65 @@ export function withSyncBudget<T>(
 }
 
 /**
+ * The grace a `.catch` handler runs under, in milliseconds. Upstream `d.ts:5258`
+ * calls it `catchMs` and describes it as "a fresh budget from the moment it is
+ * called" — a second clock, not an extension of {@link MOD_HOOK_BUDGET_MS}.
+ * Past it the hook is absent, exactly as if it had never registered a handler.
+ */
+export const MOD_HOOK_CATCH_MS = 1_000
+
+/**
+ * Why a hook failed, as its `.catch` handler reads it. Upstream `HookFailure`
+ * (`d.ts:5277`).
+ *
+ * `throw`: it threw, or returned a shape the site refuses — `message` saying
+ * which. `timeout`: it outran {@link MOD_HOOK_BUDGET_MS} — `message` then what
+ * its last `next()` rejected with, if it did.
+ */
+export type ModHookFailure = {
+  readonly kind: 'throw' | 'timeout'
+  /** Absent for a timeout whose abandoned body never rejected anything. */
+  readonly message?: string
+  /** The grace the handler runs under. Past it, the hook is absent. */
+  readonly budget: number
+}
+
+/**
+ * What `next` carries into a `.catch` handler and nowhere else. Upstream
+ * `Caught` (`d.ts:1215`).
+ *
+ * There `next` is replay-safe, and opencc's chain already is: `runModChain`
+ * memoises each `next` call in `branchResults`, so when `called` is true a
+ * `next(e)` inside the handler resolves to what the failed hook's last call
+ * already settled to, with nothing beneath running a second time.
+ */
+export type ModCaught = {
+  /** Undefined on an ordinary hook's `next`, so its presence says a handler runs. */
+  readonly error: ModHookFailure
+  /** True once the failed hook had called `next()` or `next.to()` at least once. */
+  readonly called: boolean
+}
+
+export type ModCaughtNext = ModNext & ModCaught
+
+/**
+ * The handler `on(...).catch(handler)` takes: the hook itself, run afresh when
+ * it throws, misreturns or overruns. Upstream `CatchHandler<F>` (`d.ts:1205`).
+ *
+ * Returning a value inside the grace makes it the hook's result; returning
+ * `undefined` leaves the hook absent, as if no handler had been registered.
+ */
+export type ModCatchHandler = (
+  e: Record<string, unknown>,
+  next: ModCaughtNext,
+) => unknown
+
+/** What `ctx.on(...)` hands back so a handler can be given a `.catch`. */
+export type ModRegistration = {
+  catch(handler: ModCatchHandler): void
+}
+
+/**
  * Run `body` under the hook budget. Reports `timedOut` so the caller can skip
  * that hook alone and continue down the chain.
  *
