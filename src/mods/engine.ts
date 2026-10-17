@@ -56,10 +56,12 @@ import {
   INVALIDATABLE_EVENTS,
   MOD_EVENTS,
   isModEventName,
+  resolveModPattern,
   splitTier,
   unavailabilityReason,
   type ModCatchHandler,
   type ModEventName,
+  type ModPattern,
   type ModNext,
   type ModMatcher,
   type ModRegistration,
@@ -103,8 +105,9 @@ const MOD_NOTICE_MAX_CHARS = 2000
  */
 const EVENT_PREFIXES = [...new Set(MOD_EVENTS.map(e => e.split('.')[0]!))]
 const SUPPORTED_EVENTS_HINT =
-  `on is always on("<event>", hook), where <event> is one of upstream's ` +
-  `${MOD_EVENTS.length} dotted names (${EVENT_PREFIXES.join(' / ')}.*) — ` +
+  `on is always on("<pattern>", hook), where <pattern> is one of upstream's ` +
+  `${MOD_EVENTS.length} dotted names (${EVENT_PREFIXES.join(' / ')}.*), a ` +
+  `namespace glob (${EVENT_PREFIXES[0]}.*), or a negation (!${EVENT_PREFIXES[0]}.call) — ` +
   `not a settings.json hook name like PreToolUse, which is tool.call here`
 
 // ---------------------------------------------------------------------------
@@ -429,8 +432,13 @@ export type ModFsApi = {
   ancestors(args: ModAncestorsArgs): Promise<FsAncestor[]>
 }
 
-/** A dotted event name. The settings.json hook names are not accepted. */
-export type ModEventRef = ModEventName
+/**
+ * What `on(...)` takes: a dotted event name, a glob (`tool.*`) or a negation
+ * (`!tool.describe`) — upstream's `Pattern`. The settings.json hook names are
+ * still not accepted; the classic-hook channel spells them `classic.Stop` and
+ * the table above does not carry them yet.
+ */
+export type ModEventRef = ModPattern
 
 export type ModContext = {
   /**
@@ -969,17 +977,57 @@ export function createModContext(mod: LoadedMod): ModContext {
     config: nouns.config,
     prompt: nouns.prompt,
     on(event, matcherOrHandler, maybeHandler?) {
-      if (typeof event !== 'string' || !isModEventName(event)) {
+      if (typeof event !== 'string') {
         throw new Error(
-          `ctx.on(): unsupported event "${String(event)}". Supported: ${SUPPORTED_EVENTS_HINT}`,
+          `ctx.on(): event must be a string. Supported: ${SUPPORTED_EVENTS_HINT}`,
         )
       }
-      const canonical = event as ModEventName
-      const unavailable = unavailabilityReason(canonical)
-      if (unavailable !== undefined) {
-        throw new Error(`ctx.on("${canonical}"): ${unavailable}`)
+      // A bare name keeps the two refusals it always had, with the wording it
+      // always had: an unknown name is "unsupported", and a known one this
+      // host cannot dispatch keeps the reason that says WHY. Both say more to
+      // a mod author than a resolver's "selects nothing" ever would.
+      if (isModEventName(event)) {
+        const unavailable = unavailabilityReason(event)
+        if (unavailable !== undefined) {
+          throw new Error(`ctx.on("${event}"): ${unavailable}`)
+        }
+      } else if (!event.includes('*') && !event.startsWith('!')) {
+        throw new Error(
+          `ctx.on(): unsupported event "${event}". Supported: ${SUPPORTED_EVENTS_HINT}`,
+        )
       }
-      if (canonical === MOD_RENDER_EVENT) {
+      // Upstream `Pattern` (d.ts:6592): a name, a glob (`tool.*`) or a negation
+      // (`!tool.describe`). Resolved here, once, so everything downstream keeps
+      // speaking in concrete event names — a chain, a matcher and the static
+      // scan all key off a name, and a pattern that stayed a pattern would have
+      // to be understood in three places.
+      const resolved = resolveModPattern(event)
+      if ('error' in resolved) {
+        throw new Error(
+          `ctx.on("${event}"): ${resolved.error}. Supported: ${SUPPORTED_EVENTS_HINT}`,
+        )
+      }
+      // `ui.render` is not dispatched through a chain — it is a synchronous
+      // render transform whose handler takes a string, not an event and a
+      // `next`. A pattern cannot produce that shape, so a pattern that happens
+      // to cover it drops it rather than refusing the whole registration:
+      // `on('*')` is the spelling a mod reaches for first, and erroring on it
+      // would cost the other 90 events to protect one. The author is told,
+      // because "my `*` hook never rewrote a reply" is otherwise invisible.
+      const renderSelected = resolved.events.filter(
+        e => e === MOD_RENDER_EVENT,
+      )
+      const rest = resolved.events.filter(e => e !== MOD_RENDER_EVENT)
+      if (renderSelected.length === 0 || resolved.events.length !== 1) {
+        for (const _ of renderSelected) {
+          logForDebugging(
+            `[mods:${mod.manifest.name}] ctx.on("${event}") skipped ui.render: ` +
+              `it is a synchronous render transform and takes its own handler — ` +
+              `register ctx.on("ui.render", handler) separately.`,
+          )
+        }
+      }
+      if (renderSelected.length === 1 && resolved.events.length === 1) {
         // Sync render transform: no matcher, single handler argument.
         if (typeof matcherOrHandler !== 'function' || maybeHandler !== undefined) {
           throw new Error(
@@ -987,7 +1035,7 @@ export function createModContext(mod: LoadedMod): ModContext {
           )
         }
         mod.handlers.push({
-          event: canonical,
+          event: MOD_RENDER_EVENT,
           matcher: undefined,
           handler: matcherOrHandler as unknown as ModHandler,
         })
@@ -1000,6 +1048,15 @@ export function createModContext(mod: LoadedMod): ModContext {
             )
           },
         }
+      }
+      // Selected, but this host refuses them by name. They are named here
+      // rather than registered, because a handler on an event that can never
+      // fire is the failure `UNAVAILABLE_EVENTS` exists to prevent — and the
+      // author's only other chance to learn is a runtime that stays silent.
+      for (const dead of resolved.refused) {
+        logForDebugging(
+          `[mods:${mod.manifest.name}] ctx.on("${event}") skipped ${dead}: ${unavailabilityReason(dead)}`,
+        )
       }
       const hasExplicitMatcher =
         matcherOrHandler !== null &&
@@ -1017,23 +1074,30 @@ export function createModContext(mod: LoadedMod): ModContext {
       const { matcher, tier } = hasExplicitMatcher
         ? splitTier(matcherOrHandler as ModMatcher)
         : { matcher: undefined, tier: undefined }
-      const entry: ModHandlerSpec = {
+      const adapted = withEngineInterface(ctx, handler)
+      // One entry per selected event, all sharing one adapted handler: a mod
+      // that writes `on('tool.*', …)` gets `next.event` telling it which event
+      // a given run is, rather than one closure shared across events that
+      // cannot tell them apart.
+      const entries: ModHandlerSpec[] = rest.map(canonical => ({
         event: canonical,
         matcher,
         tier,
-        handler: withEngineInterface(ctx, handler),
-      }
-      mod.handlers.push(entry)
+        handler: adapted,
+      }))
+      for (const entry of entries) mod.handlers.push(entry)
       // Upstream `on(...).catch(handler)` (d.ts:1205) — the registration is a
-      // builder, not a void call. Returning the entry lets the handler be given
-      // an error handler, which runs afresh when the hook throws, returns a
-      // shape the site refuses, or overruns its budget.
+      // builder, not a void call. Returning the entries lets the handler be
+      // given an error handler, which runs afresh when the hook throws, returns
+      // a shape the site refuses, or overruns its budget. On a pattern the
+      // handler covers several events, so every one of them gets it.
       return {
         catch(catchHandler) {
-          entry.catchHandler = withEngineInterface(
+          const adaptedCatch = withEngineInterface(
             ctx,
-            catchHandler,
+            catchHandler as unknown as ModHandlerInput,
           ) as unknown as ModCatchHandler
+          for (const entry of entries) entry.catchHandler = adaptedCatch
         },
       }
     },

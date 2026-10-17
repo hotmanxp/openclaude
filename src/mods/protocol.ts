@@ -281,6 +281,97 @@ export function unavailabilityReason(event: string): string | undefined {
   return UNAVAILABLE_EVENTS[event]
 }
 
+// ---------------------------------------------------------------------------
+// 1b. Patterns
+// ---------------------------------------------------------------------------
+
+/**
+ * What `on(...)` takes where upstream takes a `Pattern` (d.ts:6592): an
+ * event's name, a glob, or a negation of either.
+ *
+ *   Pattern  = EventName | Glob | Negation
+ *   Glob     = '*' | `${Namespace}.*`        — `tool.*`, `ui.render.*`
+ *   Negation = `!${Exclude<EventName | Glob, '*'>}`
+ *
+ * `Namespace<N>` (d.ts:6596) is derived rather than declared — "one or more
+ * whole leading segments of an event name (`tool` of `tool.call`)" — so it is a
+ * plain `string` here, and the resolution below is where a namespace that
+ * selects nothing gets named in the error.
+ */
+export type ModPattern = ModEventName | '*' | `${string}.*` | `!${string}`
+
+/** Every declared event this host will actually dispatch. */
+const DISPATCHABLE_EVENTS = MOD_EVENTS.filter(
+  event => UNAVAILABLE_EVENTS[event] === undefined,
+) as readonly ModEventName[]
+
+export type ModPatternResolution =
+  | {
+      readonly events: readonly ModEventName[]
+      /** Selected, but refused here by name — reported, never registered. */
+      readonly refused: readonly ModEventName[]
+    }
+  | { readonly error: string }
+
+const refusedHere = (event: string): boolean =>
+  UNAVAILABLE_EVENTS[event] !== undefined
+
+/**
+ * Resolve a `Pattern` to the events it selects, or to the reason it selects
+ * none.
+ *
+ * Two upstream rules are load-bearing rather than decorative:
+ *
+ *   - `!*` "would select none, so is no pattern" (d.ts:6520). A registration
+ *     that silently covers nothing is the failure `UNAVAILABLE_EVENTS` exists
+ *     to prevent, so it is an error rather than a no-op.
+ *   - a glob or negation "selects no telemetry event for an installed plugin:
+ *     those are hooked by name" (d.ts:6587). This host draws no such line, so
+ *     that rule does not apply — but `refused` is reported for the same reason
+ *     it exists upstream: an event this host refuses by name must not end up as
+ *     a registered handler that never fires, which is the third bucket
+ *     `UNAVAILABLE_EVENTS`' own docstring denies exists.
+ */
+export function resolveModPattern(pattern: string): ModPatternResolution {
+  if (pattern === '!*') {
+    return { error: '"!*" would select no event, so it is not a pattern' }
+  }
+  if (pattern === '*') {
+    return { events: DISPATCHABLE_EVENTS, refused: [] }
+  }
+  const negated = pattern.startsWith('!')
+  const body = negated ? pattern.slice(1) : pattern
+  if (body === '*') {
+    return { error: '"!*" would select no event, so it is not a pattern' }
+  }
+  const isGlob = body.endsWith('.*')
+  if (!isGlob && !MOD_EVENT_SET.has(body)) {
+    return { error: `names no event this host has (${body})` }
+  }
+  const prefix = isGlob ? body.slice(0, -2) : body
+  // A name takes everything beneath it too, which is what makes `tool.call`
+  // and `tool.*` agree — a hook on the parent sees the children's dispatches
+  // nowhere else, so treating them identically is the only reading that leaves
+  // no event reachable by one spelling and not the other.
+  const all = MOD_EVENTS as readonly ModEventName[]
+  const selected = all.filter(
+    event => event === prefix || event.startsWith(prefix + '.'),
+  )
+  const chosen: ModEventName[] = negated
+    ? all.filter(event => !selected.includes(event))
+    : selected
+  const dispatchable = chosen.filter(event => !refusedHere(event))
+  if (dispatchable.length === 0) {
+    return {
+      error:
+        chosen.length === 0
+          ? 'selects no event'
+          : `selects only events this host refuses: ${chosen.join(', ')}`,
+    }
+  }
+  return { events: dispatchable, refused: chosen.filter(refusedHere) }
+}
+
 
 /**
  * Events whose result the host caches and re-serves until invalidated by
