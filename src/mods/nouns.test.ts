@@ -500,23 +500,28 @@ describe('config noun', () => {
     })
   })
 
-test('config.list describes every row it enumerates', async () => {
-    const keys = await createModContext(freshMod()).config.list()
-    expect(keys.length).toBeGreaterThan(0)
+test('config.list enumerates raw keys without dispatching describe', async () => {
+  // This used to fire one `config.describe` dispatch per key and discard every
+  // result, while its own comment claimed a mod hiding or renaming a row would
+  // "see the rename on the one path that actually enumerates rows". Nothing
+  // observed the results: `list()` is declared `readonly string[]`, and the
+  // host settings menu reads `supportedSettings` directly without ever
+  // entering the mods layer.
+  const keys = await createModContext(freshMod()).config.list()
+  expect(keys.length).toBeGreaterThan(0)
 
-    const seen: string[] = []
-    const mod = freshMod()
-    createModContext(mod).on('config.describe', (e, next) => {
-      seen.push((e as { key: string }).key)
-      return next(e)
-    })
-    registerLoadedMod(mod)
-
-    await createModContext(freshMod('other')).config.list()
-    // Every enumerated row reached a handler, which is what makes a rename
-    // apply to the menu rather than only to the mod's own copy.
-    expect(seen.sort()).toEqual([...keys].sort())
+  const seen: string[] = []
+  const mod = freshMod()
+  createModContext(mod).on('config.describe', (e, next) => {
+    seen.push((e as { key: string }).key)
+    return next(e)
   })
+  registerLoadedMod(mod)
+
+  const again = await createModContext(freshMod('other')).config.list()
+  expect(seen).toEqual([])
+  expect([...again].sort()).toEqual([...keys].sort())
+})
 })
 
 /** What a streaming handler receives as `next`: the stream beneath. */

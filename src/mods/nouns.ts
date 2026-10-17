@@ -21,7 +21,6 @@ import type { Message } from '../types/message.js'
 import {
   dispatchModOp,
   dispatchModStream,
-  hasModHandlersFor,
 } from './dispatch.js'
 import { readSessionUsage } from './sessionUsage.js'
 import { getLoadedMods } from './registry.js'
@@ -1457,34 +1456,23 @@ export function buildModNouns(modName: string): ModNouns {
   const config: ModConfig = {
     list: () =>
       dispatchModOp('config.list', {}, async () => {
-        const { getAllKeys, getConfig } = await import(
+        const { getAllKeys } = await import(
           '../tools/ConfigTool/supportedSettings.js'
         )
-        // Each row is described on the way out, which is upstream's second
-        // listed trigger for `config.describe` ("and for `$.config.list`").
-        // A mod that hides or renames a row therefore sees the rename on the
-        // one path that actually enumerates rows in opencc.
-        await Promise.all(
-          getAllKeys().map(key => {
-            // Upstream gates per key: `Jl("config.describe", {key: e.key})`.
-            // Without this a mod watching one setting still pays a dispatch
-            // for every other setting `getAllKeys()` enumerates — and this is
-            // the one site where the loop is genuinely per-item.
-            if (!hasModHandlersFor('config.describe', { key })) {
-              return undefined
-            }
-            return dispatchModOp(
-              'config.describe',
-              {
-                key,
-                label: key,
-                description: getConfig(key)?.description,
-                isHidden: false,
-              },
-              () => ({ label: key, description: undefined, isHidden: false }),
-            )
-          }),
-        )
+        // Raw keys, and nothing else.
+        //
+        // This used to fan one `config.describe` dispatch out per key here —
+        // upstream's second listed trigger — and then discard every result. It
+        // could not have worked even if the results had been kept: `list()` is
+        // declared `Promise<readonly string[]>`, which has nowhere to put a
+        // rewritten `label`, and opencc's settings menu does not read this list
+        // at all. `ConfigTool.ts` and `ConfigTool/prompt.ts` both import
+        // `supportedSettings` directly and never enter the mods layer, so no
+        // mod can rename or hide a menu row through this path.
+        //
+        // A row's presentation is therefore NOT moddable in this fork.
+        // `$.config.describe` is still there for a mod that wants to ask about
+        // a row itself; it is just not called on the mod's behalf here.
         return getAllKeys()
       }),
     // Not an op event, deliberately. Upstream's config events are exactly
