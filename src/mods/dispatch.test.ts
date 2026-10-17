@@ -10,7 +10,12 @@ import {
   runModStreamChain,
 } from './dispatch.js'
 import { isModEventName, type ModNext } from './protocol.js'
-import { BUILTIN_ORIGIN, type LoadedMod } from './registry.js'
+import {
+  BUILTIN_ORIGIN,
+  getModFailureCount,
+  recordModHandlerSuccess,
+  type LoadedMod,
+} from './registry.js'
 
 function fakeMod(
   name: string,
@@ -845,5 +850,79 @@ describe('dispatchModOpSync', () => {
     // calls core. This asserts the chain is actually the one being dispatched.
     __setOpChainsForTesting(opChainOf(() => ({ continue: true })) as never)
     expect(hasModHandlersFor('ui.status')).toBe(true)
+  })
+})
+
+// G-05 — the synchronous paths had no hook budget at all. `withBudget` had
+// exactly three production call sites (`dispatch.ts:275` async chain,
+// `claude.ts:2237` and `:2729` turn.step) and neither `dispatchModEngineSync`
+// nor `dispatchModOpSync` was one of them, so `prompt.edit` — which fires on
+// every keystroke — was unbounded.
+//
+// A sync site cannot be interrupted: no pending promise to race, no signal the
+// handler could honour mid-call. What it can do is refuse to ADOPT the answer.
+// Every test below pairs an overrun against a non-overrun on the same event, so
+// the group cannot pass against a chain that was never installed or against a
+// blanket rule that discards everything.
+describe('synchronous hook budget', () => {
+  const spin = (ms: number) => {
+    const until = performance.now() + ms
+    while (performance.now() < until) {
+      /* burn the clock synchronously — a sleep would not block this path */
+    }
+  }
+
+  test('a prompt.edit handler over 50ms has its answer discarded', () => {
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(80)
+        return { replace: 'SLOW' }
+      }, 'prompt.edit') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    let calls = 0
+    const out = dispatchModOpSync('prompt.edit', { text: 'x' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('CORE')
+    expect(calls).toBe(1)
+    expect(getModFailureCount('test-mod')).toBe(1)
+  })
+
+  test('the same handler under 50ms is adopted (control)', () => {
+    // Same event, same shape, same helper — only the duration differs. If the
+    // first test passed because the chain was not installed, or because every
+    // answer is discarded, this one goes red.
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(5)
+        return { replace: 'FAST' }
+      }, 'prompt.edit') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    let calls = 0
+    const out = dispatchModOpSync('prompt.edit', { text: 'x' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('FAST')
+    expect(calls).toBe(0)
+    expect(getModFailureCount('test-mod')).toBe(0)
+  })
+
+  test('an 80ms handler on an event with no override is still adopted (control)', () => {
+    // Proves the 50ms is `prompt.edit`'s per-event budget and not a blanket
+    // bound the sync path invented for itself.
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(80)
+        return { replace: 'SLOW' }
+      }, 'ui.status') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    const out = dispatchModOpSync('ui.status', { text: 'x' }, () => 'CORE')
+    expect(out).toBe('SLOW')
+    expect(getModFailureCount('test-mod')).toBe(0)
   })
 })

@@ -619,6 +619,48 @@ export const MOD_HOOK_BUDGET_MS = 10_000
  */
 
 /**
+ * Per-event overrides of {@link MOD_HOOK_BUDGET_MS}. Upstream has exactly one:
+ * `prompt.edit` at 50ms, carried on its site entry in the dispatch site table
+ * (`modules/0160`). It fires on every keystroke, so a slow mod is felt there as
+ * input lag rather than as a slow answer — the only event worth pressing a
+ * whole order of magnitude down for.
+ */
+const MOD_HOOK_BUDGET_MS_BY_EVENT: Record<string, number> = {
+  'prompt.edit': 50,
+}
+
+/**
+ * The hook budget for `event` — {@link MOD_HOOK_BUDGET_MS} unless overridden.
+ * A chain entry with no event (which `ModChainEntry.event` allows) gets the
+ * default, which is what it got before the override table existed.
+ */
+export function modHookBudgetMs(event: string | undefined): number {
+  return (event === undefined ? undefined : MOD_HOOK_BUDGET_MS_BY_EVENT[event]) ?? MOD_HOOK_BUDGET_MS
+}
+
+/**
+ * Run a synchronous `body` under the hook budget, reporting whether it overran.
+ *
+ * A synchronous site cannot be interrupted: there is no pending promise to race
+ * and no signal the handler could honour mid-call. What it CAN do is refuse to
+ * adopt an answer that took too long — the handler runs to completion, and then
+ * its result is discarded exactly like a throw.
+ *
+ * So this is observable-and-abandon, not preemption. Upstream's 50ms
+ * `prompt.edit` bound is the same shape: it discards, it does not interrupt.
+ * Do not describe this in a comment as a way to keep a runaway mod from
+ * blocking the host — the blocking already happened by the time we measure.
+ */
+export function withSyncBudget<T>(
+  body: () => T,
+  budgetMs: number = MOD_HOOK_BUDGET_MS,
+): { timedOut: boolean; value?: T } {
+  const startedAt = performance.now()
+  const value = body()
+  return performance.now() - startedAt > budgetMs ? { timedOut: true } : { timedOut: false, value }
+}
+
+/**
  * Run `body` under the hook budget. Reports `timedOut` so the caller can skip
  * that hook alone and continue down the chain.
  *

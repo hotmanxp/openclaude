@@ -18,15 +18,16 @@ import {
 } from './registry.js'
 import {
   MOD_EVENTS,
-  MOD_HOOK_BUDGET_MS,
   canDescend,
   cloneAndFreeze,
   freeze,
   isModEventName,
   matchesMatcher,
+  modHookBudgetMs,
   tierFloors,
   tierRank,
   withBudget,
+  withSyncBudget,
   type ModEventName,
   type ModMatcher,
   type ModMatcherLeaf,
@@ -284,10 +285,10 @@ export async function runModChain(
         } finally {
           unlink.dispose()
         }
-      })
+      }, modHookBudgetMs(entry.event))
       if (budgeted.timedOut) {
         logForDebugging(
-          `[mods] handler from mod "${modName}" exceeded its ${MOD_HOOK_BUDGET_MS}ms budget — skipped`,
+          `[mods] handler from mod "${modName}" exceeded its ${modHookBudgetMs(entry.event)}ms budget — skipped`,
         )
         recordModHandlerFailure(modName)
         onError?.(modName, new Error('hook budget exceeded'))
@@ -805,11 +806,27 @@ export function dispatchModEngineSync<T>(
       return current
     }) as unknown as ModNext['to']
     let outcome: unknown
+    let timedOut = false
     try {
-      outcome = handler(current, next)
+      const budgeted = withSyncBudget(
+        () => handler(current, next),
+        modHookBudgetMs(event),
+      )
+      outcome = budgeted.value
+      timedOut = budgeted.timedOut
     } catch (error) {
       logForDebugging(
         `[mods] "${modName}" ${event} handler error: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      recordModHandlerFailure(modName)
+      continue
+    }
+    // Overran. The call already happened and already cost what it cost — a
+    // synchronous handler cannot be interrupted — but its answer is discarded
+    // exactly like a throw, so it does not get to decide the event.
+    if (timedOut) {
+      logForDebugging(
+        `[mods] "${modName}" ${event} handler exceeded its ${modHookBudgetMs(event)}ms budget — skipped (synchronous host site; the answer is discarded, not preempted)`,
       )
       recordModHandlerFailure(modName)
       continue
@@ -997,14 +1014,28 @@ export function dispatchModOpSync<T>(
       return current
     }) as unknown as ModNext['to']
     let outcome: unknown
+    let timedOut = false
     try {
       // The chain handler type is the async one; here `next` answers with the
       // event rather than a promise, which is the whole difference between
       // this path and `dispatchModOp`.
-      outcome = handler(current, next)
+      const budgeted = withSyncBudget(
+        () => handler(current, next),
+        modHookBudgetMs(event),
+      )
+      outcome = budgeted.value
+      timedOut = budgeted.timedOut
     } catch (error) {
       logForDebugging(
         `[mods] "${modName}" ${event} handler error: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      recordModHandlerFailure(modName)
+      continue
+    }
+    // See `dispatchModEngineSync`: the answer is discarded, not preempted.
+    if (timedOut) {
+      logForDebugging(
+        `[mods] "${modName}" ${event} handler exceeded its ${modHookBudgetMs(event)}ms budget — skipped (synchronous contract; the answer is discarded, not preempted)`,
       )
       recordModHandlerFailure(modName)
       continue
