@@ -44,6 +44,13 @@ export type GitRunResult = {
   exitCode: number
   stdout: string
   stderr: string
+  /**
+   * Set when the process never ran to completion — spawn failure, `maxBuffer`
+   * overflow, timeout. Distinct from a non-zero exit: a failed git has nothing
+   * worth retrying either, but callers that recurse need the reason to tell
+   * "this output is incomplete" from "there is no output at all".
+   */
+  error?: string
 }
 
 export type GitRun = (args: string[]) => Promise<GitRunResult>
@@ -128,10 +135,12 @@ export async function detectRepository(
   ) {
     return null
   }
-  // The flags are passed in upstream's order, and so is the destructuring:
-  // `--git-common-dir` lands in `gitDir`. Kept verbatim because the two
-  // differ exactly where it matters (worktrees), where the swap is correct.
-  const [toplevel = '', gitDir = '', commonDir = ''] = lines
+  // The flags are passed in upstream's order, so the destructuring has to
+  // match it: line 2 is `--git-common-dir`, line 3 is `--git-dir`. They come
+  // apart exactly where it matters — under a linked worktree `gitDir` is
+  // `<common>/worktrees/<name>` and is the only one of the two that holds the
+  // rebase/merge markers `isTransientGitState` looks for.
+  const [toplevel = '', commonDir = '', gitDir = ''] = lines
   return { toplevel, gitDir, commonDir }
 }
 
@@ -670,11 +679,17 @@ export async function fetchDiffForMode(
 // --- hunk bodies -----------------------------------------------------------
 
 /**
+ * The retry below is a safety net for one oversized pathspec entry, not a
+ * recovery loop — one attempt is the whole budget.
+ */
+const MAX_HUNK_FETCH_DEPTH = 1
+
+/**
  * `Et` — fetch hunk bodies for the files the list is showing.
  *
  * Only text files that are neither untracked, binary, renamed, nor stale
  * get a git call; the rest resolve to an empty body. When git hands back
- * fewer files than we asked for, the remainder is retried — a single
+ * fewer files than we asked for, the remainder is retried **once** — a single
  * runaway file should not cost the whole view.
  */
 export async function fetchHunks(
@@ -682,6 +697,16 @@ export async function fetchHunks(
   baseRef: string,
   stalePaths: string[],
   files: DiffFileEntry[],
+): Promise<Map<string, DiffFileBody>> {
+  return fetchHunksInner(run, baseRef, stalePaths, files, 0)
+}
+
+async function fetchHunksInner(
+  run: GitRun,
+  baseRef: string,
+  stalePaths: string[],
+  files: DiffFileEntry[],
+  depth: number,
 ): Promise<Map<string, DiffFileBody>> {
   const wanted = files.filter(
     file =>
@@ -704,7 +729,7 @@ export async function fetchHunks(
       return index === 0 || budget <= MAX_PATHSPEC_CHARS
     })
 
-  const { exitCode, stdout } = await run([
+  const { exitCode, stdout, error } = await run([
     '--literal-pathspecs',
     ...GIT_DIFF_ARGS,
     ...GIT_RAW_ARGS,
@@ -715,10 +740,17 @@ export async function fetchHunks(
   const parsed: Map<string, DiffFileBody> =
     exitCode === 0 ? parseRawDiffZ(stdout, pathspec) : new Map()
 
+  // Retry only what the previous call could plausibly have fixed. A run that
+  // errored (maxBuffer, timeout, spawn) produced no output at all, and a
+  // non-zero exit means git refused outright — repeating the identical command
+  // against the identical repo fails identically, so an unguarded retry here
+  // recurses forever and spawns git until the process dies.
+  const canRetry = exitCode === 0 && error === undefined && depth < MAX_HUNK_FETCH_DEPTH
+
   const missing = wanted.filter(file => !parsed.has(file.path))
   const retried =
-    missing.length > 0
-      ? await fetchHunks(run, baseRef, stalePaths, missing)
+    canRetry && missing.length > 0
+      ? await fetchHunksInner(run, baseRef, stalePaths, missing, depth + 1)
       : new Map<string, DiffFileBody>()
 
   const bodies = new Map<string, DiffFileBody>([...skipped, ...retried])

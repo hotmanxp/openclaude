@@ -203,6 +203,31 @@ function backslashesBefore(s: string, i: number): number {
 }
 
 /**
+ * One UTF-16 code unit as a regex fragment matching either hex case.
+ *
+ * Three characters, `\\` + `u`: a two-character `\u` would be read by the
+ * RegExp engine as the start of a unicode escape and degrade into matching a
+ * bare `u`.
+ *
+ * Upstream's other trick: emit a character class per hex LETTER so the pattern
+ * matches both the upper- and lowercase spelling. Emitting a fixed case
+ * silently misses whichever spelling the file happens to use.
+ *
+ * The input is always a single UTF-16 code unit — astral characters have
+ * already been split into their surrogate pair by the caller, because a code
+ * point above the BMP hexifies to five digits and no file stores it that way.
+ */
+function unitEscape(code: number): string {
+  const hex = code.toString(16).padStart(4, '0')
+  return (
+    '\\\\u' +
+    [...hex]
+      .map(h => (h >= 'a' && h <= 'f' ? `[${h}${h.toUpperCase()}]` : h))
+      .join('')
+  )
+}
+
+/**
  * Find the escaped spelling of `searchString` inside `fileContent`.
  *
  * Mirrors upstream's `L`: escape every non-ASCII character, build a regex,
@@ -237,20 +262,22 @@ function matchEscapedForm(
   let pattern = ''
   for (const ch of searchString) {
     const code = ch.codePointAt(0)!
-    if (code >= 128) {
-      // Three characters, `\\` + `u`: a two-character `\u` would be read by
-      // the RegExp engine as the start of a unicode escape and degrade into
-      // matching a bare `u`.
+    if (code >= 0x10000) {
+      // Above the BMP a code point is a SURROGATE PAIR, and a surrogate pair is
+      // also how every escape spelling of it is written — the two units escaped
+      // separately, twelve characters, never as a five-hex-digit escape of the
+      // code point itself. `padStart` only pads, it never truncates, so taking
+      // `code.toString(16)` directly would emit a 7-character fragment that can
+      // never match anything in the file and silently turns the whole rescue
+      // off for every astral character.
       //
-      // Upstream's other trick: emit a character class per hex LETTER so the
-      // pattern matches both `\u00E9` and `\u00e9`. Emitting a fixed case
-      // silently misses whichever spelling the file happens to use.
-      const hex = code.toString(16).padStart(4, '0')
+      // `nonAsciiOffsets` above counts per UTF-16 code unit and advances 6 per
+      // unit, so it already expects exactly these two 6-character escapes.
+      const v = code - 0x10000
       pattern +=
-        '\\\\u' +
-        [...hex]
-          .map(h => (h >= 'a' && h <= 'f' ? `[${h}${h.toUpperCase()}]` : h))
-          .join('')
+        unitEscape((v >> 10) + 0xd800) + unitEscape((v & 0x3ff) + 0xdc00)
+    } else if (code >= 128) {
+      pattern += unitEscape(code)
     } else {
       pattern += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     }

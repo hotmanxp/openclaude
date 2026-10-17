@@ -1,7 +1,11 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  __setOpChainsForTesting,
   buildModHookMatchers,
   createCompositeModCallback,
+  dispatchModOpSync,
+  hasModHandlersFor,
+  refreshOpChains,
   runModChain,
   runModStreamChain,
 } from './dispatch.js'
@@ -762,5 +766,84 @@ describe('runModStreamChain', () => {
     )
     expect(ran).toEqual([])
     expect(out.chunks).toEqual(['a'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dispatchModOpSync — the `{continue:true}` contract
+// ---------------------------------------------------------------------------
+
+// `opChains` is module-level state, and `__setOpChainsForTesting` is the only
+// seam that writes it. Without this every test below would leave its chain
+// installed for every test file bun loads afterwards — the same cross-file
+// pollution `mock.module` causes, which never shows up in a single-file run.
+afterEach(() => {
+  refreshOpChains()
+})
+
+function opChainOf(
+  handler: (e: Record<string, unknown>) => unknown,
+  event = 'ui.status',
+): Map<string, unknown[]> {
+  return new Map([
+    [event, [{ modName: 'test-mod', event, handler, tier: 'builtin' }]],
+  ])
+}
+
+describe('dispatchModOpSync', () => {
+  test('a {continue:true} answer runs core instead of skipping it', () => {
+    // cl-003: this branch read `return obj as T`, so the mod's pass-through
+    // answer erased the host behaviour and handed the caller the outcome
+    // object as the result. Both sibling paths run core — `dispatchModEngineSync`
+    // (:827) and `dispatchModOp` (no branch, falls through to `core(arg)`).
+    __setOpChainsForTesting(opChainOf(() => ({ continue: true })) as never)
+    let calls = 0
+    const out = dispatchModOpSync('ui.status', { text: 'hi' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('CORE')
+    expect(calls).toBe(1)
+  })
+
+  test('no subscribers still runs core', () => {
+    __setOpChainsForTesting(new Map())
+    let calls = 0
+    const out = dispatchModOpSync('ui.status', { text: 'hi' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('CORE')
+    expect(calls).toBe(1)
+  })
+
+  test('a handler returning undefined still runs core', () => {
+    __setOpChainsForTesting(opChainOf(() => undefined) as never)
+    let calls = 0
+    const out = dispatchModOpSync('ui.status', { text: 'hi' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('CORE')
+    expect(calls).toBe(1)
+  })
+
+  test('{replace} still wins over core', () => {
+    __setOpChainsForTesting(opChainOf(() => ({ replace: 'REPLACED' })) as never)
+    let calls = 0
+    const out = dispatchModOpSync('ui.status', { text: 'hi' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('REPLACED')
+    expect(calls).toBe(0)
+  })
+
+  test('a matcherless pass-through does not hide the chain (probe sanity)', () => {
+    // Without this the three tests above would also pass against a chain that
+    // was never installed at all, because the no-subscriber fast path also
+    // calls core. This asserts the chain is actually the one being dispatched.
+    __setOpChainsForTesting(opChainOf(() => ({ continue: true })) as never)
+    expect(hasModHandlersFor('ui.status')).toBe(true)
   })
 })

@@ -57,6 +57,33 @@ describe('findActualString — \\uXXXX escape fallbacks (upstream 2.1.287)', () 
     expect(found).toBe('const caf\\u00e9 = "open"')
   })
 
+  test('② rescues a non-BMP character from its surrogate-pair escapes', () => {
+    // A code point above the BMP is stored as a surrogate pair, and every
+    // escape spelling of it writes the two units separately — JSON.stringify
+    // emits twelve characters, never a five-hex-digit escape of the code point.
+    const file = 'const e = "\\uD83D\\uDE00";\nlet x = 1\n'
+    const found = findActualString(file, 'const e = "\u{1F600}"')
+    expect(found).toBe('const e = "\\uD83D\\uDE00"')
+  })
+
+  test('② rescues a non-BMP character spelled in lowercase hex', () => {
+    const file = 'const e = "\\ud83d\\ude00";\nlet x = 1\n'
+    const found = findActualString(file, 'const e = "\u{1F600}"')
+    expect(found).toBe('const e = "\\ud83d\\ude00"')
+  })
+
+  test('② rescues a BMP and a non-BMP character in the same string', () => {
+    const file = 'caf\\u00E9 \\uD83D\\uDE00;\nlet x = 1\n'
+    const found = findActualString(file, 'café \u{1F600}')
+    expect(found).toBe('caf\\u00E9 \\uD83D\\uDE00')
+  })
+
+  test('② escapes a code point in the CJK extension B plane', () => {
+    const file = 'const e = "\\uD840\\uDC00";\nlet x = 1\n'
+    const found = findActualString(file, 'const e = "\u{20000}"')
+    expect(found).toBe('const e = "\\uD840\\uDC00"')
+  })
+
   test('rejects an escaped-looking match sitting on an odd backslash run', () => {
     // The \u here is itself escaped, so it is a literal backslash-u — not
     // the escape of é. The even-run check must reject it.

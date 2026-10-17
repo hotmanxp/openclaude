@@ -144,6 +144,63 @@ describe('op nouns', () => {
     expect(await a.state.get('k')).toBe('from-a')
   })
 
+  test('store.delete cannot destroy another mod\'s private state', async () => {
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    await expect(b.store.delete('a.secret')).rejects.toThrow(
+      /belongs to a's \$\.state namespace/,
+    )
+    expect(await a.state.get('secret')).toBe('a-private')
+  })
+
+  test('store.set cannot overwrite another mod\'s private state', async () => {
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    await expect(b.store.set('a.secret', 'hijacked')).rejects.toThrow(
+      /belongs to a's \$\.state namespace/,
+    )
+    expect(await a.state.get('secret')).toBe('a-private')
+  })
+
+  test('the store fence does not touch dotted keys matching no mod name', async () => {
+    // Upstream's cc-plugin-diff keys its cross-mod git base `<repo>.base`.
+    // A fence that refused every dotted key would break that while passing
+    // every other assertion here.
+    const modB = freshMod('b')
+    registerLoadedMod(modB)
+    const b = createModContext(modB)
+
+    await b.store.set('/Users/ethan/code/opencc.base', 'abc123')
+    expect(await b.store.get('/Users/ethan/code/opencc.base')).toBe('abc123')
+  })
+
+  test('the store fence leaves cross-mod reads alone', async () => {
+    // get/keys staying cross-mod readable is the upstream design — the
+    // `<modName>.` prefix is what makes a state key readable as a store key.
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    expect(await b.store.get('a.secret')).toBe('a-private')
+    expect(await b.store.keys()).toContain('a.secret')
+  })
+
   test('env reads and writes the real environment', async () => {
     const ctx = createModContext(freshMod())
     await ctx.env.set('OPENCC_MOD_PROBE', 'yes')
@@ -443,23 +500,28 @@ describe('config noun', () => {
     })
   })
 
-test('config.list describes every row it enumerates', async () => {
-    const keys = await createModContext(freshMod()).config.list()
-    expect(keys.length).toBeGreaterThan(0)
+test('config.list enumerates raw keys without dispatching describe', async () => {
+  // This used to fire one `config.describe` dispatch per key and discard every
+  // result, while its own comment claimed a mod hiding or renaming a row would
+  // "see the rename on the one path that actually enumerates rows". Nothing
+  // observed the results: `list()` is declared `readonly string[]`, and the
+  // host settings menu reads `supportedSettings` directly without ever
+  // entering the mods layer.
+  const keys = await createModContext(freshMod()).config.list()
+  expect(keys.length).toBeGreaterThan(0)
 
-    const seen: string[] = []
-    const mod = freshMod()
-    createModContext(mod).on('config.describe', (e, next) => {
-      seen.push((e as { key: string }).key)
-      return next(e)
-    })
-    registerLoadedMod(mod)
-
-    await createModContext(freshMod('other')).config.list()
-    // Every enumerated row reached a handler, which is what makes a rename
-    // apply to the menu rather than only to the mod's own copy.
-    expect(seen.sort()).toEqual([...keys].sort())
+  const seen: string[] = []
+  const mod = freshMod()
+  createModContext(mod).on('config.describe', (e, next) => {
+    seen.push((e as { key: string }).key)
+    return next(e)
   })
+  registerLoadedMod(mod)
+
+  const again = await createModContext(freshMod('other')).config.list()
+  expect(seen).toEqual([])
+  expect([...again].sort()).toEqual([...keys].sort())
+})
 })
 
 /** What a streaming handler receives as `next`: the stream beneath. */

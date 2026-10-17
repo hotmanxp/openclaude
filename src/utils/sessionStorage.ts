@@ -2141,13 +2141,6 @@ export async function recordSpeculationAccept(
   await getProject().appendEntry(entry)
 }
 
-export async function recordGoalState(
-  goal: GoalStateEntry['goal'],
-  sessionId: UUID = getSessionId() as UUID,
-) {
-  await getProject().insertGoalState(goal, sessionId)
-}
-
 /**
  * Reset the session file pointer after switchSession/regenerateSessionId.
  * The new file is created lazily on the first user/assistant message.
@@ -6180,6 +6173,13 @@ export async function enrichLogs(
  * cherry-pick called `Project.insertGoalState` directly, but that method
  * has not been ported in opencc; using the generic append path keeps the
  * behavior observable to consumers without depending on the missing API.
+ *
+ * This file used to declare a SECOND top-level `recordGoalState` next to the
+ * record* helpers above, calling that missing method. Only one top-level
+ * `export` of a name can win, and the bundler kept this one — so the other was
+ * dead code with a landmine in it, invisible to `typecheck` because this file
+ * opens with `@ts-nocheck`. Do not add a second one; if `insertGoalState` is
+ * ever ported, change THIS body.
  */
 export async function recordGoalState(
   goal: GoalState | null,

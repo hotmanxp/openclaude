@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 
 import { createModContext } from './engine.js'
 import {
@@ -134,6 +135,35 @@ describe('session.usage', () => {
     // It measures against the compaction window; dividing one by the other
     // would produce a percentage that means nothing.
     expect(usage.context.breakdown?.maxTokens).toBe(200)
+  })
+
+  test('no publisher means no breakdown, and absence is the signal', async () => {
+    // Exactly what src/query.ts:637 publishes. There is no local substitute —
+    // the module header used to promise one — so `undefined` is all a mod
+    // asking for a breakdown can get, and it is the caller's cue that nothing
+    // was computed.
+    setSessionUsageFacts({ startedAt: 1 })
+    const ctx = createModContext(freshMod())
+    expect((await ctx.session.usage({ breakdown: 'full' })).context.breakdown).toBeUndefined()
+    expect((await ctx.session.usage({ breakdown: 'summary' })).context.breakdown).toBeUndefined()
+  })
+
+  test('the module header does not promise a local estimate again', async () => {
+    // The header is the only thing a reader has to go on, and it used to
+    // describe a fallback that never existed. Guard the specific wording, not
+    // the bare noun phrase — the honest header says "there is no local
+    // estimate", which a blunt substring check would flag as the claim itself.
+    const header = readFileSync(new URL('./sessionUsage.ts', import.meta.url), 'utf8')
+      .split('\n')
+      .slice(0, 24)
+      .join('\n')
+    for (const claim of [
+      'built from the local estimate',
+      'instead of a silent no-op',
+      'the field says which it is',
+    ]) {
+      expect(header).not.toContain(claim)
+    }
   })
 
   test('rejects a breakdown outside the two names upstream accepts', async () => {
