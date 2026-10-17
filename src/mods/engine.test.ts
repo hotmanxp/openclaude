@@ -325,7 +325,10 @@ describe('ctx.on patterns', () => {
     // `audio.play` is refused by name upstream of here; registering a handler
     // for it would be a hook that never fires.
     expect(events).not.toContain('audio.play')
-    expect(events).not.toContain('plugin.register')
+    expect(events).not.toContain('mcp.call')
+    // `plugin.register` used to be on that list — the scan that reads `uses`
+    // now exists, so it dispatches.
+    expect(events).toContain('plugin.register')
   })
 
   test('a matcher on a pattern applies to every event it selected', () => {
@@ -360,9 +363,11 @@ describe('ctx.on patterns', () => {
   })
 
   test('a glob over only-refused events says which ones', () => {
+    // `mcp.call` and `mcp.connect` are both refused here (no `$.mcp.call`
+    // method to observe), so `mcp.*` selects nothing dispatchable.
     const ctx = createModContext(freshMod())
-    expect(() => ctx.on('plugin.*' as never, async () => ({}))).toThrow(
-      /plugin\.register/,
+    expect(() => ctx.on('mcp.*' as never, async () => ({}))).toThrow(
+      /mcp\.call, mcp\.connect/,
     )
   })
 

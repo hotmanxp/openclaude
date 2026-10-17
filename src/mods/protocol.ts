@@ -255,14 +255,6 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
   'session.authorize':
     'not an event upstream but a `$` method: `$.session.authorize()` answers an opaque HANDLE for the session\'s Anthropic credential, spent through `$.http.fetch(url, {auth})`. There is no event to raise, and handing a mod a live credential handle is a decision this host has not made.',
 
-  // `uses` is a STATIC scan of the module: the event names its `on(...)` calls
-  // and the `noun.method` calls it makes, read from the source before it runs.
-  // opencc validates imports and size but does not parse a mod\'s body, and an
-  // empty `uses` would assert "this mod registers nothing" to every hook that
-  // reads it.
-  'plugin.register':
-    '`uses` is a static scan of the mod\'s own source — every `on(...)` event name and every `noun.method` call, read before the module runs — and the contract requires it. opencc does not parse mod bodies, and shipping `{events: [], calls: []}` would tell every hook that reads it the mod registers nothing.',
-
   'engine.create':
     'deliberately not reproduced: upstream `engine.create` is how a plugin ADDS a noun to `$` (upstream\'s `$.telemetry`), which needs a third-party plugin host adding nouns to a shared surface. opencc declares `$.telemetry` directly instead — see the note atop mods/nouns.ts.',
 

@@ -210,6 +210,125 @@ describe('loadMods', () => {
     expect(getLoadedMods().some(m => m.manifest.name === 'halfway')).toBe(false)
   })
 
+  // -- plugin.register -------------------------------------------------------
+  // Upstream's last gate before a module is imported (d.ts:7872). It used to be
+  // refused by name here because opencc had no static scan to build `uses` from;
+  // the scan exists now, so the gate does too, and a refusal has to mean the
+  // module's top level never ran — which is only checkable by watching for the
+  // side effect the module would have had.
+
+  test('plugin.register is handed the scan of the module about to load', async () => {
+    await setupModsDir()
+    const seen = (globalThis as Record<string, unknown>)
+      .__site_guard_gate_seen as Array<Record<string, unknown>> | undefined
+    expect(seen).toBeUndefined()
+    await writeMod(
+      'gate',
+      // The list lives on globalThis because the mod is a separate module: a
+      // `seen` captured in this file is free in the mod's scope, so the push
+      // would throw and the per-handler catch would swallow it — the test would
+      // then read as "the gate never saw it" for a reason that has nothing to
+      // do with the gate.
+      `export function register(ctx) {
+         globalThis.__site_guard_gate_seen = []
+         ctx.on('plugin.register', async (e, next) => {
+           globalThis.__site_guard_gate_seen.push({
+             name: e.name,
+             provenance: e.provenance,
+             root: e.root,
+             tier: e.tier,
+             uses: e.uses,
+           })
+           return next(e)
+         })
+       }`,
+    )
+    await writeMod(
+      'subject',
+      `import { helper } from './lib/helper.js'
+       export function register(ctx) {
+         ctx.on('turn.complete', async () => ({ continue: true }))
+         globalThis.__site_guard_subject_ran = true
+       }`,
+    )
+    // The gate has to see `subject`, so it is discovered first.
+    await mkdir(join(modsDir!, 'subject', 'mods', 'lib'), { recursive: true })
+    await writeFile(
+      join(modsDir!, 'subject', 'mods', 'lib', 'helper.js'),
+      'export const helper = 1',
+    )
+    const results = await loadMods()
+    expect(results.find(r => r.name === 'subject')!.ok).toBe(true)
+    const recorded =
+      ((globalThis as Record<string, unknown>).__site_guard_gate_seen as
+        | Array<Record<string, unknown>>
+        | undefined) ?? []
+    delete (globalThis as Record<string, unknown>).__site_guard_gate_seen
+    const sawSubject = recorded.find(s => s.name === 'subject')
+    expect(sawSubject).toBeDefined()
+    expect(sawSubject!.provenance).toBe('subject@disk')
+    expect(sawSubject!.root).toBe(join(modsDir!, 'subject'))
+    expect(sawSubject!.tier).toBe('user')
+    expect(sawSubject!.uses).toMatchObject({ events: ['turn.complete'] })
+  })
+
+  test('a refusal means the module never runs', async () => {
+    await setupModsDir()
+    await writeMod(
+      'gate',
+      `export function register(ctx) {
+         ctx.on('plugin.register', async (e) => ({ refuse: 'not on this machine' }))
+       }`,
+    )
+    await writeMod(
+      'subject',
+      `export function register(ctx) {
+         ctx.on('turn.complete', async () => ({ continue: true }))
+         globalThis.__site_guard_subject_ran = true
+       }`,
+    )
+    delete (globalThis as Record<string, unknown>).__site_guard_subject_ran
+    const results = await loadMods()
+    const subject = results.find(r => r.name === 'subject')!
+    expect(subject.ok).toBe(false)
+    expect(subject.error).toMatch(/not on this machine/)
+    // The module's top level is what a refusal is for: no handlers, and the
+    // global it would have set is untouched.
+    expect((globalThis as Record<string, unknown>).__site_guard_subject_ran).toBeUndefined()
+    expect(hooksFor('Stop', 'subject')).toHaveLength(0)
+  })
+
+  test('a gate that answers allow leaves the mod loading (control)', async () => {
+    await setupModsDir()
+    await writeMod(
+      'gate',
+      `export function register(ctx) {
+         ctx.on('plugin.register', async (e, next) => next(e))
+       }`,
+    )
+    await writeMod(
+      'subject',
+      `export function register(ctx) {
+         ctx.on('turn.complete', async () => ({ continue: true }))
+       }`,
+    )
+    const results = await loadMods()
+    expect(results.find(r => r.name === 'subject')!.ok).toBe(true)
+    expect(hooksFor('Stop', 'subject')).toHaveLength(1)
+  })
+
+  test('a mod that gates nothing is unaffected (control)', async () => {
+    await setupModsDir()
+    await writeMod(
+      'loner',
+      `export function register(ctx) {
+         ctx.on('turn.complete', async () => ({ continue: true }))
+       }`,
+    )
+    const results = await loadMods()
+    expect(results.find(r => r.name === 'loner')!.ok).toBe(true)
+  })
+
   test('unloadMod removes the composite from the global registry', async () => {
     await setupModsDir()
     await writeMod(

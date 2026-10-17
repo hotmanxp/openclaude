@@ -1,6 +1,11 @@
 import { access, constants as fsConstants } from 'node:fs/promises'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { extname, join, relative, resolve } from 'node:path'
+import {
+  scanImports,
+  scanUses,
+  type PluginRegisterUses,
+} from './scan.js'
 
 /**
  * Static validation for mod packages (docs/mods-plan.md §3.4 "加载器安全约束").
@@ -13,9 +18,11 @@ import { extname, join, relative, resolve } from 'node:path'
  *   the injected ctx; there is deliberately NO module-specified filesystem
  *   access via imports (R7 — capability surface matches upstream).
  *
- * The import scan is a regex pass, not an AST walk (P1 keeps zero new
- * dependencies). Computed specifiers can evade it — this is defense against
- * accidental dependency, not a security boundary (R8: same-process model).
+ * The import scan is an AST walk (`scan.ts`, acorn), not a regex pass. It is
+ * still not a security boundary (R8: same-process model): a specifier computed
+ * at runtime is counted rather than refused, so the number is reported instead
+ * of being swallowed. It IS exact about the literal ones, which a regex pass
+ * could not be.
  */
 
 export const MOD_MAX_FILE_BYTES = 1_000_000 // 1MB per file (upstream parity)
@@ -154,22 +161,32 @@ export async function validateModSize(
   }
 }
 
-// Matches static/dynamic import sources and re-exports. Computed specifiers
-// (variables) are not caught — accepted residual risk, see file header.
-const IMPORT_SPECIFIER_PATTERNS = [
-  /\bimport\s+[^;'"]*?\s+from\s*['"]([^'"]+)['"]/g,
-  /\bimport\s*['"]([^'"]+)['"]/g,
-  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  /\bexport\s+[^;'"]*?\s+from\s*['"]([^'"]+)['"]/g,
-  /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-]
-
-/** Reject bare specifiers: only relative imports (`./`, `../`) are allowed. */
-export async function validateModImports(
+/**
+ * Reject bare specifiers: only relative imports (`./`, `../`) are allowed, and
+ * what comes back is the scan the loader hands `plugin.register`.
+ *
+ * Upstream's scan is an AST walk and this one now is too, which is what makes
+ * the second answer possible at all: the same walk reads the module's `on(...)`
+ * registrations and its `$.` calls, and those are the `uses` a
+ * `plugin.register` hook is gated on (d.ts:7887). A regex pass cannot produce
+ * them — `on` appears in comments, in strings and in property accesses, and only
+ * one of those is a registration.
+ *
+ * Computed specifiers (`import(someVar)`) are counted, not refused: they name
+ * nothing at parse time, so refusing them would refuse syntax rather than a
+ * dependency, and accepting them silently is the gap the regex pass had. The
+ * count is returned so the caller can log it.
+ */
+export async function scanModSources(
   modName: string,
   modRoot: string,
-): Promise<void> {
+): Promise<{ uses: PluginRegisterUses; computedSpecifiers: number }> {
   const files = await listModFiles(modName, modRoot)
+  const uses: PluginRegisterUses = { events: [], calls: [] }
+  const env = { reads: [] as string[], writes: [] as string[] }
+  const state = { reads: [] as string[], writes: [] as string[] }
+  let computedSpecifiers = 0
+
   for (const file of files) {
     let source: string
     try {
@@ -177,20 +194,63 @@ export async function validateModImports(
     } catch {
       continue
     }
-    for (const pattern of IMPORT_SPECIFIER_PATTERNS) {
-      pattern.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = pattern.exec(source)) !== null) {
-        const specifier = m[1]
-        if (specifier && !specifier.startsWith('.')) {
-          throw new ModValidationError(
-            `bare module specifier "${specifier}" is not allowed in mods (only relative ./ or ../ imports) — file ${relative(modRoot, file)}`,
-            modName,
-          )
-        }
+    const name = relative(modRoot, file)
+    const imports = scanImports(source, name)
+    computedSpecifiers += imports.computed
+    for (const specifier of imports.specifiers) {
+      if (!specifier.startsWith('.')) {
+        throw new ModValidationError(
+          `bare module specifier "${specifier}" is not allowed in mods (only relative ./ or ../ imports) — file ${name}`,
+          modName,
+        )
+      }
+    }
+    let fileUses: PluginRegisterUses
+    try {
+      fileUses = scanUses(source, name)
+    } catch (error) {
+      // Unparseable means the host would refuse to import it too, so this is a
+      // load failure, not a scan failure — reported here rather than as an
+      // empty `uses`, which would read as "this mod registers nothing".
+      throw new ModValidationError(
+        error instanceof Error ? error.message : String(error),
+        modName,
+      )
+    }
+    for (const event of fileUses.events) {
+      if (!uses.events.includes(event)) uses.events.push(event)
+    }
+    for (const call of fileUses.calls) {
+      if (!uses.calls.includes(call)) uses.calls.push(call)
+    }
+    for (const key of ['reads', 'writes'] as const) {
+      for (const value of fileUses.env?.[key] ?? []) {
+        if (!env[key].includes(value)) env[key].push(value)
+      }
+      for (const value of fileUses.state?.[key] ?? []) {
+        if (!state[key].includes(value)) state[key].push(value)
       }
     }
   }
+  uses.calls = [...uses.calls].sort()
+  if (env.reads.length > 0 || env.writes.length > 0) {
+    uses.env = { reads: [...env.reads].sort(), writes: [...env.writes].sort() }
+  }
+  if (state.reads.length > 0 || state.writes.length > 0) {
+    uses.state = {
+      reads: [...state.reads].sort(),
+      writes: [...state.writes].sort(),
+    }
+  }
+  return { uses, computedSpecifiers }
+}
+
+/** Kept for the loader's validation pass; the scan is the same walk. */
+export async function validateModImports(
+  modName: string,
+  modRoot: string,
+): Promise<void> {
+  await scanModSources(modName, modRoot)
 }
 
 /** Check the mod root is a readable directory (early, clear error). */
