@@ -28,7 +28,7 @@ import {
   registerModBreakerListener,
   type LoadedMod,
 } from './registry.js'
-import { buildModHookMatchers } from './dispatch.js'
+import { buildModHookMatchers, dispatchModEngineResult } from './dispatch.js'
 import { loadBuiltinMods, isBuiltinMod, isBuiltinModName } from './builtin.js'
 import { isModEnabled, modPluginId } from './pluginView.js'
 import {
@@ -40,11 +40,12 @@ import {
 import { clearModTimers } from './nouns.js'
 import {
   ModValidationError,
+  scanModSources,
   validateEntryPath,
-  validateModImports,
   validateModRootReadable,
   validateModSize,
 } from './validate.js'
+import type { PluginRegisterResult } from './scan.js'
 
 /**
  * Mods integration (docs/mods-plan.md §3.4 hooks.ts).
@@ -134,11 +135,50 @@ async function loadSingleMod(root: string): Promise<LoadedMod | null> {
   await validateModRootReadable(manifest.name, root)
   const entryReal = await validateEntryPath(manifest.name, root, manifest.entry)
   await validateModSize(manifest.name, root)
-  await validateModImports(manifest.name, root)
+  // One walk answers both questions: whether the module may import what it
+  // spells, and what it hooks and calls. Upstream reads the second from the same
+  // place (d.ts:7883-7887), and it is what `plugin.register` is gated on.
+  const scanned = await scanModSources(manifest.name, root)
+  if (scanned.computedSpecifiers > 0) {
+    logForDebugging(
+      `[mods] "${manifest.name}" builds ${scanned.computedSpecifiers} import specifier(s) at runtime — they name nothing to scan, and a bare one would not be caught`,
+    )
+  }
 
   // Past validation: from here the mod is listable even if register() throws,
   // because the user needs to SEE it to know their mod is broken.
   noteDiscoveredMod(manifest.name, false, manifest.userConfig)
+
+  // Upstream `plugin.register` (d.ts:7872) — the last gate before the module is
+  // imported. A refusal means no import, no `engine.create`, no hooks, no tools
+  // or commands, and the debug log names the mod and the reason.
+  //
+  // Before the import on purpose: the gate's whole claim is that the module
+  // does not run, and importing first would have already run its top level.
+  const verdict = await dispatchModEngineResult<PluginRegisterResult>(
+    'plugin.register',
+    {
+      name: manifest.name,
+      // A disk mod is a person's mod, so `user`; the tier the MODULE would sit
+      // at, not the tier of the hook gating it (upstream's wording: "where its
+      // hooks would stand among the chain's tiers").
+      tier: 'user',
+      root,
+      ...(manifest.version !== undefined ? { version: manifest.version } : {}),
+      provenance: `${manifest.name}@disk`,
+      uses: scanned.uses,
+    } as unknown as Record<string, unknown>,
+    async () => ({ allow: true }) as PluginRegisterResult,
+  )
+  if ('refuse' in verdict && typeof verdict.refuse === 'string') {
+    logForDebugging(
+      `[mods] plugin.register refused "${manifest.name}": ${verdict.refuse}`,
+    )
+    throw new ModValidationError(
+      `refused by a plugin.register hook: ${verdict.refuse}`,
+      manifest.name,
+    )
+  }
 
   const module = (await import(pathToFileURL(entryReal).href + reloadQuerySuffix())) as {
     register?: unknown

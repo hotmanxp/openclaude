@@ -36,8 +36,6 @@ const WAS_DECLARED_BUT_DEAD = [
   // Not an event upstream — `$.session.authorize()` is a method that hands
   // back a credential handle.
   'session.authorize',
-  // `uses` needs a static parse of the mod's own source.
-  'plugin.register',
   // Op events with no `$` method to observe the call of.
   'engine.create',
   'agent.register',

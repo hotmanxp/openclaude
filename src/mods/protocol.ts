@@ -22,6 +22,56 @@
  */
 
 // ---------------------------------------------------------------------------
+// CLASSIC EVENTS — a decision, not an omission
+// ---------------------------------------------------------------------------
+
+/**
+ * `classic.*` is upstream's spelling for the settings.json hook channel:
+ * `ClassicEventName = `classic.${ClassicHookEvent}``, where `ClassicHookEvent`
+ * is `HookInput['hook_event_name']` (d.ts:1284). So the namespace is DERIVED
+ * from the host's own hook union, not a list anyone maintains — which is why
+ * adding it is a matter of a template string rather than thirty-odd lines.
+ *
+ * It is deliberately not registered, and the reason is the RESULT vocabulary,
+ * not the spelling. Upstream keeps two dialects apart on purpose:
+ *
+ *   - a dotted mod event answers in the mod dialect — `{deny}`, `{value}`,
+ *     `{drop}` — and its refusals are this host's own (the sites in section 6);
+ *   - a classic hook answers in the host's dialect — `block` / `continue` /
+ *     `stopReason` / `permissionDecision` — read by the very code that runs the
+ *     user's own hook scripts.
+ *
+ * Registering `classic.Stop` without an adapter would put one handler in a
+ * position where it must answer in the host dialect while every other mod event
+ * registered beside it answers in the mod dialect, and `block` would read to
+ * the mod as an unknown key. Upstream keeps the two channels separate inside one
+ * table for the same reason; folding them together is what the guard test in
+ * protocol.test.ts pins.
+ *
+ * What landing it would take, in order:
+ *
+ *   1. the derived table — `HOOK_EVENTS.map(e => `classic.${e}`)`,
+ *      mechanical, and 27 names here where upstream lists 33;
+ *   2. a `ClassicResult → {deny | value}` adapter at the composition site, so a
+ *      mod writes one dialect and the host reads its own;
+ *   3. a decision about `classic.PreToolUse`, whose `e` upstream types as
+ *      `ToolCallEnvelope` while every other classic event is the whole hook
+ *      input — so it is not even one shape to adapt;
+ *   4. a decision about ordering: opencc bridges four dotted events ONTO these
+ *      very hooks (dispatch.ts `HOST_EVENT_BRIDGE`), so a classic handler and a
+ *      bridged handler would run in the same chain and would have to agree on
+ *      which speaks first.
+ *
+ * Steps 2 to 4 are contract decisions rather than a port, so they are not taken
+ * here — this batch took the mechanical gaps. What opencc exposes today is the
+ * four events whose payload a mod genuinely needs in the MOD dialect:
+ * `tool.call` / `session.start` / `session.end` / `turn.complete`. That is the
+ * opposite trade from adding 27 more in the host's dialect, and it is the one
+ * already made.
+ */
+const CLASSIC_NAMESPACE = 'classic.'
+
+// ---------------------------------------------------------------------------
 // 1. Event table
 // ---------------------------------------------------------------------------
 
@@ -255,14 +305,6 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
   'session.authorize':
     'not an event upstream but a `$` method: `$.session.authorize()` answers an opaque HANDLE for the session\'s Anthropic credential, spent through `$.http.fetch(url, {auth})`. There is no event to raise, and handing a mod a live credential handle is a decision this host has not made.',
 
-  // `uses` is a STATIC scan of the module: the event names its `on(...)` calls
-  // and the `noun.method` calls it makes, read from the source before it runs.
-  // opencc validates imports and size but does not parse a mod\'s body, and an
-  // empty `uses` would assert "this mod registers nothing" to every hook that
-  // reads it.
-  'plugin.register':
-    '`uses` is a static scan of the mod\'s own source — every `on(...)` event name and every `noun.method` call, read before the module runs — and the contract requires it. opencc does not parse mod bodies, and shipping `{events: [], calls: []}` would tell every hook that reads it the mod registers nothing.',
-
   'engine.create':
     'deliberately not reproduced: upstream `engine.create` is how a plugin ADDS a noun to `$` (upstream\'s `$.telemetry`), which needs a third-party plugin host adding nouns to a shared surface. opencc declares `$.telemetry` directly instead — see the note atop mods/nouns.ts.',
 
@@ -278,7 +320,113 @@ export const UNAVAILABLE_EVENTS: Readonly<Record<string, string>> = {
 
 /** Why `event` cannot be dispatched here, or undefined if it can. */
 export function unavailabilityReason(event: string): string | undefined {
+  // Refused as a CLASS rather than name by name: the reason is one sentence
+  // about the result dialect, and repeating it for 27 names here (upstream
+  // lists 33) would add cases without adding information.
+  if (event.startsWith(CLASSIC_NAMESPACE)) {
+    return (
+      'the classic hook channel is not exposed as mod events. A `classic.*` ' +
+      'hook answers in the host dialect (`block` / `continue` / `stopReason` ' +
+      '/ `permissionDecision`) while every other mod event answers in the mod ' +
+      'dialect (`deny` / `value` / `drop`), so registering one would put a ' +
+      'handler in a position where it has to speak two dialects at once. ' +
+      'Landing it needs a `ClassicResult` adapter, and `classic.PreToolUse` ' +
+      'carries an envelope rather than a hook input — so it is not even one ' +
+      'shape to adapt. See the CLASSIC EVENTS decision in protocol.ts.'
+    )
+  }
   return UNAVAILABLE_EVENTS[event]
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Patterns
+// ---------------------------------------------------------------------------
+
+/**
+ * What `on(...)` takes where upstream takes a `Pattern` (d.ts:6592): an
+ * event's name, a glob, or a negation of either.
+ *
+ *   Pattern  = EventName | Glob | Negation
+ *   Glob     = '*' | `${Namespace}.*`        — `tool.*`, `ui.render.*`
+ *   Negation = `!${Exclude<EventName | Glob, '*'>}`
+ *
+ * `Namespace<N>` (d.ts:6596) is derived rather than declared — "one or more
+ * whole leading segments of an event name (`tool` of `tool.call`)" — so it is a
+ * plain `string` here, and the resolution below is where a namespace that
+ * selects nothing gets named in the error.
+ */
+export type ModPattern = ModEventName | '*' | `${string}.*` | `!${string}`
+
+/** Every declared event this host will actually dispatch. */
+const DISPATCHABLE_EVENTS = MOD_EVENTS.filter(
+  event => UNAVAILABLE_EVENTS[event] === undefined,
+) as readonly ModEventName[]
+
+export type ModPatternResolution =
+  | {
+      readonly events: readonly ModEventName[]
+      /** Selected, but refused here by name — reported, never registered. */
+      readonly refused: readonly ModEventName[]
+    }
+  | { readonly error: string }
+
+const refusedHere = (event: string): boolean =>
+  UNAVAILABLE_EVENTS[event] !== undefined
+
+/**
+ * Resolve a `Pattern` to the events it selects, or to the reason it selects
+ * none.
+ *
+ * Two upstream rules are load-bearing rather than decorative:
+ *
+ *   - `!*` "would select none, so is no pattern" (d.ts:6520). A registration
+ *     that silently covers nothing is the failure `UNAVAILABLE_EVENTS` exists
+ *     to prevent, so it is an error rather than a no-op.
+ *   - a glob or negation "selects no telemetry event for an installed plugin:
+ *     those are hooked by name" (d.ts:6587). This host draws no such line, so
+ *     that rule does not apply — but `refused` is reported for the same reason
+ *     it exists upstream: an event this host refuses by name must not end up as
+ *     a registered handler that never fires, which is the third bucket
+ *     `UNAVAILABLE_EVENTS`' own docstring denies exists.
+ */
+export function resolveModPattern(pattern: string): ModPatternResolution {
+  if (pattern === '!*') {
+    return { error: '"!*" would select no event, so it is not a pattern' }
+  }
+  if (pattern === '*') {
+    return { events: DISPATCHABLE_EVENTS, refused: [] }
+  }
+  const negated = pattern.startsWith('!')
+  const body = negated ? pattern.slice(1) : pattern
+  if (body === '*') {
+    return { error: '"!*" would select no event, so it is not a pattern' }
+  }
+  const isGlob = body.endsWith('.*')
+  if (!isGlob && !MOD_EVENT_SET.has(body)) {
+    return { error: `names no event this host has (${body})` }
+  }
+  const prefix = isGlob ? body.slice(0, -2) : body
+  // A name takes everything beneath it too, which is what makes `tool.call`
+  // and `tool.*` agree — a hook on the parent sees the children's dispatches
+  // nowhere else, so treating them identically is the only reading that leaves
+  // no event reachable by one spelling and not the other.
+  const all = MOD_EVENTS as readonly ModEventName[]
+  const selected = all.filter(
+    event => event === prefix || event.startsWith(prefix + '.'),
+  )
+  const chosen: ModEventName[] = negated
+    ? all.filter(event => !selected.includes(event))
+    : selected
+  const dispatchable = chosen.filter(event => !refusedHere(event))
+  if (dispatchable.length === 0) {
+    return {
+      error:
+        chosen.length === 0
+          ? 'selects no event'
+          : `selects only events this host refuses: ${chosen.join(', ')}`,
+    }
+  }
+  return { events: dispatchable, refused: chosen.filter(refusedHere) }
 }
 
 
@@ -617,6 +765,281 @@ export const MOD_HOOK_BUDGET_MS = 10_000
  * a different purpose, and inventing it silently would claim a bound upstream
  * does not enforce here.
  */
+
+/**
+ * Per-event overrides of {@link MOD_HOOK_BUDGET_MS}. Upstream has exactly one:
+ * `prompt.edit` at 50ms, carried on its site entry in the dispatch site table
+ * (`modules/0160`). It fires on every keystroke, so a slow mod is felt there as
+ * input lag rather than as a slow answer — the only event worth pressing a
+ * whole order of magnitude down for.
+ */
+const MOD_HOOK_BUDGET_MS_BY_EVENT: Record<string, number> = {
+  'prompt.edit': 50,
+}
+
+/**
+ * The hook budget for `event` — {@link MOD_HOOK_BUDGET_MS} unless overridden.
+ * A chain entry with no event (which `ModChainEntry.event` allows) gets the
+ * default, which is what it got before the override table existed.
+ */
+export function modHookBudgetMs(event: string | undefined): number {
+  return (event === undefined ? undefined : MOD_HOOK_BUDGET_MS_BY_EVENT[event]) ?? MOD_HOOK_BUDGET_MS
+}
+
+/**
+ * Run a synchronous `body` under the hook budget, reporting whether it overran.
+ *
+ * A synchronous site cannot be interrupted: there is no pending promise to race
+ * and no signal the handler could honour mid-call. What it CAN do is refuse to
+ * adopt an answer that took too long — the handler runs to completion, and then
+ * its result is discarded exactly like a throw.
+ *
+ * So this is observable-and-abandon, not preemption. Upstream's 50ms
+ * `prompt.edit` bound is the same shape: it discards, it does not interrupt.
+ * Do not describe this in a comment as a way to keep a runaway mod from
+ * blocking the host — the blocking already happened by the time we measure.
+ */
+export function withSyncBudget<T>(
+  body: () => T,
+  budgetMs: number = MOD_HOOK_BUDGET_MS,
+): { timedOut: boolean; value?: T } {
+  const startedAt = performance.now()
+  const value = body()
+  return performance.now() - startedAt > budgetMs ? { timedOut: true } : { timedOut: false, value }
+}
+
+/**
+ * The grace a `.catch` handler runs under, in milliseconds. Upstream `d.ts:5258`
+ * calls it `catchMs` and describes it as "a fresh budget from the moment it is
+ * called" — a second clock, not an extension of {@link MOD_HOOK_BUDGET_MS}.
+ * Past it the hook is absent, exactly as if it had never registered a handler.
+ */
+export const MOD_HOOK_CATCH_MS = 1_000
+
+/**
+ * Why a hook failed, as its `.catch` handler reads it. Upstream `HookFailure`
+ * (`d.ts:5277`).
+ *
+ * `throw`: it threw, or returned a shape the site refuses — `message` saying
+ * which. `timeout`: it outran {@link MOD_HOOK_BUDGET_MS} — `message` then what
+ * its last `next()` rejected with, if it did.
+ */
+export type ModHookFailure = {
+  readonly kind: 'throw' | 'timeout'
+  /** Absent for a timeout whose abandoned body never rejected anything. */
+  readonly message?: string
+  /** The grace the handler runs under. Past it, the hook is absent. */
+  readonly budget: number
+}
+
+/**
+ * What `next` carries into a `.catch` handler and nowhere else. Upstream
+ * `Caught` (`d.ts:1215`).
+ *
+ * There `next` is replay-safe, and opencc's chain already is: `runModChain`
+ * memoises each `next` call in `branchResults`, so when `called` is true a
+ * `next(e)` inside the handler resolves to what the failed hook's last call
+ * already settled to, with nothing beneath running a second time.
+ */
+export type ModCaught = {
+  /** Undefined on an ordinary hook's `next`, so its presence says a handler runs. */
+  readonly error: ModHookFailure
+  /** True once the failed hook had called `next()` or `next.to()` at least once. */
+  readonly called: boolean
+}
+
+export type ModCaughtNext = ModNext & ModCaught
+
+/**
+ * The handler `on(...).catch(handler)` takes: the hook itself, run afresh when
+ * it throws, misreturns or overruns. Upstream `CatchHandler<F>` (`d.ts:1205`).
+ *
+ * Returning a value inside the grace makes it the hook's result; returning
+ * `undefined` leaves the hook absent, as if no handler had been registered.
+ */
+export type ModCatchHandler = (
+  e: Record<string, unknown>,
+  next: ModCaughtNext,
+) => unknown
+
+/** What `ctx.on(...)` hands back so a handler can be given a `.catch`. */
+export type ModRegistration = {
+  catch(handler: ModCatchHandler): void
+}
+
+// ---------------------------------------------------------------------------
+// 6. Event sites — the guard pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * What one event's site knows about its own answer.
+ *
+ * Upstream does NOT have one generic guard: it writes the contract out again
+ * for every event that needs one (`restoreArgument` ×34, `checkArgument` ×58,
+ * `measureArgument` ×11, `restoreResult` ×5, `stripResult` ×3, `keptResult`
+ * ×6) and drives them all through one pipeline (`He`). The table of
+ * descriptors is therefore also upstream's: most events have none, and giving
+ * one to an event this host never dispatches would be a guard nothing can
+ * reach.
+ *
+ * Upstream splits the contract in two. `restoreArgument` / `checkArgument` /
+ * `unappliedArgument` judge the EVENT a hook passed down; `settle` / `check` /
+ * `restoreResult` judge the ANSWER it passed back. Only the second half ports:
+ * opencc's `runModChain` threads one value where upstream has two — `current`
+ * is the argument above a position and the answer below it — so at the moment
+ * an answer is adopted there is no separate "the event this hook rewrote"
+ * object to judge. A mod that rewrites an argument still changes what runs; it
+ * simply cannot be told its rewrite was wrong, and nothing here pretends
+ * otherwise.
+ *
+ * Nothing stores a "last good value" across dispatches, and nothing may.
+ * Upstream has no such store (`keptResult` exists so the ENGINE can merge, not
+ * so a later dispatch can roll back), and every reference below is either what
+ * the hooks beneath produced or what the engine itself was handed.
+ */
+export type ModEventSite = {
+  /** Put back something the engine owns that the answer dropped. */
+  readonly restore?: (
+    answer: Record<string, unknown>,
+    argument: Record<string, unknown>,
+    fromBelow: unknown,
+  ) => Record<string, unknown>
+  /** A returned string is the reason the answer was refused. */
+  readonly check?: (
+    answer: Record<string, unknown>,
+    argument: Record<string, unknown>,
+    fromBelow: unknown,
+  ) => string | undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+/**
+ * `tool.describe` — upstream `Mp.check` / `Mp.restoreResult`
+ * (`bundle.js@3972653`), the two result-side halves.
+ *
+ * The engine composes this answer, so `next(e)` resolves to it and a hook that
+ * drops `isDeferred` while rewriting only the prose was not asking to move the
+ * tool out of ToolSearch — it just did not repeat a field it had no opinion
+ * about. Upstream carries the old value down for exactly that hook; opencc's
+ * `toolDescribe.ts` reads `answer.isDeferred === true`, so without this a
+ * `{description}` answer silently un-defers the tool.
+ */
+const TOOL_DESCRIBE_SITE: ModEventSite = {
+  restore: (answer, argument, fromBelow) => {
+    if (answer.isDeferred !== undefined) return answer
+    const carried =
+      asRecord(fromBelow)?.isDeferred ?? argument.isDeferred
+    return carried === undefined ? answer : { ...answer, isDeferred: carried }
+  },
+  check: answer => {
+    if (typeof answer.description !== 'string') {
+      return 'no { description } (a string)'
+    }
+    return answer.isDeferred === undefined ||
+      typeof answer.isDeferred === 'boolean'
+      ? undefined
+      : 'an isDeferred that is not a boolean'
+  },
+}
+
+/**
+ * `config.set` — upstream `Be` (`bundle.js@3913510`), narrowed to the two
+ * hazards this host's op dialect can actually hit.
+ *
+ * Upstream's answer here is `{value}` or `{deny}`, so `Be` requires one of the
+ * two and opencc ports neither half of that: `dispatchModOp` reads only `deny`
+ * and `replace` off a hook's answer, and a value the hook rewrites travels
+ * down as the argument. What survives the narrowing is the pair upstream
+ * refuses for the same structural reason:
+ *
+ *   - a `deny` that is not a string. `dispatchModOp` gates on
+ *     `typeof outcome.deny === 'string'`, so `{deny: 42}` is not a veto: the
+ *     write runs and the mod believes it stopped one.
+ *   - a `deny` beside a `replace`. The deny is read first and throws, so the
+ *     substitute never reaches the caller and nothing says so. Upstream calls
+ *     this "a deny beside { value }"; `{replace}` is the answer slot opencc's
+ *     dialect has in that position.
+ *
+ * An answer that is neither is left alone. Upstream refuses it ("neither
+ * { value } nor { deny }") because its answer IS the value; here such an answer
+ * is discarded by `dispatchModOp` anyway, so refusing it would charge a mod
+ * failure for a no-op and could trip the breaker on harmless hooks.
+ */
+const CONFIG_SET_SITE: ModEventSite = {
+  check: answer => {
+    const { deny, replace } = answer
+    if (deny === undefined) return undefined
+    if (typeof deny !== 'string' || deny === '') {
+      return 'a deny that is not a string'
+    }
+    return replace === undefined ? undefined : 'a deny beside { replace }'
+  },
+}
+
+/**
+ * `tool.call` — upstream `vr` (`bundle.js@3913268`). The reason is read by the
+ * host as a sentence in a permission prompt, and a non-string one reaches it
+ * as `undefined`: the refusal reads as a bug in opencc rather than as a mod
+ * asking for one.
+ */
+const TOOL_CALL_SITE: ModEventSite = {
+  check: answer => {
+    const { deny } = answer
+    if (deny === undefined) return undefined
+    return typeof deny === 'string' && deny !== ''
+      ? undefined
+      : 'a deny that is not a non-empty string'
+  },
+}
+
+/**
+ * The sites — three, and each for a hazard that is reachable from a call site
+ * this host actually has.
+ *
+ * Two kinds of event are deliberately absent. `turn.complete` / `session.*`
+ * reach a handler through the HOST's own `HookInput` (the bridge table), so
+ * there is no mod-shaped answer to judge; `prompt.context` and
+ * `command.describe` have no mod-payload call site at all. And `config.describe`
+ * has one but needs no guard: `dispatchModOp` reads only `deny` and `replace`
+ * off an op answer, so a half-written row is discarded before a caller can
+ * see it, while upstream's row check (`Co`) would refuse the `{replace}` that
+ * opencc's dialect exists to allow — `nouns.test.ts` asserts that one by name.
+ * A guard for any of those is unreachable code that reads like coverage, which
+ * is the failure this table's shape is meant to avoid.
+ */
+export const MOD_EVENT_SITES: Readonly<Record<string, ModEventSite>> = {
+  'config.set': CONFIG_SET_SITE,
+  'tool.call': TOOL_CALL_SITE,
+  'tool.describe': TOOL_DESCRIBE_SITE,
+}
+
+/**
+ * Run `event`'s answer through its site's pipeline. Returns the value to
+ * adopt, or the reason it was refused — in which case the caller treats the
+ * answer exactly like a throw and falls back to what ran beneath.
+ */
+export function settleAnswer(
+  event: string | undefined,
+  answer: unknown,
+  argument: Record<string, unknown>,
+  fromBelow: unknown,
+): { value: unknown } | { refused: string } {
+  const site = event === undefined ? undefined : MOD_EVENT_SITES[event]
+  if (site === undefined) return { value: answer }
+  const asAnswer = asRecord(answer)
+  // A site judges an answer; a handler that answered with a primitive has not
+  // answered in this event's dialect at all, so there is nothing to check and
+  // the chain's own normalisation stands.
+  if (asAnswer === undefined) return { value: answer }
+  const restored = site.restore ? site.restore(asAnswer, argument, fromBelow) : asAnswer
+  const reason = site.check?.(restored, argument, fromBelow)
+  return reason === undefined ? { value: restored } : { refused: reason }
+}
 
 /**
  * Run `body` under the hook budget. Reports `timedOut` so the caller can skip

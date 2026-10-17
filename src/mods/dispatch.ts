@@ -18,16 +18,21 @@ import {
 } from './registry.js'
 import {
   MOD_EVENTS,
-  MOD_HOOK_BUDGET_MS,
+  MOD_HOOK_CATCH_MS,
   canDescend,
   cloneAndFreeze,
   freeze,
   isModEventName,
   matchesMatcher,
+  modHookBudgetMs,
+  settleAnswer,
   tierFloors,
   tierRank,
   withBudget,
+  withSyncBudget,
+  type ModCaughtNext,
   type ModEventName,
+  type ModHookFailure,
   type ModMatcher,
   type ModMatcherLeaf,
   type ModNext,
@@ -122,12 +127,19 @@ function emitModProgress(modName: string, chunk: unknown): void {
   }
 }
 
+/**
+ * What one handler produced. `fromBelow` is what ran beneath it — the result
+ * of its last `next` call, or undefined when it never called one. The event
+ * site needs it because upstream's `restoreResult` carries a field forward out
+ * of the layer below (see MOD_EVENT_SITES in protocol.ts), and a handler that
+ * merely forwarded `next(e)` has no other way to know what the engine computed.
+ */
 async function invokeModHandler(
   modName: string,
   handler: ModChainEntry['handler'],
   e: Record<string, unknown>,
   next: ModNext,
-): Promise<Record<string, unknown>> {
+): Promise<{ value: Record<string, unknown>; fromBelow: unknown }> {
   // Upstream d.ts:3239 — a hook that returns nothing "is skipped: the hooks
   // beneath and core run in its place, OR ITS LAST `next` RESULT STANDS". The
   // stream chain already implements that rule; here it did not, so
@@ -165,13 +177,16 @@ async function invokeModHandler(
       step = await gen.next()
     }
     const final = step.value
-    return final && typeof final === 'object'
+    const answer = final && typeof final === 'object'
       ? (final as Record<string, unknown>)
       : standIn()
+    return { value: answer, fromBelow: lastNext }
   }
-  return returned && typeof returned === 'object'
-    ? (returned as Record<string, unknown>)
-    : standIn()
+  const answer =
+    returned && typeof returned === 'object'
+      ? (returned as Record<string, unknown>)
+      : standIn()
+  return { value: answer, fromBelow: lastNext }
 }
 
 /**
@@ -271,6 +286,38 @@ export async function runModChain(
       }
       return runFrom(targetE)
     }
+    // `on(...).catch(handler)` — upstream `d.ts:1205`: the handler runs afresh
+    // when the hook throws, returns a shape the site refuses, or overruns.
+    // Returning a value inside the grace makes it the hook's result; returning
+    // `undefined` leaves the hook absent, which is what a bare throw already
+    // did, so an unhandled failure is unchanged by this existing at all.
+    const runCatch = async (
+      failure: ModHookFailure,
+    ): Promise<Record<string, unknown> | undefined> => {
+      if (entry.catchHandler === undefined) return undefined
+      // `branchResults` memoises every `next` call, so when `called` is true a
+      // `next(e)` inside the handler replays the failed hook's own last call
+      // instead of running what is beneath a second time. Upstream calls this
+      // replay-safe; here it falls out of the memoisation that already existed.
+      const caughtNext = Object.assign(next, {
+        error: failure,
+        called: branchResults.has(next),
+      }) as ModCaughtNext
+      const budgeted = await withBudget(
+        () => Promise.resolve(entry.catchHandler!(current, caughtNext)),
+        failure.budget,
+      )
+      if (budgeted.timedOut) {
+        logForDebugging(
+          `[mods] "${modName}" ${entry.event} .catch handler exceeded its ${failure.budget}ms grace — the hook stays absent`,
+        )
+        return undefined
+      }
+      const answer = budgeted.value
+      return answer !== null && typeof answer === 'object'
+        ? (answer as Record<string, unknown>)
+        : undefined
+    }
     try {
       const budgeted = await withBudget((hookSignal) => {
         // Unlinked in `finally`: `{ once: true }` only fires if the signal
@@ -284,19 +331,50 @@ export async function runModChain(
         } finally {
           unlink.dispose()
         }
-      })
+      }, modHookBudgetMs(entry.event))
       if (budgeted.timedOut) {
         logForDebugging(
-          `[mods] handler from mod "${modName}" exceeded its ${MOD_HOOK_BUDGET_MS}ms budget — skipped`,
+          `[mods] handler from mod "${modName}" exceeded its ${modHookBudgetMs(entry.event)}ms budget — skipped`,
         )
         recordModHandlerFailure(modName)
         onError?.(modName, new Error('hook budget exceeded'))
+        const caught = await runCatch({
+          kind: 'timeout',
+          budget: MOD_HOOK_CATCH_MS,
+        })
+        if (caught !== undefined) return caught
         // The branch this handler never entered still has to run: skipping it
         // means running what is beneath it, exactly like a throw.
         return runFrom(current)
       }
+      // The site's guard pipeline, run before the answer is adopted. A refusal
+      // is handled exactly like a throw — fall back to what ran beneath — so
+      // this costs a mod that returns a bad shape nothing but its own answer.
+      //
+      // `current` is the argument THIS position received, which is the engine's
+      // own value for anything the engine set; `fromBelow` is what the handler's
+      // last `next` resolved to, or undefined when it never called one. Neither
+      // is a cache: upstream's reference is always "what already settled", so a
+      // handler that answered without ever asking below has nothing to restore
+      // from and is judged on its own answer alone.
+      const { value: answer, fromBelow } = budgeted.value!
+      const settled = settleAnswer(entry.event, answer, current, fromBelow)
+      if ('refused' in settled) {
+        logForDebugging(
+          `[mods] "${modName}" ${entry.event} answer refused: ${settled.refused}`,
+        )
+        recordModHandlerFailure(modName)
+        onError?.(modName, new Error(settled.refused))
+        const caught = await runCatch({
+          kind: 'throw',
+          message: settled.refused,
+          budget: MOD_HOOK_CATCH_MS,
+        })
+        if (caught !== undefined) return caught
+        return runFrom(current)
+      }
       recordModHandlerSuccess(modName)
-      return budgeted.value as Record<string, unknown>
+      return settled.value as Record<string, unknown>
     } catch (error) {
       logForDebugging(
         `[mods] handler error from mod "${modName}": ${error instanceof Error ? error.message : String(error)}`,
@@ -308,6 +386,12 @@ export async function runModChain(
       )
       recordModHandlerFailure(modName)
       onError?.(modName, error)
+      const caught = await runCatch({
+        kind: 'throw',
+        message: error instanceof Error ? error.message : String(error),
+        budget: MOD_HOOK_CATCH_MS,
+      })
+      if (caught !== undefined) return caught
       // Attribute and skip to the next handler — a broken mod must not
       // tear the chain or the pipeline (R8 mitigation).
       return runFrom(current)
@@ -805,11 +889,27 @@ export function dispatchModEngineSync<T>(
       return current
     }) as unknown as ModNext['to']
     let outcome: unknown
+    let timedOut = false
     try {
-      outcome = handler(current, next)
+      const budgeted = withSyncBudget(
+        () => handler(current, next),
+        modHookBudgetMs(event),
+      )
+      outcome = budgeted.value
+      timedOut = budgeted.timedOut
     } catch (error) {
       logForDebugging(
         `[mods] "${modName}" ${event} handler error: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      recordModHandlerFailure(modName)
+      continue
+    }
+    // Overran. The call already happened and already cost what it cost — a
+    // synchronous handler cannot be interrupted — but its answer is discarded
+    // exactly like a throw, so it does not get to decide the event.
+    if (timedOut) {
+      logForDebugging(
+        `[mods] "${modName}" ${event} handler exceeded its ${modHookBudgetMs(event)}ms budget — skipped (synchronous host site; the answer is discarded, not preempted)`,
       )
       recordModHandlerFailure(modName)
       continue
@@ -997,14 +1097,28 @@ export function dispatchModOpSync<T>(
       return current
     }) as unknown as ModNext['to']
     let outcome: unknown
+    let timedOut = false
     try {
       // The chain handler type is the async one; here `next` answers with the
       // event rather than a promise, which is the whole difference between
       // this path and `dispatchModOp`.
-      outcome = handler(current, next)
+      const budgeted = withSyncBudget(
+        () => handler(current, next),
+        modHookBudgetMs(event),
+      )
+      outcome = budgeted.value
+      timedOut = budgeted.timedOut
     } catch (error) {
       logForDebugging(
         `[mods] "${modName}" ${event} handler error: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      recordModHandlerFailure(modName)
+      continue
+    }
+    // See `dispatchModEngineSync`: the answer is discarded, not preempted.
+    if (timedOut) {
+      logForDebugging(
+        `[mods] "${modName}" ${event} handler exceeded its ${modHookBudgetMs(event)}ms budget — skipped (synchronous contract; the answer is discarded, not preempted)`,
       )
       recordModHandlerFailure(modName)
       continue
@@ -1144,30 +1258,71 @@ const BRIDGED_RESULT: Readonly<
   },
 }
 
+/**
+ * Run one bridged event's mod chain, translating at BOTH ends: the host's
+ * `HookInput` in, the host's hook answer out.
+ *
+ * `executeHooks` runs the mod chain itself rather than calling the composite
+ * callback (`utils/hooks.ts` `modWrappedResults`), because it needs the chain to
+ * wrap the core hooks as an outer tier. It used to pass `hookInput` straight
+ * into `runModChain`, which left both translations stranded on the callback
+ * nobody invoked on that path — and both failures are silent:
+ *
+ *   - `BRIDGED_PAYLOAD` never ran, so the payload still said `tool_name` while
+ *     the matcher said `tool`. Every matcher on a bridged event missed, so
+ *     `{tool: 'Read'}` selected nothing: the handler was skipped, `/plugins`
+ *     showed the mod healthy, and the shipped `agents-md` hook did nothing.
+ *   - `BRIDGED_RESULT` never ran, so a mod's `{deny}` stayed a mod-dialect key
+ *     the host does not read, and a mod could not refuse a tool call at all.
+ *
+ * `createCompositeModCallback` delegates here rather than repeating the two
+ * steps, because the two callers disagreeing about them is what let the
+ * mismatch survive a test that exercised only one of them.
+ */
+export async function runBridgedModChain(
+  event: HookEvent,
+  chain: ModChainEntry[],
+  hookInput: HookInput,
+  terminal: (e: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const toModPayload = BRIDGED_PAYLOAD[event]
+  const toHostResult = BRIDGED_RESULT[event]
+  const payload = toModPayload
+    ? toModPayload(hookInput)
+    : (hookInput as Record<string, unknown>)
+  // Copied before it is frozen: `hookInput` is the host's own hook input,
+  // shared with every other hook in the batch, so freezing it in place would
+  // reach past the mod chain into the host's state.
+  const outcome = (await runModChain(
+    chain,
+    cloneAndFreeze(payload),
+    terminal,
+    signal,
+  )) as Record<string, unknown>
+  return (toHostResult ? toHostResult(outcome) : outcome) as Record<
+    string,
+    unknown
+  >
+}
+
 export function createCompositeModCallback(
   event: HookEvent,
   chain: ModChainEntry[],
 ): HookCallback['callback'] {
-  const toModPayload = BRIDGED_PAYLOAD[event]
-  const toHostResult = BRIDGED_RESULT[event]
   return async (
     input: HookInput,
     _toolUseID: string | null,
     abort: AbortSignal | undefined,
   ) => {
-    const payload = toModPayload ? toModPayload(input) : (input as Record<string, unknown>)
-    // Copied before it is frozen: `input` is the host's own hook input, shared
-    // with every other hook in the batch, so freezing it in place would reach
-    // past the mod chain into the host's state.
-    const outcome = (await runModChain(
+    const outcome = await runBridgedModChain(
+      event,
       chain,
-      cloneAndFreeze(payload),
+      input,
       continueTerminal,
       abort,
-    )) as Record<string, unknown>
-    return (toHostResult ? toHostResult(outcome) : outcome) as Awaited<
-      ReturnType<HookCallback['callback']>
-    >
+    )
+    return outcome as Awaited<ReturnType<HookCallback['callback']>>
   }
 }
 

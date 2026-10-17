@@ -3,6 +3,7 @@ import {
   __setOpChainsForTesting,
   buildModHookMatchers,
   createCompositeModCallback,
+  runBridgedModChain,
   dispatchModOpSync,
   hasModHandlersFor,
   refreshOpChains,
@@ -10,7 +11,13 @@ import {
   runModStreamChain,
 } from './dispatch.js'
 import { isModEventName, type ModNext } from './protocol.js'
-import { BUILTIN_ORIGIN, type LoadedMod } from './registry.js'
+import type { ModChainEntry } from '../types/hooks.js'
+import {
+  BUILTIN_ORIGIN,
+  getModFailureCount,
+  recordModHandlerSuccess,
+  type LoadedMod,
+} from './registry.js'
 
 function fakeMod(
   name: string,
@@ -316,6 +323,65 @@ describe('bridged event payloads', () => {
     expect(seen).toBeDefined()
     expect(seen!.tool).toBe('Read')
     expect(seen!.tool_name).toBeUndefined()
+  })
+
+  test('runBridgedModChain is the one place the payload is translated', async () => {
+    // `executeHooks` runs the mod chain itself rather than calling the
+    // composite (it needs the chain to wrap the core hooks), and it used to
+    // hand `runModChain` the raw host input. Both translations then lived on
+    // a callback that path never invoked, and both failures were silent: a
+    // matcher on a bridged event selected nothing (the payload still said
+    // `tool_name`), and a mod's `{ deny }` never became a permissionDecision,
+    // so a mod could not refuse a tool call at all. Found by running a real
+    // mod — the composite-level test above passes either way, because it calls
+    // the composite directly.
+    const order: string[] = []
+    const out = await runBridgedModChain(
+      'PreToolUse',
+      [
+        {
+          modName: 'a',
+          event: 'tool.call',
+          matcher: { tool: 'Bash' },
+          handler: async (_e, next) => {
+            order.push('matched')
+            return next()
+          },
+        } as ModChainEntry,
+        {
+          modName: 'b',
+          event: 'tool.call',
+          matcher: { tool: 'Read' },
+          handler: async () => {
+            order.push('wrong-tool')
+            return { continue: true }
+          },
+        } as ModChainEntry,
+      ],
+      { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: {} },
+      async () => ({ continue: true }),
+    )
+    expect(order).toEqual(['matched'])
+    expect(out).toEqual({ continue: true })
+  })
+
+  test('runBridgedModChain translates the answer back to the host dialect', async () => {
+    const out = (await runBridgedModChain(
+      'PreToolUse',
+      [
+        {
+          modName: 'a',
+          event: 'tool.call',
+          handler: async () => ({ deny: 'not this command' }),
+        } as ModChainEntry,
+      ],
+      { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: {} },
+      async () => ({ continue: true }),
+    )) as {
+      hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string }
+    }
+    expect(out.hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(out.hookSpecificOutput.permissionDecisionReason).toBe('not this command')
   })
 
   test("a mod's { deny } becomes the host hook's permissionDecision", async () => {
@@ -845,5 +911,399 @@ describe('dispatchModOpSync', () => {
     // calls core. This asserts the chain is actually the one being dispatched.
     __setOpChainsForTesting(opChainOf(() => ({ continue: true })) as never)
     expect(hasModHandlersFor('ui.status')).toBe(true)
+  })
+})
+
+// G-05 — the synchronous paths had no hook budget at all. `withBudget` had
+// exactly three production call sites (`dispatch.ts:275` async chain,
+// `claude.ts:2237` and `:2729` turn.step) and neither `dispatchModEngineSync`
+// nor `dispatchModOpSync` was one of them, so `prompt.edit` — which fires on
+// every keystroke — was unbounded.
+//
+// A sync site cannot be interrupted: no pending promise to race, no signal the
+// handler could honour mid-call. What it can do is refuse to ADOPT the answer.
+// Every test below pairs an overrun against a non-overrun on the same event, so
+// the group cannot pass against a chain that was never installed or against a
+// blanket rule that discards everything.
+describe('synchronous hook budget', () => {
+  const spin = (ms: number) => {
+    const until = performance.now() + ms
+    while (performance.now() < until) {
+      /* burn the clock synchronously — a sleep would not block this path */
+    }
+  }
+
+  test('a prompt.edit handler over 50ms has its answer discarded', () => {
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(80)
+        return { replace: 'SLOW' }
+      }, 'prompt.edit') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    let calls = 0
+    const out = dispatchModOpSync('prompt.edit', { text: 'x' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('CORE')
+    expect(calls).toBe(1)
+    expect(getModFailureCount('test-mod')).toBe(1)
+  })
+
+  test('the same handler under 50ms is adopted (control)', () => {
+    // Same event, same shape, same helper — only the duration differs. If the
+    // first test passed because the chain was not installed, or because every
+    // answer is discarded, this one goes red.
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(5)
+        return { replace: 'FAST' }
+      }, 'prompt.edit') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    let calls = 0
+    const out = dispatchModOpSync('prompt.edit', { text: 'x' }, () => {
+      calls++
+      return 'CORE'
+    })
+    expect(out).toBe('FAST')
+    expect(calls).toBe(0)
+    expect(getModFailureCount('test-mod')).toBe(0)
+  })
+
+  test('an 80ms handler on an event with no override is still adopted (control)', () => {
+    // Proves the 50ms is `prompt.edit`'s per-event budget and not a blanket
+    // bound the sync path invented for itself.
+    __setOpChainsForTesting(
+      opChainOf(() => {
+        spin(80)
+        return { replace: 'SLOW' }
+      }, 'ui.status') as never,
+    )
+    recordModHandlerSuccess('test-mod')
+    const out = dispatchModOpSync('ui.status', { text: 'x' }, () => 'CORE')
+    expect(out).toBe('SLOW')
+    expect(getModFailureCount('test-mod')).toBe(0)
+  })
+})
+
+// G-02 — `on(...).catch(handler)` (upstream `d.ts:1205`). Before this a failing
+// hook could only be skipped: a mod could neither recover the event nor learn
+// why it failed. Each test pairs a handler WITH a `.catch` against the same
+// handler WITHOUT one, so the group cannot pass on an uninstalled chain, and
+// cannot pass on a blanket "recover everything" rule.
+describe('on(...).catch()', () => {
+  const statusChain = (entries: ModChainEntry[]): Map<string, unknown[]> =>
+    new Map([['ui.status', entries]])
+
+  test('a throwing hook with a .catch has its answer taken from the handler', async () => {
+    const seen: { kind?: string; message?: string; called?: boolean } = {}
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+      catchHandler: (_e, next) => {
+        seen.kind = next.error.kind
+        seen.message = next.error.message
+        seen.called = next.called
+        return { replace: 'RECOVERED' }
+      },
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('RECOVERED')
+    expect(coreCalls).toBe(0)
+    expect(seen).toEqual({ kind: 'throw', message: 'mod exploded', called: false })
+  })
+
+  test('the same handler with no .catch still skips to core (control)', async () => {
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('CORE')
+    expect(coreCalls).toBe(1)
+  })
+
+  test('a .catch that returns undefined leaves the hook absent (control)', async () => {
+    const entry: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: () => {
+        throw new Error('mod exploded')
+      },
+      catchHandler: () => undefined,
+    }
+    __setOpChainsForTesting(statusChain([entry]) as never)
+    let coreCalls = 0
+    const out = await runModChain([entry], { text: 'hi' }, async () => {
+      coreCalls++
+      return { replace: 'CORE' }
+    })
+    expect(out.replace).toBe('CORE')
+    expect(coreCalls).toBe(1)
+  })
+
+  test('called is true when the failed hook had already run next()', async () => {
+    // The subtle half. `next` inside a `.catch` handler is replay-safe:
+    // `runModChain` memoises every call in `branchResults`, so a `called: true`
+    // next(e) resolves to what the failed hook's own last call settled to and
+    // what is beneath does NOT run a second time.
+    let beneathRuns = 0
+    const beneath: ModChainEntry = {
+      modName: 'beneath-mod',
+      event: 'ui.status',
+      tier: 'builtin',
+      handler: async () => {
+        beneathRuns++
+        return { replace: 'BENEATH' }
+      },
+    }
+    let sawCalled: boolean | undefined
+    const failing: ModChainEntry = {
+      modName: 'test-mod',
+      event: 'ui.status',
+      tier: 'prepend',
+      handler: async (_e, next) => {
+        await next({ text: 'hi' })
+        throw new Error('failed after next')
+      },
+      catchHandler: async (_e, next) => {
+        sawCalled = next.called
+        return (await next({ text: 'IGNORED' })) as Record<string, unknown>
+      },
+    }
+    const chain = [failing, beneath]
+    __setOpChainsForTesting(statusChain(chain) as never)
+
+    const out = await runModChain(chain, { text: 'hi' }, async () => ({
+      replace: 'CORE',
+    }))
+    // The hook's own last next() had already settled to BENEATH. The replay
+    // must not run beneath again, so beneathRuns stays at 1 — and the argument
+    // passed to the replay is unread.
+    expect(sawCalled).toBe(true)
+    expect(out.replace).toBe('BENEATH')
+    expect(beneathRuns).toBe(1)
+  })
+})
+
+// G-01 — the per-event guard pipeline. Upstream does NOT have one generic
+// rollback function: it writes `restoreArgument` / `checkArgument` / `settle` /
+// `restoreResult` / `check` out again for each event that needs one and drives
+// them all through one pipeline (bundle.js@3913858). The table of descriptors
+// is upstream's too — not every event has one.
+//
+// Two properties the tests below pin: a refusal is treated exactly like a
+// throw (the answer falls back to what ran beneath, and the failure is
+// recorded), and the guard is per-site rather than a blanket rule.
+describe('event site guard pipeline', () => {
+  const entryFor = (event: string, handler: ModChainEntry['handler']): ModChainEntry =>
+    ({ modName: 'test-mod', event, tier: 'builtin', handler }) as ModChainEntry
+
+  /**
+   * Run one handler through the chain with `core` beneath it, and report the
+   * three things a refusal changes: the answer the caller sees, whether the
+   * core still ran, and whether the mod was charged for it.
+   */
+  const settle = async (
+    event: string,
+    handler: ModChainEntry['handler'],
+    argument: Record<string, unknown>,
+    core: (e: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const entry = entryFor(event, handler)
+    __setOpChainsForTesting(new Map([[event, [entry]]]) as never)
+    recordModHandlerSuccess('test-mod')
+    let coreCalls = 0
+    const out = await runModChain([entry], argument, async current => {
+      coreCalls++
+      return core(current)
+    })
+    return { out, coreCalls, failures: getModFailureCount('test-mod') }
+  }
+
+  // -- config.set -----------------------------------------------------------
+  // Upstream `Be` (bundle.js@3913510): the reason is read by the UI as a
+  // sentence, so a non-string one reaches it as `undefined` and the refusal
+  // reads as a bug in opencc.
+  test('config.set refuses a deny that is not a string', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'config.set',
+      () => ({ deny: 123 }),
+      { key: 'theme', value: 'dark' },
+      () => ({ applied: true }),
+    )
+    expect(out).toEqual({ applied: true })
+    expect(coreCalls).toBe(1)
+    expect(failures).toBe(1)
+  })
+
+  test('config.set adopts a well-formed deny (control)', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'config.set',
+      () => ({ deny: 'managed settings own this row' }),
+      { key: 'theme', value: 'dark' },
+      () => ({ applied: true }),
+    )
+    expect(out).toEqual({ deny: 'managed settings own this row' })
+    expect(coreCalls).toBe(0)
+    expect(failures).toBe(0)
+  })
+
+  test("config.set refuses a deny beside the host's replace", async () => {
+    // Upstream "a deny beside { value }" — one answer cannot both refuse and
+    // substitute, and the two would reach different readers.
+    const { out, coreCalls, failures } = await settle(
+      'config.set',
+      () => ({ deny: 'no', replace: { applied: true } }),
+      { key: 'theme', value: 'dark' },
+      () => ({ applied: true }),
+    )
+    expect(out).toEqual({ applied: true })
+    expect(coreCalls).toBe(1)
+    expect(failures).toBe(1)
+  })
+
+  test('config.set adopts a replace on its own (control)', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'config.set',
+      () => ({ replace: { applied: 'by-mod' } }),
+      { key: 'theme', value: 'dark' },
+      () => ({ applied: true }),
+    )
+    // `runModChain` hands the answer on whole; `dispatchModOp` is what unwraps
+    // `replace` into the caller's return value.
+    expect(out).toEqual({ replace: { applied: 'by-mod' } })
+    expect(coreCalls).toBe(0)
+    expect(failures).toBe(0)
+  })
+
+  // -- tool.describe --------------------------------------------------------
+  // Upstream `Mp.restoreResult` (bundle.js@3972653): `isDeferred` is the
+  // engine's field — it moves a tool behind ToolSearch — and a hook rewriting
+  // only the prose does not mean to move it.
+  test('tool.describe carries isDeferred through a hook that dropped it', async () => {
+    const { out, failures } = await settle(
+      'tool.describe',
+      async (_e, next) => {
+        const answered = await next()
+        return { description: 'shorter prose' }
+      },
+      { tool: 'Read', description: 'the engine prose', isDeferred: true },
+      () => ({ tool: 'Read', description: 'the engine prose', isDeferred: true }),
+    )
+    // The hook answered with its own object, so `restore` added the one field
+    // it left out — it does not merge the argument back in.
+    expect(out).toEqual({ description: 'shorter prose', isDeferred: true })
+    expect(failures).toBe(0)
+  })
+
+  test('tool.describe keeps a hook isDeferred that contradicts the engine (control)', async () => {
+    // The restore only fills a field the answer left out. A hook that SAYS
+    // the tool is not deferred is answering, and that answer stands.
+    const { out, failures } = await settle(
+      'tool.describe',
+      async (_e, next) => {
+        await next()
+        return { description: 'shorter prose', isDeferred: false }
+      },
+      { tool: 'Read', description: 'the engine prose', isDeferred: true },
+      () => ({ tool: 'Read', description: 'the engine prose', isDeferred: true }),
+    )
+    expect(out).toEqual({ description: 'shorter prose', isDeferred: false })
+    expect(failures).toBe(0)
+  })
+
+  test('tool.describe refuses an answer that is not a description', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'tool.describe',
+      () => ({ isDeferred: true }),
+      { tool: 'Read', description: 'the engine prose', isDeferred: false },
+      () => ({ tool: 'Read', description: 'the engine prose', isDeferred: false }),
+    )
+    expect(out).toEqual({
+      tool: 'Read',
+      description: 'the engine prose',
+      isDeferred: false,
+    })
+    expect(coreCalls).toBe(1)
+    expect(failures).toBe(1)
+  })
+
+  test('config.set leaves a no-op answer alone (control)', async () => {
+    // Upstream refuses an answer that is neither {value} nor {deny}. Here such
+    // an answer is discarded by `dispatchModOp` before a caller sees it, so
+    // refusing it would charge a mod failure for a hook that did nothing.
+    const { out, coreCalls, failures } = await settle(
+      'config.set',
+      () => ({ continue: true }),
+      { key: 'theme', value: 'dark' },
+      () => ({ continue: true }),
+    )
+    expect(out).toEqual({ continue: true })
+    expect(coreCalls).toBe(0)
+    expect(failures).toBe(0)
+  })
+
+  // -- tool.call ------------------------------------------------------------
+  test('tool.call refuses a deny that is not a non-empty string', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'tool.call',
+      () => ({ deny: '' }),
+      { tool: 'Bash' },
+      () => ({ continue: true }),
+    )
+    expect(out).toEqual({ continue: true })
+    expect(coreCalls).toBe(1)
+    expect(failures).toBe(1)
+  })
+
+  test('tool.call passes an answer that names no deny (control)', async () => {
+    const { out, coreCalls, failures } = await settle(
+      'tool.call',
+      () => ({ additionalContext: 'remember the ticket' }),
+      { tool: 'Bash' },
+      () => ({ continue: true }),
+    )
+    expect(out).toEqual({ additionalContext: 'remember the ticket' })
+    expect(coreCalls).toBe(0)
+    expect(failures).toBe(0)
+  })
+
+  // -- the boundary of the table -------------------------------------------
+  test('an event with no site descriptor is not guarded (control)', async () => {
+    // Proves the pipeline is per-site rather than a blanket rule. `ui.status`
+    // has no descriptor, so the same bad shape passes through untouched — and
+    // the four sites are exactly the events with a mod-payload call site, not
+    // a shape check applied everywhere.
+    const { out, coreCalls, failures } = await settle(
+      'ui.status',
+      () => ({ deny: 123 }),
+      { text: 'hi' },
+      () => ({ continue: true }),
+    )
+    expect(out).toEqual({ deny: 123 })
+    expect(coreCalls).toBe(0)
+    expect(failures).toBe(0)
   })
 })

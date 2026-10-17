@@ -284,3 +284,125 @@ describe('buildModCommands', () => {
     expect(loaded.call).toBe(call)
   })
 })
+
+
+// ---------------------------------------------------------------------------
+// Patterns — upstream `Pattern` (d.ts:6592). Before this, `on` took a bare
+// dotted name, so a mod written against upstream's `sec-default`
+// (`on('classic.*', …)`) or `telemetry` (`on('telemetry.*', …)`) could not even
+// be registered here, let alone run.
+// ---------------------------------------------------------------------------
+
+describe('ctx.on patterns', () => {
+  const register = (pattern: string) => {
+    const mod = freshMod('pattern-mod')
+    createModContext(mod).on(pattern as never, async () => ({}))
+    return mod.handlers.map(h => h.event)
+  }
+
+  test('a namespace glob registers one handler per event under it', () => {
+    const events = register('tool.*')
+    expect(events).toEqual(['tool.call', 'tool.check', 'tool.describe', 'tool.list', 'tool.register'])
+    expect(new Set(events).size).toBe(events.length)
+  })
+
+  test('a bare name still registers exactly one handler', () => {
+    // The control for the glob: expansion must not change what a name does.
+    expect(register('tool.call')).toEqual(['tool.call'])
+  })
+
+  test('a negation registers everything except what it names', () => {
+    const events = register('!tool.describe')
+    expect(events).not.toContain('tool.describe')
+    expect(events).toContain('tool.call')
+    expect(events.length).toBeGreaterThan(1)
+  })
+
+  test('* covers every event this host dispatches, and no refused one', () => {
+    const events = register('*')
+    expect(events).toContain('tool.call')
+    expect(events).toContain('fs.write')
+    // `audio.play` is refused by name upstream of here; registering a handler
+    // for it would be a hook that never fires.
+    expect(events).not.toContain('audio.play')
+    expect(events).not.toContain('mcp.call')
+    // `plugin.register` used to be on that list — the scan that reads `uses`
+    // now exists, so it dispatches.
+    expect(events).toContain('plugin.register')
+  })
+
+  test('a matcher on a pattern applies to every event it selected', () => {
+    const mod = freshMod('matched-glob')
+    createModContext(mod).on('tool.*' as never, { tool: 'Bash' }, async () => ({}))
+    expect(mod.handlers).toHaveLength(5)
+    expect(
+      mod.handlers.every(h => (h.matcher as { tool?: string } | undefined)?.tool === 'Bash'),
+    ).toBe(true)
+  })
+
+  test('.catch() on a pattern covers every event it selected', () => {
+    const mod = freshMod('caught-glob')
+    createModContext(mod)
+      .on('tool.*' as never, async () => ({}))
+      .catch(async () => ({}))
+    expect(mod.handlers).toHaveLength(5)
+    expect(mod.handlers.every(h => h.catchHandler !== undefined)).toBe(true)
+  })
+
+  test('!* is refused rather than registering nothing', () => {
+    // Upstream: "would select none, so is no pattern".
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('!*' as never, async () => ({}))).toThrow(/not a pattern/)
+  })
+
+  test('a namespace that selects nothing is refused by name', () => {
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('nonesuch.*' as never, async () => ({}))).toThrow(
+      /selects no event/,
+    )
+  })
+
+  test('a glob over only-refused events says which ones', () => {
+    // `mcp.call` and `mcp.connect` are both refused here (no `$.mcp.call`
+    // method to observe), so `mcp.*` selects nothing dispatchable.
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('mcp.*' as never, async () => ({}))).toThrow(
+      /mcp\.call, mcp\.connect/,
+    )
+  })
+
+  test('a pattern covering ui.render drops it and keeps the rest', () => {
+    // ui.render is a synchronous render transform, not a chain, so a glob over
+    // it cannot produce that handler shape. Refusing the whole registration
+    // would cost the other events to protect one — `on('*')` is the spelling a
+    // mod reaches for first.
+    const events = register('ui.*')
+    expect(events).not.toContain('ui.render')
+    expect(events).toContain('ui.notice')
+    expect(events).toContain('ui.log')
+  })
+
+  test('ui.render on its own still takes the render path', () => {
+    // The control for the refusal above: named exactly, it registers one.
+    expect(register('ui.render')).toEqual(['ui.render'])
+  })
+})
+
+  test('a classic.* name is refused with the dialect reason, not "unsupported"', () => {
+    // The decision is only worth anything if the mod author reads it. An
+    // "unsupported event" error would send them hunting for a typo.
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('classic.Stop' as never, async () => ({}))).toThrow(
+      /host dialect/,
+    )
+    expect(() => ctx.on('classic.Stop' as never, async () => ({}))).toThrow(
+      /ClassicResult/,
+    )
+  })
+
+  test('an unknown name still says unsupported (control)', () => {
+    const ctx = createModContext(freshMod())
+    expect(() => ctx.on('nonesuch.event' as never, async () => ({}))).toThrow(
+      /unsupported event/,
+    )
+  })

@@ -59,7 +59,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { logOTelEvent } from './telemetry/events.js'
 import { ALLOWED_OFFICIAL_MARKETPLACE_NAMES } from './plugins/schemas.js'
-import { runModChain } from '../mods/dispatch.js'
+import { runBridgedModChain } from '../mods/dispatch.js'
 import {
   startHookSpan,
   endHookSpan,
@@ -2974,7 +2974,12 @@ async function* executeHooks({
       }
       return aggregateCoreOutput(coreResults)
     }
-    const compositeOutput = await runModChain(
+    // Through `runBridgedModChain`, not `runModChain` directly: the host input
+    // is not in the mod dialect, and the chain's answer is not in the host's.
+    // Both translations live in dispatch.ts for that reason — see the comment
+    // on the function for what skipping them costs.
+    const compositeOutput = await runBridgedModChain(
+      hookEvent,
       modChainEntries,
       hookInput,
       coreRunner,
