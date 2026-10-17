@@ -1023,7 +1023,14 @@ export function dispatchModOpSync<T>(
       }
       const obj = outcome as Record<string, unknown>
       if ('replace' in obj) return obj.replace as T
-      if ('continue' in obj) return obj as T
+      // `{continue:true}` is a mod saying "I do not rewrite, run the host" —
+      // the same contract `dispatchModEngineSync` (:827) and `dispatchModOp`
+      // (which has no such branch and simply falls through to `core(arg)`)
+      // honour. Returning the outcome object here instead skipped `core`
+      // entirely and handed the caller `{continue:true}` as the result, so any
+      // mod that wrote the most natural pass-through answer silently erased
+      // the host behaviour for every op event it subscribed to.
+      if ('continue' in obj) return core(current)
       current = obj
     }
   }
