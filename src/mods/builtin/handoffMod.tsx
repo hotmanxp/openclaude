@@ -90,6 +90,60 @@ export async function listHandoffs(root: string): Promise<HandoffEntry[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Reading a document
+// ---------------------------------------------------------------------------
+
+/**
+ * Ceiling on what one handoff document may put into the prompt.
+ * `renderPickupPrompt` splices the file's whole body in, so without a budget
+ * `/handoff` is an unbounded prompt-injection channel the moment a large or
+ * hostile `.md` lands in the directory. 256 KiB is far above any real handoff
+ * note and far below anything that would crowd out the conversation.
+ */
+const MAX_HANDOFF_BYTES = 256 * 1024
+
+type DocumentRead =
+  | { ok: true; content: string }
+  | { ok: false; reason: 'unreadable' | 'too-large'; detail?: string }
+
+/**
+ * Read one handoff document under a byte budget.
+ *
+ * The size comes from the open handle rather than a separate `stat`, so the
+ * number the budget is checked against is the number of bytes this handle
+ * would have read.
+ */
+async function readHandoffDocument(fullPath: string): Promise<DocumentRead> {
+  const handle = await fs.open(fullPath, 'r').catch(() => null)
+  if (!handle) return { ok: false, reason: 'unreadable' }
+  try {
+    const { size } = await handle.stat()
+    if (size > MAX_HANDOFF_BYTES) {
+      return { ok: false, reason: 'too-large', detail: `${size} bytes` }
+    }
+    return { ok: true, content: await handle.readFile('utf8') }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'unreadable',
+      detail: error instanceof Error ? error.message : String(error),
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+function readFailureMessage(
+  entry: { basename: string },
+  read: { reason: string; detail?: string },
+): string {
+  if (read.reason === 'too-large') {
+    return `交接文档过大（超过 ${MAX_HANDOFF_BYTES} 字节）：\`${entry.basename}\``
+  }
+  return `读取 \`${entry.basename}\` 失败${read.detail ? `：${read.detail}` : ''}`
+}
+
+// ---------------------------------------------------------------------------
 // Prompts
 // ---------------------------------------------------------------------------
 
@@ -277,30 +331,35 @@ export const handoffCall: LocalJSXCommandCall = async (onDone, context, args) =>
     const pickArg = /--pick\s+(\S+)/.exec(args)?.[1]
 
     if (pickArg) {
-      const candidate = path.join(
-        root,
+      // Fence: `--pick` may only name a document `listHandoffs` actually found
+      // in this directory. It used to `path.join(root, pickArg)`, and `path.join`
+      // normalises `..` straight out of the handoff directory — the file was
+      // then read and spliced verbatim into the prompt. Matching against the
+      // listing also settles the case-variant and symlink-name spellings that a
+      // prefix check on the joined path would have to reason about separately.
+      //
+      // Reachable exposure was always bounded by the forced `.md` suffix below,
+      // so this is "markdown from elsewhere on disk", not credentials.
+      const basename = path.basename(
         pickArg.endsWith('.md') ? pickArg : `${pickArg}.md`,
       )
-      const content = await fs.readFile(candidate, 'utf8').catch(() => null)
-      if (content === null) {
+      const entry = (await listHandoffs(root)).find(
+        candidate => candidate.basename === basename,
+      )
+      if (!entry) {
         reportDeadEnd(
           onDone,
           context,
-          `指定的交接文档不存在：\`${path.basename(candidate)}\`（目录 \`${root}\`）`,
+          `指定的交接文档不存在：\`${basename}\`（目录 \`${root}\`）`,
         )
         return null
       }
-      const stat = await fs.stat(candidate).catch(() => null)
-      await resumeWith(
-        onDone,
-        {
-          basename: path.basename(candidate),
-          fullPath: candidate,
-          mtime: formatMtime(stat?.mtimeMs ?? 0),
-        },
-        content,
-        cwd,
-      )
+      const read = await readHandoffDocument(entry.fullPath)
+      if (!read.ok) {
+        reportDeadEnd(onDone, context, readFailureMessage(entry, read))
+        return null
+      }
+      await resumeWith(onDone, entry, read.content, cwd)
       return null
     }
 
@@ -326,16 +385,13 @@ export const handoffCall: LocalJSXCommandCall = async (onDone, context, args) =>
         cwd={cwd}
         onCancel={() => onDone()}
         onPick={entry =>
-          fs
-            .readFile(entry.fullPath, 'utf8')
-            .then(content => resumeWith(onDone, entry, content, cwd))
-            .catch(error => {
-              reportDeadEnd(
-                onDone,
-                context,
-                `读取 \`${entry.basename}\` 失败：${error instanceof Error ? error.message : String(error)}`,
-              )
-            })
+          readHandoffDocument(entry.fullPath).then(read => {
+            if (!read.ok) {
+              reportDeadEnd(onDone, context, readFailureMessage(entry, read))
+              return
+            }
+            return resumeWith(onDone, entry, read.content, cwd)
+          })
         }
       />
     )

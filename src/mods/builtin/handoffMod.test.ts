@@ -360,3 +360,95 @@ describe('prompts', () => {
     expect(text).toContain('do **not** re-read it')
   })
 })
+
+// ---------------------------------------------------------------------------
+// cl-006 — `--pick` directory fence, and the read budget
+// ---------------------------------------------------------------------------
+
+describe('handoffCall — --pick cannot leave the handoff directory', () => {
+  // `--pick` used to `path.join(root, pickArg)`; `path.join` normalises `..`,
+  // so `--pick ../secret` read a file one level up and spliced it verbatim into
+  // the prompt as a metaMessage. The reachable set was always bounded by the
+  // forced `.md` suffix, so the exposure was "markdown from elsewhere on disk".
+  async function writeOutsideHandoff(relative: string, body: string): Promise<void> {
+    const full = join(fakeCwd, relative)
+    await mkdir(join(full, '..'), { recursive: true })
+    await writeFile(full, body)
+  }
+
+  test('a `..` traversal is refused and its content never reaches the prompt', async () => {
+    await writeHandoff('inside.md', '# inside')
+    await writeOutsideHandoff('.agent_working_dir/outside.md', 'CANARY-OUTSIDE')
+    const { calls } = await run(2, '--pick ../outside')
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+    expect(calls[0]!.options?.metaMessages).toBeUndefined()
+    expect(JSON.stringify(calls[0]!.options ?? {})).not.toContain('CANARY-OUTSIDE')
+  })
+
+  test('the same traversal with the .md suffix spelled out is refused too', async () => {
+    await writeOutsideHandoff('.agent_working_dir/outside.md', 'CANARY-OUTSIDE')
+    const { calls } = await run(2, '--pick ../outside.md')
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+    expect(calls[0]!.result).toContain('outside.md')
+  })
+
+  test('two levels out is refused as well', async () => {
+    await writeOutsideHandoff('outside.md', 'CANARY-OUTSIDE')
+    const { calls } = await run(2, '--pick ../../outside')
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+    expect(JSON.stringify(calls[0]!.options ?? {})).not.toContain('CANARY-OUTSIDE')
+  })
+
+  test('an absolute path to an outside file is refused', async () => {
+    await writeOutsideHandoff('outside.md', 'CANARY-OUTSIDE')
+    const { calls } = await run(2, `--pick ${join(fakeCwd, 'outside.md')}`)
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+    expect(JSON.stringify(calls[0]!.options ?? {})).not.toContain('CANARY-OUTSIDE')
+  })
+
+  test('control: a real document in the directory still resumes', async () => {
+    await writeHandoff('inside.md', '# inside body')
+    const { calls } = await run(2, '--pick inside')
+    expect(calls[0]!.options?.shouldQuery).toBe(true)
+    expect(calls[0]!.options?.metaMessages?.[0]).toContain('# inside body')
+  })
+
+  test('a name differing only in case is not the document', async () => {
+    await writeHandoff('Alpha.md', '# Alpha')
+    const { calls } = await run(2, '--pick alpha')
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+  })
+})
+
+describe('handoffCall — read budget', () => {
+  // renderPickupPrompt splices the whole body in, so a document larger than the
+  // budget is refused rather than handed to the model verbatim.
+  const OVER_BUDGET = 256 * 1024 + 1
+
+  test('--pick refuses a document over the budget and does not inject it', async () => {
+    await writeHandoff('huge.md', 'x'.repeat(OVER_BUDGET))
+    const { calls } = await run(2, '--pick huge')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.result).toContain('过大')
+    expect(calls[0]!.options?.shouldQuery).toBeUndefined()
+    expect(calls[0]!.options?.metaMessages).toBeUndefined()
+  })
+
+  test('the picker refuses it too, and reports rather than throwing', async () => {
+    await writeHandoff('huge.md', 'x'.repeat(OVER_BUDGET))
+    const { jsx } = await run(2)
+    const props = (jsx as {
+      props: { entries: Array<{ basename: string }>; onPick: (e: unknown) => Promise<void> }
+    }).props
+    const huge = props.entries.find(e => e.basename === 'huge.md')!
+    await expect(props.onPick(huge)).resolves.toBeUndefined()
+  })
+
+  test('control: a document under the budget still loads', async () => {
+    await writeHandoff('normal.md', '# small')
+    const { calls } = await run(2, '--pick normal')
+    expect(calls[0]!.options?.metaMessages?.[0]).toContain('# small')
+  })
+})
