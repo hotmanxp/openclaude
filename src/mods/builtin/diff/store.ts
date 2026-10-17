@@ -181,7 +181,12 @@ export function refreshDiff(mode?: DiffMode): Promise<void> {
   return inflight
 }
 
-const bodyInflight = new Set<string>()
+/**
+ * One in-flight hunk fetch, not one per path. `fetchHunks` always returns every
+ * file in the list, so a second selection arriving mid-flight would re-run the
+ * identical git call and duplicate the work.
+ */
+let bodyInflight: Promise<void> | null = null
 
 /**
  * Load the hunk bodies for one file. Hunk text is the expensive part of the
@@ -189,25 +194,38 @@ const bodyInflight = new Set<string>()
  */
 export async function loadDiffBody(path: string): Promise<void> {
   const { data } = snapshot
-  if (data === null || snapshot.bodies.has(path) || bodyInflight.has(path)) {
+  if (data === null || snapshot.bodies.has(path)) {
     return
   }
-  bodyInflight.add(path)
+  // The single slot carries whichever path the user is looking at now, so the
+  // detail view shows "Loading" for the selection it was actually asked about.
   publish({ pendingBody: path })
-  try {
-    const cwd = getCwd()
-    const bodies = await fetchHunks(
-      runFor(cwd),
-      data.baseRef,
-      data.stalePaths,
-      data.files,
-    )
-    const next = new Map(snapshot.bodies)
-    for (const [key, body] of bodies) next.set(key, body)
-    publish({ bodies: next, pendingBody: null })
-  } finally {
-    bodyInflight.delete(path)
+  if (bodyInflight) {
+    return bodyInflight
   }
+  bodyInflight = (async () => {
+    try {
+      const cwd = getCwd()
+      const bodies = await fetchHunks(
+        runFor(cwd),
+        data.baseRef,
+        data.stalePaths,
+        data.files,
+      )
+      const next = new Map(snapshot.bodies)
+      for (const [key, body] of bodies) next.set(key, body)
+      publish({ bodies: next })
+    } finally {
+      // Both halves of the state leave together. Clearing only the in-flight
+      // slot would leave `pendingBody` pinned on a failed fetch, and the pane
+      // would sit on "Loading diff…" for the rest of the session while every
+      // later selection re-ran the same failing call.
+      publish({ pendingBody: null })
+      bodyInflight = null
+    }
+  })()
+
+  return bodyInflight
 }
 
 /**
