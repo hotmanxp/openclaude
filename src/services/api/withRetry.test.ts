@@ -188,6 +188,52 @@ describe('retry configuration', () => {
     const { getRetryDelay } = await importFreshWithRetryModule()
     expect(getRetryDelay(1, '3')).toBe(3000)
   })
+
+  test('honors a configured base above the legacy 32000 default cap', async () => {
+    // The default `maxDelayMs` used to be a literal 32000 while the validator
+    // and the docs both promised 60000, so anything configured above 32000 was
+    // silently clamped and the documented ceiling was unreachable.
+    process.env.OPENCC_RETRY_DELAY_MS = '40000'
+    const originalRandom = Math.random
+    Math.random = () => 0
+    try {
+      const { getRetryDelay } = await importFreshWithRetryModule()
+      expect(getRetryDelay(1)).toBe(40000)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+
+  test('caps the default backoff at the documented 60000 ceiling', async () => {
+    process.env.OPENCC_RETRY_DELAY_MS = '60000'
+    const originalRandom = Math.random
+    Math.random = () => 1
+    try {
+      const { getRetryDelay } = await importFreshWithRetryModule()
+      expect(getRetryDelay(1)).toBe(60000)
+      expect(getRetryDelay(30)).toBe(60000)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+
+  test('never returns more than maxDelayMs, jitter included', async () => {
+    // Jitter is added on top of an already-clamped base; without a second
+    // clamp the return value exceeded the parameter it was clamped by.
+    process.env.OPENCC_RETRY_DELAY_MS = '60000'
+    const originalRandom = Math.random
+    try {
+      Math.random = () => 1
+      const { getRetryDelay } = await importFreshWithRetryModule()
+      expect(getRetryDelay(1, null, 1000)).toBe(1000)
+      Math.random = () => 0.5
+      expect(getRetryDelay(1, null, 1000)).toBe(1000)
+      Math.random = () => 0
+      expect(getRetryDelay(1, null, 1000)).toBe(1000)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
 })
 
 describe('abort retry classification', () => {
