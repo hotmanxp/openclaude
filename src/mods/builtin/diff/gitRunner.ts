@@ -35,7 +35,16 @@ export function createGitRun(options: RunOptions = {}): GitRun {
         abortSignal: options.abortSignal,
         preserveOutputOnError: false,
       })
-      return { exitCode: result.code, stdout: result.stdout, stderr: result.stderr }
+      return {
+        exitCode: result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        // `error` is what separates "git ran and refused" from "git never
+        // finished" — a `maxBuffer` overflow resolves with code 1 and an
+        // empty stdout, which is indistinguishable from a real failure
+        // unless the reason is carried through.
+        error: result.error,
+      }
     } catch {
       return RUN_FAILED
     }
