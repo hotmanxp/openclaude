@@ -113,7 +113,6 @@ type ListItem = {
 // Lifecycle helpers (killWorkflowTask, skipWorkflowAgent, retryWorkflowAgent)
 // live in src/tasks/LocalWorkflowTask/lifecycle.ts. They're imported above
 // via the runtime control plane so the dialog can drive running workflows.
-import { MonitorMcpDetailDialog } from './MonitorMcpDetailDialog.js';
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
 function getSelectableBackgroundTasks(tasks: Record<string, TaskState> | undefined, foregroundedTaskId: string | undefined): TaskState[] {
@@ -386,8 +385,12 @@ export function BackgroundTasksDialog({
         if (!WorkflowDetailDialog) return null;
         return <WorkflowDetailDialog workflow={task_0} onDone={onDone} onKill={task_0.status === 'running' ? () => killWorkflowTask(task_0.id) : undefined} onSkipAgent={task_0.status === 'running' ? agentId => skipWorkflowAgent(task_0.id, agentId) : undefined} onRetryAgent={task_0.status === 'running' ? agentId_0 => retryWorkflowAgent(task_0.id, agentId_0) : undefined} onBack={goBackToList} key={`workflow-${task_0.id}`} />;
       case 'monitor_mcp':
-        if (!MonitorMcpDetailDialog) return null;
-        return <MonitorMcpDetailDialog task={task_0} onKill={task_0.status === 'running' ? () => MonitorMcpTask.kill(task_0.id, setAppState) : undefined} onBack={goBackToList} key={`monitor-mcp-${task_0.id}`} />;
+        // The detail dialog for this task type was deleted along with the code
+        // that created these tasks; nothing constructs one any more, so this
+        // branch is unreachable in practice. Kept as an explicit `return null`
+        // (identical to what the build-time stub produced) rather than dropping
+        // the case, which would fall through to the list view below.
+        return null;
       case 'dream':
         return <DreamDetailDialog task={task_0} onDone={() => onDone('Background tasks dialog dismissed', {
           display: 'system'

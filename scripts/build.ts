@@ -1097,7 +1097,9 @@ if (result?.success) {
   // same shape canonicalStub() produces, so the allowlist reads as the key.
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
     'src/tools/VerifyPlanExecutionTool/constants',
-    'src/components/tasks/MonitorMcpDetailDialog',
+    // src/components/tasks/MonitorMcpDetailDialog was here until its last
+    // static import was removed (BackgroundTasksDialog.tsx). An allow-list
+    // entry with no importer is dead weight and hides the next regression.
     // src/daemon/workerRegistry used to need allow-listing: the always-stub
     // branch returned null, so bun treated it as a MISSING module and emitted a
     // missing-module stub. It now resolves into the stub namespace like any
