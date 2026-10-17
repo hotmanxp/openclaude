@@ -719,6 +719,180 @@ export type ModRegistration = {
   catch(handler: ModCatchHandler): void
 }
 
+// ---------------------------------------------------------------------------
+// 6. Event sites — the guard pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * What one event's site knows about its own answer.
+ *
+ * Upstream does NOT have one generic guard: it writes the contract out again
+ * for every event that needs one (`restoreArgument` ×34, `checkArgument` ×58,
+ * `measureArgument` ×11, `restoreResult` ×5, `stripResult` ×3, `keptResult`
+ * ×6) and drives them all through one pipeline (`He`). The table of
+ * descriptors is therefore also upstream's: most events have none, and giving
+ * one to an event this host never dispatches would be a guard nothing can
+ * reach.
+ *
+ * Upstream splits the contract in two. `restoreArgument` / `checkArgument` /
+ * `unappliedArgument` judge the EVENT a hook passed down; `settle` / `check` /
+ * `restoreResult` judge the ANSWER it passed back. Only the second half ports:
+ * opencc's `runModChain` threads one value where upstream has two — `current`
+ * is the argument above a position and the answer below it — so at the moment
+ * an answer is adopted there is no separate "the event this hook rewrote"
+ * object to judge. A mod that rewrites an argument still changes what runs; it
+ * simply cannot be told its rewrite was wrong, and nothing here pretends
+ * otherwise.
+ *
+ * Nothing stores a "last good value" across dispatches, and nothing may.
+ * Upstream has no such store (`keptResult` exists so the ENGINE can merge, not
+ * so a later dispatch can roll back), and every reference below is either what
+ * the hooks beneath produced or what the engine itself was handed.
+ */
+export type ModEventSite = {
+  /** Put back something the engine owns that the answer dropped. */
+  readonly restore?: (
+    answer: Record<string, unknown>,
+    argument: Record<string, unknown>,
+    fromBelow: unknown,
+  ) => Record<string, unknown>
+  /** A returned string is the reason the answer was refused. */
+  readonly check?: (
+    answer: Record<string, unknown>,
+    argument: Record<string, unknown>,
+    fromBelow: unknown,
+  ) => string | undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+/**
+ * `tool.describe` — upstream `Mp.check` / `Mp.restoreResult`
+ * (`bundle.js@3972653`), the two result-side halves.
+ *
+ * The engine composes this answer, so `next(e)` resolves to it and a hook that
+ * drops `isDeferred` while rewriting only the prose was not asking to move the
+ * tool out of ToolSearch — it just did not repeat a field it had no opinion
+ * about. Upstream carries the old value down for exactly that hook; opencc's
+ * `toolDescribe.ts` reads `answer.isDeferred === true`, so without this a
+ * `{description}` answer silently un-defers the tool.
+ */
+const TOOL_DESCRIBE_SITE: ModEventSite = {
+  restore: (answer, argument, fromBelow) => {
+    if (answer.isDeferred !== undefined) return answer
+    const carried =
+      asRecord(fromBelow)?.isDeferred ?? argument.isDeferred
+    return carried === undefined ? answer : { ...answer, isDeferred: carried }
+  },
+  check: answer => {
+    if (typeof answer.description !== 'string') {
+      return 'no { description } (a string)'
+    }
+    return answer.isDeferred === undefined ||
+      typeof answer.isDeferred === 'boolean'
+      ? undefined
+      : 'an isDeferred that is not a boolean'
+  },
+}
+
+/**
+ * `config.set` — upstream `Be` (`bundle.js@3913510`), narrowed to the two
+ * hazards this host's op dialect can actually hit.
+ *
+ * Upstream's answer here is `{value}` or `{deny}`, so `Be` requires one of the
+ * two and opencc ports neither half of that: `dispatchModOp` reads only `deny`
+ * and `replace` off a hook's answer, and a value the hook rewrites travels
+ * down as the argument. What survives the narrowing is the pair upstream
+ * refuses for the same structural reason:
+ *
+ *   - a `deny` that is not a string. `dispatchModOp` gates on
+ *     `typeof outcome.deny === 'string'`, so `{deny: 42}` is not a veto: the
+ *     write runs and the mod believes it stopped one.
+ *   - a `deny` beside a `replace`. The deny is read first and throws, so the
+ *     substitute never reaches the caller and nothing says so. Upstream calls
+ *     this "a deny beside { value }"; `{replace}` is the answer slot opencc's
+ *     dialect has in that position.
+ *
+ * An answer that is neither is left alone. Upstream refuses it ("neither
+ * { value } nor { deny }") because its answer IS the value; here such an answer
+ * is discarded by `dispatchModOp` anyway, so refusing it would charge a mod
+ * failure for a no-op and could trip the breaker on harmless hooks.
+ */
+const CONFIG_SET_SITE: ModEventSite = {
+  check: answer => {
+    const { deny, replace } = answer
+    if (deny === undefined) return undefined
+    if (typeof deny !== 'string' || deny === '') {
+      return 'a deny that is not a string'
+    }
+    return replace === undefined ? undefined : 'a deny beside { replace }'
+  },
+}
+
+/**
+ * `tool.call` — upstream `vr` (`bundle.js@3913268`). The reason is read by the
+ * host as a sentence in a permission prompt, and a non-string one reaches it
+ * as `undefined`: the refusal reads as a bug in opencc rather than as a mod
+ * asking for one.
+ */
+const TOOL_CALL_SITE: ModEventSite = {
+  check: answer => {
+    const { deny } = answer
+    if (deny === undefined) return undefined
+    return typeof deny === 'string' && deny !== ''
+      ? undefined
+      : 'a deny that is not a non-empty string'
+  },
+}
+
+/**
+ * The sites — three, and each for a hazard that is reachable from a call site
+ * this host actually has.
+ *
+ * Two kinds of event are deliberately absent. `turn.complete` / `session.*`
+ * reach a handler through the HOST's own `HookInput` (the bridge table), so
+ * there is no mod-shaped answer to judge; `prompt.context` and
+ * `command.describe` have no mod-payload call site at all. And `config.describe`
+ * has one but needs no guard: `dispatchModOp` reads only `deny` and `replace`
+ * off an op answer, so a half-written row is discarded before a caller can
+ * see it, while upstream's row check (`Co`) would refuse the `{replace}` that
+ * opencc's dialect exists to allow — `nouns.test.ts` asserts that one by name.
+ * A guard for any of those is unreachable code that reads like coverage, which
+ * is the failure this table's shape is meant to avoid.
+ */
+export const MOD_EVENT_SITES: Readonly<Record<string, ModEventSite>> = {
+  'config.set': CONFIG_SET_SITE,
+  'tool.call': TOOL_CALL_SITE,
+  'tool.describe': TOOL_DESCRIBE_SITE,
+}
+
+/**
+ * Run `event`'s answer through its site's pipeline. Returns the value to
+ * adopt, or the reason it was refused — in which case the caller treats the
+ * answer exactly like a throw and falls back to what ran beneath.
+ */
+export function settleAnswer(
+  event: string | undefined,
+  answer: unknown,
+  argument: Record<string, unknown>,
+  fromBelow: unknown,
+): { value: unknown } | { refused: string } {
+  const site = event === undefined ? undefined : MOD_EVENT_SITES[event]
+  if (site === undefined) return { value: answer }
+  const asAnswer = asRecord(answer)
+  // A site judges an answer; a handler that answered with a primitive has not
+  // answered in this event's dialect at all, so there is nothing to check and
+  // the chain's own normalisation stands.
+  if (asAnswer === undefined) return { value: answer }
+  const restored = site.restore ? site.restore(asAnswer, argument, fromBelow) : asAnswer
+  const reason = site.check?.(restored, argument, fromBelow)
+  return reason === undefined ? { value: restored } : { refused: reason }
+}
+
 /**
  * Run `body` under the hook budget. Reports `timedOut` so the caller can skip
  * that hook alone and continue down the chain.

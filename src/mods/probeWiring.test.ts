@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { createModContext } from './engine.js'
@@ -138,5 +140,38 @@ describe('per-item gates', () => {
     ]) {
       expect(hasModHandlersFor(event, { tool: 'x' })).toBe(false)
     }
+  })
+})
+
+
+/**
+ * The bridged events must reach the chain through the translator.
+ *
+ * `executeHooks` does not call a mod composite — it runs the chain itself, as
+ * an outer tier wrapping the core hooks — so the host's `HookInput` and the
+ * chain's answer both have to be translated by `runBridgedModChain` at that
+ * call site. When it passed the raw input to `runModChain` instead, every
+ * matcher on a bridged event missed (the payload said `tool_name` where the
+ * matcher said `tool`) and no mod's `{ deny }` ever became a
+ * `permissionDecision`. Both are silent: the handler is simply skipped and the
+ * mod reports healthy.
+ *
+ * A source assertion, because the alternative is an `executeHooks` harness with
+ * a full ToolUseContext — and the thing that regressed is precisely the
+ * call-site choice, which no unit test over `dispatch.ts` can see. Comments are
+ * stripped before counting, so the explanatory comment at the call site cannot
+ * make this pass on its own.
+ */
+describe('bridged event wiring', () => {
+  const code = readFileSync(
+    new URL('../utils/hooks.ts', import.meta.url),
+    'utf8',
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '')
+
+  test('executeHooks runs the chain through runBridgedModChain', () => {
+    expect(code).toContain('runBridgedModChain(')
+    expect(code).not.toMatch(/[^\w.]runModChain\(/)
   })
 })
