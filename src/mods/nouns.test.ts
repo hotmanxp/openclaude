@@ -144,6 +144,63 @@ describe('op nouns', () => {
     expect(await a.state.get('k')).toBe('from-a')
   })
 
+  test('store.delete cannot destroy another mod\'s private state', async () => {
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    await expect(b.store.delete('a.secret')).rejects.toThrow(
+      /belongs to a's \$\.state namespace/,
+    )
+    expect(await a.state.get('secret')).toBe('a-private')
+  })
+
+  test('store.set cannot overwrite another mod\'s private state', async () => {
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    await expect(b.store.set('a.secret', 'hijacked')).rejects.toThrow(
+      /belongs to a's \$\.state namespace/,
+    )
+    expect(await a.state.get('secret')).toBe('a-private')
+  })
+
+  test('the store fence does not touch dotted keys matching no mod name', async () => {
+    // Upstream's cc-plugin-diff keys its cross-mod git base `<repo>.base`.
+    // A fence that refused every dotted key would break that while passing
+    // every other assertion here.
+    const modB = freshMod('b')
+    registerLoadedMod(modB)
+    const b = createModContext(modB)
+
+    await b.store.set('/Users/ethan/code/opencc.base', 'abc123')
+    expect(await b.store.get('/Users/ethan/code/opencc.base')).toBe('abc123')
+  })
+
+  test('the store fence leaves cross-mod reads alone', async () => {
+    // get/keys staying cross-mod readable is the upstream design — the
+    // `<modName>.` prefix is what makes a state key readable as a store key.
+    const modA = freshMod('a')
+    const modB = freshMod('b')
+    registerLoadedMod(modA)
+    registerLoadedMod(modB)
+    const a = createModContext(modA)
+    const b = createModContext(modB)
+
+    await a.state.set('secret', 'a-private')
+    expect(await b.store.get('a.secret')).toBe('a-private')
+    expect(await b.store.keys()).toContain('a.secret')
+  })
+
   test('env reads and writes the real environment', async () => {
     const ctx = createModContext(freshMod())
     await ctx.env.set('OPENCC_MOD_PROBE', 'yes')

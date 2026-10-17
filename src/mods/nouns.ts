@@ -24,6 +24,7 @@ import {
   hasModHandlersFor,
 } from './dispatch.js'
 import { readSessionUsage } from './sessionUsage.js'
+import { getLoadedMods } from './registry.js'
 
 // ---------------------------------------------------------------------------
 // fs walk types
@@ -57,6 +58,39 @@ export type AncestorsArgs = {
  * must outlive the mod's own process and be visible to a later hook.
  */
 const stores = new Map<string, unknown>()
+
+/**
+ * Fence a `store` WRITE that would land inside another mod's `state`
+ * namespace, and allow everything else.
+ *
+ * `store` and `state` share this one Map, and `state` writes under
+ * `${modName}.${key}` — so without a fence `$.store.set` / `$.store.delete`
+ * could overwrite or destroy any other mod's private `$.state`, which
+ * `engine.ts` declares as "This mod's OWN key/value state".
+ *
+ * Only the mutating half is fenced. `get` / `keys` stay cross-mod readable
+ * because that is the design, not an accident: the `<modName>.` prefix exists
+ * precisely so the key "looks like" a store key when read back from another
+ * mod. Upstream's own `cc-plugin-diff` relies on it — remembering a git base
+ * under `<repo>.base`, a dotted key that matches no loaded mod name and so is
+ * deliberately left alone.
+ *
+ * A mod writing its OWN namespace through `store` is allowed: `$.state` is the
+ * documented way to do it, but the write is not reaching anyone else and
+ * refusing it would be a gratuitous behaviour change.
+ */
+function assertStoreKeyWritable(modName: string, key: string): void {
+  for (const other of getLoadedMods()) {
+    const owner = other.manifest.name
+    if (owner === modName) continue
+    if (key.startsWith(`${owner}.`)) {
+      throw new Error(
+        `${modName}: $.store: "${key}" belongs to ${owner}'s $.state namespace — ` +
+          `use $.state for your own state, and do not write another mod's`,
+      )
+    }
+  }
+}
 
 export function clearModStores(): void {
   stores.clear()
@@ -1063,10 +1097,12 @@ export function buildModNouns(modName: string): ModNouns {
     get: key => dispatchModOp('store.get', { key }, () => stores.get(key)),
     set: (key, value) =>
       dispatchModOp('store.set', { key, value }, () => {
+        assertStoreKeyWritable(modName, key)
         stores.set(key, value)
       }),
     delete: key =>
       dispatchModOp('store.delete', { key }, () => {
+        assertStoreKeyWritable(modName, key)
         stores.delete(key)
       }),
     keys: () => dispatchModOp('store.keys', {}, () => [...stores.keys()]),
