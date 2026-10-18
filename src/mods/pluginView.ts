@@ -54,6 +54,15 @@ export type ModPluginInfo = {
   toolNames: string[]
   /** Registered command names (unprefixed, as declared in `register`). */
   commandNames: string[]
+  /**
+   * Why this mod is not loaded, when it was found but refused or rejected.
+   *
+   * Without it a mod that never loaded renders as an enabled plugin with no
+   * components and no error, which is indistinguishable from a mod that
+   * deliberately registers nothing — the user has no way to learn that a
+   * `plugin.register` hook turned their mod away.
+   */
+  loadError?: string | undefined
 }
 
 /** Settings key for a mod's enablement. Stable across the id rename. */
@@ -144,6 +153,9 @@ export function getModsAsPlugins(): LoadedPlugin[] {
         handlerEvents: mod?.handlers.map(h => h.event) ?? [],
         toolNames: mod?.tools.map(t => t.name) ?? [],
         commandNames: mod?.commands.map(c => c.name) ?? [],
+        // From discovery, not the mod: a mod that failed to load has no
+        // LoadedMod to ask, which is the whole case this field exists for.
+        ...(meta.loadError !== undefined ? { loadError: meta.loadError } : {}),
       },
     })
   }

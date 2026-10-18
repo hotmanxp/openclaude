@@ -4,6 +4,7 @@ import {
   buildModHookMatchers,
   createCompositeModCallback,
   runBridgedModChain,
+  dispatchModOp,
   dispatchModOpSync,
   hasModHandlersFor,
   refreshOpChains,
@@ -16,6 +17,8 @@ import {
   BUILTIN_ORIGIN,
   getModFailureCount,
   recordModHandlerSuccess,
+  registerLoadedMod,
+  unregisterMod,
   type LoadedMod,
 } from './registry.js'
 
@@ -1305,5 +1308,99 @@ describe('event site guard pipeline', () => {
     expect(out).toEqual({ deny: 123 })
     expect(coreCalls).toBe(0)
     expect(failures).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// `on(...).catch()` survives the chain rebuilds
+//
+// Regression. `on(...).catch(handler)` writes `catchHandler` onto the handler
+// SPEC (engine.ts), while `runCatch` reads it off the CHAIN ENTRY. Two
+// functions copy specs into chain entries — `refreshOpChains` (op chains) and
+// `buildModHookMatchers` (host hook matchers) — and both dropped the field.
+//
+// Three things kept that invisible at once: the field is optional, so
+// typecheck stayed green; every pre-existing test hand-built its chain entries
+// instead of going through a rebuild, so the suite stayed green; and the
+// failure is silent — the throw is logged and the chain continues, exactly as
+// it does for a mod that never wrote a `.catch` at all. The result was that
+// `.catch()` was dead on every real dispatch path.
+// ---------------------------------------------------------------------------
+
+describe('catchHandler survives the chain rebuilds', () => {
+  const EVENT = 'ui.status'
+
+  // `loadedMods` is module-level state that outlives this file, so leaving the
+  // mod registered would put its throwing handler in front of every other test
+  // file bun loads after this one.
+  afterEach(() => {
+    unregisterMod('catch-mod')
+    refreshOpChains()
+  })
+
+  test('op chains: a throwing handler reaches its .catch handler', async () => {
+    let caughtMessage: unknown
+    let caughtKind: unknown
+    registerLoadedMod(
+      fakeMod('catch-mod', [
+        {
+          event: EVENT,
+          tier: 'builtin',
+          handler: async () => {
+            throw new Error('deliberate throw')
+          },
+          catchHandler: (_e, next) => {
+            caughtKind = next.error.kind
+            caughtMessage = next.error.message
+            return { replace: 'FROM_CATCH' }
+          },
+        },
+      ]),
+    )
+    // `registerLoadedMod` notifies the mod set, which is what runs the real
+    // `refreshOpChains`. No manual call, so this test exercises the rebuild a
+    // live session performs rather than a chain assembled by hand.
+    const out = await dispatchModOp(EVENT, { text: 'hi' }, () => 'CORE')
+    expect(caughtKind).toBe('throw')
+    expect(caughtMessage).toBe('deliberate throw')
+    // The catch handler's answer is the hook's answer, so core never runs.
+    expect(out).toBe('FROM_CATCH')
+  })
+
+  test('a mod with no .catch still falls through to core', async () => {
+    // The control. Without it, a fix that made every handler run a catch
+    // handler would satisfy the test above.
+    registerLoadedMod(
+      fakeMod('catch-mod', [
+        {
+          event: EVENT,
+          tier: 'builtin',
+          handler: async () => {
+            throw new Error('deliberate throw')
+          },
+        },
+      ]),
+    )
+    const out = await dispatchModOp(EVENT, { text: 'hi' }, () => 'CORE')
+    expect(out).toBe('CORE')
+  })
+
+  test('hook matchers: the rebuilt entry carries catchHandler', () => {
+    const catchHandler = () => ({ replace: 'X' })
+    const { refs } = buildModHookMatchers([
+      fakeMod('catch-mod', [
+        {
+          event: EVENT,
+          tier: 'builtin',
+          handler: async () => undefined,
+          catchHandler,
+        },
+      ]),
+    ])
+    // `buildModHookMatchers` exposes the chain it built, so this reads the
+    // entry the host will run rather than a re-derivation of it.
+    const chain = refs[0]!.hooks[0]!.modChain!
+    expect(chain).toHaveLength(1)
+    expect(chain[0]!.catchHandler).toBe(catchHandler)
   })
 })
