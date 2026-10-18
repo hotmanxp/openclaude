@@ -21,7 +21,14 @@ export type StreamingThinking = {
   thinking: string
   isStreaming: boolean
   streamingEndedAt?: number
+  /** When the first thinking content_block_start arrived, used to compute the
+   *  thinking duration shown as "Thought for Ns". */
+  streamingStartedAt?: number
 }
+
+/** When the current turn's first thinking content_block_start arrived. Reset at
+ *  each request so a prior turn's value can't seed this turn's duration. */
+let thinkingStartedAt: number | undefined
 
 /**
  * Handles messages from a stream, updating response length for deltas and appending completed messages
@@ -68,8 +75,10 @@ export function handleMessageFromStream(
         onStreamingThinking?.(() => ({
           thinking: thinkingBlock.thinking,
           isStreaming: false,
+          streamingStartedAt: thinkingStartedAt,
           streamingEndedAt: Date.now(),
         }))
+        thinkingStartedAt = undefined
       }
     }
     // Clear streaming text NOW so the render can switch displayedMessages
@@ -82,6 +91,7 @@ export function handleMessageFromStream(
 
   if (message.type === 'stream_request_start') {
     onSetStreamMode('requesting')
+    thinkingStartedAt = undefined
     return
   }
 
@@ -111,6 +121,11 @@ export function handleMessageFromStream(
         case 'thinking':
         case 'redacted_thinking':
           onSetStreamMode('thinking')
+          // Start the thinking clock so the completed row can render
+          // "Thought for Ns". Kept out of the streamingThinking state: seeding
+          // state here would flip isStreamingThinkingVisible on and render an
+          // empty row mid-stream.
+          thinkingStartedAt = Date.now()
           return
         case 'text':
           onSetStreamMode('responding')

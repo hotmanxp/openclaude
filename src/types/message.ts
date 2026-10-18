@@ -521,6 +521,15 @@ export type CollapsedReadSearchGroup = {
   readFilePaths: string[]
   searchArgs: string[]
   latestDisplayHint?: string
+  /**
+   * Accumulated thinking time for the group, in ms. Measured as the sum of the
+   * gaps between consecutive transcript messages (each capped), which is what
+   * stays meaningful when re-reading a persisted transcript. Rendered as
+   * "Thought for Ns".
+   */
+  thoughtForMs?: number
+  /** First line of the latest thinking block folded into this group. */
+  latestThinkingSummary?: string
   messages: NormalizedAssistantMessage[]
   displayMessage: NormalizedAssistantMessage
   uuid: string

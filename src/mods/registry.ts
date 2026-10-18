@@ -198,6 +198,17 @@ let knownMods = new Map<string, KnownMod>()
 export type KnownMod = {
   builtin: boolean
   userConfig?: Record<string, unknown> | undefined
+  /**
+   * Why this mod is not loaded, when it was found but failed to load.
+   *
+   * The same reason `knownMods` itself exists, one step further: without it a
+   * mod refused by a `plugin.register` hook, or one with a bare import, listed
+   * in `/plugin` as "Enabled" with no components and no error — the user had no
+   * way to tell a mod that does nothing from a mod that was turned away. The
+   * text is the message the loader threw with, so `/plugin` shows the same
+   * sentence the debug log does.
+   */
+  loadError?: string | undefined
 }
 
 export function noteDiscoveredMod(
@@ -207,6 +218,25 @@ export function noteDiscoveredMod(
 ): void {
   if (knownMods.has(name)) return
   knownMods.set(name, { builtin, userConfig })
+}
+
+/**
+ * Record why a discovered mod failed to load.
+ *
+   * Unlike {@link noteDiscoveredMod} this is not first-writer-wins: discovery
+ * happens before the module is validated, and the verdict belongs to the later
+   * step. Re-loading a mod after a fix replaces the message rather than keeping
+ * the first failure, because `clearKnownMods` already resets both per pass and
+ * a stale refusal would outlive the fix that removed it.
+ *
+ * A no-op for a name that was never discovered, which is the right answer for a
+ * mod that failed before its manifest parsed: there is no row to hang a reason
+ * on.
+ */
+export function noteModLoadFailure(name: string, error: string): void {
+  const existing = knownMods.get(name)
+  if (!existing) return
+  knownMods.set(name, { ...existing, loadError: error })
 }
 
 export function getKnownMods(): ReadonlyMap<string, KnownMod> {

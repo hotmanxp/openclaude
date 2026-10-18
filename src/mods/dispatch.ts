@@ -718,6 +718,11 @@ export function refreshOpChains(): void {
         handler: spec.handler,
         tier: spec.tier ?? fallback,
         matcher: spec.matcher,
+        // `on(...).catch(handler)` writes this onto the spec (engine.ts), and
+        // `runCatch` reads it off the CHAIN entry. Omitting it here silently
+        // disconnects the two — the field is optional, so nothing complains and
+        // the catch handler simply never runs.
+        catchHandler: spec.catchHandler,
       })
       chains.set(spec.event, list)
     }
@@ -1358,6 +1363,9 @@ export function buildModHookMatchers(mods: readonly LoadedMod[]): {
         handler: spec.handler,
         tier: spec.tier ?? defaultTierFor(mod),
         matcher: spec.matcher,
+        // Same disconnect as `refreshOpChains` above: read by `runCatch` off
+        // the entry, written onto the spec by `on(...).catch()`.
+        catchHandler: spec.catchHandler,
       })
       groups.set(key, group)
       groupKeys.set(key, { event: hostEvent, matcher: spec.matcher })

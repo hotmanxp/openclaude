@@ -186,6 +186,55 @@ describe('getModsAsPlugins', () => {
     await reloadMods()
     expect(getModsAsPlugins().some(p => p.name === 'temporary')).toBe(false)
   })
+
+  // A mod refused by a `plugin.register` hook is DISCOVERED before the gate runs
+  // (that is what makes the gate refuse rather than skip), so unlike the
+  // fenced mod above it does get a row. The row used to read as a healthy
+  // "enabled" plugin with no components and no error — indistinguishable from a
+  // mod that deliberately registers nothing, and the reason appeared nowhere
+  // without `--debug`. That is the whole reason `loadError` exists.
+  test('a mod refused by plugin.register is listed WITH the refusal reason', async () => {
+    // Names are load-ordered, and a gate only reaches mods loaded after it, so
+    // the gatekeeper sorts first. This is a property of the gate, not of this
+    // test — see the ordering caveat on `discoverModRoots`.
+    await writeMod(
+      'a-gatekeeper',
+      `export function register(ctx) {
+         ctx.on('plugin.register', async (e) => {
+           if ((e?.uses?.events ?? []).includes('tool.call')) {
+             return { refuse: 'banned event: tool.call' }
+           }
+           return { allow: true }
+         })
+       }`,
+    )
+    await writeMod(
+      'b-victim',
+      `export function register(ctx) {
+         ctx.on('tool.call', async () => ({ continue: true }))
+         ctx.registerCommand({ name: 'victim-cmd', handler: async () => 'x' })
+       }`,
+    )
+    await loadMods()
+
+    const victim = getModsAsPlugins().find(p => p.name === 'b-victim')
+    expect(victim).toBeDefined()
+    // Not loaded: the gate refused it before its entry was imported.
+    expect(victim!.mod?.toolNames).toEqual([])
+    expect(victim!.mod?.handlerEvents).toEqual([])
+    expect(victim!.mod?.loadError).toContain('banned event: tool.call')
+  })
+
+  test('a mod that loads carries no loadError', async () => {
+    await writeMod(
+      'healthy',
+      'export function register(ctx) { ctx.on("turn.complete", async () => ({ continue: true })) }',
+    )
+    await loadMods()
+    const row = getModsAsPlugins().find(p => p.name === 'healthy')
+    expect(row).toBeDefined()
+    expect(row!.mod?.loadError).toBeUndefined()
+  })
 })
 
 describe('enablement gate', () => {

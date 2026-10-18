@@ -382,15 +382,25 @@ function PluginComponentsDisplay({
 function ModComponentsDisplay({ mod }: {
   mod: ModPluginInfo;
 }): React.ReactNode {
-  const { handlerEvents, toolNames, commandNames } = mod;
-  if (handlerEvents.length === 0 && toolNames.length === 0 && commandNames.length === 0) {
+  const { handlerEvents, toolNames, commandNames, loadError } = mod;
+  if (handlerEvents.length === 0 && toolNames.length === 0 && commandNames.length === 0 && !loadError) {
     return null;
   }
   return <Box flexDirection="column" marginBottom={1}>
-      <Text bold>Installed components:</Text>
-      {commandNames.length > 0 && <Text dimColor>• Commands: {commandNames.join(', ')}</Text>}
-      {handlerEvents.length > 0 && <Text dimColor>• Handlers: {handlerEvents.join(', ')}</Text>}
-      {toolNames.length > 0 && <Text dimColor>• Tools: {toolNames.join(', ')}</Text>}
+      {/* A mod that never loaded has no components to list, so this block is the
+        only place its reason can appear. It renders above the components
+        because "why is my mod doing nothing" is the question being asked, and
+        an empty list underneath reads as the answer. */}
+      {loadError && <>
+        <Text bold color="error">Failed to load:</Text>
+        <Text color="error">{loadError}</Text>
+      </>}
+      {(handlerEvents.length > 0 || toolNames.length > 0 || commandNames.length > 0) && <>
+        <Text bold>Installed components:</Text>
+        {commandNames.length > 0 && <Text dimColor>• Commands: {commandNames.join(', ')}</Text>}
+        {handlerEvents.length > 0 && <Text dimColor>• Handlers: {handlerEvents.join(', ')}</Text>}
+        {toolNames.length > 0 && <Text dimColor>• Tools: {toolNames.join(', ')}</Text>}
+      </>}
     </Box>;
 }
 
@@ -1974,6 +1984,9 @@ export function ManagePlugins({
     const mergedSettings_2 = getSettings_DEPRECATED(); // Use merged settings to respect all layers
     const pluginId_13 = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
     const isEnabled_2 = mergedSettings_2?.enabledPlugins?.[pluginId_13] !== false;
+    // The loader's verdict on a mod it found but could not load. Absent for
+    // real plugins, and for mods that loaded.
+    const modLoadError = selectedPlugin.plugin.mod?.loadError;
 
     // Compute plugin errors section
     const filteredPluginErrors = pluginErrors.filter(e_1 => 'plugin' in e_1 && e_1.plugin === selectedPlugin.plugin.name || e_1.source === pluginId_13 || e_1.source.startsWith(`${selectedPlugin.plugin.name}@`));
@@ -2031,9 +2044,12 @@ export function ManagePlugins({
         {/* Current status */}
         <Box marginBottom={1}>
           <Text dimColor>Status: </Text>
-          <Text color={isEnabled_2 ? 'success' : 'warning'}>
+          {/* A mod that was found and then refused is neither of these: the
+            settings key says enabled and nothing loaded. "Failed to load" is
+            the third state, and it is the one the user can act on. */}
+          {modLoadError ? <Text color="error">Failed to load</Text> : <Text color={isEnabled_2 ? 'success' : 'warning'}>
             {isEnabled_2 ? 'Enabled' : 'Disabled'}
-          </Text>
+          </Text>}
           {selectedPlugin.pendingUpdate && <Text color="suggestion"> · Marked for update</Text>}
         </Box>
 

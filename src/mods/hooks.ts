@@ -23,6 +23,7 @@ import {
   registerLoadedMod,
   getLoadedMods,
   noteDiscoveredMod,
+  noteModLoadFailure,
   clearKnownMods,
   unregisterMod,
   registerModBreakerListener,
@@ -269,6 +270,12 @@ export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logForDebugging(`[mods] failed to load mod at ${root}: ${message}`)
+      // The row in /plugin is keyed on the MANIFEST name, so record the reason
+      // against that and not the directory name — they differ often enough
+      // that `fallbackName` can miss, and `noteModLoadFailure` is a no-op for
+      // a mod that was never discovered, which is the right answer for a mod
+      // that failed before its manifest parsed.
+      noteModLoadFailure(await readDisabledModName(root), message)
       results.push({ name: fallbackName, ok: false, error: message })
     }
   }

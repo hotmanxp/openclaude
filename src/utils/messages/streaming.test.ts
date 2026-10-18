@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { handleMessageFromStream, type StreamingToolUse } from './streaming.js'
+import { handleMessageFromStream, type StreamingThinking, type StreamingToolUse } from './streaming.js'
 import type { StreamEvent } from '../../types/message.js'
 
 // Regression for the PR #1744 change that switched input_json_delta handling
@@ -75,4 +75,94 @@ test('input_json_delta for an unknown index returns the same array reference', (
   // found === false → the updater returns the original array unchanged.
   expect(get()).toBe(before)
   expect(get()[0]!.unparsedToolInput).toBe('')
+})
+
+// ---------------------------------------------------------------------------
+// thinking duration ("Thought for Ns")
+//
+// The clock lives in a module-level variable rather than in the streamingThinking
+// state, because seeding state at content_block_start would flip
+// isStreamingThinkingVisible on and render an empty row mid-stream. The cost of
+// module scope is that it survives across turns, so the reset at
+// stream_request_start is load-bearing — without it turn 2's duration is
+// measured from turn 1's thinking start.
+// ---------------------------------------------------------------------------
+
+function thinkingStart(): StreamEvent {
+  return {
+    type: 'stream_event',
+    event: {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' },
+    },
+  } as unknown as StreamEvent
+}
+
+function thinkingComplete(thinking: string): never {
+  return {
+    type: 'assistant',
+    message: { content: [{ type: 'thinking', thinking }] },
+  } as never
+}
+
+function thinkingHarness() {
+  let thinking: StreamingThinking | null = null
+  const noop = (): void => {}
+  const feed = (event: unknown): void =>
+    handleMessageFromStream(
+      event as never,
+      noop,
+      noop,
+      noop,
+      noop,
+      undefined,
+      f => {
+        thinking = f(thinking)
+      },
+    )
+  return { feed, get: () => thinking }
+}
+
+test('a completed thinking block carries a positive duration', () => {
+  const { feed, get } = thinkingHarness()
+  feed({ type: 'stream_request_start' })
+  feed(thinkingStart())
+  feed(thinkingComplete('reasoning'))
+
+  const result = get()!
+  expect(result.streamingStartedAt).toBeNumber()
+  expect(result.streamingEndedAt! - result.streamingStartedAt!).toBeGreaterThanOrEqual(0)
+})
+
+test("a turn's duration is measured from ITS OWN thinking start, not the prior turn's", () => {
+  const { feed, get } = thinkingHarness()
+
+  // Turn 1 thinks, then ends.
+  feed({ type: 'stream_request_start' })
+  feed(thinkingStart())
+  feed(thinkingComplete('turn one reasoning'))
+  const first = get()!
+  expect(first.streamingStartedAt).toBeNumber()
+  expect(first.streamingEndedAt! - first.streamingStartedAt!).toBeLessThan(60_000)
+
+  // Turn 2 starts a fresh request and thinks again. If the clock were not
+  // reset at the request boundary, turn 2's duration would be measured from
+  // turn 1's start and span the gap between them.
+  feed({ type: 'stream_request_start' })
+  feed(thinkingStart())
+  feed(thinkingComplete('turn two reasoning'))
+  const second = get()!
+  expect(second.streamingStartedAt!).toBeGreaterThanOrEqual(first.streamingStartedAt!)
+  expect(second.streamingEndedAt! - second.streamingStartedAt!).toBeLessThan(60_000)
+})
+
+test('a thinking completion with no start in this turn reports no duration', () => {
+  const { feed, get } = thinkingHarness()
+
+  // No request_start, no content_block_start — the block arrives with no clock
+  // running. The row must render without a "for Ns" clause rather than
+  // inventing a number.
+  feed(thinkingComplete('reasoning'))
+  expect(get()!.streamingStartedAt).toBeUndefined()
 })
