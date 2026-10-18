@@ -261,9 +261,12 @@ export function CollapsedReadSearchContent({
   // Non-verbose mode: Show counts with blinking grey dot while active, green dot when finalized
   // Use present tense when active, past tense when finalized
 
-  // Defensive: If all counts are 0, don't render the collapsed group
-  // This shouldn't happen in normal operation, but handles edge cases
-  if (!hasMemoryOps && !hasTeamMemoryOps && !hasNonMemoryOps) {
+  // Defensive: If all counts are 0, don't render the collapsed group.
+  // A group whose only content is thinking is still worth a row — upstream
+  // shows "Thought for 2s" on its own — so thinking alone keeps the group
+  // visible rather than dropping it.
+  const hasThought = (message.thoughtForMs ?? 0) > 0 || message.latestThinkingSummary !== undefined;
+  if (!hasMemoryOps && !hasTeamMemoryOps && !hasNonMemoryOps && !hasThought) {
     return null;
   }
 
@@ -303,6 +306,14 @@ export function CollapsedReadSearchContent({
     nonMemParts.push(<Text key={key}>
         {isFirst ? verb[0]!.toUpperCase() + verb.slice(1) : verb} {body}
       </Text>);
+  }
+  // "Thought for Ns" leads the line, as it does upstream. Floored at 1s so a
+  // burst that resolves inside a second reads "1s" rather than "0ms", and the
+  // clause is skipped entirely for a group with no thinking in it — which is
+  // what keeps a pure tool-call row reading as "Read 5 files" with no lead-in.
+  const thoughtForMs = message.thoughtForMs ?? 0;
+  if (thoughtForMs > 0 || message.latestThinkingSummary !== undefined) {
+    pushPart('thought', 'thought for', <Text bold>{formatDuration(Math.max(1000, thoughtForMs))}</Text>);
   }
   if (isFullscreenEnvEnabled() && message.commits?.length) {
     const byKind = {

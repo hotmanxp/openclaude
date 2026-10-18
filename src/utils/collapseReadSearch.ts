@@ -377,6 +377,35 @@ function isPreToolHookSummary(
  * Check if a message should be skipped (not break the group, just passed through).
  * This includes thinking blocks, redacted thinking, attachments, etc.
  */
+/** Upstream caps a single message's contribution at 10 minutes, so one long
+ *  idle stretch cannot dominate a multi-turn transcript. */
+const THOUGHT_GAP_CAP_MS = 600_000
+
+/** A thinking message the way the summary counts it: the FIRST content block is
+ *  a non-blank thinking block. A message that leads with text and carries
+ *  thinking afterwards is a normal assistant turn. */
+function isThinkingMessage(msg: RenderableMessage): boolean {
+  if (msg.type !== 'assistant') return false
+  const first = (msg.message?.content as { type?: string; thinking?: string }[] | undefined)?.[0]
+  if (first?.type !== 'thinking' || !first.thinking) return false
+  return first.thinking.trim() !== ''
+}
+
+function parseMessageTimestamp(msg: RenderableMessage): number | undefined {
+  const raw = (msg as { timestamp?: number | string }).timestamp
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+/** First line of the thinking block — what the row shows as its hint. */
+function firstLineOf(thinking: string): string | undefined {
+  return thinking.split('\n').find(line => line.trim() !== '')?.trim() || undefined
+}
+
 function shouldSkipMessage(msg: RenderableMessage): boolean {
   if (msg.type === 'assistant') {
     const content = msg.message.content[0]
@@ -595,6 +624,13 @@ type GroupAccumulator = {
   nonMemSearchArgs: string[]
   /** Most recently added non-memory operation, pre-formatted for display */
   latestDisplayHint: string | undefined
+  // Thinking time for the group: the sum of the gaps between consecutive
+  // transcript messages, each capped (upstream caps a single message's
+  // contribution at 10 minutes). Accumulated as messages enter the group so a
+  // persisted transcript reports the same number on re-read.
+  thoughtForMs: number
+  // First line of the latest thinking block folded into this group.
+  latestThinkingSummary?: string | undefined
   // MCP tool calls (tracked separately so display says "Queried slack" not "Read N files")
   mcpCallCount?: number
   mcpServerNames?: Set<string>
@@ -631,6 +667,8 @@ function createEmptyGroup(): GroupAccumulator {
     memoryWriteCount: 0,
     nonMemSearchArgs: [],
     latestDisplayHint: undefined,
+    thoughtForMs: 0,
+    latestThinkingSummary: undefined,
     hookTotalMs: 0,
     hookCount: 0,
     hookInfos: [],
@@ -722,6 +760,15 @@ function createCollapsedGroup(
     result.teamMemoryReadCount = teamMemReadCount
     result.teamMemoryWriteCount = teamMemWriteCount
   }
+  // Only carry these when they carry information: a group of pure tool calls
+  // has no thinking in it, and the row decides on `thoughtForMs > 0 ||
+  // latestThinkingSummary` whether the "Thought for Ns" clause appears at all.
+  if (group.thoughtForMs > 0) {
+    result.thoughtForMs = group.thoughtForMs
+  }
+  if (group.latestThinkingSummary !== undefined) {
+    result.latestThinkingSummary = group.latestThinkingSummary
+  }
   if ((group.mcpCallCount ?? 0) > 0) {
     result.mcpCallCount = group.mcpCallCount
     result.mcpServerNames = [...(group.mcpServerNames ?? [])]
@@ -762,6 +809,14 @@ export function collapseReadSearchGroups(
   const result: RenderableMessage[] = []
   let currentGroup = createEmptyGroup()
   let deferredSkippable: RenderableMessage[] = []
+  // Timestamp of the previous message of any kind. The thinking gap is measured
+  // against it, so it advances on tool uses and text too, not just on thinking.
+  let lastTimestampInGroup: number | undefined
+  // Thinking seen before the group opened. A turn usually thinks first and
+  // calls a tool second, so without this the group's own opening message would
+  // be the first timestamp and every gap before it would be lost.
+  let pendingThoughtForMs = 0
+  let pendingThinkingSummary: string | undefined
 
   function flushGroup(): void {
     if (currentGroup.messages.length === 0) {
@@ -773,12 +828,34 @@ export function collapseReadSearchGroups(
     }
     deferredSkippable = []
     currentGroup = createEmptyGroup()
+    // Each group measures only its own span: carrying the previous group's
+    // timestamp would charge the gap before this group's first message.
+    lastTimestampInGroup = undefined
+    pendingThoughtForMs = 0
+    pendingThinkingSummary = undefined
   }
 
   for (const msg of messages) {
     if (isCollapsibleToolUse(msg, tools)) {
       // This is a collapsible tool use - type predicate narrows to CollapsibleMessage
       const toolInfo = getCollapsibleToolInfo(msg, tools)!
+
+      // A group opening on its first tool use adopts whatever thinking was
+      // banked before it, plus the gap between that thinking and this message.
+      if (currentGroup.messages.length === 0) {
+        currentGroup.thoughtForMs = pendingThoughtForMs
+        currentGroup.latestThinkingSummary = pendingThinkingSummary
+        const now = parseMessageTimestamp(msg)
+        if (now !== undefined && lastTimestampInGroup !== undefined) {
+          const gap = now - lastTimestampInGroup
+          if (Number.isFinite(gap) && gap > 0) {
+            currentGroup.thoughtForMs += Math.min(gap, THOUGHT_GAP_CAP_MS)
+          }
+        }
+        if (now !== undefined) lastTimestampInGroup = now
+        pendingThoughtForMs = 0
+        pendingThinkingSummary = undefined
+      }
 
       if (toolInfo.isMemoryWrite) {
         // Memory file write/edit — check if it's team memory
@@ -882,6 +959,7 @@ export function collapseReadSearchGroups(
       }
 
       currentGroup.messages.push(msg)
+      lastTimestampInGroup = parseMessageTimestamp(msg) ?? lastTimestampInGroup
     } else if (isCollapsibleToolResult(msg, currentGroup.toolUseIds)) {
       currentGroup.messages.push(msg)
       // Scan bash results for commit SHAs / PR URLs to surface in the summary
@@ -916,6 +994,26 @@ export function collapseReadSearchGroups(
       // of the first tool use, not displaced by intervening skippable messages.
       // Exception: nested_memory attachments are pushed through even during a group so
       // └ Loaded lines cluster tightly instead of being split by the badge's marginTop.
+
+      if (msg.type === 'assistant' && isThinkingMessage(msg)) {
+        // Charge the thinking gap to the group. Upstream measures "Thought for
+        // Ns" as the gap between consecutive transcript messages, not as a live
+        // clock: the wait belongs to the message that FOLLOWS it, so the gap is
+        // banked here and attached when the group forms. A group that has not
+        // opened yet is the common case — thinking arrives before the first
+        // tool use — so the pending value survives on `lastTimestampInGroup`.
+        const summaryLine = firstLineOf((msg.message.content[0] as any).thinking ?? '')
+        if (summaryLine) pendingThinkingSummary = summaryLine
+        const now = parseMessageTimestamp(msg)
+        if (now !== undefined && lastTimestampInGroup !== undefined) {
+          const gap = now - lastTimestampInGroup
+          if (Number.isFinite(gap) && gap > 0) {
+            pendingThoughtForMs += Math.min(gap, THOUGHT_GAP_CAP_MS)
+          }
+        }
+        if (now !== undefined) lastTimestampInGroup = now
+      }
+
       if (
         currentGroup.messages.length > 0 &&
         !(msg.type === 'attachment' && msg.attachment.type === 'nested_memory')
