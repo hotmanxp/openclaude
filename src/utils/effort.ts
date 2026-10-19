@@ -65,7 +65,7 @@ export function modelSupportsEffort(model: string): boolean {
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports 'max' effort.
 // Per API docs, 'max' is Opus 4.6 only for public models — other models return an error.
-// The MiniMax M3 family (incl. MiniMax-M3.1-Flash-Preview) is the one 3P
+// The MiniMax M3 family (incl. MiniMax-M3.1-Flash) is the one 3P
 // exception: its docs advertise low/medium/high/xhigh/max with `max` as the
 // default tier, so `max` is a first-class level there, not an error.
 export function modelSupportsMaxEffort(model: string): boolean {
@@ -472,14 +472,14 @@ export function getDefaultEffortForModel(
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
 
-  // MiniMax M3.1 Flash Preview ships with `max` as its default reasoning
-  // depth (per the vendor's launch notes: low/medium/high/xhigh/max, default
-  // max). Without this the model falls through to `undefined` and the API
-  // applies its own `high` default, which under-reasons relative to the
-  // shipped default. Ordered before the opus-4-6 branch since neither
-  // overlaps. Deliberately scoped to the M3.1 Flash Preview apiName: plain
-  // MiniMax-M3 keeps the previous undefined (API-default) behaviour.
-  if (normalizedBaseModel(model) === 'minimax-m3.1-flash-preview') {
+  // MiniMax M3.1 Flash ships with `max` as its default reasoning depth (per
+  // the vendor's launch notes: low/medium/high/xhigh/max, default max).
+  // Without this the model falls through to `undefined` and the API applies
+  // its own `high` default, which under-reasons relative to the shipped
+  // default. Ordered before the opus-4-6 branch since neither overlaps.
+  // Deliberately scoped to the M3.1 Flash apiName: plain MiniMax-M3 keeps the
+  // previous undefined (API-default) behaviour.
+  if (normalizedBaseModel(model) === 'minimax-m3.1-flash') {
     return 'max'
   }
 

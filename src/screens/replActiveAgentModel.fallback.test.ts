@@ -8,9 +8,9 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 // different models, so a "no explicit session model" fallback wired to the
 // wrong one silently swaps the session onto the pinned tier — which is what
 // made picking "默认（推荐）" in the model picker (which writes
-// mainLoopModel: null) move a MiniMax-M3.1-Flash-Preview user onto MiniMax-M3.
+// mainLoopModel: null) move a MiniMax-M3.1-Flash user onto MiniMax-M3.
 mock.module('../utils/model/model.js', () => ({
-  getMainLoopModel: () => 'MiniMax-M3.1-Flash-Preview',
+  getMainLoopModel: () => 'MiniMax-M3.1-Flash',
   getDefaultMainLoopModelSetting: () => 'MiniMax-M3',
   parseUserSpecifiedModel: (model: string) => model,
 }))
@@ -39,7 +39,7 @@ describe('getActiveSessionAgentModelSelection fallback', () => {
     })
 
     expect(selection.shouldUpdateModel).toBe(true)
-    expect(selection.mainLoopModelForSession).toBe('MiniMax-M3.1-Flash-Preview')
+    expect(selection.mainLoopModelForSession).toBe('MiniMax-M3.1-Flash')
   })
 
   test('an explicit base model still wins over both fallbacks', () => {
