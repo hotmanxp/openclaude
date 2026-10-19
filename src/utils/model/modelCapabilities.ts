@@ -24,8 +24,8 @@ const STATIC_MODEL_CAPABILITIES: Readonly<Record<string, ModelCapability>> = {
     max_input_tokens: 1_000_000, // openaiContextWindows.ts:350
     max_tokens: 512_000, // openaiContextWindows.ts:535
   },
-  'MiniMax-M3.1-Flash-Preview': {
-    id: 'MiniMax-M3.1-Flash-Preview',
+  'MiniMax-M3.1-Flash': {
+    id: 'MiniMax-M3.1-Flash',
     max_input_tokens: 1_000_000, // openaiContextWindows.ts:353
     max_tokens: 512_000, // openaiContextWindows.ts:546
   },
