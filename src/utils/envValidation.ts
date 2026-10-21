@@ -15,8 +15,13 @@ export function validateBoundedIntEnvVar(
   if (!value) {
     return { effective: defaultValue, status: 'valid' }
   }
-  const parsed = parseInt(value, 10)
-  if (isNaN(parsed) || parsed <= 0) {
+  // parseInt would silently truncate "1.5" to 1 and "1e3" to 1, so the user
+  // would get a different effective value than the one they configured.
+  // Only accept a plain decimal integer.
+  const normalized = value.trim()
+  const isDecimalInteger = /^\d+$/.test(normalized)
+  const parsed = isDecimalInteger ? Number(normalized) : Number.NaN
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     const result: EnvVarValidationResult = {
       effective: defaultValue,
       status: 'invalid',

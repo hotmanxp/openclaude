@@ -89,7 +89,12 @@ import { getSkillToolCommands, getMcpSkillCommands } from '../commands.js'
 import type { Command } from '../types/command.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { getProjectRoot } from '../bootstrap/state.js'
-import { formatCommandsWithinBudget } from '../tools/SkillTool/prompt.js'
+import {
+  formatCommandsWithinBudget,
+  getCharsPerToken,
+  getSkillListingOverrides,
+  isSkillHiddenFromModel,
+} from '../tools/SkillTool/prompt.js'
 import { getContextWindowForModel } from './context.js'
 import type { DiscoverySignal } from '../services/skillSearch/signals.js'
 // Conditional require for DCE. All skill-search string literals that would
@@ -2981,6 +2986,13 @@ async function getSkillListingAttachments(
     allCommands = filterToBundledAndMcp(allCommands)
   }
 
+  // Skills the user marked "user-invocable-only" or "off" stay out of the
+  // listing the model sees; the user can still invoke them by name.
+  const skillOverrides = getSkillListingOverrides()
+  allCommands = allCommands.filter(
+    cmd => !isSkillHiddenFromModel(skillOverrides.get(cmd.name) ?? 'on'),
+  )
+
   const agentKey = toolUseContext.agentId ?? ''
   let sent = sentSkillNames.get(agentKey)
   if (!sent) {
@@ -3023,7 +3035,14 @@ async function getSkillListingAttachments(
     toolUseContext.options.mainLoopModel,
     getSdkBetas(),
   )
-  const content = formatCommandsWithinBudget(newSkills, contextWindowTokens)
+  const content = formatCommandsWithinBudget(
+    newSkills,
+    contextWindowTokens,
+    {
+      charsPerToken: getCharsPerToken(toolUseContext.options.mainLoopModel),
+      overrides: skillOverrides,
+    },
+  )
 
   return [
     {

@@ -4,7 +4,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../../services/analytics/index.js'
-import { getCharBudget } from '../../tools/SkillTool/prompt.js'
+import { getCharBudget, getCharsPerToken } from '../../tools/SkillTool/prompt.js'
 
 /**
  * Logs a tengu_skill_loaded event for each skill available at session startup.
@@ -13,9 +13,12 @@ import { getCharBudget } from '../../tools/SkillTool/prompt.js'
 export async function logSkillsLoaded(
   cwd: string,
   contextWindowTokens: number,
+  model?: string,
 ): Promise<void> {
   const skills = await getSkillToolCommands(cwd)
-  const skillBudget = getCharBudget(contextWindowTokens)
+  const skillBudget = getCharBudget(contextWindowTokens, {
+    charsPerToken: getCharsPerToken(model),
+  })
 
   for (const skill of skills) {
     if (skill.type !== 'prompt') continue

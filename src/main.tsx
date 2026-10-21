@@ -179,6 +179,7 @@ const autoModeStateModule = true ? require('./utils/permissions/autoModeState.js
 
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
 import { migrateAutoUpdatesToSettings } from './migrations/migrateAutoUpdatesToSettings.js';
+import { migrateSkillUsageToSettings } from './migrations/migrateSkillUsageToSettings.js';
 import { migrateBypassPermissionsAcceptedToSettings } from './migrations/migrateBypassPermissionsAcceptedToSettings.js';
 import { migrateEnableAllProjectMcpServersToSettings } from './migrations/migrateEnableAllProjectMcpServersToSettings.js';
 import { migrateFennecToOpus } from './migrations/migrateFennecToOpus.js';
@@ -286,7 +287,11 @@ if ("external" !== 'ant' && isBeingDebugged()) {
  */
 function logSessionTelemetry(): void {
   const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel());
-  void logSkillsLoaded(getCwd(), getContextWindowForModel(model, getSdkBetas()));
+  void logSkillsLoaded(
+    getCwd(),
+    getContextWindowForModel(model, getSdkBetas()),
+    model,
+  );
   void loadAllPluginsCacheOnly().then(({
     enabled,
     errors
@@ -330,12 +335,13 @@ async function logStartupTelemetry(): Promise<void> {
 
 // @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
 // Bump this when adding a new sync migration so existing users re-run the set.
-const CURRENT_MIGRATION_VERSION = 11;
+const CURRENT_MIGRATION_VERSION = 12;
 function runMigrations(): void {
   if (getGlobalConfig().migrationVersion !== CURRENT_MIGRATION_VERSION) {
     migrateAutoUpdatesToSettings();
     migrateBypassPermissionsAcceptedToSettings();
     migrateEnableAllProjectMcpServersToSettings();
+    migrateSkillUsageToSettings();
     resetProToOpusDefault();
     migrateSonnet1mToSonnet45();
     migrateLegacyOpusToCurrent();

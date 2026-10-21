@@ -768,3 +768,197 @@ Scope: 1 commit surfaced after `origin/main-opencc` advanced to `bd299563` (bg-a
 - `git diff --stat` post-apply: empty (3way silent noop)
 - `git diff --cached --stat`: empty
 - `bun run typecheck` → **0 errors**
+
+---
+
+## 2026-10-21 sync（上游近 10 天窗口，3 个提交落地）
+
+Window: `upstream/main` 2026-10-11 → 2026-10-21（20 commits，`5a1fbe03` 为上游 tip）。
+**这 20 个提交 fork 一个都还没同步** —— 逐文件做了 pre/post/diverged 三方比对确认，
+不是 subject 去重漏判。按 fork 的 provider 策略与架构差异分流后，落地 3 项、跳过 17 项。
+
+### 落地（3 commits）
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `8ee936cf`（仅预算部分） | `5dd727b6` + `9ea644f6` | 技能清单字符预算硬上限。`5dd727b6` 先照上游取 `MAX_CHAR_BUDGET=8000` / 子代理 4000，`9ea644f6` 按 fork 实测调到 **16000 / 8000**（见下） |
+| `fc826031` | `03ed1ffe` | 完整压缩后 context 用量按 compact boundary 重算（`getCurrentUsage` / `getLastAssistantMessageId`） |
+| `76b12a64` | `b2d7f049` | 重试次数/延迟环境变量按整数校验，替掉 `parseInt` 静默截断 |
+
+**为什么这三项对 fork 特别值钱**：
+
+- 技能预算：fork 默认模型 MiniMax-M3 是 **1M 上下文**，旧算法（窗口的 1% 按字符计）
+  算出 40000 字符预算 —— 上游设计意图的 5 倍。实测 146 个技能，清单从 **31243 字符
+  降到 15347**（主线程 16000 预算）/ **7850**（子代理 8000 预算），每轮省约 4000
+  token 的 `cache_creation`。
+  **预算值没有照搬上游的 8000 / 4000**：上游按 200k 窗口定的 8000，在 fork 的
+  146 个技能 + 1M 窗口下只剩 **28 字符/条**，把 `Triggers:` / `触发词` 整段砍掉
+  （67 条带触发词的技能里 24 条完全看不到标记），子代理那档 4000 更直接掉进
+  "只剩名字"分支（146 条全无描述）。调到 16000 / 8000 后主线程 **82 字符/条**、
+  看不到触发词的降到 16 条，子代理不再 names-only。
+  **TUI 验证**：问"帮我逆向 bun，从打包成单文件的 CLI 二进制里提取可读源码"，
+  模型直接调了 `Skill(extract-cli-bundle)` —— 该技能的触发词在 8000 预算下是被砍掉的。
+- 压缩后归零：fork 已有 `getMessagesAfterCompactBoundary`（`src/utils/messages.ts`
+  从 `messages/systemFactories.js` 导出）却没人调用，`/compact` 后状态栏仍显示压缩前
+  的 token 数。TUI 实测（debug log）：压缩前一个请求带 77546 token，压缩后首个请求
+  降到 12259，`cache read 43166 → 128 (drop 43038)`。
+- 环境变量校验：`OPENCC_MAX_RETRIES=1.5` 旧代码按 `parseInt` 静默变成 1 轮；
+  `OPENCC_RETRY_DELAY_MS=1.5` 变成 1ms 退避。改成只接受纯十进制非负整数。
+
+### 跳过（17 commits）
+
+| 上游 | 跳过原因 |
+|---|---|
+| `afa71563` / `50d40588` / `79ced712` / `86649c0c` | rebrand 到 Twigpine、改包名发 `@twigpine/openclaude`、搬站点 —— fork 用自己的品牌与发布通道 |
+| `88baafe3` / `864fdab6` | 发版 chore（0.32.0 / 0.33.0）—— fork 自己发版 |
+| `8c46032d` | aimlapi —— fork 无 `src/integrations/aimlapi/` |
+| `e736c282` | GMI Cloud —— 本质是又一个 OpenAI 兼容网关（`api.gmi-serving.com/v1`），fork 已有 23 个网关 + `custom.ts` 兜底；真增量只有"凭据与主机绑定"和 `/v1/models` 发现，而 fork 的 `providerFlag.ts` / `providerProfile.ts` 已被大幅简化，补丁需重写而非移植 |
+| `5bc160fb` | AnySearch 搜索后端 —— 要 `ANYSEARCH_API_KEY`（`isConfigured()` 恒 true，key 可选），与 fork 已有 tavily/jina/exa/linkup 同类。**留在待办**：fork 没有上游的 `exaFree` 免密层，AnySearch 会是第一个免密 JSON 搜索后端（`duckduckgo` 是抓 HTML 的降级档） |
+| `6e169489` | 模型发现 —— fork 走 legacy `discoverOpenAICompatibleModelOptions()`（`src/utils/model/openaiModelDiscovery.ts`），没有上游那套 descriptor discovery 机制（`loadDescriptorDiscoveryContext`）；上游顺带修的"discovery 不带自定义 auth 头"在 fork 也不成立（fork 推理路径自己都没实现 auth 头名） |
+| `fc3be25e` | `/sessions` 命令 —— 是新功能不是同步。**留在待办**：fork 只能列出恢复、不能删 transcript（`sessionPersistence.deleteSession` 删的是索引记录），上游补的是 transcript+sidecar 物理删除 + 进程内 tombstone（挡迟到的异步标题/摘要重写）+ 拒绝删当前会话。fork 的 `sessionStorage.ts` 与上游同源（6192 vs 6196 行，diff 101/105），补丁可打；i18n 三处不适用（fork 无 `src/i18n/`） |
+| `a0c5c7d0` | 其 8 行锁竞态修复在 `src/utils/settings/settingsFileTransaction.ts` —— **fork 无此文件**（fork 用 `src/utils/config.ts` 的 `saveCurrentProjectConfig`），无可移植对象；其余是 CodeQL CI 配置 |
+| `5a1fbe03` | 只改 2 个测试文件，依赖 `8ee936cf` 的 `siblingSkillHomes` |
+| `933019b6` | 测试 fixture 改 `crypto.randomUUID` 清 CodeQL 告警 —— 零风险零收益，可搭车 |
+| `0e9170fd` | 只取 `src/ink/hooks/use-input.ts` 部分（手写 `useEventCallback` → ref + `useLayoutEffect`，消输入热路径 stale-handler 竞态）。**必须跳过 `scripts/run-tests.ts`**：它用 `bun test --isolate`，而本仓库 AGENTS.md 记录 `--isolate` 会让套件在 `openclaudePaths.test.ts` 挂死、内存涨到 4.6GB |
+
+### `8ee936cf` 未移植部分的原因（值得单独记）
+
+上游那提交把技能目录模型改成：主目录 `~/.openclaude/skills`，`~/.agents/skills` 降级为
+sibling home（`src/skills/siblingSkillHomes.ts`，277 行新文件）。**fork 正好相反** ——
+`~/.agents/skills` 是主目录（`src/skills/loadSkillsDir.ts:784` 读
+`join(getUserAgentsDir(), 'skills')`），`.claude/skills` 反而不是。移植 = 先改 fork 的
+目录模型，属产品决策而非机械同步。同提交的 `skillChangeDetector.ts`（fork 328 行 vs
+上游 475 行）差距也全在 sibling 维度。
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → **0 errors**（注意 `src/utils/tokens.ts`、`src/utils/attachments.ts`
+  带 `@ts-nocheck`，tsc 不查这两个文件）
+- 相关单测 → **63 pass / 1 skip / 0 fail**（4 个文件）；另跑 10 个引用被改模块的
+  测试文件 → 64 pass / 2 skip / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2 → `dist/cli.mjs`
+- TUI 全流程（`agent-tui` 驱动 `node dist/cli.mjs --debug`）：4 工具（Bash/Read/Edit/Write）
+  + 4 斜杠命令（`/help` `/status` `/mcp` `/model`）+ 3-way 版本核对（splash / `/help` /
+  `/status` 三处均 0.30.2）+ 压缩后继续工作 → 全 PASS
+- debug log 扫描：54 条 ERROR/WARN 全在 A–H 已知分类内，无新异常类别。
+  `PROMPT CACHE BREAK` 在 10-18 的旧日志里已存在（预存现象，非本次引入）
+
+**红绿对照（避免"自洽测试"）**：在 `HEAD` 的 baseline worktree 上拷入同一批新测试，
+得到 5 处断言失败（`5abc`→5 而非 10、延迟 `1.5`→1ms 而非 500ms、压缩后仍返回压缩前
+的 90k usage、状态栏仍返回旧 uuid）；A1 的 baseline 预算实测 40000 字符。改动后全绿。
+
+---
+
+## 2026-10-21 第二轮：对标真实 Claude Code 重做技能清单机制
+
+第一轮只移植了 openclaude fork 的简化版（均匀截断 + 硬上限）。逆向 `~/source/claude-2.1.302`
+的 bundle.js 后发现，**真实 Claude Code 2.1.287 起就是另一套机制**，而 openclaude fork 把
+它整个丢了、自己重写成了均匀截断。本轮按真实 Claude Code 重做。
+
+### 真实 Claude Code 的机制（从 bundle.js 解出）
+
+```js
+var Xfr = 0.01, Sfn = 4, Qfr = 200000, Jfr = 1536
+function SPt() { return ut().skillListingMaxDescChars ?? Jfr }      // 每条上限,用户设置
+function Zfr() { return ut().skillListingBudgetFraction ?? Xfr }     // 预算比例,用户设置
+function hlt(e, n = Sfn) {                                          // 预算,无硬上限
+  let r = i2(process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET); if (r) return r
+  return Math.max(1, Math.floor((e ?? Qfr) * n * Zfr()))
+}
+function EPt(e) {                                                   // 优先级 = 使用频次 × 7 天半衰期
+  let n = skillUsage[e]; if (!n) return 0
+  return n.usageCount * Math.max(Math.pow(0.5, (Date.now()-n.lastUsedAt)/86400000/7), 0.1)
+}
+```
+
+截断是**按优先级贪心**，不是一刀切：bundled 技能与被标记 `name-only` 的技能占位固定，
+其余按 `EPt` 降序依次尝试保留完整描述，放不下的降级为**只留名字**。另有
+`skillOverrides` 设置（`on` / `name-only` / `user-invocable-only` / `off`）和超预算告警。
+
+### 本轮改动
+
+| 文件 | 内容 |
+|---|---|
+| `src/tools/SkillTool/prompt.ts` | 预算 = 窗口 × 每模型字符/token × 比例（**去掉硬上限**）；每条上限 1536（可调）；按使用频次贪心截断，超预算打 warn 日志 |
+| `src/utils/settings/types.ts` | 新增三个设置：`skillListingBudgetFraction`、`skillListingMaxDescChars`、`skillOverrides` |
+| `src/utils/attachments.ts` | 清单按模型取 chars/token；`user-invocable-only` / `off` 的技能不进模型清单 |
+| `src/utils/suggestions/skillUsageTracking.ts` | 抽出 `getSkillUsageScores()` 批量打分（与 `getSkillUsageScore` 同一公式） |
+| `src/utils/telemetry/skillLoadedEvent.ts` + `src/main.tsx` | 遥测报的 `skill_budget` 跟实际预算一致 |
+
+**关键巧合**：fork 的 `getSkillUsageScore`（`src/utils/suggestions/skillUsageTracking.ts`）
+公式与真实 Claude Code 的 `EPt` **逐字一致**（使用次数 × 7 天半衰期，衰减下限 0.1），
+数据源 `settings.skillUsage` 的形状也一样。fork 之前只把它用在命令建议排序上，
+本轮接到清单预算上，优先级分配几乎零成本。
+
+### 实测对比（fork 真实 146 个技能，MiniMax-M3 / 1M 窗口）
+
+| | 第一轮（fork 版，16000 硬上限 + 均匀截断） | 本轮（Claude 版） |
+|---|---|---|
+| 预算 | 16,000 | 30,000（1M × 3 chars/token × 1%） |
+| 清单字符 | 15,347 | 29,204 |
+| 有完整描述的技能 | 0（146 个全被砍到 82 字） | **95** |
+| 只留名字的技能 | 0 | 54 |
+| 触发词完整可见的技能 | 0 | **42** |
+| 每轮 token 成本 | ≈3.8k | ≈9.7k |
+
+代价是每轮多约 6k token（清单在首轮请求里，后续命中缓存），换来 42 个技能的触发词
+完整可见 —— 之前是 0 个。`skillListingBudgetFraction` 是用户可调的旋钮（调小即降成本）。
+
+### 与真实 Claude Code 的两处已知差异
+
+- **chars/token**：真实 Claude Code 用一张 Anthropic 自有模型表（`claude-*` → 4，其余 → 3）。
+  fork 用 `/^claude[-.]/` 前缀判定，够用但不如白名单严谨。
+- **状态机**：真实 Claude Code 的 `skillOverrides` 在 user / project / policy / flag /
+  plugin / MCP / syncedSkills 多层作用域里按"更严格者优先"解析。fork 实现了
+  user + project 两层，同样按"更严格者优先"合并；policy/flag/plugin 层没有对应概念。
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → 0 errors
+- `src/tools/SkillTool/prompt.test.ts` 重写为 9 例（预算比例 / 每模型 chars-per-token /
+  环境变量覆盖 / 优先级贪心 / name-only 覆盖 / 每条上限 / bundled 豁免）→ 全绿
+- 相关测试 12 个文件 → 84 pass / 2 skip / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2
+- TUI 实测：问"有哪些跟逆向、解包单文件二进制相关的 skill"，模型的搜索模式直接用了
+  `逆向|反混淆|解包|single-file binary|SFX` —— 这些词只存在于 `extract-cli-bundle` 的
+  描述里，说明完整描述确实进了模型上下文
+
+---
+
+## 2026-10-21 第三轮：技能使用计数改存 settings.json（与真实 Claude Code 统一存储）
+
+第二轮把清单预算接到了"使用频次优先级"上，但 fork 的计数存在**旧全局配置**
+`~/.claude.json`，而真实 Claude Code 存在 `~/.claude/settings.json` 的 `skillUsage` 键。
+同一台机器上同时跑两边时各记各的：fork 的排序表从空开始，真实客户端的历史躺在
+fork 从不读的文件里 —— 上一轮"优先级贪心"拿到的信号是残缺的。
+
+### 改动清单
+
+| 文件 | 内容 |
+|---|---|
+| `src/utils/settings/types.ts` | `SettingsSchema` 新增 `skillUsage`（`usageCount` / `lastUsedAt`） |
+| `src/utils/suggestions/skillUsageTracking.ts` | 读：settings 优先、旧配置只补缺；写：只写 `userSettings`，写失败才回落旧配置 |
+| `src/migrations/migrateSkillUsageToSettings.ts`（新增） | 迁移：两边都有的技能计数相加、`lastUsedAt` 取较新者；写入成功后才删旧副本 |
+| `src/migrations/migrateSkillUsageToSettings.test.ts`（新增） | `mergeSkillUsage` 4 例 |
+| `src/main.tsx` | `CURRENT_MIGRATION_VERSION` 11 → 12，挂上迁移 |
+| `src/utils/config.ts` | 旧配置里的 `skillUsage` 标注为 legacy 位置 |
+
+### 实测（迁移跑在真实配置上）
+
+- 迁移前 `~/.claude.json` 有 `skillUsage`，`~/.claude/settings.json` 无
+- 迁移后 `~/.claude.json` 的 `skillUsage` 已删除，`~/.claude/settings.json` 由 27 条变
+  28 条（27 条原样保留 + 新增 `extract-cli-bundle`）
+- 迁移后 22 个技能带使用记录，优先级前六：ego-browser 4.95、release-local 1.80、
+  update-opencc-web-by-zip 1.35、fireworks-tech-graph 1.06、extract-cli-bundle 1.00、
+  lan-agent-debug-apk-lan-share 0.86
+- 清单 29,031 字符，97 个技能保留完整描述 / 52 个只留名字
+- 迁移前已备份到 `/tmp/skillusage-backup-1792598700`
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → 0 errors
+- `bun test src/migrations/migrateSkillUsageToSettings.test.ts src/utils/suggestions/ src/tools/SkillTool/`
+  → 48 pass / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2
+- TUI 实测：`Bash(echo UNIFIED_SKILLUSAGE_OK)` → `UNIFIED_SKILLUSAGE_OK`；debug 日志
+  "Sending 149 skills via attachment (initial, 149 total sent)"

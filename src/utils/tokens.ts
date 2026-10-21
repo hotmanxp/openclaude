@@ -3,7 +3,11 @@ import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messag
 import type { Attachment } from './attachments.js'
 import { roughTokenCountEstimation, roughTokenCountEstimationForMessages } from '../services/tokenEstimation.js'
 import type { AssistantMessage, Message } from '../types/message.js'
-import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
+import {
+  getMessagesAfterCompactBoundary,
+  SYNTHETIC_MESSAGES,
+  SYNTHETIC_MODEL,
+} from './messages.js'
 import { jsonStringify } from './slowOperations.js'
 import { IncrementalTokenCounter } from './incrementalTokenCounter.js'
 
@@ -162,6 +166,9 @@ export function getCurrentUsage(messages: Message[]): {
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
 } | null {
+  // Scrollback retains pre-compact messages, but current usage must describe
+  // only the context sent to the model.
+  messages = getMessagesAfterCompactBoundary(messages)
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     const usage = message ? getTokenUsage(message) : undefined
