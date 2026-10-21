@@ -147,6 +147,26 @@ describe('retry configuration', () => {
     expect(getDefaultMaxRetries()).toBe(10)
   })
 
+  test('falls back to default retry attempts for malformed values', async () => {
+    // parseInt would silently truncate "2.5" to 2 and "5abc" to 5, so the
+    // user would get fewer retries than they configured.
+    const { getDefaultMaxRetries } = await importFreshWithRetryModule()
+    const malformedValues = [
+      'nope',
+      '   ',
+      '5abc',
+      '2.5',
+      '-1',
+      'Infinity',
+      '1e3',
+      '9'.repeat(400),
+    ]
+    for (const value of malformedValues) {
+      process.env.OPENCC_MAX_RETRIES = value
+      expect(getDefaultMaxRetries()).toBe(10)
+    }
+  })
+
   test('caps retry attempts to a bounded value', async () => {
     process.env.OPENCC_MAX_RETRIES = '1000'
     const { getDefaultMaxRetries } = await importFreshWithRetryModule()
@@ -166,6 +186,13 @@ describe('retry configuration', () => {
 
   test('falls back to default retry delay for invalid values', async () => {
     process.env.OPENCC_RETRY_DELAY_MS = '-1'
+    const { getDefaultRetryDelayMs } = await importFreshWithRetryModule()
+    expect(getDefaultRetryDelayMs()).toBe(500)
+  })
+
+  test('falls back to default retry delay for non-integer values', async () => {
+    // parseInt("1.5") is 1 — a 1ms retry delay instead of the default.
+    process.env.OPENCC_RETRY_DELAY_MS = '1.5'
     const { getDefaultRetryDelayMs } = await importFreshWithRetryModule()
     expect(getDefaultRetryDelayMs()).toBe(500)
   })
