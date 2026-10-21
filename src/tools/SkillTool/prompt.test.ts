@@ -5,6 +5,7 @@ import {
   formatCommandsWithinBudget,
   getCharBudget,
   MAX_CHAR_BUDGET,
+  SUBAGENT_SKILL_LISTING_CHAR_BUDGET,
 } from './prompt.js'
 
 const originalBudgetOverride = process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET
@@ -52,7 +53,8 @@ describe('SkillTool listing budget', () => {
 
   test('does not allow huge context windows to keep every long description', () => {
     const longDescription = 'x'.repeat(220)
-    const skills = Array.from({ length: 60 }, (_, i) =>
+    // Sized so the set outgrows the 16_000 budget: the cap has to bite.
+    const skills = Array.from({ length: 100 }, (_, i) =>
       createSkill(`skill-${i}`, longDescription),
     )
 
@@ -75,5 +77,29 @@ describe('SkillTool listing budget', () => {
     expect(compactContent.length).toBeLessThan(defaultContent.length)
     expect(compactContent).toContain('- worker-skill-0')
     expect(compactContent).toContain('- worker-skill-23')
+  })
+
+  test('budgets match the fork sizing for a 1M-context model', () => {
+    // The fork runs a 1M-context model and ships ~146 user skills. Upstream's
+    // 8_000 left 28 characters per description, which cut the trigger
+    // keywords off most entries; 16_000 keeps them visible.
+    expect(MAX_CHAR_BUDGET).toBe(16_000)
+    expect(SUBAGENT_SKILL_LISTING_CHAR_BUDGET).toBe(8_000)
+  })
+
+  test('a subagent listing keeps descriptions instead of collapsing to names', () => {
+    // With upstream's 4_000 the 146-skill set fell into the names-only
+    // branch: a subagent could see that a skill existed but not what it did.
+    const skills = Array.from({ length: 146 }, (_, i) =>
+      createSkill(`skill-${i}`, `Purpose ${i}. ${'x'.repeat(200)}`),
+    )
+
+    const content = formatCommandsWithinBudget(skills, 1_000_000, {
+      maxCharBudget: SUBAGENT_SKILL_LISTING_CHAR_BUDGET,
+    })
+
+    expect(content.split('\n').every(line => line.includes(': '))).toBe(true)
+    expect(content).toContain('- skill-0: Purpose 0.')
+    expect(content).toContain('- skill-145: Purpose 145.')
   })
 })

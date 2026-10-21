@@ -21,9 +21,15 @@ import { logError } from '../../utils/log.js'
 // Skill listing gets 1% of the context window (in characters)
 export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01
 export const CHARS_PER_TOKEN = 4
-export const DEFAULT_CHAR_BUDGET = 8_000 // Fallback: 1% of 200k × 4
+// Upstream picks 8_000 (1% of a 200k window × 4) and caps there. This fork
+// runs a 1M-context model and ships ~146 user skills, and 8_000 leaves only
+// 28 characters per description — enough for the name to survive, not enough
+// for the trigger keywords that decide whether a skill is picked at all.
+// 16_000 keeps those visible; the listing is still ~5x smaller than the
+// uncapped 1%-of-1M figure.
+export const DEFAULT_CHAR_BUDGET = 16_000
 export const MAX_CHAR_BUDGET = DEFAULT_CHAR_BUDGET
-export const SUBAGENT_SKILL_LISTING_CHAR_BUDGET = 4_000
+export const SUBAGENT_SKILL_LISTING_CHAR_BUDGET = 8_000
 
 // Per-entry hard cap. The listing is for discovery only — the Skill tool loads
 // full content on invoke, so verbose whenToUse strings waste turn-1 cache_creation
