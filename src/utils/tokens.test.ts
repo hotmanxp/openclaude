@@ -6,6 +6,7 @@ import {
   messageTokenCountFromLastAPIResponse,
 } from './tokens.js'
 import { IncrementalTokenCounter } from './incrementalTokenCounter.js'
+import { createCompactBoundaryMessage } from './messages/systemFactories.js'
 
 interface FakeUsage {
   input_tokens: number
@@ -108,6 +109,47 @@ describe('tokens - sparse usage regression', () => {
       makeAssistantMsg({ input_tokens: 7 }),
     ])
     expect(result).toBe(0)
+  })
+})
+
+describe('tokens - compact boundary', () => {
+  it('does not report pre-compact usage before the next assistant response', () => {
+    // The REPL keeps pre-compact messages for scrollback, so scanning the
+    // whole array would surface the archived 90k usage right after a
+    // compaction — the status line would show a context window that is no
+    // longer in play.
+    const archived = makeAssistantMsg({ input_tokens: 90000, output_tokens: 500 })
+    const boundary = createCompactBoundaryMessage('manual', 90500) as never
+
+    expect(getCurrentUsage([archived, boundary])).toBeNull()
+  })
+
+  it('ignores pre-compact usage while the active context has none', () => {
+    const archived = makeAssistantMsg({ input_tokens: 90000, output_tokens: 500 })
+    const boundary = createCompactBoundaryMessage('manual', 90500) as never
+    const summary = {
+      type: 'user',
+      message: { content: 'Compacted conversation summary.' },
+    } as never
+
+    expect(getCurrentUsage([archived, boundary, summary])).toBeNull()
+  })
+
+  it('reports usage from the active context after compaction', () => {
+    const archived = makeAssistantMsg({ input_tokens: 90000, output_tokens: 500 })
+    const boundary = createCompactBoundaryMessage('manual', 90500) as never
+    const reply = makeAssistantMsg({
+      input_tokens: 800,
+      output_tokens: 30,
+      cache_read_input_tokens: 200,
+    })
+
+    expect(getCurrentUsage([archived, boundary, reply])).toEqual({
+      input_tokens: 800,
+      output_tokens: 30,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 200,
+    })
   })
 })
 
