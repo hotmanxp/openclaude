@@ -781,7 +781,7 @@ Window: `upstream/main` 2026-10-11 → 2026-10-21（20 commits，`5a1fbe03` 为�
 
 | 上游 | 本地 | 内容 |
 |---|---|---|
-| `8ee936cf`（仅预算部分） | `5dd727b6` | 技能清单字符预算硬上限：`MAX_CHAR_BUDGET=8000` + 子代理 `SUBAGENT_SKILL_LISTING_CHAR_BUDGET=4000` |
+| `8ee936cf`（仅预算部分） | `5dd727b6` + `9ea644f6` | 技能清单字符预算硬上限。`5dd727b6` 先照上游取 `MAX_CHAR_BUDGET=8000` / 子代理 4000，`9ea644f6` 按 fork 实测调到 **16000 / 8000**（见下） |
 | `fc826031` | `03ed1ffe` | 完整压缩后 context 用量按 compact boundary 重算（`getCurrentUsage` / `getLastAssistantMessageId`） |
 | `76b12a64` | `b2d7f049` | 重试次数/延迟环境变量按整数校验，替掉 `parseInt` 静默截断 |
 
@@ -789,7 +789,15 @@ Window: `upstream/main` 2026-10-11 → 2026-10-21（20 commits，`5a1fbe03` 为�
 
 - 技能预算：fork 默认模型 MiniMax-M3 是 **1M 上下文**，旧算法（窗口的 1% 按字符计）
   算出 40000 字符预算 —— 上游设计意图的 5 倍。实测 146 个技能，清单从 **31243 字符
-  降到 7850**，每轮省约 5848 token 的 `cache_creation`；子代理清单 3605 字符。
+  降到 15347**（主线程 16000 预算）/ **7850**（子代理 8000 预算），每轮省约 4000
+  token 的 `cache_creation`。
+  **预算值没有照搬上游的 8000 / 4000**：上游按 200k 窗口定的 8000，在 fork 的
+  146 个技能 + 1M 窗口下只剩 **28 字符/条**，把 `Triggers:` / `触发词` 整段砍掉
+  （67 条带触发词的技能里 24 条完全看不到标记），子代理那档 4000 更直接掉进
+  "只剩名字"分支（146 条全无描述）。调到 16000 / 8000 后主线程 **82 字符/条**、
+  看不到触发词的降到 16 条，子代理不再 names-only。
+  **TUI 验证**：问"帮我逆向 bun，从打包成单文件的 CLI 二进制里提取可读源码"，
+  模型直接调了 `Skill(extract-cli-bundle)` —— 该技能的触发词在 8000 预算下是被砍掉的。
 - 压缩后归零：fork 已有 `getMessagesAfterCompactBoundary`（`src/utils/messages.ts`
   从 `messages/systemFactories.js` 导出）却没人调用，`/compact` 后状态栏仍显示压缩前
   的 token 数。TUI 实测（debug log）：压缩前一个请求带 77546 token，压缩后首个请求
