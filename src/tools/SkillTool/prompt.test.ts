@@ -1,16 +1,26 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { Command } from '../../types/command.js'
+import { saveGlobalConfig } from '../../utils/config.js'
 import {
   formatCommandsWithinBudget,
   getCharBudget,
-  MAX_CHAR_BUDGET,
-  SUBAGENT_SKILL_LISTING_CHAR_BUDGET,
+  getCharsPerToken,
+  setSkillListingLimitsForTesting,
+  type SkillListingState,
 } from './prompt.js'
 
 const originalBudgetOverride = process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET
 
+beforeEach(() => {
+  setSkillListingLimitsForTesting({})
+})
+
 afterEach(() => {
+  setSkillListingLimitsForTesting({
+    budgetFraction: undefined,
+    maxDescChars: undefined,
+  })
   if (originalBudgetOverride === undefined) {
     delete process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET
   } else {
@@ -33,73 +43,112 @@ function createSkill(name: string, description: string): Command {
   } as Command
 }
 
+function overridesMap(entries: Record<string, SkillListingState>) {
+  return new Map(Object.entries(entries))
+}
+
 describe('SkillTool listing budget', () => {
-  test('caps provider-derived budget for very large context windows', () => {
-    // A 1M-token model would otherwise spend 40k characters on the listing
-    // alone (1% of the window in characters), which is 5x the intended cap.
-    expect(getCharBudget(1_000_000)).toBe(MAX_CHAR_BUDGET)
-    expect(getCharBudget(2_000_000)).toBe(MAX_CHAR_BUDGET)
+  test('budgets 1% of the context window, no hard cap', () => {
+    expect(getCharBudget(200_000)).toBe(8_000)
+    expect(getCharBudget(1_000_000)).toBe(40_000)
+    // A 1M window is 5x the 200k one — the cap that used to flatten them is
+    // gone, the fraction setting is the knob instead.
+    expect(getCharBudget(1_000_000)).toBeGreaterThan(getCharBudget(200_000))
   })
 
-  test('keeps smaller context windows below the hard cap proportional', () => {
-    expect(getCharBudget(50_000)).toBe(2_000)
+  test('scales with the characters-per-token of the active model', () => {
+    expect(getCharsPerToken('claude-sonnet-4-6')).toBe(4)
+    expect(getCharsPerToken('MiniMax-M3')).toBe(3)
+    expect(getCharBudget(1_000_000, { charsPerToken: 3 })).toBe(30_000)
   })
 
-  test('preserves explicit budget override for local testing', () => {
+  test('honours the budget fraction setting', () => {
+    setSkillListingLimitsForTesting({ budgetFraction: 0.005 })
+    expect(getCharBudget(1_000_000)).toBe(20_000)
+  })
+
+  test('preserves the explicit env override', () => {
     process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET = '12000'
-
     expect(getCharBudget(2_000_000)).toBe(12_000)
   })
 
-  test('does not allow huge context windows to keep every long description', () => {
-    const longDescription = 'x'.repeat(220)
-    // Sized so the set outgrows the 16_000 budget: the cap has to bite.
-    const skills = Array.from({ length: 100 }, (_, i) =>
-      createSkill(`skill-${i}`, longDescription),
+  test('keeps every description when the listing fits', () => {
+    const skills = [
+      createSkill('alpha', 'Does the first thing.'),
+      createSkill('beta', 'Does the second thing.'),
+    ]
+
+    const content = formatCommandsWithinBudget(skills, 200_000)
+
+    expect(content).toBe(
+      '- alpha: Does the first thing.\n- beta: Does the second thing.',
     )
-
-    const content = formatCommandsWithinBudget(skills, 2_000_000)
-
-    expect(content).toContain('- skill-0')
-    expect(content).not.toContain(longDescription)
   })
+})
 
-  test('supports lower listing caps while preserving skill names', () => {
-    const skills = Array.from({ length: 24 }, (_, i) =>
-      createSkill(`worker-skill-${i}`, `worker details ${'x'.repeat(120)}`),
+describe('SkillTool listing truncation', () => {
+  test('spends the budget on the most used skills, not on all of them', () => {
+    // 40 skills × ~200 chars of description overflows a small budget.
+    const skills = Array.from({ length: 40 }, (_, i) =>
+      createSkill(`skill-${i}`, `Purpose ${i}. ${'detail '.repeat(25)}`),
     )
+    // "skill-0" is the one the user actually invokes.
+    saveGlobalConfig(current => ({
+      ...current,
+      skillUsage: {
+        'skill-0': { usageCount: 50, lastUsedAt: Date.now() },
+      },
+    }))
 
-    const defaultContent = formatCommandsWithinBudget(skills, 200_000)
-    const compactContent = formatCommandsWithinBudget(skills, 200_000, {
-      maxCharBudget: 1_000,
+    const content = formatCommandsWithinBudget(skills, 20_000, {
+      charsPerToken: 4,
     })
 
-    expect(compactContent.length).toBeLessThan(defaultContent.length)
-    expect(compactContent).toContain('- worker-skill-0')
-    expect(compactContent).toContain('- worker-skill-23')
-  })
-
-  test('budgets match the fork sizing for a 1M-context model', () => {
-    // The fork runs a 1M-context model and ships ~146 user skills. Upstream's
-    // 8_000 left 28 characters per description, which cut the trigger
-    // keywords off most entries; 16_000 keeps them visible.
-    expect(MAX_CHAR_BUDGET).toBe(16_000)
-    expect(SUBAGENT_SKILL_LISTING_CHAR_BUDGET).toBe(8_000)
-  })
-
-  test('a subagent listing keeps descriptions instead of collapsing to names', () => {
-    // With upstream's 4_000 the 146-skill set fell into the names-only
-    // branch: a subagent could see that a skill existed but not what it did.
-    const skills = Array.from({ length: 146 }, (_, i) =>
-      createSkill(`skill-${i}`, `Purpose ${i}. ${'x'.repeat(200)}`),
-    )
-
-    const content = formatCommandsWithinBudget(skills, 1_000_000, {
-      maxCharBudget: SUBAGENT_SKILL_LISTING_CHAR_BUDGET,
-    })
-
-    expect(content.split('\n').every(line => line.includes(': '))).toBe(true)
     expect(content).toContain('- skill-0: Purpose 0.')
-    expect(content).toContain('- skill-145: Purpose 145.')
+    // The rarely used skills lose their description rather than all of them
+    // being trimmed to the same stub.
+    expect(content).toContain('\n- skill-39')
+    expect(content).not.toContain('- skill-39: Purpose 39.')
+  })
+
+  test('a name-only override drops just that description', () => {
+    const skills = [
+      createSkill('alpha', 'Kept in full.'),
+      createSkill('beta', 'Dropped to the name.'),
+    ]
+
+    const content = formatCommandsWithinBudget(skills, 200_000, {
+      overrides: overridesMap({ beta: 'name-only' }),
+    })
+
+    expect(content).toContain('- alpha: Kept in full.')
+    expect(content).toContain('\n- beta')
+    expect(content).not.toContain('- beta: Dropped to the name.')
+  })
+
+  test('caps a single description at the configured length', () => {
+    setSkillListingLimitsForTesting({ maxDescChars: 40 })
+    const skills = [createSkill('alpha', 'x'.repeat(200))]
+
+    const content = formatCommandsWithinBudget(skills, 200_000)
+
+    expect(content).toBe(`- alpha: ${'x'.repeat(39)}…`)
+  })
+
+  test('keeps bundled skills in full even when over budget', () => {
+    const bundled = {
+      ...createSkill('bundled-skill', 'Bundled description.'),
+      source: 'bundled',
+    } as Command
+    const skills = [
+      bundled,
+      ...Array.from({ length: 40 }, (_, i) =>
+        createSkill(`skill-${i}`, `Purpose ${i}. ${'detail '.repeat(25)}`),
+      ),
+    ]
+
+    const content = formatCommandsWithinBudget(skills, 2_000)
+
+    expect(content).toContain('- bundled-skill: Bundled description.')
   })
 })

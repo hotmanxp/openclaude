@@ -35,6 +35,20 @@ export function recordSkillUsage(skillName: string): void {
 }
 
 /**
+ * Scores one usage entry: frequency weighted by a 7-day half-life decay.
+ * The minimum recency factor of 0.1 avoids completely dropping old but
+ * heavily used skills.
+ */
+function scoreUsage(
+  usage: { usageCount: number; lastUsedAt: number } | undefined,
+): number {
+  if (!usage) return 0
+  const daysSinceUse = (Date.now() - usage.lastUsedAt) / (1000 * 60 * 60 * 24)
+  const recencyFactor = Math.pow(0.5, daysSinceUse / 7)
+  return usage.usageCount * Math.max(recencyFactor, 0.1)
+}
+
+/**
  * Calculates a usage score for a skill based on frequency and recency.
  * Higher scores indicate more frequently and recently used skills.
  *
@@ -42,14 +56,20 @@ export function recordSkillUsage(skillName: string): void {
  * meaning usage from 7 days ago is worth half as much as usage today.
  */
 export function getSkillUsageScore(skillName: string): number {
-  const config = getGlobalConfig()
-  const usage = config.skillUsage?.[skillName]
-  if (!usage) return 0
+  return scoreUsage(getGlobalConfig().skillUsage?.[skillName])
+}
 
-  // Recency decay: halve score every 7 days
-  const daysSinceUse = (Date.now() - usage.lastUsedAt) / (1000 * 60 * 60 * 24)
-  const recencyFactor = Math.pow(0.5, daysSinceUse / 7)
-
-  // Minimum recency factor of 0.1 to avoid completely dropping old but heavily used skills
-  return usage.usageCount * Math.max(recencyFactor, 0.1)
+/**
+ * Batch variant of getSkillUsageScore — reads the usage map once and scores
+ * every name. Used by the skill listing, which ranks all skills at once.
+ */
+export function getSkillUsageScores(
+  skillNames: readonly string[],
+): Map<string, number> {
+  const usage = getGlobalConfig().skillUsage ?? {}
+  const scores = new Map<string, number>()
+  for (const name of skillNames) {
+    scores.set(name, scoreUsage(usage[name]))
+  }
+  return scores
 }

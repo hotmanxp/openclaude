@@ -91,7 +91,9 @@ import uniqBy from 'lodash-es/uniqBy.js'
 import { getProjectRoot } from '../bootstrap/state.js'
 import {
   formatCommandsWithinBudget,
-  SUBAGENT_SKILL_LISTING_CHAR_BUDGET,
+  getCharsPerToken,
+  getSkillListingOverrides,
+  isSkillHiddenFromModel,
 } from '../tools/SkillTool/prompt.js'
 import { getContextWindowForModel } from './context.js'
 import type { DiscoverySignal } from '../services/skillSearch/signals.js'
@@ -2984,6 +2986,13 @@ async function getSkillListingAttachments(
     allCommands = filterToBundledAndMcp(allCommands)
   }
 
+  // Skills the user marked "user-invocable-only" or "off" stay out of the
+  // listing the model sees; the user can still invoke them by name.
+  const skillOverrides = getSkillListingOverrides()
+  allCommands = allCommands.filter(
+    cmd => !isSkillHiddenFromModel(skillOverrides.get(cmd.name) ?? 'on'),
+  )
+
   const agentKey = toolUseContext.agentId ?? ''
   let sent = sentSkillNames.get(agentKey)
   if (!sent) {
@@ -3026,14 +3035,13 @@ async function getSkillListingAttachments(
     toolUseContext.options.mainLoopModel,
     getSdkBetas(),
   )
-  // Subagents can each receive their own initial listing. Keep those
-  // discoverability hints compact; the Skill tool still loads full content.
   const content = formatCommandsWithinBudget(
     newSkills,
     contextWindowTokens,
-    toolUseContext.agentId
-      ? { maxCharBudget: SUBAGENT_SKILL_LISTING_CHAR_BUDGET }
-      : undefined,
+    {
+      charsPerToken: getCharsPerToken(toolUseContext.options.mainLoopModel),
+      overrides: skillOverrides,
+    },
   )
 
   return [
