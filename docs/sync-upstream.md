@@ -768,3 +768,73 @@ Scope: 1 commit surfaced after `origin/main-opencc` advanced to `bd299563` (bg-a
 - `git diff --stat` post-apply: empty (3way silent noop)
 - `git diff --cached --stat`: empty
 - `bun run typecheck` → **0 errors**
+
+---
+
+## 2026-10-21 sync（上游近 10 天窗口，3 个提交落地）
+
+Window: `upstream/main` 2026-10-11 → 2026-10-21（20 commits，`5a1fbe03` 为上游 tip）。
+**这 20 个提交 fork 一个都还没同步** —— 逐文件做了 pre/post/diverged 三方比对确认，
+不是 subject 去重漏判。按 fork 的 provider 策略与架构差异分流后，落地 3 项、跳过 17 项。
+
+### 落地（3 commits）
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `8ee936cf`（仅预算部分） | `5dd727b6` | 技能清单字符预算硬上限：`MAX_CHAR_BUDGET=8000` + 子代理 `SUBAGENT_SKILL_LISTING_CHAR_BUDGET=4000` |
+| `fc826031` | `03ed1ffe` | 完整压缩后 context 用量按 compact boundary 重算（`getCurrentUsage` / `getLastAssistantMessageId`） |
+| `76b12a64` | `b2d7f049` | 重试次数/延迟环境变量按整数校验，替掉 `parseInt` 静默截断 |
+
+**为什么这三项对 fork 特别值钱**：
+
+- 技能预算：fork 默认模型 MiniMax-M3 是 **1M 上下文**，旧算法（窗口的 1% 按字符计）
+  算出 40000 字符预算 —— 上游设计意图的 5 倍。实测 146 个技能，清单从 **31243 字符
+  降到 7850**，每轮省约 5848 token 的 `cache_creation`；子代理清单 3605 字符。
+- 压缩后归零：fork 已有 `getMessagesAfterCompactBoundary`（`src/utils/messages.ts`
+  从 `messages/systemFactories.js` 导出）却没人调用，`/compact` 后状态栏仍显示压缩前
+  的 token 数。TUI 实测（debug log）：压缩前一个请求带 77546 token，压缩后首个请求
+  降到 12259，`cache read 43166 → 128 (drop 43038)`。
+- 环境变量校验：`OPENCC_MAX_RETRIES=1.5` 旧代码按 `parseInt` 静默变成 1 轮；
+  `OPENCC_RETRY_DELAY_MS=1.5` 变成 1ms 退避。改成只接受纯十进制非负整数。
+
+### 跳过（17 commits）
+
+| 上游 | 跳过原因 |
+|---|---|
+| `afa71563` / `50d40588` / `79ced712` / `86649c0c` | rebrand 到 Twigpine、改包名发 `@twigpine/openclaude`、搬站点 —— fork 用自己的品牌与发布通道 |
+| `88baafe3` / `864fdab6` | 发版 chore（0.32.0 / 0.33.0）—— fork 自己发版 |
+| `8c46032d` | aimlapi —— fork 无 `src/integrations/aimlapi/` |
+| `e736c282` | GMI Cloud —— 本质是又一个 OpenAI 兼容网关（`api.gmi-serving.com/v1`），fork 已有 23 个网关 + `custom.ts` 兜底；真增量只有"凭据与主机绑定"和 `/v1/models` 发现，而 fork 的 `providerFlag.ts` / `providerProfile.ts` 已被大幅简化，补丁需重写而非移植 |
+| `5bc160fb` | AnySearch 搜索后端 —— 要 `ANYSEARCH_API_KEY`（`isConfigured()` 恒 true，key 可选），与 fork 已有 tavily/jina/exa/linkup 同类。**留在待办**：fork 没有上游的 `exaFree` 免密层，AnySearch 会是第一个免密 JSON 搜索后端（`duckduckgo` 是抓 HTML 的降级档） |
+| `6e169489` | 模型发现 —— fork 走 legacy `discoverOpenAICompatibleModelOptions()`（`src/utils/model/openaiModelDiscovery.ts`），没有上游那套 descriptor discovery 机制（`loadDescriptorDiscoveryContext`）；上游顺带修的"discovery 不带自定义 auth 头"在 fork 也不成立（fork 推理路径自己都没实现 auth 头名） |
+| `fc3be25e` | `/sessions` 命令 —— 是新功能不是同步。**留在待办**：fork 只能列出恢复、不能删 transcript（`sessionPersistence.deleteSession` 删的是索引记录），上游补的是 transcript+sidecar 物理删除 + 进程内 tombstone（挡迟到的异步标题/摘要重写）+ 拒绝删当前会话。fork 的 `sessionStorage.ts` 与上游同源（6192 vs 6196 行，diff 101/105），补丁可打；i18n 三处不适用（fork 无 `src/i18n/`） |
+| `a0c5c7d0` | 其 8 行锁竞态修复在 `src/utils/settings/settingsFileTransaction.ts` —— **fork 无此文件**（fork 用 `src/utils/config.ts` 的 `saveCurrentProjectConfig`），无可移植对象；其余是 CodeQL CI 配置 |
+| `5a1fbe03` | 只改 2 个测试文件，依赖 `8ee936cf` 的 `siblingSkillHomes` |
+| `933019b6` | 测试 fixture 改 `crypto.randomUUID` 清 CodeQL 告警 —— 零风险零收益，可搭车 |
+| `0e9170fd` | 只取 `src/ink/hooks/use-input.ts` 部分（手写 `useEventCallback` → ref + `useLayoutEffect`，消输入热路径 stale-handler 竞态）。**必须跳过 `scripts/run-tests.ts`**：它用 `bun test --isolate`，而本仓库 AGENTS.md 记录 `--isolate` 会让套件在 `openclaudePaths.test.ts` 挂死、内存涨到 4.6GB |
+
+### `8ee936cf` 未移植部分的原因（值得单独记）
+
+上游那提交把技能目录模型改成：主目录 `~/.openclaude/skills`，`~/.agents/skills` 降级为
+sibling home（`src/skills/siblingSkillHomes.ts`，277 行新文件）。**fork 正好相反** ——
+`~/.agents/skills` 是主目录（`src/skills/loadSkillsDir.ts:784` 读
+`join(getUserAgentsDir(), 'skills')`），`.claude/skills` 反而不是。移植 = 先改 fork 的
+目录模型，属产品决策而非机械同步。同提交的 `skillChangeDetector.ts`（fork 328 行 vs
+上游 475 行）差距也全在 sibling 维度。
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → **0 errors**（注意 `src/utils/tokens.ts`、`src/utils/attachments.ts`
+  带 `@ts-nocheck`，tsc 不查这两个文件）
+- 相关单测 → **63 pass / 1 skip / 0 fail**（4 个文件）；另跑 10 个引用被改模块的
+  测试文件 → 64 pass / 2 skip / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2 → `dist/cli.mjs`
+- TUI 全流程（`agent-tui` 驱动 `node dist/cli.mjs --debug`）：4 工具（Bash/Read/Edit/Write）
+  + 4 斜杠命令（`/help` `/status` `/mcp` `/model`）+ 3-way 版本核对（splash / `/help` /
+  `/status` 三处均 0.30.2）+ 压缩后继续工作 → 全 PASS
+- debug log 扫描：54 条 ERROR/WARN 全在 A–H 已知分类内，无新异常类别。
+  `PROMPT CACHE BREAK` 在 10-18 的旧日志里已存在（预存现象，非本次引入）
+
+**红绿对照（避免"自洽测试"）**：在 `HEAD` 的 baseline worktree 上拷入同一批新测试，
+得到 5 处断言失败（`5abc`→5 而非 10、延迟 `1.5`→1ms 而非 500ms、压缩后仍返回压缩前
+的 90k usage、状态栏仍返回旧 uuid）；A1 的 baseline 预算实测 40000 字符。改动后全绿。
