@@ -922,3 +922,43 @@ function EPt(e) {                                                   // 优先级
 - TUI 实测：问"有哪些跟逆向、解包单文件二进制相关的 skill"，模型的搜索模式直接用了
   `逆向|反混淆|解包|single-file binary|SFX` —— 这些词只存在于 `extract-cli-bundle` 的
   描述里，说明完整描述确实进了模型上下文
+
+---
+
+## 2026-10-21 第三轮：技能使用计数改存 settings.json（与真实 Claude Code 统一存储）
+
+第二轮把清单预算接到了"使用频次优先级"上，但 fork 的计数存在**旧全局配置**
+`~/.claude.json`，而真实 Claude Code 存在 `~/.claude/settings.json` 的 `skillUsage` 键。
+同一台机器上同时跑两边时各记各的：fork 的排序表从空开始，真实客户端的历史躺在
+fork 从不读的文件里 —— 上一轮"优先级贪心"拿到的信号是残缺的。
+
+### 改动清单
+
+| 文件 | 内容 |
+|---|---|
+| `src/utils/settings/types.ts` | `SettingsSchema` 新增 `skillUsage`（`usageCount` / `lastUsedAt`） |
+| `src/utils/suggestions/skillUsageTracking.ts` | 读：settings 优先、旧配置只补缺；写：只写 `userSettings`，写失败才回落旧配置 |
+| `src/migrations/migrateSkillUsageToSettings.ts`（新增） | 迁移：两边都有的技能计数相加、`lastUsedAt` 取较新者；写入成功后才删旧副本 |
+| `src/migrations/migrateSkillUsageToSettings.test.ts`（新增） | `mergeSkillUsage` 4 例 |
+| `src/main.tsx` | `CURRENT_MIGRATION_VERSION` 11 → 12，挂上迁移 |
+| `src/utils/config.ts` | 旧配置里的 `skillUsage` 标注为 legacy 位置 |
+
+### 实测（迁移跑在真实配置上）
+
+- 迁移前 `~/.claude.json` 有 `skillUsage`，`~/.claude/settings.json` 无
+- 迁移后 `~/.claude.json` 的 `skillUsage` 已删除，`~/.claude/settings.json` 由 27 条变
+  28 条（27 条原样保留 + 新增 `extract-cli-bundle`）
+- 迁移后 22 个技能带使用记录，优先级前六：ego-browser 4.95、release-local 1.80、
+  update-opencc-web-by-zip 1.35、fireworks-tech-graph 1.06、extract-cli-bundle 1.00、
+  lan-agent-debug-apk-lan-share 0.86
+- 清单 29,031 字符，97 个技能保留完整描述 / 52 个只留名字
+- 迁移前已备份到 `/tmp/skillusage-backup-1792598700`
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → 0 errors
+- `bun test src/migrations/migrateSkillUsageToSettings.test.ts src/utils/suggestions/ src/tools/SkillTool/`
+  → 48 pass / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2
+- TUI 实测：`Bash(echo UNIFIED_SKILLUSAGE_OK)` → `UNIFIED_SKILLUSAGE_OK`；debug 日志
+  "Sending 149 skills via attachment (initial, 149 total sent)"
