@@ -846,3 +846,79 @@ sibling home（`src/skills/siblingSkillHomes.ts`，277 行新文件）。**fork 
 **红绿对照（避免"自洽测试"）**：在 `HEAD` 的 baseline worktree 上拷入同一批新测试，
 得到 5 处断言失败（`5abc`→5 而非 10、延迟 `1.5`→1ms 而非 500ms、压缩后仍返回压缩前
 的 90k usage、状态栏仍返回旧 uuid）；A1 的 baseline 预算实测 40000 字符。改动后全绿。
+
+---
+
+## 2026-10-21 第二轮：对标真实 Claude Code 重做技能清单机制
+
+第一轮只移植了 openclaude fork 的简化版（均匀截断 + 硬上限）。逆向 `~/source/claude-2.1.302`
+的 bundle.js 后发现，**真实 Claude Code 2.1.287 起就是另一套机制**，而 openclaude fork 把
+它整个丢了、自己重写成了均匀截断。本轮按真实 Claude Code 重做。
+
+### 真实 Claude Code 的机制（从 bundle.js 解出）
+
+```js
+var Xfr = 0.01, Sfn = 4, Qfr = 200000, Jfr = 1536
+function SPt() { return ut().skillListingMaxDescChars ?? Jfr }      // 每条上限,用户设置
+function Zfr() { return ut().skillListingBudgetFraction ?? Xfr }     // 预算比例,用户设置
+function hlt(e, n = Sfn) {                                          // 预算,无硬上限
+  let r = i2(process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET); if (r) return r
+  return Math.max(1, Math.floor((e ?? Qfr) * n * Zfr()))
+}
+function EPt(e) {                                                   // 优先级 = 使用频次 × 7 天半衰期
+  let n = skillUsage[e]; if (!n) return 0
+  return n.usageCount * Math.max(Math.pow(0.5, (Date.now()-n.lastUsedAt)/86400000/7), 0.1)
+}
+```
+
+截断是**按优先级贪心**，不是一刀切：bundled 技能与被标记 `name-only` 的技能占位固定，
+其余按 `EPt` 降序依次尝试保留完整描述，放不下的降级为**只留名字**。另有
+`skillOverrides` 设置（`on` / `name-only` / `user-invocable-only` / `off`）和超预算告警。
+
+### 本轮改动
+
+| 文件 | 内容 |
+|---|---|
+| `src/tools/SkillTool/prompt.ts` | 预算 = 窗口 × 每模型字符/token × 比例（**去掉硬上限**）；每条上限 1536（可调）；按使用频次贪心截断，超预算打 warn 日志 |
+| `src/utils/settings/types.ts` | 新增三个设置：`skillListingBudgetFraction`、`skillListingMaxDescChars`、`skillOverrides` |
+| `src/utils/attachments.ts` | 清单按模型取 chars/token；`user-invocable-only` / `off` 的技能不进模型清单 |
+| `src/utils/suggestions/skillUsageTracking.ts` | 抽出 `getSkillUsageScores()` 批量打分（与 `getSkillUsageScore` 同一公式） |
+| `src/utils/telemetry/skillLoadedEvent.ts` + `src/main.tsx` | 遥测报的 `skill_budget` 跟实际预算一致 |
+
+**关键巧合**：fork 的 `getSkillUsageScore`（`src/utils/suggestions/skillUsageTracking.ts`）
+公式与真实 Claude Code 的 `EPt` **逐字一致**（使用次数 × 7 天半衰期，衰减下限 0.1），
+数据源 `settings.skillUsage` 的形状也一样。fork 之前只把它用在命令建议排序上，
+本轮接到清单预算上，优先级分配几乎零成本。
+
+### 实测对比（fork 真实 146 个技能，MiniMax-M3 / 1M 窗口）
+
+| | 第一轮（fork 版，16000 硬上限 + 均匀截断） | 本轮（Claude 版） |
+|---|---|---|
+| 预算 | 16,000 | 30,000（1M × 3 chars/token × 1%） |
+| 清单字符 | 15,347 | 29,204 |
+| 有完整描述的技能 | 0（146 个全被砍到 82 字） | **95** |
+| 只留名字的技能 | 0 | 54 |
+| 触发词完整可见的技能 | 0 | **42** |
+| 每轮 token 成本 | ≈3.8k | ≈9.7k |
+
+代价是每轮多约 6k token（清单在首轮请求里，后续命中缓存），换来 42 个技能的触发词
+完整可见 —— 之前是 0 个。`skillListingBudgetFraction` 是用户可调的旋钮（调小即降成本）。
+
+### 与真实 Claude Code 的两处已知差异
+
+- **chars/token**：真实 Claude Code 用一张 Anthropic 自有模型表（`claude-*` → 4，其余 → 3）。
+  fork 用 `/^claude[-.]/` 前缀判定，够用但不如白名单严谨。
+- **状态机**：真实 Claude Code 的 `skillOverrides` 在 user / project / policy / flag /
+  plugin / MCP / syncedSkills 多层作用域里按"更严格者优先"解析。fork 实现了
+  user + project 两层，同样按"更严格者优先"合并；policy/flag/plugin 层没有对应概念。
+
+### 验证（2026-10-21）
+
+- `bun run typecheck` → 0 errors
+- `src/tools/SkillTool/prompt.test.ts` 重写为 9 例（预算比例 / 每模型 chars-per-token /
+  环境变量覆盖 / 优先级贪心 / name-only 覆盖 / 每条上限 / bundled 豁免）→ 全绿
+- 相关测试 12 个文件 → 84 pass / 2 skip / 0 fail
+- `bun run build` → ✓ Built opencc v0.30.2
+- TUI 实测：问"有哪些跟逆向、解包单文件二进制相关的 skill"，模型的搜索模式直接用了
+  `逆向|反混淆|解包|single-file binary|SFX` —— 这些词只存在于 `extract-cli-bundle` 的
+  描述里，说明完整描述确实进了模型上下文
