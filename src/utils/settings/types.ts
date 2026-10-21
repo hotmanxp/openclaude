@@ -659,6 +659,20 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Per-skill listing overrides keyed by skill name. "name-only" lists the skill without its description; "user-invocable-only" hides it from the model but keeps /name; "off" hides it from both. Absent = on.',
         ),
+      // Usage counters per skill. They decide which skills keep their full
+      // description when the listing runs out of budget.
+      skillUsage: z
+        .record(
+          z.string(),
+          z.object({
+            usageCount: z.number().int().nonnegative(),
+            lastUsedAt: z.number().int().nonnegative(),
+          }),
+        )
+        .optional()
+        .describe(
+          'Per-skill usage counters (invocations and last-used timestamp) used to prioritise the skill listing.',
+        ),
       // Enabled plugins using marketplace-first format
       enabledPlugins: z
         .record(

@@ -540,7 +540,9 @@ export type GlobalConfig = {
   iterm2It2SetupComplete?: boolean // Whether it2 setup has been verified
   preferTmuxOverIterm2?: boolean // User preference to always use tmux over iTerm2 split panes
 
-  // Skill usage tracking for autocomplete ranking
+  // Skill usage tracking. Legacy location — the counters live in
+  // settings.json (same file and key real Claude Code uses);
+  // migrateSkillUsageToSettings moves them here and drops this copy.
   skillUsage?: Record<string, { usageCount: number; lastUsedAt: number }>
   // Official marketplace auto-install tracking
   officialMarketplaceAutoInstallAttempted?: boolean // Whether auto-install was attempted
