@@ -50,7 +50,7 @@ export type ModPluginInfo = {
   builtin: boolean
   /** Events this mod subscribed to (`PostToolUse`, `ui.render`, …). */
   handlerEvents: string[]
-  /** Registered tool names (runtime `mods_<mod>_<tool>`). */
+  /** Registered tool names (runtime `mcp__<mod>__<tool>`). */
   toolNames: string[]
   /** Registered command names (unprefixed, as declared in `register`). */
   commandNames: string[]

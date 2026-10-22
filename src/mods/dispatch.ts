@@ -1046,8 +1046,70 @@ function fieldCouldMatch(
 }
 
 /**
+ * The error a refused op throws, in upstream's shape.
+ *
+ * Upstream's op facades reject with `${plugin}: $.<op>: <reason>` — the
+ * plugin that made the call, the call it made, and the reason it was refused
+ * (bundle.js:4070026: `${e}: $.tool.register: ${o.name} needs a description
+ * (what the model reads)`). The same shape is used for a hook's own `{ deny }`
+ * answer, because upstream turns that into a rejection too.
+ *
+ * opencc used to say `"tool.register" was denied by a mod: …`, which reads as
+ * opencc's own dialect and names neither the plugin nor the `$` method. A mod
+ * ported from upstream matches on the wording, so the wording is upstream's.
+ */
+export function modOpDenyMessage(
+  event: string,
+  pluginName: string,
+  deny: string,
+): string {
+  return `${pluginName}: $.${event}: ${deny}`
+}
+
+/**
+ * The `tool.register` op's pinned field: the tool's name.
+ *
+ * Upstream's `tool.register` site descriptor (bundle.js:3973583) is
+ * `{event:"tool.register", check: …, checkArgument: gs}`, and `gs`
+ * (bundle.js:3970309) is:
+ *
+ *   function gs(e,t){return e.name!==t.name
+ *     ? "a changed name (the tool being registered; next(e) passes it on)"
+ *     : void 0}
+ *
+ * So the name is a fact about the tool being registered, not something a hook
+ * may rewrite: the engine keys the registered tool by it, and the model is
+ * told the resulting name. Upstream's own check fires where a hook passes a
+ * MODIFIED argument down (`lt`, bundle.js:3896693) and throws
+ * `${plugin}: next() passed an argument with ${reason}`; this host throws the
+ * reason itself, which is the sentence a mod author needs.
+ */
+const TOOL_REGISTER_PINNED_NAME_REASON =
+  'a changed name (the tool being registered; next(e) passes it on)'
+
+/**
+ * Refuse a rewritten argument on an op whose field is pinned.
+ *
+ * Only `tool.register` has one here. Upstream writes the rule out again for
+ * every event that needs it (`checkArgument` ×58, bundle.js:3913858) rather
+ * than having one generic mechanism, and opencc ports the rules one event at
+ * a time — `tool.check` pins its input, `command.describe` its command, and
+ * so on. `tool.register` is the one this task covers, so it is the one
+ * written down.
+ */
+function assertOpArgumentPinned(
+  event: string,
+  frozen: Record<string, unknown>,
+  current: Record<string, unknown>,
+): void {
+  if (event !== 'tool.register') return
+  if (current.name === frozen.name) return
+  throw new Error(TOOL_REGISTER_PINNED_NAME_REASON)
+}
+
+/**
  * The synchronous half of the op path, for `$` methods that answer
- * immediately (`$.ui.log`, `$.ui.status`, `$.tool.register`).
+ * immediately (`$.ui.log`, `$.ui.status`).
  *
  * These are half the UI surface, and there is no argument for leaving them
  * unhookable: a mod that cannot see a `ui.log` call cannot filter what other
@@ -1058,6 +1120,12 @@ function fieldCouldMatch(
  * A handler that returns a promise is logged and treated as a failure, the way
  * `runModRenderChainSync` treats one: silently counting it as a pass is what
  * made a broken handler invisible.
+ *
+ * `tool.register` is NOT on this path: upstream's `$.tool.register` answers a
+ * promise (d.ts:7393) and upstream's own mods hook it with an ASYNC handler
+ * (the shipped `sec-default`: `on('tool.register', async ($, e, next) => …)`),
+ * and a handler that returns a promise is dropped here. So `ctx.registerTool`
+ * goes through `dispatchModOp` — see engine.ts.
  */
 export function dispatchModOpSync<T>(
   event: string,
@@ -1164,6 +1232,7 @@ export function dispatchModOpSync<T>(
  */
 type OpOutcome =
   | { replace: unknown }
+  | { value: unknown }
   | { passThrough: true }
   | { deny: string }
 
@@ -1176,11 +1245,15 @@ type OpOutcome =
  *
  * No subscribers means the chain is empty and `core` runs untouched — the
  * zero-subscription fast path upstream relies on for its gated plugins.
+ *
+ * `pluginName` names the plugin that made the call, and is what a refused op
+ * names in the error it throws (see {@link modOpDenyMessage}).
  */
 export async function dispatchModOp<T>(
   event: string,
   payload: unknown,
   core: (e: Record<string, unknown>) => T | Promise<T>,
+  pluginName?: string,
 ): Promise<T> {
   const chain = opChains.get(event)
   if (!chain || chain.length === 0) {
@@ -1200,14 +1273,26 @@ export async function dispatchModOp<T>(
       return { continue: true } as unknown as Record<string, unknown>
     },
   )) as unknown as OpOutcome
+  assertOpArgumentPinned(event, frozen, arg)
   if (outcome === undefined || outcome === null) {
     return core(arg)
   }
   if ('deny' in outcome && typeof outcome.deny === 'string') {
-    throw new Error(`[mods] "${event}" was denied by a mod: ${outcome.deny}`)
+    throw new Error(
+      pluginName !== undefined
+        ? modOpDenyMessage(event, pluginName, outcome.deny)
+        : `[mods] "${event}" was denied by a mod: ${outcome.deny}`,
+    )
   }
   if ('replace' in outcome) {
     return outcome.replace as T
+  }
+  // Upstream's op answer is `ValueOrDeny` (d.ts:15388): `{ value }` is the
+  // call's answer and `{ deny }` is the reason it is refused. `{ replace }` is
+  // opencc's own spelling of the same thing; both are honoured, and the
+  // upstream one is what a mod written against upstream's contract returns.
+  if ('value' in outcome) {
+    return outcome.value as T
   }
   return core(arg)
 }
@@ -1228,15 +1313,49 @@ export async function dispatchModOp<T>(
  * key, and `runModChain` skips the handler without running it: the mod
  * installs, `/plugins` shows it healthy, and nothing happens. That silence is
  * why this table exists rather than a comment.
+ *
+ * The ARGUMENTS are flattened too, because upstream flattens them: upstream
+ * builds the `tool.call` event in `Vo` (bundle.js:3968700)
+ *
+ *   function Vo(e,t,o){ … return {...p, tool:e, tool_use_id:t, …} }
+ *
+ * where `o` is the tool's own arguments — spread FLAT onto the event, with the
+ * engine-owned keys lifted back out of them. So a hook reads `e.command` for a
+ * Bash call, `e.path` for a Read call. There is no `e.params` and no `e.input`
+ * on this event (`e.input` belongs to `tool.check`, a different question).
+ *
+ * The host's own hook fields are kept alongside — `hook_event_name`,
+ * `session_id`, `cwd` and the rest — so a mod that reads the host dialect
+ * still finds what it found before. The arguments are spread FIRST and the
+ * engine's fields are set on top, which is upstream's order: an argument
+ * named `tool` does not become the tool's name.
  */
 const BRIDGED_PAYLOAD: Readonly<
   Partial<Record<HookEvent, (input: HookInput) => Record<string, unknown>>>
 > = {
   PreToolUse: input => {
-    const { tool_name: tool, ...rest } = input as Record<string, unknown> & {
+    const { tool_name: tool, tool_input, ...rest } = input as Record<
+      string,
+      unknown
+    > & {
       tool_name?: string
+      tool_input?: unknown
     }
-    return { ...rest, tool }
+    // The engine-owned keys upstream lifts out of the arguments
+    // (`ds` + `Eqn`, bundle.js:3968700): `tool`, `tool_use_id`, `agentId`,
+    // `consent`, `requestMeta` and the internal `$shadowed`. An argument
+    // carrying one of those names is the engine's field, not the tool's.
+    const args = (tool_input ?? {}) as Record<string, unknown>
+    const {
+      tool: _tool,
+      tool_use_id: _toolUseId,
+      agentId: _agentId,
+      consent: _consent,
+      requestMeta: _requestMeta,
+      $shadowed: _shadowed,
+      ...own
+    } = args
+    return { ...own, ...rest, tool }
   },
 }
 

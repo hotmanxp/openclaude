@@ -18,8 +18,11 @@ import type {
 import {
   BUILTIN_ORIGIN,
   MOD_RENDER_EVENT,
+  MOD_TOOL_FULL_NAME_MAX_LENGTH,
   getLoadedMods,
   getModToolsVersion,
+  modToolFullName,
+  modToolServerName,
   type ModHandlerSpec,
   type ModRenderEvent,
   type ModRenderHandler,
@@ -27,6 +30,7 @@ import {
   type ModStreamHandler,
 } from './registry.js'
 import {
+  dispatchModEngine,
   dispatchModOp,
   dispatchModOpSync,
   subscribeModProgress,
@@ -65,6 +69,8 @@ import {
   type ModNext,
   type ModMatcher,
   type ModRegistration,
+  type ModToolCallPayload,
+  type ModToolRegisterPayload,
 } from './protocol.js'
 import { modPluginId } from './pluginView.js'
 import { resolveElementTable, type ElementTable } from './ui/elements.js'
@@ -95,7 +101,18 @@ export type ModPaneOpenSpec = Omit<ModPaneSpec, 'component'> & {
  * / turn.abort / ctx.fs (authorization-gated).
  */
 
-const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,40}$/
+/**
+ * Upstream's name rule for a registered tool or command: letters, digits,
+ * `_` or `-`, up to 64 characters.
+ *
+ * Upstream `Igt` (bundle.js:4056768): `/^[a-zA-Z0-9_-]{1,64}$/`. The same
+ * regex guards `$.tool.register` and `$.command.register` there, so one
+ * pattern serves both here too. It used to stop at 40, which was opencc's
+ * own invention and narrower than upstream's — a mod written against
+ * upstream's contract could register a name upstream accepts and this host
+ * refused.
+ */
+const MOD_SPEC_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
 const MOD_NOTICE_MAX_CHARS = 2000
 
 /**
@@ -469,7 +486,21 @@ export type ModContext = {
    */
   on(event: ModEventRef, matcher: ModMatcher, handler: ModHandlerInput): ModRegistration
   registerCommand(spec: ModCommandSpec): void
-  registerTool(spec: ModToolSpec): void
+  /**
+   * Register a tool the model can call.
+   *
+   * Upstream's `$.tool.register` (d.ts:7393) answers a PROMISE of `{ tool }`
+   * — the FULL name the model will call, `mcp__<plugin>__<name>` — and
+   * opencc answers the same shape, because the promise is what lets an async
+   * `tool.register` hook be honoured at all (upstream's own mods write one:
+   * the shipped `sec-default` answers `on('tool.register', async ($, e, next)
+   * => …)`).
+   *
+   * A mod that only wants the tool registered does not have to read the
+   * answer; a mod that wants the name to put in a matcher does, and a mod
+   * that wants to know the registration was refused awaits it.
+   */
+  registerTool(spec: ModToolSpec): Promise<{ tool: string }>
   ui: {
     /** One-way push to the host UI (toast/notification slot). */
     notice(text: string): void
@@ -1116,7 +1147,7 @@ export function createModContext(mod: LoadedMod): ModContext {
         !MOD_SPEC_NAME_PATTERN.test(spec.name)
       ) {
         throw new Error(
-          `ctx.registerCommand(): name must match [a-zA-Z0-9_-]{1,40}, got "${String(spec?.name)}"`,
+          `ctx.registerCommand(): name must match [a-zA-Z0-9_-]{1,64}, got "${String(spec?.name)}"`,
         )
       }
       if (typeof spec.handler !== 'function' && typeof spec.call !== 'function') {
@@ -1133,32 +1164,74 @@ export function createModContext(mod: LoadedMod): ModContext {
       })
     },
     registerTool(spec) {
-      return dispatchModOpSync('tool.register', { spec }, () => {
-      if (!spec || typeof spec !== 'object') {
-        throw new Error('ctx.registerTool(): spec object required')
-      }
-      if (
-        typeof spec.name !== 'string' ||
-        !MOD_SPEC_NAME_PATTERN.test(spec.name)
-      ) {
+      // Upstream validates in the FACADE, before the op is dispatched
+      // (bundle.js:4070026, `bE`): a malformed spec is refused whatever the
+      // hook chain would have made of it, and the refusal names the plugin.
+      // The same order — name, description, isDeferred, inputSchema — is
+      // upstream's, so a spec that upstream refuses is refused here for the
+      // same reason and with the same sentence.
+      const validated = validateModToolSpec(modName, spec)
+      const fullName = modToolFullName(modName, validated.name)
+      if (fullName.length > MOD_TOOL_FULL_NAME_MAX_LENGTH) {
+        // Upstream does not refuse this: it drops the tool from the request
+        // (bundle.js:7952, `Gct`: "Tool \"…\" is not sent to Claude: its name
+        // has N characters and the API accepts at most 128"), so the
+        // registration SUCCEEDS and the model never sees the tool. That is the
+        // worst of the outcomes — a mod author who reads "registered" and
+        // waits for a call that can never come. opencc refuses at
+        // registration instead, and says which name was too long and by how
+        // much.
         throw new Error(
-          `ctx.registerTool(): name must match [a-zA-Z0-9_-]{1,40}, got "${String(spec?.name)}"`,
+          `${modName}: $.tool.register: "${validated.name}" refused: the model-visible name "${fullName}" is ${fullName.length} characters and the API accepts at most ${MOD_TOOL_FULL_NAME_MAX_LENGTH}`,
         )
       }
-      if (typeof spec.execute !== 'function') {
-        throw new Error('ctx.registerTool(): execute must be a function')
-      }
-      if (
-        !spec.inputSchema ||
-        typeof spec.inputSchema !== 'object' ||
-        (spec.inputSchema as { type?: unknown }).type !== 'object'
-      ) {
-        throw new Error(
-          'ctx.registerTool(): inputSchema must be a JSON Schema object with type:"object"',
-        )
-      }
-      mod.tools.push(spec)
-      })
+      // The op payload is the spec ITSELF, flat — upstream hands the hook
+      // chain `{name, description, inputSchema, isDeferred}` (bundle.js:4070026)
+      // and nothing re-shapes it, because upstream's `tool.register` is
+      // deliberately absent from the wrapper table `Mmt` (bundle.js:9075495).
+      // A hook therefore reads `e.name`, `e.description`, `e.inputSchema` and
+      // `e.isDeferred` — the spelling upstream's mods use.
+      //
+      // `spec` rides along as opencc's own view of the same object: it is
+      // where `execute` lives, and it keeps a hook written against opencc's
+      // earlier `{ spec }` payload working.
+      //
+      // The dispatch is the ASYNC one, because upstream's is: `$.tool.register`
+      // answers a promise (d.ts:7393), and upstream's own mods hook it with
+      // an async handler (the shipped `sec-default`). The synchronous op path
+      // drops a handler that returns a promise, so a `tool.register` hook
+      // written upstream's way would never run at all.
+      return dispatchModOp<{ tool: string }>(
+        'tool.register',
+        {
+          name: validated.name,
+          description: validated.description,
+          inputSchema: validated.inputSchema,
+          isDeferred: validated.isDeferred,
+          spec,
+        } satisfies ModToolRegisterPayload,
+        e => {
+          // What core runs on is what the chain passed down, so a hook that
+          // rewrote the description changed what is registered. The name
+          // cannot change — the dispatcher refuses that before core runs.
+          const registered: ModToolSpec = {
+            name: e.name as string,
+            description: e.description as string,
+            inputSchema: e.inputSchema as Record<string, unknown>,
+            isDeferred: e.isDeferred as boolean | undefined,
+            // `execute` is opencc's own field and is not part of the payload a
+            // hook may rewrite, so it comes from the spec the mod passed in.
+            execute: spec.execute,
+          }
+          mod.tools.push(registered)
+          // Upstream's `$.tool.register` answers `{ tool }` — the FULL name
+          // the model will call (d.ts:7393). opencc answers the same shape.
+          return { tool: modToolFullName(modName, registered.name) }
+        },
+        // The plugin name, so a hook's `{ deny }` is refused in upstream's
+        // wording: `${plugin}: $.tool.register: ${reason}`.
+        modName,
+      )
     },
     ui: {
       notice(text: string) {
@@ -1384,17 +1457,109 @@ export function createModContext(mod: LoadedMod): ModContext {
 
 // ---------------------------------------------------------------------------
 // Mod tools — MCPTool-shaped dynamic tools (docs/mods-plan.md §2.1: 照抄
-// MCPTool 形状). Names are prefixed `mods_<mod>_<tool>` so a mod can never
-// shadow a built-in (assembleToolPool dedupes by name with built-ins winning).
+// MCPTool 形状).
+//
+// The NAME is upstream's: `mcp__<plugin>__<tool>` (bundle.js:9085308,
+// `_re`), so a mod's tool is named the way the model is told to call it and
+// a matcher written upstream's way — `{ tool: "mcp__demo__echo" }` — hits.
+// It used to be `mods_<mod>_<tool>`, which no upstream mod can name.
+//
+// The `mcp__` prefix also keeps the "a mod can never shadow a built-in"
+// property the old prefix had: `assembleToolPool` dedupes by name with
+// built-ins winning, and `mcp__<mod>__<tool>` cannot collide with a
+// built-in's name.
 // ---------------------------------------------------------------------------
 
+/**
+ * Upstream's `$.tool.register` facade validation (bundle.js:4070026).
+ *
+ * The order is upstream's — name, description, isDeferred, inputSchema — so
+ * a spec upstream refuses is refused here for the same reason, and the
+ * sentence is upstream's, because a mod author reads it:
+ *
+ *   `${plugin}: $.tool.register takes { name, description, inputSchema?, isDeferred? }; name is letters, digits, _ or - (up to 64)`
+ *   `${plugin}: $.tool.register: ${name} needs a description (what the model reads)`
+ *   `${plugin}: $.tool.register: ${name}'s isDeferred must be true or false`
+ *   `${plugin}: $.tool.register: ${name}'s inputSchema must be a JSON schema object`
+ *
+ * The schema is DEFAULTED the way upstream defaults it (`o.inputSchema ?? {type:"object"}`,
+ * then `{type:"object", ...schema}`), so a mod that declares no schema gets
+ * the object schema rather than a refusal.
+ */
+function validateModToolSpec(
+  pluginName: string,
+  spec: ModToolSpec,
+): {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  isDeferred?: boolean
+} {
+  const shapeError = `${pluginName}: $.tool.register takes { name, description, inputSchema?, isDeferred? }; name is letters, digits, _ or - (up to 64)`
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    throw new Error(shapeError)
+  }
+  const { name, description, inputSchema, isDeferred } = spec
+  if (typeof name !== 'string' || !MOD_SPEC_NAME_PATTERN.test(name)) {
+    throw new Error(shapeError)
+  }
+  if (typeof description !== 'string' || description.trim() === '') {
+    throw new Error(
+      `${pluginName}: $.tool.register: ${name} needs a description (what the model reads)`,
+    )
+  }
+  if (isDeferred !== undefined && typeof isDeferred !== 'boolean') {
+    throw new Error(
+      `${pluginName}: $.tool.register: ${name}'s isDeferred must be true or false`,
+    )
+  }
+  const schema = inputSchema ?? { type: 'object' }
+  if (!isPlainObject(schema)) {
+    throw new Error(
+      `${pluginName}: $.tool.register: ${name}'s inputSchema must be a JSON schema object`,
+    )
+  }
+  return {
+    name,
+    description,
+    // Upstream spreads the spec's own schema OVER the default, so a mod that
+    // says `type: "string"` is believed here — the MCP server that serves the
+    // tool is what forces `type: "object"` (bundle.js:12099061).
+    inputSchema: { type: 'object', ...schema },
+    isDeferred,
+  }
+}
+
+/** A plain object — upstream's `L`, the test the schema has to pass. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/**
+ * The tool a mod registered, as the model sees it.
+ *
+ * `isDeferred` is the one field whose name reads backwards, and it is
+ * upstream's wording: `false` puts the tool's schema in the prompt's tool
+ * list, `true` (or absent) leaves it behind ToolSearch. Upstream spells that
+ * as `_meta["anthropic/alwaysLoad"]` (bundle.js:12098624, `Obn`:
+ * `isDeferred === false → {_meta:{"anthropic/alwaysLoad": true}}`), and
+ * opencc's ToolSearch reads the same flag — `isDeferredTool`
+ * (src/tools/ToolSearchTool/prompt.ts:63) never defers a tool with
+ * `alwaysLoad`, and defers every MCP tool. So `isDeferred: false` is
+ * `alwaysLoad: true` and everything else keeps the tool behind ToolSearch,
+ * which is upstream's rule exactly.
+ */
 function createModTool(mod: LoadedMod, spec: ModToolSpec): Tool {
-  const toolName = `mods_${mod.manifest.name}_${spec.name}`
+  const toolName = modToolFullName(mod.manifest.name, spec.name)
+  const serverName = modToolServerName(mod.manifest.name)
   return {
     ...MCPTool,
     name: toolName,
     isMcp: true,
-    mcpInfo: { serverName: `mod:${mod.manifest.name}`, toolName: spec.name },
+    alwaysLoad: spec.isDeferred === false,
+    mcpInfo: { serverName, toolName: spec.name },
     async description() {
       return spec.description
     },
@@ -1409,13 +1574,65 @@ function createModTool(mod: LoadedMod, spec: ModToolSpec): Tool {
       }
     },
     async call(args: Record<string, unknown>) {
-      const output = await spec.execute(args)
+      // The one-step shape: the mod handed over the implementation.
+      if (typeof spec.execute === 'function') {
+        const output = await spec.execute(args)
+        return {
+          data:
+            typeof output === 'string'
+              ? output
+              : JSON.stringify(output, null, 2),
+        }
+      }
+      // The two-step shape, which is upstream's: the tool is served, and the
+      // `tool.call` chain answers the call. The event carries the tool's
+      // MODEL-VISIBLE name and the arguments flattened onto it, which is
+      // upstream's `Vo` (bundle.js:3968700) — so a hook reads `e.<arg>` and
+      // matches on `e.tool`.
+      const answer = await dispatchModEngine<Record<string, unknown>>(
+        'tool.call',
+        { tool: toolName, ...args } satisfies ModToolCallPayload,
+        e => e,
+      )
+      if (typeof answer.deny === 'string') {
+        // Upstream refuses the call with the reason the hook gave; the reason
+        // IS the message the model reads.
+        throw new Error(answer.deny)
+      }
+      if (!Object.hasOwn(answer, 'result')) {
+        // Upstream's own words for a tool nobody answers (bundle.js:12099061):
+        //
+        //   `${plugin} registered the tool ${tool} but no tool.call hook
+        //    answered this call: add on("tool.call", { tool: "mcp__…__…" },
+        //    ($, e) => ({ result: ... })) to the plugin.`
+        //
+        // The message names the tool and the hook to write, because the
+        // failure is a mod that registered a tool and forgot the half that
+        // runs it.
+        throw new Error(
+          `${mod.manifest.name} registered the tool ${spec.name} but no tool.call hook answered this call: add on("tool.call", { tool: "${toolName}" }, ($, e) => ({ result: ... })) to the plugin.`,
+        )
+      }
+      const output = answer.result
       return {
         data:
-          typeof output === 'string' ? output : JSON.stringify(output, null, 2),
+          typeof output === 'string'
+            ? output
+            : JSON.stringify(output, null, 2),
       }
     },
   } as Tool
+}
+
+/**
+ * The cache key for one built tool.
+ *
+ * `isDeferred` is part of it because it decides `alwaysLoad`, and a tool
+ * served from a cache entry built for the other value would be in the prompt
+ * (or behind ToolSearch) the wrong way round.
+ */
+function modToolCacheKey(modName: string, spec: ModToolSpec): string {
+  return `${modName} ${spec.name} ${String(spec.isDeferred ?? false)}`
 }
 
 let modToolsCache: Tool[] | null = null
@@ -1427,11 +1644,17 @@ export function getModTools(): Tool[] {
   if (modToolsCache && modToolsCacheVersion === version) {
     return modToolsCache
   }
-  const tools: Tool[] = []
+  // One entry per (mod, tool, isDeferred): a mod that registers the same
+  // name twice with different deferral gets two entries rather than one
+  // served from the other's cache.
+  const built = new Map<string, Tool>()
   for (const mod of getLoadedMods()) {
     for (const spec of mod.tools) {
       try {
-        tools.push(createModTool(mod, spec))
+        built.set(
+          modToolCacheKey(mod.manifest.name, spec),
+          createModTool(mod, spec),
+        )
       } catch (error) {
         logForDebugging(
           `[mods] failed to build tool ${mod.manifest.name}:${spec.name}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1439,6 +1662,12 @@ export function getModTools(): Tool[] {
       }
     }
   }
+  // Upstream keys a plugin's registered tools by NAME (`new Map(b).set(e.name, e)`,
+  // bundle.js:11931648): a later registration of the same name replaces the
+  // earlier one. The model must not see two tools under one name.
+  const byName = new Map<string, Tool>()
+  for (const tool of built.values()) byName.set(tool.name, tool)
+  const tools = [...byName.values()]
   modToolsCache = tools
   modToolsCacheVersion = version
   return tools

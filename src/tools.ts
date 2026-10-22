@@ -373,8 +373,8 @@ export function assembleToolPool(
   const byName = (a: Tool, b: Tool) => a.name.localeCompare(b.name)
   // Mod tools join the MCP partition (after the built-in prefix) and are
   // sorted within it — the prompt-cache invariant (built-ins contiguous)
-  // is preserved. Names are prefixed mods_<mod>_<tool> so built-ins always
-  // win the uniqBy on collision.
+  // is preserved. Names are `mcp__<mod>__<tool>` (upstream's shape), so
+  // built-ins always win the uniqBy on collision.
   const modTools = getModTools()
   return uniqBy(
     [...builtInTools]
