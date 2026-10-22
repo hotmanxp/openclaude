@@ -20,6 +20,7 @@ import { getFsImplementation, safeResolvePath } from '../fsOperations.js'
 import { addFileGlobRuleToGitignore } from '../git/gitignore.js'
 import { safeParseJSON } from '../json.js'
 import { logError } from '../log.js'
+import * as lockfile from '../lockfile.js'
 import { getPlatform } from '../platform.js'
 import { clone, jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
@@ -422,6 +423,52 @@ export function getPolicySettingsOrigin():
   }
 
   return null
+}
+
+/**
+ * Run `fn` while holding the settings file lock.
+ *
+ * settings.json is shared with the real Claude Code, and an unlocked
+ * read-modify-write drops another writer's change. The lock serialises
+ * OpenCC writers; the settings cache is dropped first so the callback sees
+ * the file on disk rather than a stale parse.
+ */
+export function withSettingsFileLock<T>(
+  source: EditableSettingSource,
+  fn: () => T,
+): T {
+  const filePath = getSettingsFilePathForSource(source)
+  if (!filePath) return fn()
+
+  let release: (() => void) | undefined
+  try {
+    getFsImplementation().mkdirSync(dirname(filePath))
+    release = lockfile.lockSync(filePath, {
+      // The settings file may not exist yet — skip the realpath probe.
+      realpath: false,
+      lockfilePath: `${filePath}.lock`,
+      onCompromised: err => {
+        logForDebugging(`Settings lock compromised: ${err}`, { level: 'error' })
+      },
+    })
+  } catch (e) {
+    // Another writer holds the lock. Proceed unlocked rather than dropping
+    // the write — the callback still merges against the file on disk.
+    logForDebugging(`Could not lock ${filePath}: ${e}`)
+  }
+
+  try {
+    resetSettingsCache()
+    return fn()
+  } finally {
+    try {
+      release?.()
+    } catch (e) {
+      logForDebugging(`Failed to release the settings lock: ${e}`, {
+        level: 'error',
+      })
+    }
+  }
 }
 
 /**
@@ -842,6 +889,48 @@ function loadSettingsFromDisk(): SettingsWithErrors {
 export function getInitialSettings(): SettingsJson {
   const { settings } = getSettingsWithErrors()
   return settings || {}
+}
+
+/**
+ * Scopes that are trusted to steer agent behaviour.
+ *
+ * `projectSettings` is excluded on purpose: it is committed to the
+ * repository, so a checked-out project must not be able to change what the
+ * model sees or how much of the context window it takes up. This mirrors
+ * the rule the bypass-permissions and auto-mode settings already apply.
+ *
+ * Everything else is included — local (user-owned, gitignored), flag (the
+ * SDK caller) and policy (the administrator) — so an enterprise setting is
+ * not silently ignored. The order is the one the global cascade uses
+ * (later overrides earlier), minus the project scope — the same list
+ * getAutoModeConfig() walks.
+ */
+const TRUSTED_BEHAVIOUR_SOURCES = [
+  'userSettings',
+  'localSettings',
+  'flagSettings',
+  'policySettings',
+] as const
+
+/**
+ * Settings from the trusted scopes only, merged in the usual precedence
+ * order (policy outranks local outranks user).
+ *
+ * Use this instead of getInitialSettings() for anything a project must not
+ * be able to influence.
+ */
+export function getTrustedSettings(): SettingsJson {
+  let merged: SettingsJson = {}
+  for (const source of TRUSTED_BEHAVIOUR_SOURCES) {
+    const settings = getSettingsForSource(source)
+    if (!settings) continue
+    merged = mergeWith(
+      merged,
+      settings,
+      settingsMergeCustomizer,
+    ) as SettingsJson
+  }
+  return merged
 }
 
 /**

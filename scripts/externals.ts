@@ -137,6 +137,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'jsonc-parser',
   'yaml',
   'marked',
+  'qrcode',
   'turndown',
   'xss',
   // Data utilities
@@ -165,6 +166,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'duck-duck-scrape',
   'execa',
   'https-proxy-agent',
+  'latest-version',
   'tree-kill',
   'undici',
   'ws',

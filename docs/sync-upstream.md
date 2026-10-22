@@ -779,11 +779,16 @@ Window: `upstream/main` 2026-10-11 → 2026-10-21（20 commits，`5a1fbe03` 为�
 
 ### 落地（3 commits）
 
+> **本节的"本地"一栏记录的是当时的工作区状态，不是 git 历史。** 这一轮的三项改动
+> 都没有单独提交（`5dd727b6` / `9ea644f6` / `03ed1ffe` / `b2d7f049` 是当时打算用的
+> 提交号，git 里不存在），而是留在工作区里被后面的第二轮整体重做 —— 最终进仓库的是
+> 第二轮及之后各轮的形态。查当前代码请直接看文件，不要按这一节里的描述反推。
+
 | 上游 | 本地 | 内容 |
 |---|---|---|
-| `8ee936cf`（仅预算部分） | `5dd727b6` + `9ea644f6` | 技能清单字符预算硬上限。`5dd727b6` 先照上游取 `MAX_CHAR_BUDGET=8000` / 子代理 4000，`9ea644f6` 按 fork 实测调到 **16000 / 8000**（见下） |
-| `fc826031` | `03ed1ffe` | 完整压缩后 context 用量按 compact boundary 重算（`getCurrentUsage` / `getLastAssistantMessageId`） |
-| `76b12a64` | `b2d7f049` | 重试次数/延迟环境变量按整数校验，替掉 `parseInt` 静默截断 |
+| `8ee936cf`（仅预算部分） | 工作区，**第二轮已被覆盖** | 技能清单字符预算硬上限。先照上游取 `MAX_CHAR_BUDGET=8000` / 子代理 4000，按 fork 实测调到 **16000 / 8000**（见下）。**这套硬上限 + 均匀截断在第二轮被整个换掉** —— 现在的代码里没有 `MAX_CHAR_BUDGET` 这个常量，预算改成 `窗口 × 每模型字符/token × 比例` |
+| `fc826031` | 工作区，第二轮仍在 | 完整压缩后 context 用量按 compact boundary 重算（`getCurrentUsage` / `getLastAssistantMessageId`） |
+| `76b12a64` | 工作区，第二轮仍在 | 重试次数/延迟环境变量按整数校验，替掉 `parseInt` 静默截断 |
 
 **为什么这三项对 fork 特别值钱**：
 
@@ -832,14 +837,15 @@ sibling home（`src/skills/siblingSkillHomes.ts`，277 行新文件）。**fork 
 
 ### 验证（2026-10-21）
 
-- `bun run typecheck` → **0 errors**（注意 `src/utils/tokens.ts`、`src/utils/attachments.ts`
-  带 `@ts-nocheck`，tsc 不查这两个文件）
+- `bun run typecheck` → **1 error**（`@growthbook/growthbook` 找不到 —— 既有问题，
+  该包在 `package.json` / `bun.lock` 里都没有，与本次同步无关。另注意
+  `src/utils/tokens.ts`、`src/utils/attachments.ts` 带 `@ts-nocheck`，tsc 不查这两个文件）
 - 相关单测 → **63 pass / 1 skip / 0 fail**（4 个文件）；另跑 10 个引用被改模块的
   测试文件 → 64 pass / 2 skip / 0 fail
-- `bun run build` → ✓ Built opencc v0.30.2 → `dist/cli.mjs`
+- `bun run build` → ✓ Built opencc v0.31.1 → `dist/cli.mjs`
 - TUI 全流程（`agent-tui` 驱动 `node dist/cli.mjs --debug`）：4 工具（Bash/Read/Edit/Write）
   + 4 斜杠命令（`/help` `/status` `/mcp` `/model`）+ 3-way 版本核对（splash / `/help` /
-  `/status` 三处均 0.30.2）+ 压缩后继续工作 → 全 PASS
+  `/status` 三处均 0.31.1）+ 压缩后继续工作 → 全 PASS
 - debug log 扫描：54 条 ERROR/WARN 全在 A–H 已知分类内，无新异常类别。
   `PROMPT CACHE BREAK` 在 10-18 的旧日志里已存在（预存现象，非本次引入）
 
@@ -882,10 +888,10 @@ function EPt(e) {                                                   // 优先级
 | `src/tools/SkillTool/prompt.ts` | 预算 = 窗口 × 每模型字符/token × 比例（**去掉硬上限**）；每条上限 1536（可调）；按使用频次贪心截断，超预算打 warn 日志 |
 | `src/utils/settings/types.ts` | 新增三个设置：`skillListingBudgetFraction`、`skillListingMaxDescChars`、`skillOverrides` |
 | `src/utils/attachments.ts` | 清单按模型取 chars/token；`user-invocable-only` / `off` 的技能不进模型清单 |
-| `src/utils/suggestions/skillUsageTracking.ts` | 抽出 `getSkillUsageScores()` 批量打分（与 `getSkillUsageScore` 同一公式） |
+| `src/utils/suggestions/skillUsageTracking.ts` | 抽出 `getCommandUsageScores()` 批量打分（与真实 Claude Code 的 `EPt` 同一公式） |
 | `src/utils/telemetry/skillLoadedEvent.ts` + `src/main.tsx` | 遥测报的 `skill_budget` 跟实际预算一致 |
 
-**关键巧合**：fork 的 `getSkillUsageScore`（`src/utils/suggestions/skillUsageTracking.ts`）
+**关键巧合**：fork 的使用频次打分（`src/utils/suggestions/skillUsageTracking.ts`）
 公式与真实 Claude Code 的 `EPt` **逐字一致**（使用次数 × 7 天半衰期，衰减下限 0.1），
 数据源 `settings.skillUsage` 的形状也一样。fork 之前只把它用在命令建议排序上，
 本轮接到清单预算上，优先级分配几乎零成本。
@@ -907,18 +913,22 @@ function EPt(e) {                                                   // 优先级
 ### 与真实 Claude Code 的两处已知差异
 
 - **chars/token**：真实 Claude Code 用一张 Anthropic 自有模型表（`claude-*` → 4，其余 → 3）。
-  fork 用 `/^claude[-.]/` 前缀判定，够用但不如白名单严谨。
+  fork 用 `/^claude[-.]/` 前缀判定，够用但不如白名单严谨 —— **漏了网关前缀形式**：
+  `src/integrations/gateways/atlas-cloud.ts` 的 `anthropic/claude-opus-4.8` 和 Bedrock 的
+  `us.anthropic.claude-opus-4-7-v1` 都不匹配，会被判成 3 chars/token，清单预算比预期
+  小 25%（偏保守，不会超支）。
 - **状态机**：真实 Claude Code 的 `skillOverrides` 在 user / project / policy / flag /
   plugin / MCP / syncedSkills 多层作用域里按"更严格者优先"解析。fork 实现了
   user + project 两层，同样按"更严格者优先"合并；policy/flag/plugin 层没有对应概念。
 
 ### 验证（2026-10-21）
 
-- `bun run typecheck` → 0 errors
+- `bun run typecheck` → 1 error（`@growthbook/growthbook` 找不到，既有问题）
 - `src/tools/SkillTool/prompt.test.ts` 重写为 9 例（预算比例 / 每模型 chars-per-token /
   环境变量覆盖 / 优先级贪心 / name-only 覆盖 / 每条上限 / bundled 豁免）→ 全绿
+  （后续各轮又补了用例，现为 17 例）
 - 相关测试 12 个文件 → 84 pass / 2 skip / 0 fail
-- `bun run build` → ✓ Built opencc v0.30.2
+- `bun run build` → ✓ Built opencc v0.31.1
 - TUI 实测：问"有哪些跟逆向、解包单文件二进制相关的 skill"，模型的搜索模式直接用了
   `逆向|反混淆|解包|single-file binary|SFX` —— 这些词只存在于 `extract-cli-bundle` 的
   描述里，说明完整描述确实进了模型上下文
@@ -937,9 +947,9 @@ fork 从不读的文件里 —— 上一轮"优先级贪心"拿到的信号是�
 | 文件 | 内容 |
 |---|---|
 | `src/utils/settings/types.ts` | `SettingsSchema` 新增 `skillUsage`（`usageCount` / `lastUsedAt`） |
-| `src/utils/suggestions/skillUsageTracking.ts` | 读：settings 优先、旧配置只补缺；写：只写 `userSettings`，写失败才回落旧配置 |
+| `src/utils/suggestions/skillUsageTracking.ts` | 读：只从可信作用域（user / local）读，settings 与旧配置之间**新的观测胜出**；写：加文件锁写 `userSettings`，写失败才回落旧配置 |
 | `src/migrations/migrateSkillUsageToSettings.ts`（新增） | 迁移：两边都有的技能计数相加、`lastUsedAt` 取较新者；写入成功后才删旧副本 |
-| `src/migrations/migrateSkillUsageToSettings.test.ts`（新增） | `mergeSkillUsage` 4 例 |
+| `src/migrations/migrateSkillUsageToSettings.test.ts`（新增） | `mergeSkillUsage` 4 例 + 迁移分支 4 例 |
 | `src/main.tsx` | `CURRENT_MIGRATION_VERSION` 11 → 12，挂上迁移 |
 | `src/utils/config.ts` | 旧配置里的 `skillUsage` 标注为 legacy 位置 |
 
@@ -956,9 +966,303 @@ fork 从不读的文件里 —— 上一轮"优先级贪心"拿到的信号是�
 
 ### 验证（2026-10-21）
 
-- `bun run typecheck` → 0 errors
+- `bun run typecheck` → 1 error（`@growthbook/growthbook` 找不到，既有问题）
 - `bun test src/migrations/migrateSkillUsageToSettings.test.ts src/utils/suggestions/ src/tools/SkillTool/`
   → 48 pass / 0 fail
-- `bun run build` → ✓ Built opencc v0.30.2
+- `bun run build` → ✓ Built opencc v0.31.1
 - TUI 实测：`Bash(echo UNIFIED_SKILLUSAGE_OK)` → `UNIFIED_SKILLUSAGE_OK`；debug 日志
   "Sending 149 skills via attachment (initial, 149 total sent)"
+
+---
+
+## 2026-10-22 评审修正
+
+前三轮的实现过了一轮 code review，暴露出几个必须在合入前修掉的问题。
+
+### 阻塞项
+
+- **全新安装构建失败**：`qrcode` / `latest-version` 被从 `devDependencies` 和
+  `INTENTIONALLY_BUNDLED` 同时移除，两个包彻底不在依赖清单里，而
+  `src/utils/updateCheck.ts` / `src/bridge/bridgeUI.ts` 仍在静态 import 它们。
+  隐藏 `node_modules` 里这两个目录后 `bun run build` 直接报
+  `Could not resolve`。修法是放回 `devDependencies` + `INTENTIONALLY_BUNDLED`
+  —— `scripts/externalsValidation.ts:85` 的契约要求"被内联的包不能出现在
+  `dependencies`"，而 `c897e23` 放的正是 `devDependencies`，那份声明本身是对的，
+  是本轮同步把它删掉了。
+
+### 正确性
+
+- **`skillUsage` 键空间分裂**：清单按 `cmd.name` 打分，命令建议按
+  `getCommandName(cmd)`（即 `userFacingName`）打分。技能同时有 `name`（frontmatter
+  的 `name`）和 `displayName`（`userFacingName()` 返回 `displayName || skillName`），
+  两个名字下各自记着不同来源的计数 —— 用户用 `/displayName` 调用的技能在清单里
+  得分 0，模型用 `skillName` 调用的技能在建议里得分 0。修法：新增
+  `getCommandUsageScores()`，同时查 `cmd.name` 与 `userFacingName` 两个键，取较大值
+  （取 max 而非求和，避免两个技能撞名时互相抬高）。
+- **计数写入丢了文件锁**：`saveGlobalConfig` 走 `proper-lockfile`，换成
+  `updateSettingsForSource` 后是无锁的读-改-写，而 `settings.json` 是和真实
+  Claude Code 共享的文件。修法：写计数时对 settings 文件加锁
+  （`realpath: false`，文件还不存在也能锁）。
+- **旧配置回落会被陈旧条目盖掉**：读者原来是"settings 每键优先"，回落写入的新
+  计数反而被 settings 里的旧值遮住。修法：改成**新的观测胜出**（`lastUsedAt` 更大
+  的那份为准，同时间戳比 `usageCount`），回落的计数因此能存活。
+- **计数从不可信作用域读取**：`getInitialSettings()` 会合并 `projectSettings`，
+  也就是仓库里提交的 `.claude/settings.json`。仓库里已有的约定是凡是能影响
+  agent 行为的项都要排除 `projectSettings`（见 `hasAllowBypassPermissionsMode`、
+  `hasAutoModeOptIn`）。修法：只读 `userSettings` + `localSettings`。
+- **未来时间戳产生 Infinity 得分**：`lastUsedAt` 在未来时 `0.5^负数` 无界增长，
+  比较器算出 `Infinity - Infinity = NaN`。修法：把 `lastUsedAt` 钳到 `now`。
+
+### 其他
+
+- `getSkillListingOverrides()` 原来在每次请求都触发（它会重置 settings 缓存并重读
+  所有 settings 文件），而绝大多数请求根本没有清单要发 —— 挪到提前返回之后。
+- 描述截断从 `desc.slice()` 改成 grapheme 安全的截断，原来的写法会把代理对切成
+  两半、往 prompt 里塞孤立代理字符。
+- 埋点 `max_desc_length` 原本是"实际截断长度"，被改成了"配置上限"。改回原语义，
+  配置上限另起 `desc_char_cap` 字段。
+- 迁移写 settings 时只传 `skillUsage` 这一个键，不再把整份 settings 展开重写 ——
+  展开会把显式为 `undefined` 的键当成删除。
+
+### 验证（2026-10-22）
+
+- `bun run typecheck` → 1 error（`@growthbook/growthbook` 找不到，**既有问题**，
+  与本次改动无关：该包在 `package.json` / `bun.lock` 里都没有）
+- `bun test`（相关 14 个文件：SkillTool / StatusLine / suggestions / settings /
+  migrations / attachments / tokens / withRetry）→ 150 pass / 3 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+
+### 第二轮评审修正
+
+第一轮修正后复审，又发现几处没修干净：
+
+- **写计数的读-改-写不是原子的**：计数在加锁**之前**读，并发写会各自算 N+1 丢一次
+  增量；而且合并基准取的是 `parseSettingsFile` 的**进程内解析缓存**，不是磁盘上的
+  文件 —— 另一个写者在这期间加的键会被静默丢掉。修法：把读计数挪进锁内，写之前先
+  `resetSettingsCache()`，让合并基准是磁盘上的快照。
+- **回落写入会二次计数**：回落写进旧配置的是**合并后的总数**，迁移又是"两边相加"，
+  于是下次跑迁移（版本号一变就会重跑）会把同一个数加两遍。改成一致的模型：
+  `settings.json` 存权威计数，旧配置存**尚未折进 settings 的增量**（迁移前是 fork
+  自己的历史，写失败时是待落盘的 delta），两者不相交，读取端相加 —— 和迁移的
+  规则一致。写成功时把待落盘的 delta 从旧配置里清掉。
+- **预算旋钮可被项目控制**：`skillListingBudgetFraction` / `skillListingMaxDescChars`
+  原本走 `getInitialSettings()`，会合并 `projectSettings`，而项目设置优先级高于用户
+  设置 —— 一个仓库可以提交 `.claude/settings.json` 把比例设成 1，把清单撑满整个
+  上下文窗口，代价由用户承担。改为只读可信作用域（`userSettings` +
+  `localSettings`），和 `skillUsage` 一致；新增 `getTrustedSettings()` 统一这个口径。
+- **描述截断的测试没有红**：原来用 cap=3，而 `slice(0, 2)` 恰好落在完整的代理对
+  边界上，朴素写法也能过。改成 cap=4 并补一条逐 cap 扫描的用例（用 UTF-8 往返
+  检测孤立代理字符）。
+- `skill_listing` 附件的 `skillCount` 统计的是含隐藏技能在内的数量，与实际内容
+  不一致，改为只数可见技能。
+
+### 验证（2026-10-22 第二轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 209 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 全部新测试都做过红绿对照：把对应实现改回旧行为，测试确实变红
+
+### 第三轮评审修正
+
+第二轮修正后复审，又发现三处：
+
+- **双存储无法原子更新**：`settings.json` 写成功 + 旧配置清理失败 → 两个存储对同一
+  次计数各记一份，之后每次写都会把这份"卡住的增量"重新并进来，计数无上限地涨。
+  `saveGlobalConfig` 会吞掉 EACCES/EPERM/EROFS，所以这个失败是静默的。根因是**两
+  个存储没法原子更新**。改成单存储：只有 `settings.json` 是持久计数，旧配置降级为
+  **迁移输入**（运行时不再读、也不再写），写失败就把增量暂存在内存里，下次写成功
+  时一并落盘。代价是写失败的增量不跨进程存活 —— 相对"计数无上限增长"是小得多
+  的代价。
+- **`skillUsage` 被别的作用域遮蔽**：计数写在 `userSettings`，但如果按合并后的设置
+  读，`.claude/settings.local.json` 里的同名条目会盖住用户设置里的计数（local 优先
+  级更高），于是计数被冻结在旧值上、每次写还把它往回改。改成只从 `userSettings`
+  读 —— 也就是写进去的那个作用域，读写作用域一致。
+- **可信作用域漏了 policy/flag**：仓库既有的口径是"除 project 外的都可信"
+  （`sandbox-adapter.ts` 的 user+local+flag+policy），第一版只留了 user+local，
+  企业 `managed-settings.json` 里的清单预算上限会被静默忽略。`getTrustedSettings()`
+  改成 user + local + flag + policy，只排除 project。
+
+另外迁移在删不掉旧副本时会打一条 error 日志（`saveGlobalConfig` 吞错误，删不掉
+是静默的），便于事后发现"迁移重跑会重复计数"。
+
+### 验证（2026-10-22 第三轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 208 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 新增测试全部做过红绿对照：读作用域、旧存储不再被写、可信作用域含 flag/policy、
+  暂存增量在写成功后被清掉，逐条改回旧行为后测试确实变红
+
+### 第四轮评审修正
+
+第三轮修正后复审，又发现三处：
+
+- **迁移不幂等，跨重启反复累加**：旧配置副本和 `migrationVersion` 在**同一个文件**
+  （`~/.claude.json`）里。文件不可写时，删副本失败、版本号也升不上去 → 迁移每次启动
+  都重跑，每次都把旧计数再加一遍，计数无上限地涨（实测三次启动写成 2 / 4 / 6）。
+  修法：合并规则改成"**旧副本更新时才相加**" —— 合并后存储的时间戳取较新者，所以第二
+  次跑时旧副本不再更新，计数不会被重复相加。代价：真实客户端比 fork 更近期用过某个
+  技能时，fork 的那份历史不再叠加（保留较新的那份）；fork 独占的技能仍然完整保留。
+- **暂存的增量只随同一个技能落盘**：写失败暂存在内存里的增量，只有下次写**同一个**
+  技能时才会被带上；别的技能写成功时它就烂在内存里。修法：任何一次成功写入都把内存
+  里**所有**暂存增量一并落盘。
+- **锁释放异常会抛到调用方**：`release?.()` 在 `finally` 里没有保护，proper-lockfile
+  释放失败会抛 ELOCKED。修法：包 try/catch，只记日志。
+
+### 已知限制（不修）
+
+- `settings.json` 现在两个客户端都在写，真实 Claude Code 不取 fork 的锁，所以整文件
+  的读-改-写仍可能覆盖对方的一次写入（写本身是原子的，不会写坏文件，只是丢一次更新）。
+- schema 非法的 `skillUsage` 条目（比如手改成 `usageCount: 2.5`）会被设置解析层整个
+  丢掉，下一次 fork 写 settings 时就把它一起清掉了。这是设置机制本身"坏字段整块丢弃"
+  的既有行为，fork 写 settings 变频繁放大了暴露面。
+- `getTrustedSettings()` 会读被 `--setting-sources` 关掉的作用域 —— 与仓库既有的
+  sandbox-adapter 口径一致，属于有意为之。
+
+### 验证（2026-10-22 第四轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 211 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 新增的三条测试（迁移幂等、旧副本较旧时保留存储值、成功写落盘别的技能暂存的增量）
+  都做过红绿对照
+
+### 第五轮评审修正
+
+第四轮修正后复审，又发现四处：
+
+- **一条"假阳性"测试**：`prompt.test.ts` 里"预算优先给常用技能"那条用例把使用计数写进
+  **旧配置**（`~/.claude.json`），而运行时读的是 `settings.json` —— 这条 fixture 根本
+  没生效，用例是"碰巧"通过的：`skill-0` 恰好排在数组第一位，去掉优先级排序也照样过。
+  修法：fixture 写进 `settings.json`，并改用数组**中间**的 `skill-20` —— 去掉排序
+  就会失败。
+- **迁移没有像写入路径那样清缓存**：迁移的合并基准取的是设置缓存，文件在缓存之后被
+  改过时，迁移会用过期的计数覆盖磁盘上的值（实测把磁盘上的 25 覆盖成 12）。写入
+  路径已经有 `resetSettingsCache()`，迁移补上。
+- **锁释放没有回归测试**：补一条 —— 释放抛 ELOCKED 时不外泄、计数仍然落盘。
+- **迁移原样搬运旧配置条目**：旧配置文件是用户可手改的，可能带多余字段；原样写进
+  `settings.json` 会污染真实客户端解析的那个文件。改成只搬 `usageCount` /
+  `lastUsedAt` 两个字段。
+
+### 验证（2026-10-22 第五轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 212 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 新增/修正的测试都做过红绿对照：去掉优先级排序、去掉锁释放保护，测试确实变红
+
+### 第六轮评审修正
+
+第五轮修正后复审，代码本身没问题，但指出**几处行为没有回归测试保护**（"把实现改回旧
+行为，测试照样全绿"）。补测试的同时也修了三处代码：
+
+- **别名得分"取大"还是"求和"没被钉住**：两个技能可以共用同一个 user-facing 名字，取
+  max 是为了不让其中一个抬高另一个；求和会把两者叠加。补测试钉住取 max。
+- **"运行时绝不读旧配置"没被钉住**：旧配置是迁移输入，运行时读了就会把已被迁移掉的
+  历史又算进来。补测试钉住。
+- **"只搬两个字段""写前清缓存""按锁写""作用域顺序"都没被钉住**：逐条补测试。
+- **迁移写 settings.json 时没加锁**：运行时写入路径有锁，迁移没有。抽出
+  `withSettingsFileLock()` 给两边共用（顺带保证两边都是"锁内重置缓存 → 读磁盘 → 写"）。
+- **`lastUsedAt` 可能被写旧**：落盘时取的是暂存值，而存储值可能更新（真实客户端写的），
+  改成取两者较大值。
+- **可信作用域顺序与全局级联不一致**：全局级联（`getEnabledSettingSources()`）把 flag
+  放在最后（最高优先级），而 `getTrustedSettings()` 之前把 policy 放在最后 —— SDK 的
+  flag 会被管理员策略压过去。改成与全局级联一致。
+- **埋点字段少了 `bundled_count` / `bundled_chars`**：看板还在查这两个字段，补回来。
+
+### 验证（2026-10-22 第六轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 219 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 本轮补的每条测试都做过红绿对照：改成求和、加回旧配置读取、原样搬运条目、去掉清
+  缓存、打乱作用域顺序，测试逐条变红
+
+### 第七轮评审修正
+
+第六轮修正后复审，指出**作用域顺序被我改错了**：全局级联是
+`[user, project, local, flag, policy]`（`bootstrap/state.ts` 的默认值），
+`getEnabledSettingSources()` 里的 `Set.add('policySettings')` / `Set.add('flagSettings')`
+对**已存在**的项是空操作 —— `Set.add` 不会把已有元素挪到末尾，所以顺序不变，
+**policy 才是最高优先级**。我误以为 flag 最后，改成了 flag 优先，反而和
+`getInitialSettings()` 以及仓库里 `getAutoModeConfig()` 的口径相反。改回
+`[user, local, flag, policy]`。之前那条测试也跟着写错了前提，一并改正。
+
+同时补上三处仍未被钉住的行为：拿不到锁时仍然执行回调（不因为丢锁就丢掉写入）、
+回调抛异常时仍然释放锁、`lastUsedAt` 不会被写旧。埋点那条测试的 fixture 也补了
+bundled 技能 —— 原来全是普通技能，`bundled_count` / `bundled_chars` 恒为 0，改动
+这两个字段测试照样通过。
+
+**看板可见的变更**：`truncation_mode` 从 `description_trimmed` / `names_only` 变成
+`priority`（截断从"均匀裁剪"变成"按优先级贪心"，语义本来就变了）；`bundled_chars`
+现在统计的是行宽，旧版每条多算一个换行符，老看板会有轻微漂移。
+
+### 验证（2026-10-22 第七轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 222 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 本轮补的测试都做过红绿对照：打乱作用域顺序、去掉 `Math.max`、把 `bundled_chars`
+  写死为 0、去掉释放锁、拿锁失败改成抛出，测试逐条变红
+
+### 第八轮评审修正
+
+第七轮修正后复审，还剩三处：
+
+- **埋点 `bundled_chars` 的断言太弱**：只断言 `> 0`，把实现改成按名字宽度（而不是整行
+  宽度）统计，测试照样通过。改成断言精确值（两条 bundled 行 33 + 48 = 81）。
+- **`truncated_count` 的断言是同义反复**：它和 `names_only_count` 是同一个表达式，
+  永远不可能失败。给 `truncated_count` 换回它本来的含义 —— **因预算不足而丢掉描述**
+  的技能数（不含被 override 主动降级成只剩名字的），fixture 里加一个 `name-only`
+  override 让两个字段不再相等，断言改成"truncated_count < names_only_count"。
+- **当前技能自己的 `lastUsedAt` 仍可能写旧**：写当前技能时用的是 `now`，而存储值
+  可能更新（真实客户端写的），会把时间戳往回拨。改成和暂存路径一样取较大值。
+
+### 验证（2026-10-22 第八轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- `bun test`（相关 22 个文件）→ 223 pass / 5 skip / 0 fail
+- `bun run build` → ✓ Built opencc
+- 本轮三条测试都做过红绿对照：把 `bundled_chars` 改成按名字宽度统计、把
+  `truncated_count` 改回同一个表达式、当前技能的 `lastUsedAt` 不取较大值，测试逐条变红
+
+### 第九轮评审修正
+
+第八轮之后又跑了一轮独立评审，这轮没有改产品行为，改的是**测试隔离**和**文档准确性**。
+
+- **新测试不 hermetic，会读开发者真实的 `~/.claude/settings.json`**：设置模块没有
+  `NODE_ENV === 'test'` 分支，`getSettingsRootPathForSource('userSettings')` 直接指向
+  真实 home，`projectSettings` / `localSettings` 也按 `getOriginalCwd()` 读仓库里的
+  `.claude/`。`prompt.test.ts` 的"预算 = 窗口 1%"和"每模型 chars/token"两条用例直接
+  断言 `getCharBudget(200_000) === 8_000`，而 `getSkillListingBudgetFraction()` 读的就是
+  `getTrustedSettings()` —— **被测的正是这个功能要加的设置**，用户一旦配了
+  `skillListingBudgetFraction`，测试必红。复现：
+
+  ```
+  OPENCC_CONFIG_DIR=<tmp>   # 内含 skillListingBudgetFraction: 0.005
+  bun test src/tools/SkillTool/prompt.test.ts
+  → (fail) budgets 1% of the context window, no hard cap
+  → (fail) scales with the characters-per-token of the active model
+  ```
+
+  `skillUsageTracking.test.ts` 的 `writes the counter into the user settings` 同理 ——
+  它断言 `usageCount` 为 1，但基准数取的是真实 settings 里的计数。
+  修法：用仓库既有的 `setClaudeConfigHomeDirForTesting()` 把设置作用域指向临时目录，
+  再用 `setOriginalCwd()` 把 project/local 作用域也挪走，并 `resetSettingsCache()`
+  清掉可能缓存了真实文件解析结果的 per-source 缓存。迁移测试同样处理 ——
+  它本来就会在真实 `~/.claude/` 下建一个 `settings.json.lock` 目录。
+- **文档与代码对不上**：第一轮那一节（2026-10-21）把三个本地提交号
+  （`5dd727b6` / `9ea644f6` / `03ed1ffe` / `b2d7f049`）记成已落地，git 里**一个都不存在**
+  —— 那一轮的三项改动从来没单独提交，一直留在工作区里被第二轮整体重做。文档现在
+  按"这一轮描述的是工作区状态、不是 git 历史"来写，并指明当前代码以第二轮及之后
+  各轮为准。同一节里"typecheck 0 errors"和"Built opencc v0.30.2"也一并改正
+  （`@growthbook/growthbook` 那个 error 是既有问题，10-21 当天仓库已经是 v0.31.1）。
+
+### 验证（2026-10-22 第九轮）
+
+- `bun run typecheck` → 1 error（同上，既有问题）
+- 相关 7 个测试文件 → 110 pass / 1 skip / 0 fail
+- 隔离性复验：带一份"恶意"的 `settings.json`（含 `skillListingBudgetFraction: 0.005`、
+  `skillListingMaxDescChars: 7`、以及一条 `skillUsage`）跑同一批测试 → 44 pass / 0 fail，
+  修之前同样的输入下有 3 条失败

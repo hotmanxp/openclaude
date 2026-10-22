@@ -16,3 +16,5 @@ package-lock.json
 coverage/
 agent.log
 .claude/worktrees
+.claude/settings.local.json
+.codegraph/
