@@ -23,6 +23,7 @@ import {
   getModToolsVersion,
   modToolFullName,
   modToolServerName,
+  notifyModToolsChanged,
   type ModHandlerSpec,
   type ModRenderEvent,
   type ModRenderHandler,
@@ -1174,7 +1175,7 @@ export function createModContext(mod: LoadedMod): ModContext {
       const fullName = modToolFullName(modName, validated.name)
       if (fullName.length > MOD_TOOL_FULL_NAME_MAX_LENGTH) {
         // Upstream does not refuse this: it drops the tool from the request
-        // (bundle.js:7952, `Gct`: "Tool \"…\" is not sent to Claude: its name
+        // (bundle.js:8005756, `Gct`: "Tool \"…\" is not sent to Claude: its name
         // has N characters and the API accepts at most 128"), so the
         // registration SUCCEEDS and the model never sees the tool. That is the
         // worst of the outcomes — a mod author who reads "registered" and
@@ -1214,6 +1215,17 @@ export function createModContext(mod: LoadedMod): ModContext {
           // What core runs on is what the chain passed down, so a hook that
           // rewrote the description changed what is registered. The name
           // cannot change — the dispatcher refuses that before core runs.
+          //
+          // Upstream checks the spec a SECOND time here, at the bottom of the
+          // chain, on the argument the hooks left (bundle.js:11440581,
+          // `n8e`: `s.check?.(_e, r)` → ``${e}: ${Se} (host check)``). The
+          // facade's check ran on what the MOD passed; this one runs on what
+          // the HOOKS made of it — so a hook that emptied the description or
+          // swapped the schema for a string is caught here, not registered.
+          const siteReason = checkModToolSpecForSite(e)
+          if (siteReason !== undefined) {
+            throw new Error(`tool.register: ${siteReason} (host check)`)
+          }
           const registered: ModToolSpec = {
             name: e.name as string,
             description: e.description as string,
@@ -1224,6 +1236,13 @@ export function createModContext(mod: LoadedMod): ModContext {
             execute: spec.execute,
           }
           mod.tools.push(registered)
+          // The tool pool is cached against the mod-tools version, so a tool
+          // added NOW has to bump it — otherwise a mod that registers after
+          // its own load (a late `registerTool`, a hook, a timer) hands back
+          // a promise that resolves and a tool the model never sees. The
+          // REPL watches the same version, so this is also what makes the
+          // tool pool re-assemble.
+          notifyModToolsChanged()
           // Upstream's `$.tool.register` answers `{ tool }` — the FULL name
           // the model will call (d.ts:7393). opencc answers the same shape.
           return { tool: modToolFullName(modName, registered.name) }
@@ -1538,6 +1557,53 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Upstream's `tool.register` SITE check — the one that runs at the BOTTOM of
+ * the op chain, on the argument as the hooks left it.
+ *
+ * Upstream validates the spec TWICE: once in the facade
+ * (bundle.js:4070026, `bE`) and once at the bottom of the chain
+ * (bundle.js:11440581, `n8e`: `s.check?.(_e, r)` →
+ * `throw new Oe(\`${e}: ${Se} (host check)\`)`). The second pass is what stops
+ * a hook from registering a tool the facade would have refused — a hook that
+ * empties the description or swaps the schema for a string passes the facade
+ * and dies here.
+ *
+ * The reasons are upstream's (`Pho`, bundle.js:5030561; `w7s`,
+ * bundle.js:5030809) and so is their order: name, description, inputSchema,
+ * isDeferred.
+ */
+function checkModToolSpecForSite(spec: {
+  name?: unknown
+  description?: unknown
+  inputSchema?: unknown
+  isDeferred?: unknown
+}): string | undefined {
+  if (typeof spec.name !== 'string' || !MOD_SPEC_NAME_PATTERN.test(spec.name)) {
+    return 'name is letters, digits, _ or - (up to 64)'
+  }
+  if (
+    typeof spec.description !== 'string' ||
+    spec.description.trim() === ''
+  ) {
+    return 'needs a description'
+  }
+  if (!isPlainObject(spec.inputSchema)) {
+    return 'inputSchema must be a JSON schema object'
+  }
+  try {
+    JSON.stringify(spec.inputSchema)
+  } catch (error) {
+    return `inputSchema is not JSON data: ${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+  if (spec.isDeferred !== undefined && typeof spec.isDeferred !== 'boolean') {
+    return 'isDeferred is true or false'
+  }
+  return undefined
+}
+
+/**
  * The tool a mod registered, as the model sees it.
  *
  * `isDeferred` is the one field whose name reads backwards, and it is
@@ -1566,7 +1632,15 @@ function createModTool(mod: LoadedMod, spec: ModToolSpec): Tool {
     async prompt() {
       return spec.description
     },
-    inputJSONSchema: spec.inputSchema as Tool['inputJSONSchema'],
+    inputJSONSchema: {
+      // Upstream forces `type:"object"` where the tool is SERVED (the MCP
+      // server's ListTools, bundle.js:12099061: `{...inputSchema, type:"object"}`
+      // — the spread first, so the forced type wins). A mod that declared
+      // `type:"string"` is believed at the facade and overridden here, because
+      // the arguments really are an object.
+      ...spec.inputSchema,
+      type: 'object',
+    } as Tool['inputJSONSchema'],
     async checkPermissions() {
       return {
         behavior: 'passthrough' as const,

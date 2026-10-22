@@ -50,7 +50,13 @@ export type ModPluginInfo = {
   builtin: boolean
   /** Events this mod subscribed to (`PostToolUse`, `ui.render`, …). */
   handlerEvents: string[]
-  /** Registered tool names (runtime `mcp__<mod>__<tool>`). */
+  /**
+   * Registered tool names — the short names, as the mod declared them.
+   *
+   * The model calls them `mcp__<mod>__<tool>` (upstream's shape), but this
+   * list is what the mod itself named them, which is what the mod's own
+   * documentation and its `on("tool.call", { tool })` matcher use.
+   */
   toolNames: string[]
   /** Registered command names (unprefixed, as declared in `register`). */
   commandNames: string[]

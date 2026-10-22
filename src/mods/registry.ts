@@ -190,7 +190,7 @@ export type ModToolName = `mcp__${string}__${string}`
  * The API's own limit on a tool name: 128 characters.
  *
  * Upstream does not refuse a longer name — it drops the tool from the request
- * (`Gct`, bundle.js:7952: "Tool \"…\" is not sent to Claude: its name has N
+ * (`Gct`, bundle.js:8005756: "Tool \"…\" is not sent to Claude: its name has N
  * characters and the API accepts at most 128"), so the registration succeeds and
  * the model never sees the tool. opencc refuses it at registration instead
  * (see `ctx.registerTool`): a silent drop is a tool the mod author believes

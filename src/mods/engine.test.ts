@@ -10,6 +10,7 @@ import {
 import {
   registerLoadedMod,
   resetModsRegistryForTesting,
+  subscribeModTools,
   type LoadedMod,
 } from './registry.js'
 
@@ -241,12 +242,57 @@ describe('ctx.registerTool — upstream contract', () => {
     expect(seen[0]!.isDeferred).toBe(false)
   })
 
-  test('a hook that renames the tool is refused — the name is pinned', async () => {
+  test('a hook that renames the tool is skipped — the tool keeps its own name', async () => {
     // Upstream's `tool.register` site pins the name: `checkArgument: gs`
     // (bundle.js:3973583) compares the argument the hook passed down with the
     // one the engine handed it, and `gs` (bundle.js:3970309) answers
     // "a changed name (the tool being registered; next(e) passes it on)".
-    watching((e, next) => next({ ...e, name: 'renamed' }))
+    //
+    // The check fires WHERE the hook passes the argument down (`lt`,
+    // bundle.js:3896693): the throw happens inside that hook's own `next()`
+    // call, so the hook fails and is skipped — "skipped; what is below it ran
+    // in its place" (bundle.js:3900045). The registration therefore SUCCEEDS,
+    // under the name the engine dispatched, and what ran beneath the skipped
+    // hook never sees the renamed argument.
+    const { seen } = watching((e, next) => next({ ...e, name: 'renamed' }))
+    const mod = freshMod('demo')
+    const ctx = createModContext(mod)
+    const answer = await ctx.registerTool({
+      name: 'echo',
+      description: 'echo the message',
+      inputSchema: { type: 'object' },
+      execute: async () => 'ok',
+    })
+    expect(answer).toEqual({ tool: 'mcp__demo__echo' })
+    expect(mod.tools.map(t => t.name)).toEqual(['echo'])
+    // The renaming hook saw the engine's own argument and its rewrite never
+    // reached the core.
+    expect(seen.map(e => e.name)).toEqual(['echo'])
+  })
+
+  test('a hook that breaks the spec is caught by the site check', async () => {
+    // Upstream validates the spec TWICE: in the facade (bundle.js:4070026)
+    // and again at the BOTTOM of the chain, on the argument the hooks left
+    // (bundle.js:11440581, `n8e`: `s.check?.(_e, r)` →
+    // ``${e}: ${Se} (host check)``). The second pass is what stops a hook from
+    // registering a tool the facade would have refused — here the hook
+    // emptied the description.
+    watching((e, next) => next({ ...e, description: '   ' }))
+    const mod = freshMod('demo')
+    const ctx = createModContext(mod)
+    await expect(
+      ctx.registerTool({
+        name: 'echo',
+        description: 'echo the message',
+        inputSchema: { type: 'object' },
+        execute: async () => 'ok',
+      }),
+    ).rejects.toThrow('tool.register: needs a description (host check)')
+    expect(mod.tools).toHaveLength(0)
+  })
+
+  test('a hook that swaps the schema for a string is caught too', async () => {
+    watching((e, next) => next({ ...e, inputSchema: 'not-a-schema' }))
     const mod = freshMod('demo')
     const ctx = createModContext(mod)
     await expect(
@@ -257,8 +303,9 @@ describe('ctx.registerTool — upstream contract', () => {
         execute: async () => 'ok',
       }),
     ).rejects.toThrow(
-      'a changed name (the tool being registered; next(e) passes it on)',
+      'tool.register: inputSchema must be a JSON schema object (host check)',
     )
+    expect(mod.tools).toHaveLength(0)
   })
 
   test("a hook's { deny } refuses the registration in upstream's wording", async () => {
@@ -380,13 +427,15 @@ describe('ctx.registerTool — upstream contract', () => {
   })
 
   test('a model-visible name over 128 characters is refused', () => {
-    // Upstream drops such a tool from the request instead (bundle.js:7952),
+    // Upstream drops such a tool from the request instead (bundle.js:8005756),
     // so the registration succeeds and the model never sees the tool. opencc
     // refuses it at registration, where the mod author can still read why.
     //
     // The name is the model's, so the MOD's name is part of the budget:
-    // `mcp__` + the server key + `__` + the tool's own name.
-    const mod = freshMod('m'.repeat(70))
+    // `mcp__` + the server key + `__` + the tool's own name. Both halves are
+    // at their own limit — a mod name is at most 64 characters
+    // (`/^[a-z0-9][a-z0-9_-]{0,63}$/`), a tool name at most 64 too.
+    const mod = freshMod('m'.repeat(64))
     const ctx = createModContext(mod)
     expect(() =>
       ctx.registerTool({
@@ -471,6 +520,53 @@ describe('getModTools', () => {
     const tools = getModTools()
     expect(tools[0]!.name).toBe('mcp__evil__Bash')
     expect(tools.some(t => t.name === 'Bash')).toBe(false)
+  })
+
+  test('a tool registered after the mod is loaded invalidates the cache', async () => {
+    // The mod is loaded and the tool pool has been built once, so the
+    // version-keyed cache is warm and empty. A tool registered NOW still has
+    // to reach the model: a mod whose `registerTool` promise resolves after
+    // the session started must not have its tool silently dropped.
+    const mod = freshMod('late')
+    const ctx = createModContext(mod)
+    registerLoadedMod(mod)
+    expect(getModTools()).toHaveLength(0)
+
+    await ctx.registerTool({
+      name: 'arrival',
+      description: 'registered after the mod was loaded',
+      inputSchema: { type: 'object' },
+      execute: async () => 'here',
+    })
+
+    expect(getModTools().map(t => t.name)).toEqual(['mcp__late__arrival'])
+  })
+
+  test('a late registration tells the REPL to re-assemble its tool pool', async () => {
+    // The REPL watches the mod-tools version (useSyncExternalStore in
+    // REPL.tsx) and re-assembles the pool when it changes. A registration
+    // that does not bump the version leaves the pool stale: the tool exists,
+    // the model never sees it, and nothing in the UI says so.
+    const mod = freshMod('late-notify')
+    const ctx = createModContext(mod)
+    registerLoadedMod(mod)
+
+    let notified = 0
+    const unsubscribe = subscribeModTools(() => {
+      notified++
+    })
+    try {
+      await ctx.registerTool({
+        name: 'arrival',
+        description: 'registered after the mod was loaded',
+        inputSchema: { type: 'object' },
+        execute: async () => 'here',
+      })
+    } finally {
+      unsubscribe()
+    }
+
+    expect(notified).toBeGreaterThan(0)
   })
 })
 

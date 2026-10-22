@@ -190,12 +190,34 @@ async function invokeModHandler(
 }
 
 /**
+ * A field the engine owns, which a hook may not rewrite.
+ *
+ * Upstream writes the rule out per event (`checkArgument` ×58,
+ * bundle.js:3913858) rather than having one generic mechanism. `tool.register`
+ * pins the tool's name: the engine keys the registered tool by it and tells
+ * the model the resulting name, so a hook that renames the tool is asking the
+ * engine to register something the model was never told about.
+ */
+export type ModPinnedArgument = {
+  /** The field a hook may not rewrite. */
+  field: string
+  /** Upstream's sentence for the refusal. */
+  reason: string
+}
+
+/**
  * Run the mod handler chain (in order) over `input`, threading `next()`.
  * The terminal `next` is the core tier runner. Each handler is individually
  * try/caught and individually budgeted — a throwing or overrunning handler is
  * attributed to its mod, recorded for the circuit breaker, and skipped (never
  * tears the chain or kills the pipeline). A handler whose matcher misses the
  * event is skipped without being counted either way.
+ *
+ * `pinned` is the field the engine owns on this event (see
+ * {@link ModPinnedArgument}). Upstream checks it where a hook passes an
+ * argument DOWN (`lt`, bundle.js:3896693): the throw happens inside the
+ * hook's own `next()` call, so the hook fails, is skipped, and what ran
+ * beneath it takes its place — the engine keeps the value it dispatched.
  */
 export async function runModChain(
   chain: ModChainEntry[],
@@ -203,6 +225,7 @@ export async function runModChain(
   terminal: (e: Record<string, unknown>) => Promise<Record<string, unknown>>,
   signal?: AbortSignal,
   onError?: (modName: string, error: unknown) => void,
+  pinned?: ModPinnedArgument,
 ): Promise<Record<string, unknown>> {
   let index = 0
   // `index` is shared by every nested next(), so a handler that calls next()
@@ -246,6 +269,15 @@ export async function runModChain(
     const next = ((e?: Record<string, unknown>) => {
       const prior = branchResults.get(next)
       if (prior) return prior
+      // Upstream's pinned-field check fires HERE, inside the hook's own
+      // `next()` call (`lt`, bundle.js:3896693): the hook that passes a
+      // rewritten argument down fails, is skipped, and what ran beneath it
+      // takes its place — so the engine keeps the value it dispatched.
+      // Thrown, not returned: the handler's own try/catch turns it into
+      // "this handler is skipped", exactly like any other hook failure.
+      if (pinned !== undefined && e !== undefined) {
+        assertPinnedArgumentNotRewritten(modName, pinned, input, e)
+      }
       const branch = runFrom(e ?? current)
       branchResults.set(next, branch)
       return branch
@@ -283,6 +315,11 @@ export async function runModChain(
         tierRank(chain[index]!.tier!) < tierRank(targetTier)
       ) {
         index++
+      }
+      // The tier jump is another way to pass an argument down, so the pinned
+      // field is checked here too.
+      if (pinned !== undefined && targetE !== undefined) {
+        assertPinnedArgumentNotRewritten(modName, pinned, input, targetE)
       }
       return runFrom(targetE)
     }
@@ -1079,32 +1116,31 @@ export function modOpDenyMessage(
  *
  * So the name is a fact about the tool being registered, not something a hook
  * may rewrite: the engine keys the registered tool by it, and the model is
- * told the resulting name. Upstream's own check fires where a hook passes a
- * MODIFIED argument down (`lt`, bundle.js:3896693) and throws
- * `${plugin}: next() passed an argument with ${reason}`; this host throws the
- * reason itself, which is the sentence a mod author needs.
+ * told the resulting name.
  */
 const TOOL_REGISTER_PINNED_NAME_REASON =
   'a changed name (the tool being registered; next(e) passes it on)'
 
 /**
- * Refuse a rewritten argument on an op whose field is pinned.
+ * Upstream's pinned-field check, at the point where a hook passes an argument
+ * DOWN.
  *
- * Only `tool.register` has one here. Upstream writes the rule out again for
- * every event that needs it (`checkArgument` ×58, bundle.js:3913858) rather
- * than having one generic mechanism, and opencc ports the rules one event at
- * a time — `tool.check` pins its input, `command.describe` its command, and
- * so on. `tool.register` is the one this task covers, so it is the one
- * written down.
+ * Upstream's `lt` (bundle.js:3896693) compares the argument the hook passed
+ * with the argument the site dispatched and throws
+ * `${plugin}: next() passed an argument with ${reason}`. The throw happens
+ * inside the hook's own `next()` call, so the hook fails and is skipped
+ * ("skipped; what is below it ran in its place", bundle.js:3900045) and the
+ * engine keeps the value it dispatched — the tool registers under its own
+ * name rather than the whole registration dying.
  */
-function assertOpArgumentPinned(
-  event: string,
-  frozen: Record<string, unknown>,
-  current: Record<string, unknown>,
+function assertPinnedArgumentNotRewritten(
+  modName: string,
+  pinned: ModPinnedArgument,
+  original: Record<string, unknown>,
+  passed: Record<string, unknown>,
 ): void {
-  if (event !== 'tool.register') return
-  if (current.name === frozen.name) return
-  throw new Error(TOOL_REGISTER_PINNED_NAME_REASON)
+  if (passed[pinned.field] === original[pinned.field]) return
+  throw new Error(`${modName}: next() passed an argument with ${pinned.reason}`)
 }
 
 /**
@@ -1272,8 +1308,18 @@ export async function dispatchModOp<T>(
       arg = current
       return { continue: true } as unknown as Record<string, unknown>
     },
+    undefined,
+    undefined,
+    // `tool.register` pins the tool's name: the engine keys the registered
+    // tool by it and tells the model the resulting name, so a hook that
+    // renames the tool is asking the engine to register something the model
+    // was never told about. Upstream checks that where the hook passes the
+    // argument down, so the offending hook is skipped and the tool still
+    // registers under its own name.
+    event === 'tool.register'
+      ? { field: 'name', reason: TOOL_REGISTER_PINNED_NAME_REASON }
+      : undefined,
   )) as unknown as OpOutcome
-  assertOpArgumentPinned(event, frozen, arg)
   if (outcome === undefined || outcome === null) {
     return core(arg)
   }
@@ -1326,9 +1372,11 @@ export async function dispatchModOp<T>(
  *
  * The host's own hook fields are kept alongside — `hook_event_name`,
  * `session_id`, `cwd` and the rest — so a mod that reads the host dialect
- * still finds what it found before. The arguments are spread FIRST and the
- * engine's fields are set on top, which is upstream's order: an argument
- * named `tool` does not become the tool's name.
+ * still finds what it found before. The engine's fields are set on top, which
+ * is upstream's order: an argument named `tool` does not become the tool's
+ * name. The host's fields also come after the arguments, so an argument that
+ * shares a name with one of them (`cwd` is the one that bites) does not
+ * silently take the host's value — the argument is still under `tool_input`.
  */
 const BRIDGED_PAYLOAD: Readonly<
   Partial<Record<HookEvent, (input: HookInput) => Record<string, unknown>>>
@@ -1344,20 +1392,46 @@ const BRIDGED_PAYLOAD: Readonly<
     // The engine-owned keys upstream lifts out of the arguments
     // (`ds` + `Eqn`, bundle.js:3968700): `tool`, `tool_use_id`, `agentId`,
     // `consent`, `requestMeta` and the internal `$shadowed`. An argument
-    // carrying one of those names is the engine's field, not the tool's.
+    // carrying one of those names is the engine's field, not the tool's —
+    // and upstream does not drop the argument's value, it MOVES it into
+    // `$shadowed` (`Ip` + `Vo`), so a mod that reads `$shadowed` finds it.
     const args = (tool_input ?? {}) as Record<string, unknown>
-    const {
-      tool: _tool,
-      tool_use_id: _toolUseId,
-      agentId: _agentId,
-      consent: _consent,
-      requestMeta: _requestMeta,
-      $shadowed: _shadowed,
-      ...own
-    } = args
-    return { ...own, ...rest, tool }
+    const shadowed: Record<string, unknown> = {}
+    for (const key of BRIDGED_ENGINE_KEYS) {
+      if (Object.hasOwn(args, key)) shadowed[key] = args[key]
+    }
+    const own = { ...args }
+    for (const key of Object.keys(shadowed)) delete own[key]
+    return {
+      ...own,
+      // The host's fields come AFTER the arguments, so a tool that declares
+      // an argument named like a host field (`cwd` is the one that bites)
+      // does not silently take the session's value for it. The argument is
+      // not lost: it is still under `tool_input`, which is where the host
+      // dialect keeps it.
+      ...rest,
+      tool,
+      // The host's own shape, kept: `tool_input` is where the arguments were
+      // before they were flattened, and a mod that read it before the
+      // flattening still finds it.
+      ...(tool_input !== undefined ? { tool_input } : {}),
+      ...(Object.keys(shadowed).length > 0 ? { $shadowed: shadowed } : {}),
+    }
   },
 }
+
+/**
+ * The keys the engine owns on a bridged event — upstream's `ds` + `Eqn`
+ * (bundle.js:3968700).
+ */
+const BRIDGED_ENGINE_KEYS = [
+  'tool',
+  'tool_use_id',
+  'agentId',
+  'consent',
+  '$shadowed',
+  'requestMeta',
+] as const
 
 /**
  * How a mod's answer is spelled on the way back.

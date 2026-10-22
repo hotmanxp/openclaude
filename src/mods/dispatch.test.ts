@@ -1476,12 +1476,15 @@ describe('tool.register pins the tool name', () => {
     return dispatchModOp('tool.register', { name: 'echo' }, () => 'CORE')
   }
 
-  test('a hook that renames the tool is refused', async () => {
-    await expect(
-      registerWith(async (e, next) => next({ ...e, name: 'renamed' })),
-    ).rejects.toThrow(
-      'a changed name (the tool being registered; next(e) passes it on)',
-    )
+  test('a hook that renames the tool is skipped, and the core keeps the name', async () => {
+    // Upstream checks the pinned field where the hook passes the argument
+    // down (`lt`, bundle.js:3896693), so the throw happens inside that hook's
+    // own `next()` call: the hook fails, is skipped ("skipped; what is below
+    // it ran in its place", bundle.js:3900045), and the engine keeps the
+    // argument it dispatched.
+    expect(
+      await registerWith(async (e, next) => next({ ...e, name: 'renamed' })),
+    ).toBe('CORE')
   })
 
   test('a hook that keeps the name is let through (control)', async () => {
@@ -1568,5 +1571,83 @@ describe('the bridged tool.call payload', () => {
     expect(seen!.hook_event_name).toBe('PreToolUse')
     expect(seen!.tool_use_id).toBe('toolu_1')
     expect(seen!.file_path).toBe('/x')
+  })
+
+  test("the host's own `tool_input` is still on the event", async () => {
+    // The arguments ride flat on the event, but the host's own shape is kept:
+    // `tool_input` is where the arguments were before they were flattened,
+    // and a mod that read it before the flattening still finds it.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls -la' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.tool_input).toEqual({ command: 'ls -la' })
+  })
+
+  test('an argument named after an engine key lands in $shadowed', async () => {
+    // Upstream lifts the engine-owned keys out of the arguments and does not
+    // drop their values — `Ip` collects them and `Vo` puts them under
+    // `$shadowed` (bundle.js:3968700). An argument called `agentId` is not
+    // the engine's `agentId`, and the value is still there to be read.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        tool_name: 'Read',
+        tool_input: { agentId: 'spoofed', file_path: '/x' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.agentId).toBeUndefined()
+    expect(seen!.$shadowed).toEqual({ agentId: 'spoofed' })
+    expect(seen!.file_path).toBe('/x')
+  })
+
+  test('a host field wins over an argument of the same name, and the argument is kept', async () => {
+    // The host's fields are the host's own facts — the session's `cwd` is not
+    // the tool's `cwd`. So the host's value is the one on the event, and the
+    // tool's argument is not lost: it is still under `tool_input`.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        hook_event_name: 'PreToolUse',
+        cwd: '/session/dir',
+        tool_name: 'Custom',
+        tool_input: { cwd: '/tool/dir' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.cwd).toBe('/session/dir')
+    expect((seen!.tool_input as Record<string, unknown>).cwd).toBe('/tool/dir')
   })
 })

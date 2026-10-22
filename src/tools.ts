@@ -1,6 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { getModTools } from './mods/engine.js'
+import { logForDebugging } from './utils/debug.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { BackgroundAgentTool } from './tools/BackgroundAgentTool/index.js'
 import { BackgroundAgentResultTool } from './tools/BackgroundAgentResultTool/index.js'
@@ -376,6 +377,24 @@ export function assembleToolPool(
   // is preserved. Names are `mcp__<mod>__<tool>` (upstream's shape), so
   // built-ins always win the uniqBy on collision.
   const modTools = getModTools()
+  // A mod tool and a real MCP tool can end up with the same model-visible
+  // name — `mcp__<server>__<tool>` is how BOTH are spelled, and the server key
+  // is the mod's name on one side and the MCP server's on the other. Upstream
+  // refuses the registration outright (bundle.js:11929792: "the session
+  // already has an MCP server named … in its MCP config; registering would
+  // replace it"). opencc has no such gate at registration time, and the dedup
+  // below keeps the FIRST name it sees — the MCP tool, because it is
+  // concatenated first — so the mod's tool disappears without a word. Say so.
+  const mcpToolNames = new Set(allowedMcpTools.map(t => t.name))
+  for (const tool of modTools) {
+    if (mcpToolNames.has(tool.name)) {
+      logForDebugging(
+        `[mods] mod tool "${tool.name}" has the same model-visible name as an ` +
+          `MCP tool and was dropped from the tool pool — rename the mod, or ` +
+          `the MCP server, so the two do not collide`,
+      )
+    }
+  }
   return uniqBy(
     [...builtInTools]
       .sort(byName)
