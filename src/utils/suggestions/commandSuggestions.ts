@@ -7,7 +7,7 @@ import {
 } from '../../commands.js'
 import type { SuggestionItem } from '../../components/PromptInput/PromptInputFooterSuggestions.js'
 import { STACKED_SKILL_LIMIT } from '../processUserInput/processStackedSkillInvocation.js'
-import { getSkillUsageScore } from './skillUsageTracking.js'
+import { getCommandUsageScores } from './skillUsageTracking.js'
 
 // Treat these characters as word separators for command search
 const SEPARATORS = /[:_-]/g
@@ -391,11 +391,12 @@ export function generateCommandSuggestions(
 
     // Find recently used skills (only prompt commands have usage tracking)
     const recentlyUsed: Command[] = []
-    const commandsWithScores = visibleCommands
-      .filter(cmd => cmd.type === 'prompt')
+    const promptCommands = visibleCommands.filter(cmd => cmd.type === 'prompt')
+    const usageScores = getCommandUsageScores(promptCommands)
+    const commandsWithScores = promptCommands
       .map(cmd => ({
         cmd,
-        score: getSkillUsageScore(getCommandName(cmd)),
+        score: usageScores.get(cmd.name) ?? 0,
       }))
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -491,13 +492,16 @@ export function generateCommandSuggestions(
   // 4. Prefix alias match
   // 5. Fuzzy match (lowest)
   // Precompute per-item values once to avoid O(n log n) recomputation in comparator
+  const usageScores = getCommandUsageScores(
+    searchResults.map(r => r.item.command),
+  )
   const withMeta = searchResults.map(r => {
     const name = r.item.commandName.toLowerCase()
     const aliases = r.item.aliasKey?.map(alias => alias.toLowerCase()) ?? []
     const pluginNames = r.item.pluginNameKey?.map(n => n.toLowerCase()) ?? []
     const usage =
       r.item.command.type === 'prompt'
-        ? getSkillUsageScore(getCommandName(r.item.command))
+        ? (usageScores.get(r.item.command.name) ?? 0)
         : 0
     return { r, name, aliases, pluginNames, usage }
   })

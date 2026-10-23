@@ -2986,13 +2986,6 @@ async function getSkillListingAttachments(
     allCommands = filterToBundledAndMcp(allCommands)
   }
 
-  // Skills the user marked "user-invocable-only" or "off" stay out of the
-  // listing the model sees; the user can still invoke them by name.
-  const skillOverrides = getSkillListingOverrides()
-  allCommands = allCommands.filter(
-    cmd => !isSkillHiddenFromModel(skillOverrides.get(cmd.name) ?? 'on'),
-  )
-
   const agentKey = toolUseContext.agentId ?? ''
   let sent = sentSkillNames.get(agentKey)
   if (!sent) {
@@ -3005,7 +2998,11 @@ async function getSkillListingAttachments(
   // (skills loaded later via /reload-plugins etc) get announced.
   if (suppressNext) {
     suppressNext = false
+    // Rare path (once per session) — the override lookup re-reads the
+    // settings files, so it is cheap to pay for it here.
+    const skillOverrides = getSkillListingOverrides()
     for (const cmd of allCommands) {
+      if (isSkillHiddenFromModel(skillOverrides.get(cmd.name) ?? 'on')) continue
       sent.add(cmd.name)
     }
     return []
@@ -3018,16 +3015,29 @@ async function getSkillListingAttachments(
     return []
   }
 
+  // Skills the user marked "user-invocable-only" or "off" stay out of the
+  // listing the model sees; the user can still invoke them by name. The
+  // override lookup re-reads the settings files, so it only runs when there
+  // is a listing to send.
+  const skillOverrides = getSkillListingOverrides()
+  const visibleSkills = newSkills.filter(
+    cmd => !isSkillHiddenFromModel(skillOverrides.get(cmd.name) ?? 'on'),
+  )
+  if (visibleSkills.length === 0) {
+    return []
+  }
+
   // If no skills have been sent yet, this is the initial batch
   const isInitial = sent.size === 0
 
-  // Mark as sent
-  for (const cmd of newSkills) {
+  // Mark as sent. Hidden skills stay unmarked so un-hiding one later still
+  // gets it listed.
+  for (const cmd of visibleSkills) {
     sent.add(cmd.name)
   }
 
   logForDebugging(
-    `Sending ${newSkills.length} skills via attachment (${isInitial ? 'initial' : 'dynamic'}, ${sent.size} total sent)`,
+    `Sending ${visibleSkills.length} skills via attachment (${isInitial ? 'initial' : 'dynamic'}, ${sent.size} total sent)`,
   )
 
   // Format within budget using existing logic
@@ -3036,7 +3046,7 @@ async function getSkillListingAttachments(
     getSdkBetas(),
   )
   const content = formatCommandsWithinBudget(
-    newSkills,
+    visibleSkills,
     contextWindowTokens,
     {
       charsPerToken: getCharsPerToken(toolUseContext.options.mainLoopModel),
@@ -3048,7 +3058,7 @@ async function getSkillListingAttachments(
     {
       type: 'skill_listing',
       content,
-      skillCount: newSkills.length,
+      skillCount: visibleSkills.length,
       isInitial,
     },
   ]

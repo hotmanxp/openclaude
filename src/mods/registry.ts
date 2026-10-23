@@ -1,11 +1,14 @@
 import type { LocalJSXCommandCall } from '../types/command.js'
+import { normalizeNameForMCP } from '../services/mcp/normalization.js'
 import type { ModManifest } from './manifest.js'
 import type {
   ModCatchHandler,
   ModEventName,
   ModMatcher,
   ModNext,
+  ModToolExecute,
   ModTier,
+  ToolSpec,
 } from './protocol.js'
 
 /**
@@ -106,7 +109,7 @@ export type ModRenderHandler = (
   next: (text?: string) => string,
 ) => string | void
 
-export type { ModEventName, ModMatcher, ModTier }
+export type { ModEventName, ModMatcher, ModTier, ToolSpec }
 
 export type ModHandlerSpec = {
   event: ModEventName
@@ -150,13 +153,72 @@ export type ModCommandSpec = {
   supportsNonInteractive?: boolean
 }
 
-export type ModToolSpec = {
-  /** Unprefixed name; the runtime tool is `mods_<modName>_<name>`. */
-  name: string
-  description: string
-  /** JSON Schema for the tool input (validated via ajv, MCPTool parity). */
-  inputSchema: Record<string, unknown>
-  execute: (input: Record<string, unknown>) => unknown | Promise<unknown>
+/**
+ * A tool a mod registered — upstream's `ToolSpec` plus opencc's `execute`.
+ *
+ * The upstream half is `ToolSpec` (d.ts:13777-13804): `name`, `description`,
+ * `inputSchema?`, `isDeferred?`. The name is the SHORT name; the model calls
+ * the tool as `mcp__<plugin>__<name>` — see {@link modToolFullName}.
+ *
+ * `execute` is opencc's own: upstream serves a registered tool from a loopback
+ * MCP server and expects a `tool.call` hook to answer it, while opencc lets a
+ * mod hand the implementation over directly. It is OPTIONAL on purpose — a
+ * spec without it is upstream's shape, and the tool is then answered by the
+ * `tool.call` chain (see `createModTool`).
+ */
+export type ModToolSpec = ToolSpec & {
+  /**
+   * The tool's implementation, when the mod supplies one.
+   *
+   * Absent means "answered by the `tool.call` chain" — upstream's shape.
+   */
+  execute?: ModToolExecute
+}
+
+/**
+ * The model-visible name of a mod tool: `mcp__<server>__<tool>`.
+ *
+ * Upstream builds it in `_re` (bundle.js:9085308):
+ * `var _re=(e,n)=>`mcp__${Cn(e)}__${n}`` — the plugin's MCP server key,
+ * sanitized, then the tool's short name. opencc's server key is the mod's own
+ * name, so a mod named `weather` that registers `lookup` is
+ * `mcp__weather__lookup`.
+ */
+export type ModToolName = `mcp__${string}__${string}`
+
+/**
+ * The API's own limit on a tool name: 128 characters.
+ *
+ * Upstream does not refuse a longer name — it drops the tool from the request
+ * (`Gct`, bundle.js:8005756: "Tool \"…\" is not sent to Claude: its name has N
+ * characters and the API accepts at most 128"), so the registration succeeds and
+ * the model never sees the tool. opencc refuses it at registration instead
+ * (see `ctx.registerTool`): a silent drop is a tool the mod author believes
+ * is installed and the model can never call, and the one-line reason is worth
+ * more than the upstream silence.
+ */
+export const MOD_TOOL_FULL_NAME_MAX_LENGTH = 128
+
+/**
+ * The MCP server key a mod's tools live under: the mod's name, sanitized.
+ *
+ * Upstream's `Cn` (bundle.js:685373) is
+ * `e.replace(/[^a-zA-Z0-9_-]/g,"_")` plus a `claude.ai ` special case — which
+ * is exactly opencc's `normalizeNameForMCP`, so that is what is used here
+ * rather than a second copy of the same rule.
+ */
+export function modToolServerName(modName: string): string {
+  return normalizeNameForMCP(modName)
+}
+
+/**
+ * The model-visible name of a mod's tool.
+ *
+ * `mcp__<sanitized mod name>__<tool name>` — upstream's `_re`, with opencc's
+ * server key (the mod name) in place of the plugin's.
+ */
+export function modToolFullName(modName: string, toolName: string): string {
+  return `mcp__${modToolServerName(modName)}__${toolName}` as ModToolName
 }
 
 export type LoadedMod = {

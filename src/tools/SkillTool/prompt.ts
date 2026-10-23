@@ -8,6 +8,7 @@ import {
 } from 'src/commands.js'
 import { COMMAND_NAME_TAG } from '../../constants/xml.js'
 import { stringWidth } from '../../ink/stringWidth.js'
+import { getGraphemeSegmenter } from '../../utils/intl.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -16,10 +17,10 @@ import { logForDebugging } from '../../utils/debug.js'
 import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import {
-  getInitialSettings,
   getSettingsWithSources,
+  getTrustedSettings,
 } from '../../utils/settings/settings.js'
-import { getSkillUsageScores } from '../../utils/suggestions/skillUsageTracking.js'
+import { getCommandUsageScores } from '../../utils/suggestions/skillUsageTracking.js'
 
 // Skill listing gets 1% of the context window (in characters)
 export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01
@@ -77,7 +78,9 @@ export function getSkillListingBudgetFraction(): number {
   if (skillListingBudgetFractionOverride !== undefined) {
     return skillListingBudgetFractionOverride
   }
-  const value = getInitialSettings().skillListingBudgetFraction
+  // Trusted scopes only: a project could otherwise set the fraction to 1
+  // and bill the user for a listing that fills the whole context window.
+  const value = getTrustedSettings().skillListingBudgetFraction
   if (typeof value === 'number' && value > 0 && value <= 1) {
     return value
   }
@@ -89,7 +92,7 @@ export function getSkillListingMaxDescChars(): number {
   if (skillListingMaxDescCharsOverride !== undefined) {
     return skillListingMaxDescCharsOverride
   }
-  const value = getInitialSettings().skillListingMaxDescChars
+  const value = getTrustedSettings().skillListingMaxDescChars
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return value
   }
@@ -158,17 +161,32 @@ export function isSkillHiddenFromModel(state: SkillListingState): boolean {
   return state === 'user-invocable-only' || state === 'off'
 }
 
+/**
+ * Longest prefix of `text` that fits in `maxChars` UTF-16 code units and
+ * does not split a grapheme cluster. A plain slice would cut a surrogate
+ * pair in half and leave a lone surrogate in the prompt.
+ */
+function truncateChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  let end = 0
+  for (const { index, segment } of getGraphemeSegmenter().segment(text)) {
+    if (index + segment.length > maxChars) break
+    end = index + segment.length
+  }
+  return text.slice(0, end)
+}
+
 function getCommandDescription(cmd: Command, maxDescChars: number): string {
   const desc = cmd.whenToUse
     ? `${cmd.description} - ${cmd.whenToUse}`
     : cmd.description
   return desc.length > maxDescChars
-    ? desc.slice(0, maxDescChars - 1) + '\u2026'
+    ? truncateChars(desc, maxDescChars - 1) + '…'
     : desc
 }
 
-function formatCommandDescription(cmd: Command, maxDescChars: number): string {
-  // Debug: log if userFacingName differs from cmd.name for plugin skills
+/** Debug: log if userFacingName differs from cmd.name for plugin skills. */
+function logDescriptionNameMismatch(cmd: Command): void {
   const displayName = getCommandName(cmd)
   if (
     cmd.name !== displayName &&
@@ -179,8 +197,6 @@ function formatCommandDescription(cmd: Command, maxDescChars: number): string {
       `Skill prompt: showing "${cmd.name}" (userFacingName="${displayName}")`,
     )
   }
-
-  return `- ${cmd.name}: ${getCommandDescription(cmd, maxDescChars)}`
 }
 
 export function formatCommandsWithinBudget(
@@ -206,15 +222,19 @@ export function formatCommandsWithinBudget(
         full: nameOnly,
         nameWidth: stringWidth(nameOnly),
         fullWidth: stringWidth(nameOnly),
+        descChars: 0,
       }
     }
-    const full = formatCommandDescription(cmd, maxDescChars)
+    logDescriptionNameMismatch(cmd)
+    const description = getCommandDescription(cmd, maxDescChars)
+    const full = `- ${cmd.name}: ${description}`
     return {
       cmd,
       nameOnly,
       full,
       nameWidth: stringWidth(nameOnly),
       fullWidth: stringWidth(full),
+      descChars: description.length,
     }
   })
 
@@ -236,6 +256,8 @@ export function formatCommandsWithinBudget(
   const keepFull = new Set<number>()
   const candidates: number[] = []
   let reserved = 0
+  let bundledCount = 0
+  let bundledChars = 0
   entries.forEach((entry, i) => {
     if (overrides.get(entry.cmd.name) === 'name-only') {
       reserved += entry.nameWidth
@@ -243,6 +265,8 @@ export function formatCommandsWithinBudget(
     }
     if (entry.cmd.type === 'prompt' && entry.cmd.source === 'bundled') {
       reserved += entry.fullWidth
+      bundledCount++
+      bundledChars += entry.fullWidth
       keepFull.add(i)
       return
     }
@@ -254,32 +278,48 @@ export function formatCommandsWithinBudget(
   // priority is its usage count decayed over a 7-day half-life, so the
   // descriptions that survive are the ones that get invoked.
   let remaining = budget - reserved - (entries.length - 1)
-  const scores = getSkillUsageScores(
-    candidates.map(i => entries[i]!.cmd.name),
+  const scores = getCommandUsageScores(
+    candidates.map(i => entries[i]!.cmd),
   )
   candidates.sort(
     (a, b) =>
       (scores.get(entries[b]!.cmd.name) ?? 0) -
       (scores.get(entries[a]!.cmd.name) ?? 0),
   )
+  let candidatesKept = 0
   for (const i of candidates) {
     const cost = entries[i]!.fullWidth - entries[i]!.nameWidth
     if (cost <= remaining) {
       keepFull.add(i)
+      candidatesKept++
       remaining -= cost
     }
   }
 
   if (process.env.USER_TYPE === 'ant') {
+    // `max_desc_length` keeps its original meaning — the longest description
+    // that actually shipped. The configured cap is reported separately so the
+    // two are not confused.
+    let maxKeptDescChars = 0
+    for (const i of keepFull) {
+      maxKeptDescChars = Math.max(maxKeptDescChars, entries[i]!.descChars)
+    }
     logEvent('tengu_skill_descriptions_truncated', {
       skill_count: commands.length,
       budget,
       full_total: fullTotal,
       truncation_mode:
         'priority' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      max_desc_length: maxDescChars,
+      max_desc_length: maxKeptDescChars,
+      desc_char_cap: maxDescChars,
       kept_full_count: keepFull.size,
       names_only_count: entries.length - keepFull.size,
+      // Kept for the dashboards that still read them.
+      bundled_count: bundledCount,
+      bundled_chars: bundledChars,
+      // Descriptions that lost their place in the budget — not the ones an
+      // override already reduced to their name.
+      truncated_count: candidates.length - candidatesKept,
     })
   }
 

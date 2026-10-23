@@ -451,6 +451,112 @@ export function isInvalidatableEvent(event: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// 1c. The tool contract — upstream's `ToolSpec` and the two op payloads that
+//     carry it.
+//
+// Upstream's tool registration is a TWO-STAGE protocol, and the stages are
+// what the payload shapes come from:
+//
+//   stage 1  `$.tool.register(spec)` — the plugin declares a tool. The op
+//            `tool.register` carries the spec to the hook chain, and the
+//            engine then serves the tool over a loopback MCP server.
+//   stage 2  the model calls the tool; the engine raises `tool.call` and a
+//            hook answers `{ result }` (or `{ deny }`).
+//
+// A mod that only does stage 1 has a tool the model can see but nobody can
+// answer — upstream says so in the tool's own error result ("… but no
+// tool.call hook answered this call: add on(\"tool.call\", …)", bundle.js:
+// 12099061). opencc keeps the two stages separable for the same reason, and
+// additionally allows stage 1 to carry an `execute` so a one-file mod needs no
+// hook at all.
+// ---------------------------------------------------------------------------
+
+/**
+ * Upstream `ToolSpec` (d.ts:13777-13804) — what `$.tool.register` takes.
+ *
+ *   name          letters, digits, `_`, `-`; up to 64 (upstream `Igt`,
+ *                 bundle.js:4056768: `/^[a-zA-Z0-9_-]{1,64}$/`)
+ *   description   what the model reads; must be a non-empty string
+ *   inputSchema   a JSON schema object; upstream defaults a missing one to
+ *                 `{ type: "object" }` (bundle.js:4070026) and the MCP server
+ *                 that serves the tool forces `type: "object"` on it
+ *                 (bundle.js:12099061)
+ *   isDeferred    `false` puts the schema in the prompt's tool list,
+ *                 `true` (or absent) leaves it behind ToolSearch
+ *
+ * The name is the SHORT name: the model calls the tool as
+ * `mcp__<plugin>__<name>`.
+ */
+export type ToolSpec = {
+  name: string
+  description: string
+  inputSchema?: Record<string, unknown>
+  isDeferred?: boolean
+}
+
+/**
+ * opencc's one-step convenience: a tool that runs itself.
+ *
+ * Upstream has no such field — a registered tool is served by an MCP server
+ * and answered by a `tool.call` hook. opencc keeps `execute` so a mod can
+ * register a working tool without writing a hook, and treats its ABSENCE as
+ * "this tool is answered by the `tool.call` chain" (upstream's shape).
+ */
+export type ModToolExecute = (
+  input: Record<string, unknown>,
+) => unknown | Promise<unknown>
+
+/**
+ * The `tool.register` op payload.
+ *
+ * Upstream hands the hook chain the spec ITSELF — flat, with `name`,
+ * `description`, `inputSchema` and `isDeferred` at the top level
+ * (bundle.js:4070026: `t("tool.register", {name, description, inputSchema, …})`).
+ * Upstream's own `tool.register` event is deliberately absent from the
+ * wrapper table `Mmt` (bundle.js:9075495), so nothing re-shapes it: a hook
+ * reads `e.name`, `e.description`, `e.inputSchema`, `e.isDeferred`.
+ *
+ * `spec` is opencc's own addition — the very object `ctx.registerTool` was
+ * called with — kept so a hook written against opencc's older
+ * `{ spec }` payload keeps working.
+ */
+export type ModToolRegisterPayload = {
+  name: string
+  description: string
+  /** Always present: upstream defaults a missing schema to `{type:"object"}`. */
+  inputSchema: Record<string, unknown>
+  isDeferred?: boolean
+  /** opencc's own view of the same spec (the `execute` lives here). */
+  spec: ToolSpec & { execute?: ModToolExecute }
+}
+
+/**
+ * The `tool.call` event payload.
+ *
+ * Upstream builds it in `Vo` (bundle.js:3968700):
+ *
+ *   function Vo(e,t,o){ … return {...p, tool:e, tool_use_id:t, …} }
+ *
+ * where `o` is the tool's own arguments: they are spread FLAT onto the event,
+ * the engine-owned keys are lifted back out of them, and `tool` and
+ * `tool_use_id` are re-set on top. So a hook reads `e.command` for a Bash
+ * call — there is no `e.params` and no `e.input` on this event (`e.input`
+ * belongs to `tool.check`, which is a different event with a different
+ * question).
+ *
+ * `tool` is the MODEL-VISIBLE name: `mcp__<server>__<tool>` for an MCP tool,
+ * which is what a matcher names.
+ */
+export type ModToolCallPayload = {
+  /** The model-visible tool name. */
+  tool: string
+  tool_use_id?: string
+  agentId?: string
+  /** The tool's own arguments, flattened onto the event (upstream `Vo`). */
+  [key: string]: unknown
+}
+
+// ---------------------------------------------------------------------------
 // 2. Tier chain
 // ---------------------------------------------------------------------------
 

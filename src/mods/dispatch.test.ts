@@ -1404,3 +1404,250 @@ describe('catchHandler survives the chain rebuilds', () => {
     expect(chain[0]!.catchHandler).toBe(catchHandler)
   })
 })
+
+// ---------------------------------------------------------------------------
+// The op answer shapes — upstream `ValueOrDeny` (d.ts:15388).
+//
+// "The result of a call on `$` as its event's hooks see it: `{ value }` (the
+// call's answer) or `{ deny }`." opencc had only `{ replace }` (its own
+// spelling) and `{ deny }`, so a hook written upstream's way — answering
+// `{ value }` — was silently ignored: the answer was not one the op path
+// reads, so the core ran and the hook's answer went nowhere.
+// ---------------------------------------------------------------------------
+
+describe('the op answer shapes', () => {
+  const EVENT = 'ui.status'
+
+  afterEach(() => {
+    unregisterMod('answer-mod')
+  })
+
+  const answerWith = (answer: unknown): Promise<string> => {
+    registerLoadedMod(
+      fakeMod('answer-mod', [
+        {
+          event: EVENT,
+          tier: 'builtin',
+          handler: async () => answer,
+        },
+      ]),
+    )
+    return dispatchModOp(EVENT, { text: 'hi' }, () => 'CORE')
+  }
+
+  test("a hook's { value } is the call's answer", async () => {
+    expect(await answerWith({ value: 'FROM_VALUE' })).toBe('FROM_VALUE')
+  })
+
+  test("a hook's { replace } still works (opencc's own spelling)", async () => {
+    // The control: the upstream spelling is an ALIAS, not a replacement.
+    expect(await answerWith({ replace: 'FROM_REPLACE' })).toBe('FROM_REPLACE')
+  })
+
+  test("a hook's { deny } is refused", async () => {
+    await expect(answerWith({ deny: 'not on this host' })).rejects.toThrow(
+      'not on this host',
+    )
+  })
+
+  test('a hook that answers nothing leaves the core in place', async () => {
+    // The control for the two above: an answer the op path does not read must
+    // not become an answer.
+    expect(await answerWith({ something: 'else' })).toBe('CORE')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// `tool.register`'s pinned name — upstream's `checkArgument: gs`
+// (bundle.js:3973583 → :3970309).
+// ---------------------------------------------------------------------------
+
+describe('tool.register pins the tool name', () => {
+  afterEach(() => {
+    unregisterMod('pin-mod')
+  })
+
+  const registerWith = (handler: ModChainEntry['handler']): Promise<unknown> => {
+    registerLoadedMod(
+      fakeMod('pin-mod', [
+        { event: 'tool.register', tier: 'builtin', handler },
+      ]),
+    )
+    return dispatchModOp('tool.register', { name: 'echo' }, () => 'CORE')
+  }
+
+  test('a hook that renames the tool is skipped, and the core keeps the name', async () => {
+    // Upstream checks the pinned field where the hook passes the argument
+    // down (`lt`, bundle.js:3896693), so the throw happens inside that hook's
+    // own `next()` call: the hook fails, is skipped ("skipped; what is below
+    // it ran in its place", bundle.js:3900045), and the engine keeps the
+    // argument it dispatched.
+    expect(
+      await registerWith(async (e, next) => next({ ...e, name: 'renamed' })),
+    ).toBe('CORE')
+  })
+
+  test('a hook that keeps the name is let through (control)', async () => {
+    expect(await registerWith(async (e, next) => next(e))).toBe('CORE')
+  })
+
+  test('a hook that answers instead of rewriting is let through (control)', async () => {
+    expect(await registerWith(async () => ({ value: { tool: 'x' } }))).toEqual({
+      tool: 'x',
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The bridged `tool.call` payload — upstream's `Vo` (bundle.js:3968700).
+// ---------------------------------------------------------------------------
+
+describe('the bridged tool.call payload', () => {
+  test("the tool's arguments ride flat on the event", async () => {
+    // Upstream spreads the arguments onto the event, so a hook reads
+    // `e.command` for a Bash call and `e.file_path` for a Read call. There
+    // is no `e.params` and no `e.input` on this event.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls -la', description: 'list' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.command).toBe('ls -la')
+    expect(seen!.description).toBe('list')
+    expect(seen!.tool).toBe('Bash')
+  })
+
+  test("an argument named 'tool' does not become the tool's name", async () => {
+    // Upstream sets the engine's fields AFTER the arguments
+    // (`{...p, tool:e, tool_use_id:t}`), so the tool's name is the tool's
+    // name whatever the arguments are called.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])({ tool_name: 'Read', tool_input: { tool: 'spoofed' } }, null, undefined)
+    expect(seen!.tool).toBe('Read')
+  })
+
+  test('the host hook fields are still there', async () => {
+    // The bridge keeps the host dialect beside the mod one, so a mod that
+    // read `hook_event_name` still finds it.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/x' },
+        tool_use_id: 'toolu_1',
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.hook_event_name).toBe('PreToolUse')
+    expect(seen!.tool_use_id).toBe('toolu_1')
+    expect(seen!.file_path).toBe('/x')
+  })
+
+  test("the host's own `tool_input` is still on the event", async () => {
+    // The arguments ride flat on the event, but the host's own shape is kept:
+    // `tool_input` is where the arguments were before they were flattened,
+    // and a mod that read it before the flattening still finds it.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls -la' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.tool_input).toEqual({ command: 'ls -la' })
+  })
+
+  test('an argument named after an engine key lands in $shadowed', async () => {
+    // Upstream lifts the engine-owned keys out of the arguments and does not
+    // drop their values — `Ip` collects them and `Vo` puts them under
+    // `$shadowed` (bundle.js:3968700). An argument called `agentId` is not
+    // the engine's `agentId`, and the value is still there to be read.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        tool_name: 'Read',
+        tool_input: { agentId: 'spoofed', file_path: '/x' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.agentId).toBeUndefined()
+    expect(seen!.$shadowed).toEqual({ agentId: 'spoofed' })
+    expect(seen!.file_path).toBe('/x')
+  })
+
+  test('a host field wins over an argument of the same name, and the argument is kept', async () => {
+    // The host's fields are the host's own facts — the session's `cwd` is not
+    // the tool's `cwd`. So the host's value is the one on the event, and the
+    // tool's argument is not lost: it is still under `tool_input`.
+    let seen: Record<string, unknown> | undefined
+    await createCompositeModCallback('PreToolUse', [
+      {
+        modName: 'a',
+        handler: async (e, next) => {
+          seen = e
+          return next(e)
+        },
+      },
+    ])(
+      {
+        hook_event_name: 'PreToolUse',
+        cwd: '/session/dir',
+        tool_name: 'Custom',
+        tool_input: { cwd: '/tool/dir' },
+      },
+      null,
+      undefined,
+    )
+    expect(seen!.cwd).toBe('/session/dir')
+    expect((seen!.tool_input as Record<string, unknown>).cwd).toBe('/tool/dir')
+  })
+})
