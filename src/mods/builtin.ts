@@ -174,6 +174,7 @@ export async function loadBuiltinMods(): Promise<{
 import { diffBuiltinMod } from './builtin/diffMod.js'
 import { handoffBuiltinMod } from './builtin/handoffMod.js'
 import { mermaidBuiltinMod } from './builtin/mermaidMod.js'
+import { minimaxImageBuiltinMod } from './builtin/minimaxImageMod.js'
 import { skillDoctorBuiltinMod } from './builtin/skillDoctorMod.js'
 
 registerBuiltinMod(diffBuiltinMod)
@@ -182,3 +183,4 @@ registerBuiltinMod(mermaidBuiltinMod)
 // `skill-doctor` is not a listener and costs nothing when idle, so it ships on
 // like the others.
 registerBuiltinMod(skillDoctorBuiltinMod)
+registerBuiltinMod(minimaxImageBuiltinMod)
