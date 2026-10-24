@@ -382,8 +382,8 @@ function PluginComponentsDisplay({
 function ModComponentsDisplay({ mod }: {
   mod: ModPluginInfo;
 }): React.ReactNode {
-  const { handlerEvents, toolNames, commandNames, loadError } = mod;
-  if (handlerEvents.length === 0 && toolNames.length === 0 && commandNames.length === 0 && !loadError) {
+  const { handlerEvents, toolNames, commandNames, loadError, disabledReason } = mod;
+  if (handlerEvents.length === 0 && toolNames.length === 0 && commandNames.length === 0 && !loadError && !disabledReason) {
     return null;
   }
   return <Box flexDirection="column" marginBottom={1}>
@@ -394,6 +394,13 @@ function ModComponentsDisplay({ mod }: {
       {loadError && <>
         <Text bold color="error">Failed to load:</Text>
         <Text color="error">{loadError}</Text>
+      </>}
+      {/* The disabled state is not the error state: the mod is fine, the
+        conditions it declared are not met. It gets its own line so it never
+        renders as the red "Failed to load". */}
+      {!loadError && disabledReason && <>
+        <Text bold color="warning">Not enabled:</Text>
+        <Text color="warning">{disabledReason}</Text>
       </>}
       {(handlerEvents.length > 0 || toolNames.length > 0 || commandNames.length > 0) && <>
         <Text bold>Installed components:</Text>
@@ -625,6 +632,10 @@ export function ManagePlugins({
           marketplace: state.marketplace,
           scope: originalScope,
           isEnabled,
+          // A mod whose declared conditions are unmet is not enabled, whatever
+          // the settings key says — the row must not claim "enabled" for a
+          // mod that never ran.
+          disabledReason: state.plugin.mod?.disabledReason,
           errorCount: errors.length,
           errors,
           plugin: state.plugin,
@@ -960,6 +971,10 @@ export function ManagePlugins({
         for (const [name, plugins] of Object.entries(pluginsByMarketplace)) {
           const enabledCount = count(plugins, p => {
             const pluginId = `${p.name}@${name}`;
+            // A mod whose declared enablement conditions are unmet is not
+            // running, so it must not be counted as enabled just because
+            // nobody touched its switch.
+            if (p.mod?.disabledReason !== undefined) return false;
             return mergedSettings?.enabledPlugins?.[pluginId] !== false;
           });
           const disabledCount = plugins.length - enabledCount;
@@ -1987,6 +2002,10 @@ export function ManagePlugins({
     // The loader's verdict on a mod it found but could not load. Absent for
     // real plugins, and for mods that loaded.
     const modLoadError = selectedPlugin.plugin.mod?.loadError;
+    // The disabled state — the mod's declared enablement conditions are not
+    // met. Distinct from the error state, so it never reads as "Failed to
+    // load".
+    const modDisabledReason = selectedPlugin.plugin.mod?.disabledReason;
 
     // Compute plugin errors section
     const filteredPluginErrors = pluginErrors.filter(e_1 => 'plugin' in e_1 && e_1.plugin === selectedPlugin.plugin.name || e_1.source === pluginId_13 || e_1.source.startsWith(`${selectedPlugin.plugin.name}@`));
@@ -2047,7 +2066,9 @@ export function ManagePlugins({
           {/* A mod that was found and then refused is neither of these: the
             settings key says enabled and nothing loaded. "Failed to load" is
             the third state, and it is the one the user can act on. */}
-          {modLoadError ? <Text color="error">Failed to load</Text> : <Text color={isEnabled_2 ? 'success' : 'warning'}>
+          {modLoadError ? <Text color="error">Failed to load</Text> : modDisabledReason ? <Text color="warning">
+            Not enabled: {modDisabledReason}
+          </Text> : <Text color={isEnabled_2 ? 'success' : 'warning'}>
             {isEnabled_2 ? 'Enabled' : 'Disabled'}
           </Text>}
           {selectedPlugin.pendingUpdate && <Text color="suggestion"> · Marked for update</Text>}

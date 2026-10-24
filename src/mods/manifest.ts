@@ -16,6 +16,48 @@ import { PluginManifestUserConfigSchema } from '../utils/plugins/schemas.js'
  */
 export const MOD_MANIFEST_FILE = 'opencc-mod.json'
 
+/**
+ * Declarative enablement conditions (`requires`).
+ *
+ * A mod uses it to say "this mod needs something before it is worth running" —
+ * an environment variable that must be present, a `userConfig` option that
+ * must hold a particular value.
+ *
+ * When a condition is unmet the mod is in the DISABLED state: none of its code
+ * runs (not even its top level) and the plugin list says WHY it is not enabled.
+ *
+ * The whole field is optional: a manifest without it behaves exactly as it did
+ * before the field existed (backwards compatibility is a hard constraint).
+ * `requires: {}` is equally "always satisfied".
+ *
+ * The evaluation lives in `mods/requires.ts` (`evaluateModRequires` is a pure
+ * function).
+ */
+export const ModRequiresSchema = lazySchema(() =>
+  z.object({
+    /**
+     * Environment variable conditions. A plain name → the variable must be
+     * defined and non-empty; a `!` prefix → the variable must be undefined or
+     * empty (negated). Every entry must hold.
+     */
+    env: z.array(z.string().min(1)).optional(),
+    /**
+     * `userConfig` option conditions. The key is a `userConfig` option name,
+     * the value the expected one. Resolution order: the user's saved value →
+     * the manifest's `userConfig[key].default` → unresolved, which counts as
+     * a mismatch. Comparison is `String(actual) === String(expected)`.
+     */
+    options: z
+      .record(
+        z.string().min(1),
+        z.union([z.string(), z.number(), z.boolean()]),
+      )
+      .optional(),
+  }),
+)
+
+export type ModRequires = z.infer<ReturnType<typeof ModRequiresSchema>>
+
 export const ModManifestSchema = lazySchema(() =>
   z.object({
     /** Mod identifier. Used in tool/command prefixes and error attribution. */
@@ -47,6 +89,11 @@ export const ModManifestSchema = lazySchema(() =>
      * (upstream's own mods declare it this way too).
      */
     userConfig: PluginManifestUserConfigSchema().shape.userConfig,
+    /**
+     * Declarative enablement conditions. Absent → always satisfied → exactly
+     * the behaviour this field had before it existed.
+     */
+    requires: ModRequiresSchema().optional(),
   }),
 )
 

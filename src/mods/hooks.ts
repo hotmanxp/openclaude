@@ -22,6 +22,7 @@ import { ModManifestSchema, MOD_MANIFEST_FILE } from './manifest.js'
 import {
   registerLoadedMod,
   getLoadedMods,
+  getKnownMods,
   noteDiscoveredMod,
   noteModLoadFailure,
   clearKnownMods,
@@ -29,6 +30,10 @@ import {
   registerModBreakerListener,
   type LoadedMod,
 } from './registry.js'
+import {
+  collectModRequiresContext,
+  evaluateModRequires,
+} from './requires.js'
 import { buildModHookMatchers, dispatchModEngineResult } from './dispatch.js'
 import { loadBuiltinMods, isBuiltinMod, isBuiltinModName } from './builtin.js'
 import { isModEnabled, modPluginId } from './pluginView.js'
@@ -75,6 +80,12 @@ export type ModLoadResult = {
   error?: string
   /** Skipped because /plugins has it disabled — not a failure. */
   disabled?: boolean
+  /**
+   * Why the mod is in the disabled state (its declared `requires` conditions
+   * are unmet). Kept apart from `error`: `error` is "it failed to load",
+   * this is "it did not load, because a condition is not met".
+   */
+  disabledReason?: string
 }
 
 // Identity refs of the HookCallbackMatchers we pushed into the global
@@ -130,6 +141,51 @@ async function loadSingleMod(root: string): Promise<LoadedMod | null> {
     // rendered as a healthy "enabled" row is worse than an absent one,
     // because it invites the user to configure something that cannot run.
     noteDiscoveredMod(manifest.name, false, manifest.userConfig)
+    return null
+  }
+
+  // Declarative enablement conditions (`requires`).
+  //
+  // Three things about where this gate sits:
+  //
+  // 1. BEFORE the dynamic import — the loader has no sandbox, so a mod's
+  //    top-level code has already run inside the host process once it is
+  //    imported. "The condition is unmet" must mean "the code never ran",
+  //    not merely "it did not register".
+  // 2. AFTER the user switch — a mod the user turned off is their decision
+  //    and shows as "Disabled"; an unmet condition is the second case and
+  //    shows as "Not enabled: <reason>". The two do not conflict: the
+  //    condition only becomes visible while the user has not touched the
+  //    switch.
+  // 3. BEFORE the directory/entry validation — an unmet condition is the
+  //    disabled state, not the error state. A missing environment variable
+  //    must not turn the mod into a red "Failed to load" line; that is a
+  //    routine, declared situation.
+  //
+  // The disabled state goes through `noteDiscoveredMod`, not
+  // `noteModLoadFailure`: the former means "we found it", the latter means
+  // "it is broken".
+  const requiresVerdict = evaluateModRequires(
+    manifest.requires,
+    collectModRequiresContext({
+      name: manifest.name,
+      builtin: false,
+      userConfig: manifest.userConfig,
+      requires: manifest.requires,
+    }),
+  )
+  if (!requiresVerdict.met) {
+    logForDebugging(
+      `[mods] "${manifest.name}" is disabled: ${requiresVerdict.reason}`,
+    )
+    noteDiscoveredMod(
+      manifest.name,
+      false,
+      manifest.userConfig,
+      requiresVerdict.reason !== undefined
+        ? { disabledReason: requiresVerdict.reason }
+        : undefined,
+    )
     return null
   }
 
@@ -256,10 +312,21 @@ export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
     try {
       const mod = await loadSingleMod(root)
       if (!mod) {
-        // Disabled in /plugins → Installed. Name comes from the manifest we
-        // already parsed inside loadSingleMod; re-read it from disk cheaply
-        // rather than threading it back through the loader.
-        results.push({ name: await readDisabledModName(root), ok: true, disabled: true })
+        // Disabled in /plugins → Installed, or its declared `requires`
+        // conditions are unmet. Name comes from the manifest we already
+        // parsed inside loadSingleMod; re-read it from disk cheaply rather
+        // than threading it back through the loader. The reason comes from
+        // the discovery layer: a mod whose conditions are unmet records it
+        // in knownMods (a mod the user turned off does not — that one shows
+        // as "Disabled").
+        const name = await readDisabledModName(root)
+        const disabledReason = getKnownMods().get(name)?.disabledReason
+        results.push({
+          name,
+          ok: true,
+          disabled: true,
+          ...(disabledReason !== undefined ? { disabledReason } : {}),
+        })
         continue
       }
       registerLoadedMod(mod)
@@ -289,8 +356,19 @@ export const loadMods = memoize(async (): Promise<ModLoadResult[]> => {
     )
   }
   for (const name of builtins.disabled) {
-    logForDebugging(`[mods] built-in "${name}" is disabled in /plugins; skipped`)
-    results.push({ name, ok: true, disabled: true })
+    // A built-in whose declared conditions are unmet lands here too, but it
+    // carries a reason: "the user turned it off" and "the conditions are not
+    // met" are two different things to the user.
+    const disabledReason = builtins.disabledReasons[name]
+    logForDebugging(
+      `[mods] built-in "${name}" is disabled; skipped${disabledReason ? ` (${disabledReason})` : ''}`,
+    )
+    results.push({
+      name,
+      ok: true,
+      disabled: true,
+      ...(disabledReason !== undefined ? { disabledReason } : {}),
+    })
   }
   for (const failure of builtins.failed) {
     results.push({ name: failure.name, ok: false, error: failure.error })
@@ -443,6 +521,18 @@ export async function setModEnabled(
   } else {
     await reloadMods()
     if (!getLoadedMods().some(m => m.manifest.name === modName)) {
+      // A mod whose declared conditions are unmet takes the DISABLED branch —
+      // it did not blow up, the conditions it declared are simply not met
+      // right now. The generic "failed to load" text would send the user
+      // looking through the mod's code when the only thing to do is supply
+      // the missing condition.
+      const disabledReason = getKnownMods().get(modName)?.disabledReason
+      if (disabledReason !== undefined) {
+        return {
+          success: false,
+          message: `Enabled ${modName} in settings, but it stays disabled — ${disabledReason}`,
+        }
+      }
       return {
         success: false,
         message: `Enabled ${modName} in settings, but it failed to load. Run reload again and check the error log.`,

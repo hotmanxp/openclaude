@@ -69,6 +69,17 @@ export type ModPluginInfo = {
    * `plugin.register` hook turned their mod away.
    */
   loadError?: string | undefined
+  /**
+   * Why this mod is in the DISABLED state.
+   *
+   * Distinct from `loadError`: the latter is the error state (the red
+   * "Failed to load" line), this one is the disabled state — the enablement
+   * conditions the manifest declared (`requires`) are currently unmet, e.g. an
+   * environment variable is missing.
+   *
+   * The UI renders it as "Not enabled: <reason>".
+   */
+  disabledReason?: string | undefined
 }
 
 /** Settings key for a mod's enablement. Stable across the id rename. */
@@ -162,6 +173,14 @@ export function getModsAsPlugins(): LoadedPlugin[] {
         // From discovery, not the mod: a mod that failed to load has no
         // LoadedMod to ask, which is the whole case this field exists for.
         ...(meta.loadError !== undefined ? { loadError: meta.loadError } : {}),
+        // The disabled reason comes from DISCOVERY too — a mod whose
+        // conditions are unmet has no LoadedMod to ask, and it is exactly the
+        // one that most needs to say "why did it not run". A missing key
+        // stays a missing key: "no reason" and "an empty reason" are not the
+        // same thing.
+        ...(meta.disabledReason !== undefined
+          ? { disabledReason: meta.disabledReason }
+          : {}),
       },
     })
   }

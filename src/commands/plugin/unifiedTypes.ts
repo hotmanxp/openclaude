@@ -20,6 +20,13 @@ export type UnifiedInstalledItem =
       marketplace: string
       scope: PluginInstalledScope
       isEnabled: boolean
+      /**
+       * Why the plugin is in the disabled state — for a mod, the enablement
+       * conditions its manifest declared are currently unmet. Distinct from
+       * the error state (`errorCount`): the mod is fine, it just does not run
+       * yet, and the row says so instead of claiming it is enabled.
+       */
+      disabledReason?: string
       errorCount: number
       errors: PluginError[]
       plugin: LoadedPlugin

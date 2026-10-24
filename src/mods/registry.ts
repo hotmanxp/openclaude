@@ -271,15 +271,46 @@ export type KnownMod = {
    * sentence the debug log does.
    */
   loadError?: string | undefined
+  /**
+   * Why this mod is in the DISABLED state.
+   *
+   * Distinct from `loadError`, and the two must not be merged:
+   * - `loadError` = ERROR state — the mod blew up while loading (the red
+   *   "Failed to load" line);
+   * - `disabledReason` = DISABLED state — the mod is perfectly fine, it just
+   *   does not meet the enablement conditions its manifest declared (a
+   *   missing environment variable, an option that does not hold the expected
+   *   value).
+   *
+   * Merging them has a concrete cost: the user sees a red "Failed to load"
+   *   and goes looking for a bug in the mod's code, when the only thing to do
+   *   is supply an environment variable. A disabled mod is something the mod
+   *   author declared on purpose — it is not a fault.
+   */
+  disabledReason?: string | undefined
 }
 
+/**
+ * Record a discovered mod.
+ *
+ * `meta` carries optional facts the caller already knows. `disabledReason` is
+ * set by the loader when the mod's declared `requires` conditions are unmet —
+ * it is the reason the mod is in the disabled state rather than an error.
+ */
 export function noteDiscoveredMod(
   name: string,
   builtin: boolean,
   userConfig?: Record<string, unknown>,
+  meta?: { disabledReason?: string },
 ): void {
   if (knownMods.has(name)) return
-  knownMods.set(name, { builtin, userConfig })
+  knownMods.set(name, {
+    builtin,
+    userConfig,
+    ...(meta?.disabledReason !== undefined
+      ? { disabledReason: meta.disabledReason }
+      : {}),
+  })
 }
 
 /**

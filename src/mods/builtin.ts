@@ -1,5 +1,6 @@
 import { logForDebugging } from '../utils/debug.js'
 import type { UserConfigSchema } from '../utils/plugins/mcpbHandler.js'
+import type { ModRequires } from './manifest.js'
 import type { LoadedMod } from './registry.js'
 import {
   BUILTIN_ORIGIN,
@@ -9,6 +10,10 @@ import {
 } from './registry.js'
 import { createModContext, type ModContext } from './engine.js'
 import { isModEnabled, isModExplicitlyEnabled } from './pluginView.js'
+import {
+  collectModRequiresContext,
+  evaluateModRequires,
+} from './requires.js'
 
 /**
  * Built-in mod channel (docs/mods-plan.md §4.3 / §九 — upstream parity of
@@ -46,6 +51,15 @@ export type BuiltinModSpec = {
    * `opencc-mod.json` → `userConfig`; see ModManifestSchema.
    */
   userConfig?: UserConfigSchema
+  /**
+   * Declarative enablement conditions, same semantics as a disk mod's
+   * manifest `requires` (see `mods/requires.ts`).
+   *
+   * Built-ins and disk mods agree on this deliberately: a mod author has one
+   * mental model — "I declared a condition, and while it is unmet the mod
+   * does not run and says why".
+   */
+  requires?: ModRequires
   register(ctx: ModContext): void | Promise<void>
 }
 
@@ -116,17 +130,23 @@ export async function loadBuiltinMods(): Promise<{
   loaded: LoadedMod[]
   failed: Array<{ name: string; error: string }>
   disabled: string[]
+  /**
+   * Why a built-in mod is in the disabled state (keyed by mod name).
+   *
+   * Only the mods whose declared CONDITIONS are unmet are recorded here — a
+   * mod the user turned off says "Disabled", and must not masquerade as
+   * "its conditions were not met".
+   */
+  disabledReasons: Record<string, string>
 }> {
   const loaded: LoadedMod[] = []
   const failed: Array<{ name: string; error: string }> = []
   const disabled: string[] = []
+  const disabledReasons: Record<string, string> = {}
   const existingNames = new Set(getLoadedMods().map(m => m.manifest.name))
 
   for (const spec of builtinSpecs) {
     if (existingNames.has(spec.name)) continue
-    // Recorded even when skipped: /plugins lists disabled mods so they can be
-    // turned back on (see registry.noteDiscoveredMod).
-    noteDiscoveredMod(spec.name, true, spec.userConfig)
     // Disabled in /plugins → Installed. Skipped BEFORE register() so a
     // built-in the user turned off never claims handlers, panes or status.
     // `optIn` inverts the default: an absent key means OFF, so a diagnostic
@@ -134,8 +154,43 @@ export async function loadBuiltinMods(): Promise<{
     const enabled = spec.optIn
       ? isModExplicitlyEnabled(spec.name, true)
       : isModEnabled(spec.name, true)
+    // Declarative enablement conditions — same gate as a disk mod, and in
+    // the same place: before register(), so an unmet condition means the
+    // mod's code never ran at all.
+    const requiresVerdict = evaluateModRequires(
+      spec.requires,
+      collectModRequiresContext({
+        name: spec.name,
+        builtin: true,
+        userConfig: spec.userConfig,
+        requires: spec.requires,
+      }),
+    )
+    // An unmet condition is the DISABLED state, recorded apart from "the user
+    // turned it off": the former says "Not enabled: <reason>", the latter says
+    // "Disabled".
+    const disabledReason =
+      enabled && !requiresVerdict.met ? requiresVerdict.reason : undefined
+    // Recorded even when skipped: /plugins lists disabled mods so they can be
+    // turned back on (see registry.noteDiscoveredMod).
+    noteDiscoveredMod(
+      spec.name,
+      true,
+      spec.userConfig,
+      disabledReason !== undefined ? { disabledReason } : undefined,
+    )
     if (!enabled) {
       disabled.push(spec.name)
+      continue
+    }
+    if (!requiresVerdict.met) {
+      disabled.push(spec.name)
+      if (requiresVerdict.reason !== undefined) {
+        disabledReasons[spec.name] = requiresVerdict.reason
+      }
+      logForDebugging(
+        `[mods] built-in "${spec.name}" is disabled: ${requiresVerdict.reason ?? '(requirements not met)'}`,
+      )
       continue
     }
     try {
@@ -146,6 +201,7 @@ export async function loadBuiltinMods(): Promise<{
           ...(spec.description ? { description: spec.description } : {}),
           ...(spec.userConfig ? { userConfig: spec.userConfig } : {}),
           entry: BUILTIN_ORIGIN,
+          ...(spec.requires ? { requires: spec.requires } : {}),
         },
         root: BUILTIN_ORIGIN,
         entryPath: BUILTIN_ORIGIN,
@@ -164,7 +220,7 @@ export async function loadBuiltinMods(): Promise<{
       failed.push({ name: spec.name, error: message })
     }
   }
-  return { loaded, failed, disabled }
+  return { loaded, failed, disabled, disabledReasons }
 }
 
 // ---------------------------------------------------------------------------

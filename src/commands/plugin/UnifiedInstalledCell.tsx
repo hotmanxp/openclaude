@@ -30,6 +30,12 @@ export function UnifiedInstalledCell(t0: Props): React.ReactNode {
       }
       statusIcon = t1;
       statusText = item.pendingToggle === "will-enable" ? "will enable" : "will disable";
+    } else if (item.disabledReason) {
+      // The disabled state: a mod whose declared enablement conditions are
+      // unmet. Not an error — the row says why it is not enabled instead of
+      // claiming it is enabled.
+      statusIcon = color("warning", theme)(figures.radioOff);
+      statusText = `not enabled: ${item.disabledReason}`;
     } else {
       if (item.errorCount > 0) {
         let t1;

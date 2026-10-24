@@ -28,6 +28,8 @@
 >
 > **v2.11 变更**（事件体系对齐官方，v2.0 决策③「能力面收窄」的解除路径起点）：① **新增 `src/mods/protocol.ts`** —— 官方协议内核，纯逻辑无宿主依赖：109 个点分事件名（engine 事件 + op 事件；`$` 的每个方法本身都是一个可 hook 的 op）、`TIERS = [prepend, user, append, builtin, core]` 五档链与 `next.to` 下钻映射、深度 `freeze()`、结构化 matcher 求值器（`===` / `RegExp` / any-of / 对象 partial 四类叶子，递归上限 8）、每 hook `10s + 1s 宽限` 预算。**取证见新增的 [`mods-upstream-contract.md`](./mods-upstream-contract.md)** ② **事件名切换**：六个 settings.json 风格旧名（`PreToolUse`/`PostToolUse`/`UserPromptSubmit`/`SessionStart`/`SessionEnd`/`Stop`）降为**别名**，注册时经 `canonicalEvent()` 归一到点分名；`Notification` **不给别名** —— 上游无此事件，映射到 `ui.log` 会断言一个不成立的等价，宁可让旧写法被拒。旧名保留而非删除，因为它们是已发布 mod 的注册写法 ③ **matcher 不再压平成字符串** —— 此前 `normalizeMatcherValue` 把 `{tool:'Bash'}` 压成 `'Bash'` 交给宿主 `HookCallbackMatcher.matcher` 做字符串比较，四类叶子的语义全部丢失；现在结构化 matcher 由 `runModChain` 内部对（可能被上游 handler 改写过的）事件参数求值，**宿主 matcher 字段保持空** —— 它选的是 settings.json hook 配置，与 mod 过滤事件参数是两个不同的问题。顺带修掉一个潜在缺陷：结构化 matcher 遇到数组会做 any-of 元素匹配，这正是 `agents-md` 的 `{instructionFiles:{kind:[...]}}` 依赖的语义 ④ **五档 tier**：`{to:'core'}` 在注册时被 `splitTier()` 提升为独立的 `tier` 字段 —— 官方靠静态扫描禁 spread/computed key 来防 `to` 被伪造，拆成两个字段后这套扫描不再必要，因为 tier 与 matcher 已经是两件事；链内按 `tierRank` 排序，同档保持 mod 加载序 ⑤ **每 hook 独立预算**：`withBudget()` 用 `Promise.race` 而非直接 `await` —— abort 是请求，一个握着 pending promise 的 hook 可能永不响应，直接 await 会让整个事件挂在单个 mod 上；超时按失败计入熔断并继续跑下层与 core。附带信号联动（外层 abort 也要传到 hook）⑥ **`HOST_EVENT_BRIDGE` 过渡桥**：宿主 `HookEvent` 来自 `src/entrypoints/agentSdkTypes.js`，是**用户 settings.json 可配置的公开 SDK 契约**（不能改），而 `tool.call`/`prompt.context` 等点分名不在其中。桥接表把已有触发点的点分事件挂回宿主 hook，使现网行为不变；**未在表中的事件（如 `prompt.context`）注册后不会被 dispatch** —— 这正是后续要补真实挂载点、而不是只改名的原因 ⑦ **更正上游审计的一处错误结论**：`mods-upstream-audit.md` §5.2/§10 称 `$` 能力面「仅 4 个顶层命名空间」「mod 拿不到宿主文件系统 `fs`」。官方 `types/claude-code.d.ts` 的 `CoreEngineInterface`（:2016-3674）实为 **24 个 noun、含 `fs`/`store`/`clock`/`http`/`process`/`env`/`settings`/`session`/`turn`/`model`/`terminal`**，且开源的 `agents-md` 源码实际调用 `$.fs.ancestors()` / `$.session.root()` / `$.env.get()`。audit 自述该结论是「从 42 处调用点还原、minified 名有重名风险」的有损抽样，**不能当定义用**，该分叉决策的依据因此不成立。审计 §四/§六/§八/§十 其余部分仍有效。附带：`ui.render` 的同步 handler overload 排序修正后，`src/mods/renderChain.test.ts` 上一处长期预存的 TS2769 一并消失，**typecheck 基线归零**。
 >
+> **v2.12 变更**（mod manifest 新增声明式启用条件 `requires`）：① **`opencc-mod.json` 新增可选字段 `requires`** —— mod 作者声明「这个 mod 需要什么才值得跑」：`env` 要求某个环境变量已定义且非空（`!` 前缀 = 反向条件：变量必须未定义或为空），`options` 要求某个 `userConfig` 选项等于某个值（取值顺序：用户已保存的值 → manifest `userConfig[key].default` → 都取不到即不匹配；比较走 `String(actual) === String(expected)`）② **条件不满足 = 禁用态，不是错误态**：判定发生在**动态 import 之前**，mod 的**顶层代码一行都不执行**（加载器无沙箱，import 即在宿主进程里执行了顶层代码）；状态走**独立的 `disabledReason` 字段**，插件列表显示「未启用：<原因>」而不是红字「加载失败」③ **判定顺序**：先看用户开关（`isModEnabled`），再看条件 —— 用户手动关掉的显示「已停用」，条件不满足的显示「未启用：<原因>」；判定位置在**目录/入口校验之前**，条件不满足是禁用态，不该因无关的路径问题变成红字错误 ④ **判定逻辑是纯函数**（新增 `src/mods/requires.ts`：`evaluateModRequires(requires, {env, options, defaults})`），取值快照（`process.env` + `loadPluginOptions(modPluginId(...))` + manifest 声明的默认值）与求值分离，可直接单测 ⑤ **向后兼容**：manifest 没有 `requires`（或 `requires: {}`）→ 条件恒满足 → 行为与本字段引入之前**完全一致**；内置 mod 经 `BuiltinModSpec.requires` 走同一套门禁，条件同样在 `register()` 之前判定。
+>
 > **配套文档**：
 > - [`mods-upstream-contract.md`](./mods-upstream-contract.md) —— **官方契约权威快照**（事件表 / `$` noun 面 / 协议守卫 / `prompt.context` 双向同步算法 / 11 个内建插件与加载条件）
 > - [`mods-upstream-audit.md`](./mods-upstream-audit.md) —— 上游 v2.1.289 实现核验（**只记事实，不含方案**；§5.2 的能力面结论已被 contract 文档更正）
@@ -394,11 +396,31 @@ Mod 目录约定：
 
 ```
 my-mod/
-├── opencc-mod.json           # { name, version, entry: "./mods/register.js" }
+├── opencc-mod.json           # { name, version, entry: "./mods/register.js", requires?: { env?: string[], options?: Record<string, string|number|boolean> } }
 └── mods/
     ├── register.js           # export function register(ctx) { ... }
     └── lib/util.js           # 相对路径 import 允许
 ```
+
+**manifest 的 `requires` 字段**（可选，v2.12 起）：
+
+```json
+{
+  "name": "my-mod",
+  "entry": "./mods/register.js",
+  "requires": {
+    "env": ["MINIMAX_API_KEY", "!DISABLE_MY_MOD"],
+    "options": { "mode": "auto" }
+  }
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `requires.env`（可选，`string[]`） | 普通名字 → 该环境变量必须**已定义且非空字符串**；`!` 前缀 → 该变量必须**未定义或为空字符串**（反向条件）；数组内全部成立才算满足 |
+| `requires.options`（可选，`Record<string, string\|number\|boolean>`） | key 是 mod 的 `userConfig` 选项名，value 是期望值 |
+
+条件不满足时 mod 处于**禁用态**：判定在动态 import 之前，mod 的顶层代码一行都不执行；插件列表显示「未启用：<原因>」而不是红字「加载失败」。判定逻辑见 `src/mods/requires.ts`（`evaluateModRequires` 是纯函数）。没有这个字段（或 `requires: {}`）→ 条件恒满足 → 行为与引入之前完全一致。
 
 **加载器安全约束**（P1 实现，v1.0 缺失）：
 
