@@ -10,8 +10,18 @@ import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../test/sharedMutationLock.js'
-import * as realUdsClient from './udsClient.js'
-import * as realProviders from './model/providers.js'
+
+// Snapshot the real module surfaces through cache-busted imports. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so the afterEach
+// restore below would re-install this suite's own partial mock instead of the
+// real module — and since bun never unregisters mock.module() overrides, that
+// mock would survive into every later test file.
+const realUdsClient = {
+  ...(await import(`./udsClient.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./udsClient.js')
+const realProviders = {
+  ...(await import(`./model/providers.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./model/providers.js')
 
 const tempDirs: string[] = []
 const originalSimple = process.env.CLAUDE_CODE_SIMPLE

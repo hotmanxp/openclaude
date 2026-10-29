@@ -3,6 +3,64 @@ import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 const originalEnv = { ...process.env }
 
+// bun's `mock.restore()` does NOT revert `mock.module()` registrations: every
+// partial mock installed by installCommonMocks() below stays registered for
+// the rest of the process and shadows the real module for every later test
+// file (a partial `./envUtils.js` mock, for example, hides `getProjectsDir`
+// from every downstream importer and breaks the module graph with
+// "Export named 'getProjectsDir' not found").
+//
+// Capture each real module through a `?real=` cache-busted import — a
+// distinct module instance that no mock.module() registration can shadow —
+// and re-register them in afterEach so the pollution stops at this file.
+const nonce = `${Date.now()}-${Math.random()}`
+
+const realAxios = {
+  ...await import(`${import.meta.resolve('axios')}?real=${nonce}`),
+}
+const realOauthConstants = {
+  ...await import(`../constants/oauth.js?real=${nonce}`),
+}
+const realGrowthbook = {
+  ...await import(`../services/analytics/growthbook.js?real=${nonce}`),
+}
+const realBootstrapState = {
+  ...await import(`../bootstrap/state.js?real=${nonce}`),
+}
+const realAnalyticsIndex = {
+  ...await import(`../services/analytics/index.js?real=${nonce}`),
+}
+const realAuth = {
+  ...await import(`./auth.js?real=${nonce}`),
+}
+const realBundledMode = {
+  ...await import(`./bundledMode.js?real=${nonce}`),
+}
+const realConfig = {
+  ...await import(`./config.js?real=${nonce}`),
+}
+const realDebug = {
+  ...await import(`./debug.js?real=${nonce}`),
+}
+const realEnvUtils = {
+  ...await import(`./envUtils.js?real=${nonce}`),
+}
+const realModel = {
+  ...await import(`./model/model.js?real=${nonce}`),
+}
+const realProviders = {
+  ...await import(`./model/providers.js?real=${nonce}`),
+}
+const realPrivacyLevel = {
+  ...await import(`./privacyLevel.js?real=${nonce}`),
+}
+const realSettings = {
+  ...await import(`./settings/settings.js?real=${nonce}`),
+}
+const realSignal = {
+  ...await import(`./signal.js?real=${nonce}`),
+}
+
 async function importFreshFastModeModule() {
   return import(`./fastMode.ts?ts=${Date.now()}-${Math.random()}`)
 }
@@ -105,6 +163,24 @@ function installCommonMocks(options?: {
 
 afterEach(() => {
   mock.restore()
+  // mock.restore() leaves every mock.module() registration in place; put the
+  // REAL modules back so the partial mocks above cannot reach another test
+  // file in the same process.
+  mock.module('axios', () => realAxios)
+  mock.module('src/constants/oauth.js', () => realOauthConstants)
+  mock.module('src/services/analytics/growthbook.js', () => realGrowthbook)
+  mock.module('../bootstrap/state.js', () => realBootstrapState)
+  mock.module('../services/analytics/index.js', () => realAnalyticsIndex)
+  mock.module('./auth.js', () => realAuth)
+  mock.module('./bundledMode.js', () => realBundledMode)
+  mock.module('./config.js', () => realConfig)
+  mock.module('./debug.js', () => realDebug)
+  mock.module('./envUtils.js', () => realEnvUtils)
+  mock.module('./model/model.js', () => realModel)
+  mock.module('./model/providers.js', () => realProviders)
+  mock.module('./privacyLevel.js', () => realPrivacyLevel)
+  mock.module('./settings/settings.js', () => realSettings)
+  mock.module('./signal.js', () => realSignal)
   process.env = { ...originalEnv }
 })
 

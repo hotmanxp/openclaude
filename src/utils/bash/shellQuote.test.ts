@@ -3,7 +3,15 @@ import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
-import * as realLog from '../log.js'
+// A static `import * as realLog` is a live namespace binding: once any other
+// test file registers a mock.module() for '../log.js', this binding can hand
+// back the MOCKED module instead of the real one, so the afterEach "restore"
+// below would re-register the mock and the leak would keep spreading. Import
+// through a `?real=` cache-busted specifier instead: a distinct module
+// instance that no mock.module() registration can shadow.
+const realLog = {
+  ...await import(`../log.js?real=${Date.now()}-${Math.random()}`),
+}
 
 let importCounter = 0
 

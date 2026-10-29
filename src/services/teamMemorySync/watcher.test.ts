@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import * as realIndexModule from './index.js'
 
 const mockPush = mock<(state: any) => Promise<any>>()
 
@@ -11,7 +10,13 @@ let resolvePush: (() => void) | null = null
 // beforeEach and restore the real module in afterEach. That keeps the mock live
 // for every test here while ensuring it does not silently bleed into any future
 // test file that imports teamMemorySync/index.
-const realIndex = { ...realIndexModule }
+//
+// The snapshot comes from a cache-busted import: a plain `import * as`
+// namespace is live, so a mock installed by an EARLIER test file would already
+// have repointed it and the "real" copy would be that earlier mock.
+const realIndex = {
+  ...(await import(`./index.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./index.js')
 
 function installIndexMock(): void {
   mock.module('./index.js', () => ({

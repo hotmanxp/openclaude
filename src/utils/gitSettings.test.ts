@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { getCwdState, setCwdState } from '../bootstrap/state.js'
+import { snapshotEnv } from '../test/envSnapshot.js'
 import { shouldIncludeGitInstructions } from './gitSettings.js'
 import { acquireSharedMutationLock, releaseSharedMutationLock } from '../test/sharedMutationLock.js'
 
@@ -12,15 +13,16 @@ const realSettings = (await import(
 )) as typeof import('./settings/settings.js')
 
 let originalCwdState: string
-let originalEnv: string | undefined
+let restoreEnv: () => void
 let tempRoot: string
 let settingsFixture: Record<string, unknown> = {}
 
 beforeEach(async () => {
   await acquireSharedMutationLock('utils/gitSettings.test.ts')
   originalCwdState = getCwdState()
-  originalEnv = process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
-  delete process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
+  restoreEnv = snapshotEnv(['CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS'], {
+    clear: true,
+  })
   tempRoot = mkdtempSync(join(tmpdir(), 'gitsettings-test-'))
   // Isolate filesystem lookups without changing the shared process's Git environment.
   // Hide ancestor repositories when tmpdir() happens to be inside a checkout.
@@ -45,11 +47,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   setCwdState(originalCwdState)
-  if (originalEnv === undefined) {
-    delete process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
-  } else {
-    process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS = originalEnv
-  }
+  restoreEnv()
   rmSync(tempRoot, { recursive: true, force: true })
   mock.module('./settings/settings.js', () => ({ ...realSettings }))
   mock.restore()

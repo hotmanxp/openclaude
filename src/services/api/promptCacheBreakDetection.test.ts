@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { QuerySource } from '../../constants/querySource.js'
@@ -30,9 +30,30 @@ const logForDebuggingMock = mock(
     debugCalls.push({ message, options })
   },
 )
-const actualDebugModule = await import('../../utils/debug.js')
+// Capture the real modules through cache-busting specifiers: a plain
+// `await import('../../utils/debug.js')` resolves to whatever mock.module()
+// registration another test file left behind, so the restore in afterAll
+// would re-register a foreign mock instead of the real module.
+const nonce = `${Date.now()}-${Math.random()}`
+const actualDebugModule = {
+  ...await import(`../../utils/debug.js?real=${nonce}`),
+}
+const actualAnalyticsModule = {
+  ...await import(`../analytics/index.js?real=${nonce}`),
+}
+
+afterAll(() => {
+  mock.restore()
+  // mock.restore() does not remove Bun module mock registrations, so
+  // re-register the real modules to stop these mocks from leaking into
+  // every later test file.
+  mock.module('../analytics/index.js', () => actualAnalyticsModule)
+  mock.module('src/utils/debug.js', () => actualDebugModule)
+  mock.module('../../utils/debug.js', () => actualDebugModule)
+})
 
 mock.module('../analytics/index.js', () => ({
+  ...actualAnalyticsModule,
   logEvent: logEventMock,
   // analytics/sink.ts re-imports `stripProtoFields` transitively; expose a
   // pass-through so transitive imports resolve even though this test only

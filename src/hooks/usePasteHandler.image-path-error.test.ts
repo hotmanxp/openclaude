@@ -6,10 +6,16 @@ import {
   type InputEvent,
   type Key,
 } from '../ink.js'
-import * as actualImagePasteModule from '../utils/imagePaste.js'
 
 type PasteHandlerModule = typeof import('./usePasteHandler.js')
 type PasteHandlerResult = ReturnType<PasteHandlerModule['usePasteHandler']>
+
+// Snapshot the real module through a cache-busted import. A plain `import * as`
+// namespace is live: mock.module() repoints it, so spreading it would capture
+// whatever mock happens to be installed when this file is evaluated.
+const actualImagePasteModule = {
+  ...(await import(`../utils/imagePaste.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../utils/imagePaste.js')
 
 const originalImagePasteExports = { ...actualImagePasteModule }
 

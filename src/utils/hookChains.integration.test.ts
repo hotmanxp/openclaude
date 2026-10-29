@@ -3,15 +3,18 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import * as realAgentToolModule from '../tools/AgentTool/AgentTool.js'
 
 // Snapshot the real AgentTool exports BEFORE any mock.module() runs — bun's
 // mock.module() patches the namespace in place, so restoring from the live
 // namespace later would just restore the mock. Without this restore,
 // AgentTool.schema.test.ts (same process, later file) sees a stripped
 // AgentTool and fails with 'mapToolResultToToolResultBlockParam is not a
-// function'.
-const REAL_AGENT_TOOL_MODULE = { ...realAgentToolModule }
+// function'. The snapshot comes from a cache-busted import: a plain
+// `import * as` namespace is live, so a mock installed by an EARLIER test file
+// would already have repointed it and the "real" copy would be that mock.
+const REAL_AGENT_TOOL_MODULE = {
+  ...(await import(`../tools/AgentTool/AgentTool.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../tools/AgentTool/AgentTool.js')
 
 type HookChainsModule = typeof import('./hookChains.js')
 

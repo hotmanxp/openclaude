@@ -2,6 +2,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { join } from 'node:path'
 
+const nonce = `${Date.now()}-${Math.random()}`
+const actualExecFileNoThrow = {
+  ...await import(`../../utils/execFileNoThrow.js?real=${nonce}`),
+}
+
 const originalEnv = { ...process.env }
 const originalPlatform = process.platform
 const mockedClipboardPath = join(process.cwd(), 'opencc-clipboard.txt')
@@ -14,6 +19,7 @@ const execFileNoThrowMock = mock(
 
 function installOscMocks(): void {
   mock.module('../../utils/execFileNoThrow.js', () => ({
+    ...actualExecFileNoThrow,
     execFileNoThrow: execFileNoThrowMock,
     execFileNoThrowWithCwd: execFileNoThrowMock,
     // Provide the deprecated re-export so downstream test files (e.g.
@@ -63,6 +69,11 @@ describe('Windows clipboard fallback', () => {
   })
 
   afterEach(() => {
+    mock.restore()
+    // mock.restore() does not remove Bun module mock registrations, so
+    // re-register the real module to stop the execFileNoThrow mock from
+    // leaking into every later test file.
+    mock.module('../../utils/execFileNoThrow.js', () => actualExecFileNoThrow)
     process.env = { ...originalEnv }
     Object.defineProperty(process, 'platform', { value: originalPlatform })
   })
@@ -112,6 +123,11 @@ describe('clipboard path behavior remains stable', () => {
   })
 
   afterEach(() => {
+    mock.restore()
+    // mock.restore() does not remove Bun module mock registrations, so
+    // re-register the real module to stop the execFileNoThrow mock from
+    // leaking into every later test file.
+    mock.module('../../utils/execFileNoThrow.js', () => actualExecFileNoThrow)
     process.env = { ...originalEnv }
     Object.defineProperty(process, 'platform', { value: originalPlatform })
   })

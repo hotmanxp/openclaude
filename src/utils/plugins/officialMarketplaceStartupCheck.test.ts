@@ -4,6 +4,46 @@ import {
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
 
+// mock.restore() does NOT revert mock.module(): the partial mocks registered
+// below stay in the process-wide registry and shadow the real modules for
+// every later test file (marketplaceManager.test.ts running after this file
+// is one of the victims). Capture each real module through a `?real=`
+// cache-busted import — a distinct module instance that no mock.module()
+// registration can shadow — and re-register them in afterAll.
+const realGrowthbook = {
+  ...await import(
+    `../../services/analytics/growthbook.js?real=${Date.now()}-${Math.random()}`
+  ),
+}
+const realAnalytics = {
+  ...await import(
+    `../../services/analytics/index.js?real=${Date.now()}-${Math.random()}`
+  ),
+}
+const realConfig = {
+  ...await import(`../config.js?real=${Date.now()}-${Math.random()}`),
+}
+const realDebug = {
+  ...await import(`../debug.js?real=${Date.now()}-${Math.random()}`),
+}
+const realLog = {
+  ...await import(`../log.js?real=${Date.now()}-${Math.random()}`),
+}
+const realGitAvailability = {
+  ...await import(`./gitAvailability.js?real=${Date.now()}-${Math.random()}`),
+}
+const realMarketplaceHelpers = {
+  ...await import(`./marketplaceHelpers.js?real=${Date.now()}-${Math.random()}`),
+}
+const realMarketplaceManager = {
+  ...await import(`./marketplaceManager.js?real=${Date.now()}-${Math.random()}`),
+}
+const realOfficialMarketplaceGcs = {
+  ...await import(
+    `./officialMarketplaceGcs.js?real=${Date.now()}-${Math.random()}`
+  ),
+}
+
 type TestGlobalConfig = {
   officialMarketplaceAutoInstallAttempted?: boolean
   officialMarketplaceAutoInstalled?: boolean
@@ -38,9 +78,6 @@ const addMarketplaceSource = mock(async () => ({
 
 await acquireSharedMutationLock('utils/plugins/officialMarketplaceStartupCheck.test.ts')
 
-const realGrowthbook = await import(
-  `../../services/analytics/growthbook.js?real=${Date.now()}-${Math.random()}`
-)
 mock.module('../../services/analytics/growthbook.js', () => ({
   ...realGrowthbook,
   getFeatureValue_CACHED_MAY_BE_STALE: () => true,
@@ -56,9 +93,6 @@ mock.module('../../services/analytics/index.js', () => ({
 // any downstream test that re-imports the mocked path in the same Bun
 // process. The `?real=...` cache-bust ensures the import bypasses this
 // file's own mock.module() registration for the same path.
-const realConfig = await import(
-  `../config.js?real=${Date.now()}-${Math.random()}`
-)
 mock.module('../config.js', () => ({
   ...realConfig,
   checkHasTrustDialogAccepted: () => true,
@@ -91,10 +125,7 @@ mock.module('../config.js', () => ({
 // transitively imports many of these; missing entries break any
 // downstream test that re-imports the mocked path in the same Bun
 // process. Pre-imported here (not inline) because mock.module's factory
-// is sync — see the growthbook pattern at line 41 above.
-const realDebug = await import(
-  `../debug.js?real=${Date.now()}-${Math.random()}`
-)
+// is sync — see the growthbook pattern above.
 mock.module('../debug.js', () => ({
   ...realDebug,
   logForDebugging: mock(() => {}),
@@ -103,9 +134,6 @@ mock.module('../debug.js', () => ({
 // Spread the real log module to preserve all exports. The marketplace
 // module body transitively imports many of these; missing entries break
 // any downstream test that re-imports the mocked path.
-const realLog = await import(
-  `../log.js?real=${Date.now()}-${Math.random()}`
-)
 mock.module('../log.js', () => ({
   ...realLog,
   logError: mock(() => {}),
@@ -123,9 +151,6 @@ mock.module('./gitAvailability.js', () => ({
 // process (e.g. marketplaceManager.test.ts running after this file).
 // Using `?real=...` cache-bust ensures the import bypasses this file's
 // own mock.module() registration for the same path.
-const realMarketplaceHelpers = await import(
-  `./marketplaceHelpers.js?real=${Date.now()}-${Math.random()}`
-)
 mock.module('./marketplaceHelpers.js', () => ({
   ...realMarketplaceHelpers,
   isSourceAllowedByPolicy: () => true,
@@ -156,6 +181,17 @@ checkAndInstallOfficialMarketplace = mod.checkAndInstallOfficialMarketplace
 afterAll(() => {
   try {
     mock.restore()
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // above registered process-wide.
+    mock.module('../../services/analytics/growthbook.js', () => realGrowthbook)
+    mock.module('../../services/analytics/index.js', () => realAnalytics)
+    mock.module('../config.js', () => realConfig)
+    mock.module('../debug.js', () => realDebug)
+    mock.module('../log.js', () => realLog)
+    mock.module('./gitAvailability.js', () => realGitAvailability)
+    mock.module('./marketplaceHelpers.js', () => realMarketplaceHelpers)
+    mock.module('./marketplaceManager.js', () => realMarketplaceManager)
+    mock.module('./officialMarketplaceGcs.js', () => realOfficialMarketplaceGcs)
   } finally {
     releaseSharedMutationLock()
   }

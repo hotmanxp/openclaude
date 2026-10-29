@@ -6,7 +6,14 @@ import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../test/sharedMutationLock.js'
-import * as realTokenEstimation from '../services/tokenEstimation.js'
+
+// Snapshot the real module surface through a cache-busted import. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so spreading it
+// inside a mock factory would build the mock on top of whatever mock is
+// installed at that moment.
+const realTokenEstimation = {
+  ...(await import(`../services/tokenEstimation.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../services/tokenEstimation.js')
 
 async function loadAnalyzeContextForTesting() {
   return import(`./analyzeContext.js?ts=${Date.now()}-${Math.random()}`)

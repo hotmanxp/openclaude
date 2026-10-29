@@ -1055,25 +1055,68 @@ function naturalTerminalFact(
   }
 }
 
+/**
+ * Compare two background sessions for "same session generation".
+ *
+ * A session id can be reused after a session is cleaned up. The identity
+ * fields below are the ones that stay stable across a session's lifetime, so
+ * they identify the generation a finalizer was told about. Upstream also
+ * compares `terminalFactGeneration`; the fork's fact paths are not
+ * generation-scoped, so the fork compares the fields it actually persists.
+ */
+function isSameBackgroundSessionGeneration(
+  first: BackgroundSession,
+  second: BackgroundSession,
+): boolean {
+  return (
+    first.id === second.id &&
+    first.pid === second.pid &&
+    first.sessionId === second.sessionId &&
+    first.startedAt === second.startedAt &&
+    first.processMarker === second.processMarker
+  )
+}
+
 function assertNaturalFinalizationOwner(
   session: BackgroundSession | null,
   id: string,
   ownerPid: number,
+  expectedSession?: BackgroundSession,
 ): asserts session is BackgroundSession {
-  if (!session || session.id !== id || session.pid !== ownerPid) {
+  if (
+    !session ||
+    session.id !== id ||
+    session.pid !== ownerPid ||
+    (expectedSession !== undefined &&
+      !isSameBackgroundSessionGeneration(session, expectedSession))
+  ) {
     throw new Error('Background session finalizer does not own this session')
   }
+}
+
+export type BackgroundSessionNaturalFinalizationOptions = {
+  ownerPid?: number
+  now?: Date
+  /**
+   * The session generation the caller believes it is finalizing. When given,
+   * the finalizer refuses to write a terminal fact if the persisted session
+   * is no longer the same generation (e.g. the id was reused).
+   *
+   * Optional and backward compatible: omitting it keeps the previous
+   * ownership-only check.
+   */
+  expectedSession?: BackgroundSession
 }
 
 export async function recordBackgroundSessionNaturalTermination(
   id: string,
   termination: BackgroundSessionNaturalTermination,
-  options: { ownerPid?: number; now?: Date } = {},
+  options: BackgroundSessionNaturalFinalizationOptions = {},
 ): Promise<BackgroundSession> {
   assertSafeId(id)
   const ownerPid = options.ownerPid ?? process.pid
   const session = await readSessionFile(metadataPathForId(id))
-  assertNaturalFinalizationOwner(session, id, ownerPid)
+  assertNaturalFinalizationOwner(session, id, ownerPid, options.expectedSession)
 
   const effective = await applyAuthoritativeTerminalFacts(session)
   if (
@@ -1104,12 +1147,12 @@ export async function recordBackgroundSessionNaturalTermination(
 export function recordBackgroundSessionNaturalTerminationSync(
   id: string,
   termination: BackgroundSessionNaturalTermination,
-  options: { ownerPid?: number; now?: Date } = {},
+  options: BackgroundSessionNaturalFinalizationOptions = {},
 ): void {
   assertSafeId(id)
   const ownerPid = options.ownerPid ?? process.pid
   const session = readSessionFileSync(metadataPathForId(id))
-  assertNaturalFinalizationOwner(session, id, ownerPid)
+  assertNaturalFinalizationOwner(session, id, ownerPid, options.expectedSession)
   if (
     session.status === 'killed' ||
     session.status === 'exited' ||

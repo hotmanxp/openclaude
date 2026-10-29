@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   getClientType,
   getMainLoopModelOverride,
@@ -6,16 +6,36 @@ import {
   setClientType,
   setMainLoopModelOverride,
 } from '../bootstrap/state.js'
-import * as actualModel from './model/model.js'
-import * as actualProviders from './model/providers.js'
 import {
   resetSettingsCache,
   setSessionSettingsCache,
 } from './settings/settingsCache.js'
-import * as realSettings from './settings/settings.js'
 import type { SettingsJson } from './settings/types.js'
 
-const actualSettings = { ...realSettings }
+// Snapshot the real module surfaces through cache-busted imports. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so the
+// afterEach re-registration below would re-install this suite's own mock
+// instead of the real module — and since bun never unregisters mock.module()
+// overrides, that mock would then survive into every later test file. A
+// `?real=` import resolves to a distinct module path that no mock.module()
+// registration can shadow.
+const nonce = `${Date.now()}-${Math.random()}`
+const actualModel = {
+  ...(await import(`./model/model.js?real=${nonce}`)),
+} as typeof import('./model/model.js')
+const actualProviders = {
+  ...(await import(`./model/providers.js?real=${nonce}`)),
+} as typeof import('./model/providers.js')
+const actualSettings = {
+  ...(await import(`./settings/settings.js?real=${nonce}`)),
+} as typeof import('./settings/settings.js')
+
+afterAll(() => {
+  mock.restore()
+  mock.module('./model/providers.js', () => actualProviders)
+  mock.module('./model/model.js', () => actualModel)
+  mock.module('./settings/settings.js', () => actualSettings)
+})
 
 let getAttributionTexts: (typeof import('./attribution.js'))['getAttributionTexts']
 let getDefaultCommitCoAuthorEmail: (typeof import('./attribution.js'))[

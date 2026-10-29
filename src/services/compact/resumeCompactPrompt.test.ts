@@ -1,5 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
+// mock.restore() does NOT revert mock.module(): the partial mocks registered
+// by the tests below stay in the process-wide registry and shadow the real
+// modules for every later test file. Capture each real module through a
+// `?real=` cache-busted import — a distinct module instance that no
+// mock.module() registration can shadow — and re-register them in afterEach.
+const realTokens = {
+  ...await import(`../../utils/tokens.js?real=${Date.now()}-${Math.random()}`),
+}
+const realAutoCompact = {
+  ...await import(`./autoCompact.js?real=${Date.now()}-${Math.random()}`),
+}
+
 async function importResumeCompactPrompt() {
   mock.restore()
   const nonce = `${Date.now()}-${Math.random()}`
@@ -15,6 +27,10 @@ describe('shouldPromptCompactOnResume', () => {
 
   afterEach(() => {
     mock.restore()
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // above registered process-wide.
+    mock.module('../../utils/tokens.js', () => realTokens)
+    mock.module('./autoCompact.js', () => realAutoCompact)
   })
 
   test('returns false for empty messages', async () => {

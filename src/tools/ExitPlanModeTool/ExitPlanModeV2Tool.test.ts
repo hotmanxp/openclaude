@@ -31,8 +31,14 @@ beforeAll(async () => {
     'tools/ExitPlanModeTool/ExitPlanModeV2Tool.test.ts',
   )
 
-  actualPlans = await import('../../utils/plans.ts')
-  actualTeammateMailbox = await import('../../utils/teammateMailbox.ts')
+  // Cache-busting specifiers: a plain `await import('../../utils/plans.ts')`
+  // resolves to whatever mock.module() registration another test file left
+  // behind, so the restore in afterAll would re-register a foreign mock.
+  const nonce = `${Date.now()}-${Math.random()}`
+  actualPlans = { ...await import(`../../utils/plans.js?real=${nonce}`) }
+  actualTeammateMailbox = {
+    ...await import(`../../utils/teammateMailbox.js?real=${nonce}`),
+  }
 
   mock.module('../../utils/plans.js', () => ({
     ...actualPlans,

@@ -6,13 +6,30 @@ import {
   setSessionSettingsCache,
 } from './settings/settingsCache.js'
 
-import * as actualConfig from './config.js'
-import * as actualProviderProfiles from './providerProfiles.js'
-import * as actualSettings from './settings/settings.js'
+import type { ProviderProfile } from './config.js'
 
-function buildProfile(
-  overrides: Partial<actualConfig.ProviderProfile> = {},
-): actualConfig.ProviderProfile {
+// Snapshot the REAL module surfaces before installing any mock.
+//
+// A plain `import * as x` yields a LIVE namespace: mock.module() repoints it,
+// so spreading it inside a mock factory builds every new mock on top of the
+// previous one. The cache-busted imports below resolve to a different module
+// path, so no mock can ever repoint them, and spreading them freezes the
+// real exports into plain objects.
+//
+// bun keeps mock.module() overrides installed for the life of the process —
+// mock.restore() does NOT unregister them — so the overrides installed by
+// importFreshProviderFallback() are re-registered back to the real surfaces
+// in afterEach. Without that, this file's providerProfiles / settings mocks
+// leak into every later test file of the same `bun test` run.
+const nonce = `${Date.now()}-${Math.random()}`
+const realProviderProfiles = {
+  ...(await import(`./providerProfiles.js?real=${nonce}`)),
+} as typeof import('./providerProfiles.js')
+const realSettings = {
+  ...(await import(`./settings/settings.js?real=${nonce}`)),
+} as typeof import('./settings/settings.js')
+
+function buildProfile(overrides: Partial<ProviderProfile> = {}): ProviderProfile {
   return {
     id: 'profile_x',
     name: 'X',
@@ -25,12 +42,12 @@ function buildProfile(
 }
 
 async function importFreshProviderFallback(
-  profileMocks: Partial<typeof actualProviderProfiles>,
+  profileMocks: Partial<typeof realProviderProfiles>,
   settingsOverride: Record<string, unknown> = {},
 ) {
   mock.restore()
   mock.module('./providerProfiles.js', () => ({
-    ...actualProviderProfiles,
+    ...realProviderProfiles,
     ...profileMocks,
   }))
   // Stub `getSettings_DEPRECATED` directly so the resolver sees the test's
@@ -39,12 +56,12 @@ async function importFreshProviderFallback(
   // bun locally but doesn't survive a fresh `import('?ts=...')` because the
   // settings module loads its own cache instance on each fresh import.
   mock.module('./settings/settings.js', () => ({
-    ...actualSettings,
+    ...realSettings,
     getSettings_DEPRECATED: () => settingsOverride,
     getInitialSettings: () => settingsOverride,
   }))
-  const nonce = `${Date.now()}-${Math.random()}`
-  return import(`./providerFallback.js?ts=${nonce}`)
+  const freshNonce = `${Date.now()}-${Math.random()}`
+  return import(`./providerFallback.js?ts=${freshNonce}`)
 }
 
 beforeEach(() => {
@@ -54,6 +71,11 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore()
+  // Hand the real module surfaces back to the process. bun's mock.module()
+  // registry is process-global and never expires, so without this the mocks
+  // above would survive into every later test file.
+  mock.module('./providerProfiles.js', () => realProviderProfiles)
+  mock.module('./settings/settings.js', () => realSettings)
   resetSettingsCache()
 })
 

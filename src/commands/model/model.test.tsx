@@ -26,7 +26,37 @@ function filterAvailableCatalogEntries(
   return entries.filter(entry => !entry.hidden)
 }
 import { mergeRouteCatalogEntries } from '../../utils/model/routeCatalogOptions.js'
-type SettingsModule = typeof import('../../utils/settings/settings.js')
+
+// mock.restore() does NOT revert mock.module(): the partial mocks registered
+// below stay in the process-wide registry and shadow the real modules for
+// every later test file. Capture each real module through a `?real=`
+// cache-busted import — a distinct module instance that no mock.module()
+// registration can shadow — and re-register them in afterEach.
+const nonce = `${Date.now()}-${Math.random()}`
+const realSettings = {
+  ...await import(`../../utils/settings/settings.js?real=${nonce}`),
+} as typeof import('../../utils/settings/settings.js')
+const realModelAllowlist = {
+  ...await import(`../../utils/model/modelAllowlist.js?real=${nonce}`),
+} as typeof import('../../utils/model/modelAllowlist.js')
+const realConfig = {
+  ...await import(`../../utils/config.js?real=${nonce}`),
+} as typeof import('../../utils/config.js')
+const realModelPicker = {
+  ...await import(`../../components/ModelPicker.js?real=${nonce}`),
+} as typeof import('../../components/ModelPicker.js')
+const realOpenAIModelDiscovery = {
+  ...await import(`../../utils/model/openaiModelDiscovery.js?real=${nonce}`),
+} as typeof import('../../utils/model/openaiModelDiscovery.js')
+const realProviderProfiles = {
+  ...await import(`../../utils/providerProfiles.js?real=${nonce}`),
+} as typeof import('../../utils/providerProfiles.js')
+const realDiscoveryCache = {
+  ...await import(`../../integrations/discoveryCache.js?real=${nonce}`),
+} as typeof import('../../integrations/discoveryCache.js')
+const realDiscoveryService = {
+  ...await import(`../../integrations/discoveryService.js?real=${nonce}`),
+} as typeof import('../../integrations/discoveryService.js')
 
 const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
@@ -86,7 +116,6 @@ async function expectModelCommandDoesNotWaitForRefresh(
 }
 
 type ProviderProfileModelPickerModeForTest = 'auto' | 'profile' | 'provider'
-let actualSettingsModule: SettingsModule | undefined
 let settingsForTest: SettingsJson & {
   providerProfileModelPickerMode?: ProviderProfileModelPickerModeForTest
 } = {}
@@ -107,15 +136,13 @@ function useSettings(
 }
 
 async function mockSettingsForTest(): Promise<void> {
-  actualSettingsModule ??= await import(
-    `../../utils/settings/settings.ts?modelCommandSettingsActual=${Date.now()}-${Math.random()}`
-  )
   mock.module('../../utils/settings/settings.js', () => ({
-    ...actualSettingsModule!,
+    ...realSettings,
     getInitialSettings: () => settingsForTest,
     getSettings_DEPRECATED: () => settingsForTest,
   }))
   mock.module('../../utils/model/modelAllowlist.js', () => ({
+    ...realModelAllowlist,
     isModelAllowed: isModelAllowedForTest,
   }))
 }
@@ -191,6 +218,16 @@ beforeEach(async () => {
 afterEach(() => {
   try {
     mock.restore()
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/settings/settings.js', () => realSettings)
+    mock.module('../../utils/model/modelAllowlist.js', () => realModelAllowlist)
+    mock.module('../../utils/config.js', () => realConfig)
+    mock.module('../../components/ModelPicker.js', () => realModelPicker)
+    mock.module('../../utils/model/openaiModelDiscovery.js', () => realOpenAIModelDiscovery)
+    mock.module('../../utils/providerProfiles.js', () => realProviderProfiles)
+    mock.module('../../integrations/discoveryCache.js', () => realDiscoveryCache)
+    mock.module('../../integrations/discoveryService.js', () => realDiscoveryService)
     resetSettingsCache()
     settingsForTest = {}
     restoreEnv('CLAUDE_CODE_USE_OPENAI', originalEnv.CLAUDE_CODE_USE_OPENAI)
@@ -309,7 +346,7 @@ async function mockScopedLocalOpenAIModelCache(
     additionalModelOptionsCacheScope?: string
   }
 }> {
-  const actualConfig = await import('../../utils/config.js')
+  const actualConfig = realConfig
   const activeScope = getAdditionalModelOptionsCacheScope()
   scopedLocalOpenAIModelCacheState = {
     additionalModelOptionsCache: initialOptions,

@@ -9,10 +9,6 @@ import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../test/sharedMutationLock.js'
-import * as realEnv from './env.js'
-import * as realEnvUtils from './envUtils.js'
-import * as realExecFileNoThrow from './execFileNoThrow.js'
-import * as realDownload from './nativeInstaller/download.js'
 
 const originalEnv = { ...process.env }
 const originalMacro = (globalThis as Record<string, unknown>).MACRO
@@ -24,6 +20,31 @@ function restoreEnvVar(name: string, value: string | undefined): void {
     process.env[name] = value
   }
 }
+
+// Snapshot the real module surfaces through cache-busted imports. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so the afterEach
+// restore below would re-install this suite's own mock instead of the real
+// module — and since bun never unregisters mock.module() overrides, that mock
+// would survive into every later test file.
+//
+// `os` is deliberately NOT captured this way: the global test preload
+// (src/test/test-env-preload.ts) already redirects os.homedir() into a
+// throwaway sandbox, and that redirect is what keeps the cleanup tests below
+// from touching the real home directory. Bypassing it here would restore the
+// genuine homedir() and re-open the sandbox escape this file's persisted 'os'
+// mock exists to close.
+const realEnv = {
+  ...(await import(`./env.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./env.js')
+const realEnvUtils = {
+  ...(await import(`./envUtils.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./envUtils.js')
+const realExecFileNoThrow = {
+  ...(await import(`./execFileNoThrow.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./execFileNoThrow.js')
+const realDownload = {
+  ...(await import(`./nativeInstaller/download.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./nativeInstaller/download.js')
 
 // Snapshot the real execFileNoThrow module BEFORE installing the mock below.
 // bun live-updates the `realExecFileNoThrow` namespace to point at the mock once

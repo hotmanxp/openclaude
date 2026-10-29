@@ -6,6 +6,7 @@ import {
 } from '../../test/sharedMutationLock.js'
 
 type BrowserModule = typeof import('../../utils/browser.js')
+type ConfigModule = typeof import('../../utils/config.js')
 type ExecFileNoThrowModule = typeof import('../../utils/execFileNoThrow.js')
 
 type ExecCall = {
@@ -15,6 +16,7 @@ type ExecCall = {
 
 type RealModules = {
   browser: BrowserModule
+  config: ConfigModule
   execFileNoThrow: ExecFileNoThrowModule
 }
 
@@ -41,12 +43,19 @@ async function importRealModules(): Promise<RealModules> {
 
   const cacheKey = `${Date.now()}-${Math.random()}`
   realModules = {
-    browser: (await import(
-      `../../utils/browser.ts?setup-actions-real-${cacheKey}`
-    )) as BrowserModule,
-    execFileNoThrow: (await import(
-      `../../utils/execFileNoThrow.ts?setup-actions-real-${cacheKey}`
-    )) as ExecFileNoThrowModule,
+    // Bun repoints module namespaces when mocked; keep the original exports
+    // so the afterEach re-registration restores the real modules.
+    browser: {
+      ...await import(`../../utils/browser.ts?setup-actions-real-${cacheKey}`),
+    } as BrowserModule,
+    execFileNoThrow: {
+      ...await import(
+        `../../utils/execFileNoThrow.ts?setup-actions-real-${cacheKey}`
+      ),
+    } as ExecFileNoThrowModule,
+    config: {
+      ...await import(`../../utils/config.js?real=${cacheKey}`),
+    } as ConfigModule,
   }
   return realModules
 }
@@ -212,6 +221,8 @@ afterEach(() => {
   try {
     mock.restore()
     if (realModules) {
+      mock.module('src/utils/config.js', () => realModules!.config)
+      mock.module('../../utils/config.js', () => realModules!.config)
       mock.module(
         '../../utils/execFileNoThrow.js',
         () => realModules!.execFileNoThrow,

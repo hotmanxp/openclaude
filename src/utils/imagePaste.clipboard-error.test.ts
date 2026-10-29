@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { IMAGE_TARGET_RAW_SIZE } from '../constants/apiLimits.js'
 import * as actualImageResizerModule from './imageResizer.js'
-import * as actualLogModule from './log.js'
 
 type ImagePasteModule = typeof import('./imagePaste.js')
+
+// `imageResizer.js` keeps the plain namespace import on purpose: it exports
+// the ImageResizeError CLASS, and imagePaste.ts narrows with
+// `error instanceof ImageResizeError`. A cache-busted import would hand this
+// file a *different* class object than the one imagePaste.ts sees, so every
+// instanceof check would silently fail. The frozen plain-object copy below is
+// what the restore path installs.
+//
+// `log.js` has no class exports, so it is captured through a cache-busted
+// import: a plain `import * as` namespace is LIVE, so mock.module() repoints
+// it and the restoreMocks() below would re-install this suite's own mock
+// instead of the real module.
+const actualLogModule = {
+  ...(await import(`./log.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./log.js')
 
 const originalImageResizerExports = { ...actualImageResizerModule }
 const originalLogExports = { ...actualLogModule }

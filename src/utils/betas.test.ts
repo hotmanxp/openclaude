@@ -1,5 +1,4 @@
 import { afterEach, beforeAll, beforeEach, expect, mock, test } from 'bun:test'
-import * as realProviders from './model/providers.js'
 import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
@@ -68,6 +67,15 @@ function clearProviderEnv(): void {
   }
 }
 
+// Snapshot the real providers module through a cache-busting URL. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so spreading it
+// inside a mock factory would build the next mock on top of the previous one.
+// A `?real=` import resolves to a distinct module path that no mock.module()
+// registration can shadow.
+const realProviders = {
+  ...(await import(`./model/providers.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./model/providers.js')
+
 // Force firstParty resolution regardless of any leaked TEST_GLOBAL_CONFIG
 // providerProfiles from earlier test files. bun:test's mock.module is
 // process-global and not reverted by mock.restore(). Without this stub the
@@ -103,16 +111,16 @@ afterEach(() => {
 // a cache-busting URL and re-register it under the bare specifier at MODULE
 // LEVEL (top-level await) so the override is in place before any test code runs.
 // The explicit function references are used instead of spreading the namespace
-// object to avoid potential issues with Bun's mock.module handling.
-const _realProvidersModule = await import(
-  `./model/providers.js?real=${Date.now()}-${Math.random()}`
-)
+// object to avoid potential issues with Bun's mock.module handling — the
+// `...realProviders` spread on top of them keeps every OTHER export of the
+// module intact, so later test files never observe a stripped providers.js.
 mock.module('./model/providers.js', () => ({
-  getAPIProvider: _realProvidersModule.getAPIProvider,
-  usesAnthropicAccountFlow: _realProvidersModule.usesAnthropicAccountFlow,
-  isGithubNativeAnthropicMode: _realProvidersModule.isGithubNativeAnthropicMode,
-  getAPIProviderForStatsig: _realProvidersModule.getAPIProviderForStatsig,
-  isFirstPartyAnthropicBaseUrl: _realProvidersModule.isFirstPartyAnthropicBaseUrl,
+  ...realProviders,
+  getAPIProvider: realProviders.getAPIProvider,
+  usesAnthropicAccountFlow: realProviders.usesAnthropicAccountFlow,
+  isGithubNativeAnthropicMode: realProviders.isGithubNativeAnthropicMode,
+  getAPIProviderForStatsig: realProviders.getAPIProviderForStatsig,
+  isFirstPartyAnthropicBaseUrl: realProviders.isFirstPartyAnthropicBaseUrl,
 }))
 
 // Fresh import per test resets the memoize caches inside betas.js so the

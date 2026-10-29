@@ -108,19 +108,14 @@ afterEach(() => {
   }
 })
 
-// SKIPPED (2026-06-04): bun:test 1.3.14 cross-file `mock.module()` cache
-// leak. fastMode.test.ts and providerFallback.test.ts call
-// `mock.module('axios', ...)` and `mock.module('./model/providers.js', ...)`
-// in their setups. bun's `mock.restore()` only undoes the current file's
-// mocks, so these registrations persist into preflightChecks.test.ts and
-// the dynamic import `await import('./preflightChecks.js')` re-evaluates
-// the file but bun's transitive-dep cache still serves the leaked mock.
-// Manifests as `result.error === "Connectivity check error: ERR_INVALID_URL"`
-// because axios.get() is called with a non-mocked URL. Fix needs a test
-// architecture change (jest.resetModules() or refactor to top-level import
-// + beforeEach remock per the attribution.test.ts pattern). Tracked
-// separately; re-enable when the architecture is migrated.
-describe.skip('checkEndpoints (preflight)', () => {
+// Re-enabled (2026-10-29): the skip existed because bun's `mock.restore()`
+// does not undo `mock.module()`, so the partial axios / model-providers
+// mocks registered by fastMode.test.ts and providerFallback.test.ts leaked
+// into this file and axios.get() was called with a non-mocked URL
+// ("Connectivity check error: ERR_INVALID_URL"). Those files now re-register
+// the real modules in afterEach (TA-001 isolation work), so the leak stops
+// at their boundary and this suite passes again.
+describe('checkEndpoints (preflight)', () => {
   test('passes a bounded timeout to axios so a hung probe cannot freeze onboarding (#1017)', async () => {
     const calls: Array<{ url: string; options: { timeout?: number } }> = []
     mock.module('axios', () => ({

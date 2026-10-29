@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { acquireSharedMutationLock, releaseSharedMutationLock } from '../../test/sharedMutationLock.js'
 import { saveGlobalConfig } from '../../utils/config.js'
+import { resetModelStringsForTestingOnly } from '../../bootstrap/state.js'
 import { getAnthropicClient } from './client.js'
 
 type FetchType = typeof globalThis.fetch
@@ -190,6 +191,7 @@ afterEach(() => {
       originalEnv.CLAUDE_CODE_PROVIDER_PROFILE_ENV_APPLIED_ID,
     )
     globalThis.fetch = originalFetch
+    resetModelStringsForTestingOnly()
   } finally {
     releaseSharedMutationLock()
   }

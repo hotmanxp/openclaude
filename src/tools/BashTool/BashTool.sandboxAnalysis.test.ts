@@ -1,13 +1,38 @@
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import * as realGrowthbook from '../../services/analytics/growthbook.js'
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
-import * as realShell from '../../utils/Shell.js'
 import type { ExecResult, ShellCommand } from '../../utils/ShellCommand.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
+
+// A static `import * as realX` is a live namespace binding: once any other
+// test file registers a mock.module() for the same path, the binding can hand
+// back the MOCKED module instead of the real one. Import through a `?real=`
+// cache-busted specifier instead: a distinct module instance that no
+// mock.module() registration can shadow.
+const nonce = `${Date.now()}-${Math.random()}`
+const REAL_SHELL = {
+  ...await import(`../../utils/Shell.js?real=${nonce}`),
+}
+const REAL_GROWTHBOOK = {
+  ...await import(`../../services/analytics/growthbook.js?real=${nonce}`),
+}
+
+// mock.restore() does NOT revert mock.module(): the Shell.exec and
+// growthbook mocks registered below stay in the process-wide registry and
+// shadow the real modules for every later test file (BashTool.errorOutput
+// tests rely on the real exec exit codes). Re-register the real modules —
+// under BOTH the relative and the `src/`-alias specifiers, because the two
+// resolve to the same file but are registered under different keys.
+afterAll(() => {
+  mock.restore()
+  mock.module('../../utils/Shell.js', () => REAL_SHELL)
+  mock.module('src/utils/Shell.js', () => REAL_SHELL)
+  mock.module('../../services/analytics/growthbook.js', () => REAL_GROWTHBOOK)
+  mock.module('src/services/analytics/growthbook.js', () => REAL_GROWTHBOOK)
+})
 
 const originalSandboxMethods = {
   isSandboxingEnabled: SandboxManager.isSandboxingEnabled,
@@ -107,19 +132,19 @@ async function importBashToolWithExecutionMocks() {
   )
 
   mock.module('../../utils/Shell.js', () => ({
-    ...realShell,
+    ...REAL_SHELL,
     exec: execMock,
   }))
   mock.module('src/utils/Shell.js', () => ({
-    ...realShell,
+    ...REAL_SHELL,
     exec: execMock,
   }))
   mock.module('../../services/analytics/growthbook.js', () => ({
-    ...realGrowthbook,
+    ...REAL_GROWTHBOOK,
     getFeatureValue_CACHED_MAY_BE_STALE,
   }))
   mock.module('src/services/analytics/growthbook.js', () => ({
-    ...realGrowthbook,
+    ...REAL_GROWTHBOOK,
     getFeatureValue_CACHED_MAY_BE_STALE,
   }))
 
@@ -137,11 +162,11 @@ async function importSandboxPresentationWithMocks() {
   )
 
   mock.module('../../services/analytics/growthbook.js', () => ({
-    ...realGrowthbook,
+    ...REAL_GROWTHBOOK,
     getFeatureValue_CACHED_MAY_BE_STALE,
   }))
   mock.module('src/services/analytics/growthbook.js', () => ({
-    ...realGrowthbook,
+    ...REAL_GROWTHBOOK,
     getFeatureValue_CACHED_MAY_BE_STALE,
   }))
 

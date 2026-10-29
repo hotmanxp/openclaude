@@ -21,6 +21,15 @@ import {
 
 import type { MarketplaceSource } from './schemas.js'
 
+// Capture the real axios module through a cache-busting specifier: the mock
+// registered below is partial, and mock.restore() does not remove Bun module
+// mock registrations, so without a real-module capture the partial mock would
+// leak into every later test file.
+const nonce = `${Date.now()}-${Math.random()}`
+const realAxios = {
+  ...await import(`${import.meta.resolve('axios')}?real=${nonce}`),
+} as typeof import('axios')
+
 // @ts-expect-error -- query-string cache-buster: the import specifier ends with `?bust=...`
 // so TypeScript cannot resolve the bare path. The runtime import works under Bun (treats the
 // query string as a distinct module id that bypasses other test files' mock.module registrations).
@@ -271,6 +280,7 @@ describe('loadAndCacheMarketplace — rename failure fallback (EXDEV)', () => {
 
   beforeAll(async () => {
     mock.module('axios', () => ({
+      ...realAxios,
       default: {
         get: axiosGetSpy,
       },
@@ -297,6 +307,10 @@ describe('loadAndCacheMarketplace — rename failure fallback (EXDEV)', () => {
 
   afterAll(() => {
     mock.restore()
+    // mock.restore() does not remove Bun module mock registrations, so
+    // re-register the real axios module to stop the partial mock from
+    // leaking into every later test file.
+    mock.module('axios', () => realAxios)
   })
 
   beforeEach(() => {

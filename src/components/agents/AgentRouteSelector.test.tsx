@@ -12,15 +12,17 @@ import {
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
 import type { CurrentAgentRoute } from '../../services/api/agentRouteSettings.js'
-import * as realRouteSettings from '../../services/api/agentRouteSettings.js'
 
 const ROUTE_SETTINGS_MODULE = '../../services/api/agentRouteSettings.js'
-// Snapshot the real exports before any mock.module call. bun live-updates the
-// `realRouteSettings` namespace when the module is mocked, so spreading it
-// directly (or restoring from it in afterEach) can pull in the mocked values;
-// this frozen copy keeps both the mock spread and the restore pinned to the
-// genuine implementation.
-const actualRouteSettings = { ...realRouteSettings }
+// Snapshot the real exports before any mock.module call. bun live-updates a
+// plain `import * as` namespace when the module is mocked, so spreading it
+// directly (or restoring from it in afterEach) can pull in the mocked values.
+// A cache-busted import resolves to a distinct module path that no
+// mock.module() registration can shadow, so this frozen copy keeps both the
+// mock spread and the restore pinned to the genuine implementation.
+const actualRouteSettings = {
+  ...(await import(`../../services/api/agentRouteSettings.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../../services/api/agentRouteSettings.js')
 
 const SYNC_START = '\x1B[?2026h'
 const SYNC_END = '\x1B[?2026l'

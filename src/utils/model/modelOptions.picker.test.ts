@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ProviderProfile } from '../config.js'
 
@@ -8,17 +8,41 @@ import type { ProviderProfile } from '../config.js'
 // never turn these assertions into no-ops (the config.backupRecovery.test.ts
 // trap), then re-register the fresh real modules for the plain specifiers that
 // modelOptions.js resolves internally.
+//
+// The re-registration is one-directional today: the mocks installed below used
+// to stay registered for the rest of the process, so every later test file saw
+// this suite's config/providerProfiles shapes. The real surfaces are captured
+// here (cache-busted imports are a distinct module path that no mock.module()
+// registration can shadow) and handed back in afterEach.
+const realNonce = `${Date.now()}-${Math.random()}`
+const realConfig = {
+  ...(await import(`../config.js?real=${realNonce}`)),
+} as typeof import('../config.js')
+const realProviderProfiles = {
+  ...(await import(`../providerProfiles.js?real=${realNonce}`)),
+} as typeof import('../providerProfiles.js')
+
+afterEach(() => {
+  mock.restore()
+  // mock.restore() leaves mock.module() registrations in place; re-register
+  // the REAL modules so this suite's shapes never reach later test files.
+  mock.module('../config.js', () => realConfig)
+  mock.module('../providerProfiles.js', () => realProviderProfiles)
+})
+
 async function loadModules(): Promise<{
   getProviderModelEntries: typeof import('../providerProfiles.js').getProviderModelEntries
   providerModelTupleKey: typeof import('../providerProfiles.js').providerModelTupleKey
   mergeProviderPickerOptions: typeof import('./modelOptions.js').mergeProviderPickerOptions
 }> {
   const nonce = `${Date.now()}-${Math.random()}`
-  const config = await import(`../config.js?picker=${nonce}`)
+  const config = { ...(await import(`../config.js?picker=${nonce}`)) }
   mock.module('../config.js', () => config)
-  const providerProfiles = await import(`../providerProfiles.js?picker=${nonce}`)
+  const providerProfiles = {
+    ...(await import(`../providerProfiles.js?picker=${nonce}`)),
+  }
   mock.module('../providerProfiles.js', () => providerProfiles)
-  const modelOptions = await import(`./modelOptions.js?picker=${nonce}`)
+  const modelOptions = { ...(await import(`./modelOptions.js?picker=${nonce}`)) }
   return { ...providerProfiles, ...modelOptions }
 }
 

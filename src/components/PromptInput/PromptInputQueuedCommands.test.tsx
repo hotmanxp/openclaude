@@ -5,8 +5,16 @@ import {
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
 import { renderToString } from '../../utils/staticRender.js'
-import * as realCommandQueue from '../../hooks/useCommandQueue.js'
 import { AppStateProvider } from 'src/state/AppState.js'
+
+// Snapshot the real module through a cache-busted import. A plain `import * as`
+// namespace is live: mock.module() repoints it, so the afterEach restore
+// would re-install this suite's own mock instead of the real module — and
+// since bun never unregisters mock.module() overrides, that mock would
+// survive into every later test file.
+const realCommandQueue = {
+  ...(await import(`../../hooks/useCommandQueue.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../../hooks/useCommandQueue.js')
 
 describe('PromptInputQueuedCommands', () => {
   beforeEach(async () => {

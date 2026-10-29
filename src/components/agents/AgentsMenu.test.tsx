@@ -15,8 +15,16 @@ import {
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
 import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js'
-import * as realUseMergedTools from '../../hooks/useMergedTools.js'
 import type { ModeState } from './types.js'
+
+// Snapshot the real module through a cache-busted import. A plain `import * as`
+// namespace is live: mock.module() repoints it, so the afterEach restore
+// would re-install this suite's own mock instead of the real module — and
+// since bun never unregisters mock.module() overrides, that mock would
+// survive into every later test file.
+const realUseMergedTools = {
+  ...(await import(`../../hooks/useMergedTools.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('../../hooks/useMergedTools.js')
 
 const SYNC_START = '\x1B[?2026h'
 const SYNC_END = '\x1B[?2026l'

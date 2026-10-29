@@ -1,5 +1,4 @@
 import { expect, test, mock, describe, beforeEach, afterEach, afterAll, beforeAll } from "bun:test";
-import * as realExeca from "execa";
 import { getSecureStorageServiceName, CREDENTIALS_SERVICE_SUFFIX } from "./macOsKeychainHelpers.js";
 import {
   acquireSharedMutationLock,
@@ -7,6 +6,15 @@ import {
 } from "../../test/sharedMutationLock.js";
 import type { linuxSecretStorage as LinuxSecretStorage } from "./linuxSecretStorage.js";
 import type { windowsCredentialStorage as WindowsCredentialStorage } from "./windowsCredentialStorage.js";
+
+// Capture the real execa module through a cache-busting specifier: a plain
+// `import * as realExeca from "execa"` is a live namespace binding that Bun
+// repoints when another test file registers mock.module("execa", ...), so the
+// "restore" in afterAll would re-register somebody else's mock instead of the
+// real module.
+const realExeca = {
+  ...await import(`${import.meta.resolve("execa")}?real=${Date.now()}-${Math.random()}`),
+} as typeof import("execa");
 
 type MockExecaOptions = {
   input?: string;

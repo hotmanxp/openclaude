@@ -1,10 +1,22 @@
 // @ts-nocheck
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
+// bun's `mock.restore()` does NOT revert `mock.module()` registrations, so the
+// partial growthbook mock below (a module exposing only the one flag) used to
+// leak into every later test file in the process. Capture the real module
+// through a `?real=` cache-busted import — a distinct module instance that no
+// mock.module() registration can shadow — and re-register it in afterEach.
+const actualGrowthbook = {
+  ...await import(
+    `../services/analytics/growthbook.js?real=${Date.now()}-${Math.random()}`
+  ),
+}
+
 async function importFileModuleWithKillswitchEnabled(
   killswitchEnabled: boolean,
 ) {
   mock.module('../services/analytics/growthbook.js', () => ({
+    ...actualGrowthbook,
     getFeatureValue_CACHED_MAY_BE_STALE: () => killswitchEnabled,
   }))
 
@@ -13,6 +25,7 @@ async function importFileModuleWithKillswitchEnabled(
 
 afterEach(() => {
   mock.restore()
+  mock.module('../services/analytics/growthbook.js', () => actualGrowthbook)
 })
 
 describe('addLineNumbers', () => {

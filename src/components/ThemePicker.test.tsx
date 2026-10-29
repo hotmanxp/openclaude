@@ -121,7 +121,12 @@ afterEach(() => {
 })
 
 test('updates the preview when keyboard focus moves to another theme', async () => {
-  const { ThemePicker } = await import('./ThemePicker.js')
+  // Cache-busting specifier: a plain `await import('./ThemePicker.js')`
+  // resolves to whatever mock.module() registration another test file left
+  // behind.
+  const { ThemePicker } = await import(
+    `./ThemePicker.js?theme-picker=${Date.now()}-${Math.random()}`
+  )
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
     stdout: stdout as unknown as NodeJS.WriteStream,

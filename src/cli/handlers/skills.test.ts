@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'bun:test'
 
+import { isolateProcessExitCode } from '../../test/processExitCode.js'
+import { snapshotEnv } from '../../test/envSnapshot.js'
 import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
@@ -216,24 +218,69 @@ async function withMockedFetch<T>(
 
 async function withTempDir<T>(fn: (tempDir: string) => Promise<T>): Promise<T> {
   const tempDir = mkdtempSync(join(tmpdir(), 'openclaude-skill-install-test-'))
+  const tmpKeys = ['TMPDIR', 'TMP', 'TEMP'] as const
+  const restoreEnv = snapshotEnv([
+    ...tmpKeys,
+    'OPENCLAUDE_SKILLS_REVOCATIONS_URL',
+  ])
+  const nativeTmpEnv = tmpKeys.map(key => [key, Bun.env[key]] as const)
+  // Both the installer and the leak assertions must use this fixture's own
+  // directory, so other runs cannot change the staged-root snapshots.
+  // Bun's tmpdir reads its native environment even when another suite has
+  // replaced process.env, so update and restore both environment objects.
+  for (const key of tmpKeys) {
+    process.env[key] = tempDir
+    Bun.env[key] = tempDir
+  }
   // The revocation override is process-global input that the fixtures below
   // resolve against, and production gives it precedence over the sibling
   // revocations.json. Own it here: clear any value inherited from the host
   // process so each fixture reads its own list, and hand it back afterwards.
-  const inheritedRevocationsUrl = process.env.OPENCLAUDE_SKILLS_REVOCATIONS_URL
   delete process.env.OPENCLAUDE_SKILLS_REVOCATIONS_URL
+  // process.exitCode is process-global: the handler under test writes it and
+  // a bare `process.exitCode = 0` in the finally block would still leak the
+  // value to every later suite in the same `bun test` process. Swap the
+  // process object for an isolated proxy instead.
+  const restoreProcess = isolateProcessExitCode(0)
   try {
     return await fn(tempDir)
   } finally {
-    process.exitCode = 0
-    if (inheritedRevocationsUrl === undefined) {
-      delete process.env.OPENCLAUDE_SKILLS_REVOCATIONS_URL
-    } else {
-      process.env.OPENCLAUDE_SKILLS_REVOCATIONS_URL = inheritedRevocationsUrl
+    try {
+      restoreEnv()
+      for (const [key, value] of nativeTmpEnv) {
+        if (value === undefined) delete Bun.env[key]
+        else Bun.env[key] = value
+      }
+      rmSync(tempDir, { recursive: true, force: true })
+    } finally {
+      restoreProcess()
     }
-    rmSync(tempDir, { recursive: true, force: true })
   }
 }
+
+test.serial('restores fixture environment and removes its temp root when a callback throws', async () => {
+  const keys = ['TMPDIR', 'TMP', 'TEMP', 'OPENCLAUDE_SKILLS_REVOCATIONS_URL']
+  const inherited = keys.map(key => process.env[key])
+  const inheritedNativeTmp = keys.slice(0, 3).map(key => Bun.env[key])
+  const failure = new Error('fixture callback failed')
+  let fixtureRoot: string | undefined
+  await assert.rejects(
+    withTempDir(async tempDir => {
+      fixtureRoot = tempDir
+      assert.equal(tmpdir(), tempDir)
+      throw failure
+    }),
+    error => error === failure,
+  )
+
+  assert.deepEqual(keys.map(key => process.env[key]), inherited)
+  assert.deepEqual(
+    keys.slice(0, 3).map(key => Bun.env[key]),
+    inheritedNativeTmp,
+  )
+  assert.ok(fixtureRoot)
+  assert.equal(existsSync(fixtureRoot), false)
+})
 
 test('formats skills list as an aligned human table', () => {
   const output = formatSkillsListForDisplay(

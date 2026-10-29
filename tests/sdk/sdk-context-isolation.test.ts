@@ -1,5 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../../src/test/sharedMutationLock.js'
+import type { SessionId } from '../../src/entrypoints/agentSdkTypes.js'
+
+// Cache-busting specifier: a plain static import resolves to whatever
+// mock.module() registration another test file left behind. bun:test's
+// mock.module is process-global and mock.restore() does NOT undo it, so a
+// partial state.js mock (e.g. from src/utils/user.test.ts) would otherwise
+// leak into these SDK tests.
+const {
   runWithSdkContext,
   getSessionId,
   regenerateSessionId,
@@ -10,8 +21,10 @@ import {
   getOriginalCwd,
   setOriginalCwd,
   getParentSessionId,
-} from '../../src/bootstrap/state.js'
-import type { SessionId } from '../../src/entrypoints/agentSdkTypes.js'
+  resetStateForTests,
+} = await import(
+  `../../src/bootstrap/state.js?sdk-context-isolation=${Date.now()}-${Math.random()}`
+) as typeof import('../../src/bootstrap/state.js')
 
 // Snapshot global state before each test so we can restore it
 let originalSessionId: SessionId
@@ -20,7 +33,9 @@ let originalOriginalCwd: string
 let originalSessionProjectDir: string | null
 
 describe('SDK context isolation', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await acquireSharedMutationLock('sdk-context-isolation')
+    resetStateForTests()
     originalSessionId = getSessionId()
     originalCwd = getCwdState()
     originalOriginalCwd = getOriginalCwd()
@@ -28,10 +43,18 @@ describe('SDK context isolation', () => {
   })
 
   afterEach(() => {
-    // Restore global state after each test
-    switchSession(originalSessionId, originalSessionProjectDir)
-    setCwdState(originalCwd)
-    setOriginalCwd(originalOriginalCwd)
+    try {
+      // Restore global state after each test
+      switchSession(originalSessionId, originalSessionProjectDir)
+      setCwdState(originalCwd)
+      setOriginalCwd(originalOriginalCwd)
+    } finally {
+      try {
+        resetStateForTests()
+      } finally {
+        releaseSharedMutationLock()
+      }
+    }
   })
 
   describe('setCwdState', () => {

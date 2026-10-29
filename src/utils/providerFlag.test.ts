@@ -6,6 +6,7 @@ import {
   applyProviderFlagFromArgs,
   VALID_PROVIDERS,
 } from './providerFlag.js'
+import { snapshotEnv } from '../test/envSnapshot.js'
 
 const ENV_KEYS = [
   'CLAUDE_CODE_USE_OPENAI',
@@ -14,13 +15,10 @@ const ENV_KEYS = [
   'OPENAI_MODEL',
 ]
 
-const originalEnv: Record<string, string | undefined> = {}
+let restoreEnv: () => void
 
 beforeEach(() => {
-  for (const key of ENV_KEYS) {
-    originalEnv[key] = process.env[key]
-    delete process.env[key]
-  }
+  restoreEnv = snapshotEnv(ENV_KEYS, { clear: true })
 })
 
 const RESET_KEYS = [
@@ -37,13 +35,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  for (const key of ENV_KEYS) {
-    if (originalEnv[key] === undefined) {
-      delete process.env[key]
-    } else {
-      process.env[key] = originalEnv[key]
-    }
-  }
+  restoreEnv()
 })
 
 // --- parseProviderFlag ---

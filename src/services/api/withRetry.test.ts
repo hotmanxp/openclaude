@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type Anthropic from '@anthropic-ai/sdk'
 import { APIError, APIUserAbortError } from '@anthropic-ai/sdk'
 import { acquireSharedMutationLock, releaseSharedMutationLock } from '../../test/sharedMutationLock.js'
-import * as debugNs from '../../utils/debug.js'
 type ProvidersModule = typeof import('../../utils/model/providers.js')
 
 // Helper to build a mock APIError with specific headers
@@ -19,7 +18,17 @@ function makeError(headers: Record<string, string>): APIError {
 
 // Save/restore env vars between tests
 const originalEnv = { ...process.env }
-const originalDebugModule = { ...debugNs }
+// Capture the real debug module through a cache-busting specifier: a plain
+// `import * as debugNs` is a live namespace binding that Bun repoints when
+// another test file registers mock.module(), so the restore in afterEach
+// would re-register somebody else's mock instead of the real module.
+const nonce = `${Date.now()}-${Math.random()}`
+const originalDebugModule = {
+  ...await import(`../../utils/debug.js?real=${nonce}`),
+}
+const originalSleepModule = {
+  ...await import(`../../utils/sleep.js?real=${nonce}`),
+}
 let originalProvidersModule: ProvidersModule | undefined
 
 const envKeys = [
@@ -57,15 +66,22 @@ afterEach(() => {
       mock.module('src/utils/model/providers.js', () => originalProvidersModule!)
     }
     mock.module('src/utils/debug.js', () => originalDebugModule)
+    // The sleep mock below only exports `sleep`; without re-registering the
+    // real module the rest of sleep.js (e.g. withTimeout) stays missing for
+    // every later test file.
+    mock.module('src/utils/sleep.js', () => originalSleepModule)
   } finally {
     releaseSharedMutationLock()
   }
 })
 
 async function importActualProviders(): Promise<ProvidersModule> {
-  return import(
-    `../../utils/model/providers.ts?withRetryActual=${Date.now()}-${Math.random()}`
-  )
+  // Bun repoints module namespaces when mocked; keep the original exports.
+  return {
+    ...await import(
+      `../../utils/model/providers.ts?withRetryActual=${Date.now()}-${Math.random()}`
+    ),
+  }
 }
 
 async function importFreshWithRetryModule(

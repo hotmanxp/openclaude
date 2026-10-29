@@ -8,6 +8,17 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { ProviderProfile } from './config.js'
 import { saveGlobalConfig } from './config.js'
 
+// bun's `mock.restore()` does NOT revert `mock.module()` registrations, so the
+// partial ./config.js mock installed by importFreshProviderProfileModules()
+// used to stay registered for the rest of the process and shadow the real
+// module for every later test file. Capture the real module through a
+// `?real=` cache-busted import (a distinct module instance that no
+// mock.module() registration can shadow) and re-register it in afterEach.
+const nonce = `${Date.now()}-${Math.random()}`
+const realConfig = {
+  ...await import(`./config.js?real=${nonce}`),
+} as typeof import('./config.js')
+
 async function importFreshProvidersModule() {
   return import(`./model/providers.ts?ts=${Date.now()}-${Math.random()}`)
 }
@@ -85,6 +96,10 @@ afterEach(() => {
   saveGlobalConfig(current => ({ ...current, providerProfiles: [] }))
 
   mock.restore()
+  // mock.restore() leaves the partial ./config.js mock from
+  // importFreshProviderProfileModules() in place; re-register the REAL module
+  // so the leak stops here instead of reaching later test files.
+  mock.module('./config.js', () => realConfig)
   mockConfigState = createMockConfigState()
   process.chdir(originalCwd)
   if (testConfigDir) {

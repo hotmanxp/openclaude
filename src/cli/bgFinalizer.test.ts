@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { isolateProcessExitCode } from '../test/processExitCode.js'
 import {
   BACKGROUND_SESSION_ID_ENV,
   BACKGROUND_SESSION_LAUNCHER_PID_ENV,
@@ -33,8 +34,12 @@ describe('background session finalizer', () => {
   // follows HOME, so pointing it at the temp configDir keeps any homedir()-
   // derived path (backups, ~/.local/bin, ...) inside the test sandbox.
   let sandboxHome: string
+  // process.exitCode is process-global: without this the finalizer's exit
+  // code writes leak into every later suite in the same `bun test` process.
+  let restoreProcess: () => void
 
   beforeEach(async () => {
+    restoreProcess = isolateProcessExitCode()
     configDir = await mkdtemp(join(tmpdir(), 'openclaude-bg-finalizer-'))
     sessionsRoot = join(configDir, 'bg-sessions')
     sandboxHome = configDir
@@ -42,8 +47,12 @@ describe('background session finalizer', () => {
   })
 
   afterEach(async () => {
-    _setBackgroundSessionsRootForTesting(undefined)
-    await rm(configDir, { recursive: true, force: true })
+    try {
+      _setBackgroundSessionsRootForTesting(undefined)
+      await rm(configDir, { recursive: true, force: true })
+    } finally {
+      restoreProcess()
+    }
   })
 
   function ownedSession(id: string, pid: number): BackgroundSession {
@@ -319,6 +328,7 @@ describe('background session finalizer', () => {
     id: string
     child: ReturnType<typeof spawn>
     readyPath: string
+    exited: Promise<[number | null, NodeJS.Signals | null]>
   }> {
     const id = `bg-fixture-${mode}`
     const readyPath = join(configDir, `${id}.ready`)
@@ -335,13 +345,17 @@ describe('background session finalizer', () => {
       stdio: ['ignore', 'ignore', 'ignore'],
     })
     if (!child.pid) throw new Error('fixture did not start')
+    // Subscribe before registry I/O can yield past a short-lived child's exit.
+    const exited = once(child, 'exit') as Promise<
+      [number | null, NodeJS.Signals | null]
+    >
 
     await mkdir(join(sessionsRoot, 'sessions'), { recursive: true })
     await writeFile(
       join(sessionsRoot, 'sessions', `${id}.json`),
       JSON.stringify(ownedSession(id, child.pid)),
     )
-    return { id, child, readyPath }
+    return { id, child, readyPath, exited }
   }
 
   async function waitForFile(path: string): Promise<void> {
@@ -381,6 +395,9 @@ describe('background session finalizer', () => {
     })
     if (!child.pid) throw new Error('built CLI fixture did not start')
 
+    // Observe termination before yielding to registration I/O: a fast child
+    // may otherwise exit before the listener is installed.
+    const exited = once(child, 'exit') as Promise<[number]>
     await mkdir(join(sessionsRoot, 'sessions'), { recursive: true })
     await writeFile(
       join(sessionsRoot, 'sessions', `${id}.json`),
@@ -390,7 +407,7 @@ describe('background session finalizer', () => {
         command: [childConfig.command, ...childConfig.args],
       }),
     )
-    const [code] = (await once(child, 'exit')) as [number]
+    const [code] = await exited
     return code
   }
 
@@ -442,8 +459,8 @@ describe('background session finalizer', () => {
     { mode: 'throw' as const, status: 'failed', exitCode: 1 },
   ]) {
     it.skip(`records a real ${expectation.mode} child outcome`, async () => {
-      const { id, child } = await runFixture(expectation.mode)
-      const [code] = (await once(child, 'exit')) as [number]
+      const { id, exited } = await runFixture(expectation.mode)
+      const [code] = await exited
       expect(code).toBe(expectation.exitCode)
 
       expect((await listBackgroundSessions())[0]).toMatchObject({
@@ -470,13 +487,12 @@ describe('background session finalizer', () => {
     it.skip(
       `records an observed ${expectation.signal} as a failed signal fact (silenced per 1d2ee79c)`,
       async () => {
-        const { id, child, readyPath } = await runFixture(expectation.mode)
+        const { id, child, readyPath, exited } = await runFixture(
+          expectation.mode,
+        )
         await waitForFile(readyPath)
         child.kill(expectation.signal)
-        const [code, signal] = (await once(child, 'exit')) as [
-          number,
-          NodeJS.Signals | null,
-        ]
+        const [code, signal] = await exited
         expect(code).toBe(expectation.childExitCode)
         expect(signal).toBeNull()
         expect((await listBackgroundSessions())[0]).toMatchObject({
@@ -518,15 +534,19 @@ describe('background session finalizer', () => {
   }
 
   it.skip('keeps the installed launcher PID stable and shows outcomes truthfully in ps', async () => {
-    expect(await runBuiltCliSession('bg-built-success', ['--version'])).toBe(0)
-    expect(
-      await runBuiltCliSession('bg-built-failure', [
+    // These launches have independent registry IDs. Synchronize on both exit
+    // events instead of spending the test's budget on serial CLI startups.
+    const [successCode, failureCode] = await Promise.all([
+      runBuiltCliSession('bg-built-success', ['--version']),
+      runBuiltCliSession('bg-built-failure', [
         '--provider-env-file',
         join(configDir, 'missing.env'),
         '--print',
         'noop',
       ]),
-    ).toBe(1)
+    ])
+    expect(successCode).toBe(0)
+    expect(failureCode).toBe(1)
 
     const ps = spawn('node', [installedLauncherPath, 'ps'], {
       env: { ...process.env, OPENCC_CONFIG_DIR: configDir, HOME: sandboxHome, USERPROFILE: sandboxHome },
@@ -542,7 +562,7 @@ describe('background session finalizer', () => {
     ps.stderr?.on('data', chunk => {
       stderr += chunk
     })
-    const [psCode] = (await once(ps, 'exit')) as [number]
+    const [psCode] = (await once(ps, 'close')) as [number]
 
     expect(psCode).toBe(0)
     expect(stderr).toBe('')
@@ -559,10 +579,10 @@ describe('background session finalizer', () => {
   it.skip(
     'does not invent success when a fixture is forcibly destroyed (silenced per 1d2ee79c)',
     async () => {
-      const { child, readyPath } = await runFixture('wait')
+      const { child, readyPath, exited } = await runFixture('wait')
       await waitForFile(readyPath)
       child.kill('SIGKILL')
-      await once(child, 'exit')
+      await exited
 
       const refreshed = await refreshBackgroundSessionStatuses({
         isProcessAlive: () => false,

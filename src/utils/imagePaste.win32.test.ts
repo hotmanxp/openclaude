@@ -2,12 +2,28 @@ import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import * as actualExecaModule from 'execa'
-import * as actualExecFileModule from './execFileNoThrow.js'
 import * as actualImageResizerModule from './imageResizer.js'
 
 type ImagePasteModule = typeof import('./imagePaste.js')
 type ExecaCall = [string, ...unknown[]]
+
+// Snapshot the real module surfaces through cache-busted imports. A plain
+// `import * as` namespace is LIVE: mock.module() repoints it, so the
+// afterEach restore would re-install this suite's own mock instead of the
+// real module — and since bun never unregisters mock.module() overrides, that
+// mock would survive into every later test file.
+//
+// `imageResizer.js` is the exception: it exports the ImageResizeError CLASS,
+// and imagePaste.ts narrows with `error instanceof ImageResizeError`. A
+// cache-busted import would hand this file a *different* class object than
+// the one imagePaste.ts sees, so every instanceof check would silently fail.
+// The frozen plain-object copy below is what the restore path installs.
+const actualExecaModule = {
+  ...(await import(`${import.meta.resolve('execa')}?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('execa')
+const actualExecFileModule = {
+  ...(await import(`./execFileNoThrow.js?real=${Date.now()}-${Math.random()}`)),
+} as typeof import('./execFileNoThrow.js')
 
 const originalExecFileExports = { ...actualExecFileModule }
 const originalExecaExports = { ...actualExecaModule }

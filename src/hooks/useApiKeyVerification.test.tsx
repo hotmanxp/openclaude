@@ -1,9 +1,28 @@
 // @ts-nocheck
 import { PassThrough } from 'node:stream'
 
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import React from 'react'
 import { createRoot, Text } from '../ink.js'
+import {
+  acquireSharedMutationLock,
+  releaseSharedMutationLock,
+} from '../test/sharedMutationLock.js'
+
+// Capture the real modules through cache-busting specifiers: a plain static
+// import is a live namespace binding that Bun repoints when another test file
+// registers mock.module(), so the restore below would re-register somebody
+// else's mock instead of the real module.
+const nonce = `${Date.now()}-${Math.random()}`
+const realAuth = {
+  ...await import(`../utils/auth.js?real=${nonce}`),
+}
+const realState = {
+  ...await import(`../bootstrap/state.js?real=${nonce}`),
+}
+const realClaudeApi = {
+  ...await import(`../services/api/claude.js?real=${nonce}`),
+}
 
 type AuthState = {
   anthropicAuthEnabled: boolean
@@ -54,8 +73,26 @@ async function waitForCondition(
   throw new Error('Timed out waiting for useApiKeyVerification test state')
 }
 
+beforeEach(async () => {
+  await acquireSharedMutationLock('hooks/useApiKeyVerification.test.tsx')
+})
+
 afterEach(() => {
-  mock.restore()
+  try {
+    mock.restore()
+    // mock.restore() does not remove Bun module mock registrations, so
+    // re-register the real modules to stop these mocks from leaking into
+    // every later test file.
+    mock.module('../utils/auth.js', () => realAuth)
+    mock.module('../bootstrap/state.js', () => realState)
+    mock.module('../services/api/claude.js', () => realClaudeApi)
+  } finally {
+    releaseSharedMutationLock()
+  }
+})
+
+afterAll(() => {
+  mock.module('../utils/auth.js', () => realAuth)
 })
 
 test('useApiKeyVerification resets stale missing status when the session switches to a third-party provider', async () => {

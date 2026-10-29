@@ -5,9 +5,11 @@ import {
   acquireSharedMutationLock,
   releaseSharedMutationLock,
 } from '../../test/sharedMutationLock.js'
+type ProvidersModule = typeof import('../../utils/model/providers.js')
 
 const originalEnv = { ...process.env }
 const originalAxiosGet = axios.get
+let originalProvidersModule: ProvidersModule | undefined
 
 async function importFreshModule() {
   mock.restore()
@@ -24,17 +26,39 @@ afterEach(() => {
     process.env = { ...originalEnv }
     axios.get = originalAxiosGet
     mock.restore()
+    // mock.restore() does not remove Bun module mock registrations, so
+    // re-register the real providers module to stop the partial mock from
+    // leaking into every later test file.
+    if (originalProvidersModule) {
+      mock.module('../../utils/model/providers.js', () => originalProvidersModule!)
+    }
   } finally {
     releaseSharedMutationLock()
   }
 })
 
+async function importActualProviders(): Promise<ProvidersModule> {
+  // Cache-busting specifier: a plain import would resolve to whatever
+  // mock.module() registration another test file left behind.
+  return {
+    ...await import(
+      `../../utils/model/providers.ts?officialRegistryActual=${Date.now()}-${Math.random()}`
+    ),
+  }
+}
+
+async function mockApiProvider(provider: string): Promise<void> {
+  originalProvidersModule ??= await importActualProviders()
+  mock.module('../../utils/model/providers.js', () => ({
+    ...originalProvidersModule!,
+    getAPIProvider: () => provider,
+  }))
+}
+
 describe('prefetchOfficialMcpUrls', () => {
   test('does not fetch registry when using OpenAI mode', async () => {
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
-    mock.module('../../utils/model/providers.js', () => ({
-      getAPIProvider: () => 'openai',
-    }))
+    await mockApiProvider('openai')
     const getSpy = mock(() => Promise.resolve({ data: { servers: [] } }))
     axios.get = getSpy as typeof axios.get
 
@@ -46,9 +70,7 @@ describe('prefetchOfficialMcpUrls', () => {
 
   test('does not fetch registry when using Gemini mode', async () => {
     process.env.CLAUDE_CODE_USE_GEMINI = '1'
-    mock.module('../../utils/model/providers.js', () => ({
-      getAPIProvider: () => 'gemini',
-    }))
+    await mockApiProvider('gemini')
     const getSpy = mock(() => Promise.resolve({ data: { servers: [] } }))
     axios.get = getSpy as typeof axios.get
 
@@ -63,9 +85,7 @@ describe('prefetchOfficialMcpUrls', () => {
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GITHUB
 
-    mock.module('../../utils/model/providers.js', () => ({
-      getAPIProvider: () => 'firstParty',
-    }))
+    await mockApiProvider('firstParty')
     const getSpy = mock(() =>
       Promise.resolve({
         data: {

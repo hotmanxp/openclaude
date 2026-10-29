@@ -1,9 +1,25 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mcpContentNeedsTruncation, truncateMcpContent } from './mcpValidation.js'
-import * as realGrowthbook from '../services/analytics/growthbook.js'
-import * as realTokenEstimation from '../services/tokenEstimation.js'
-import * as realImageResizer from './imageResizer.js'
-import * as realLog from './log.js'
+
+// A static `import * as real` is a live namespace binding: once any other test
+// file (or this file's own applyMocks below) registers a mock.module() for the
+// same path, the binding can hand back the MOCKED module instead of the real
+// one — so restoreMocks() would "restore" the mock and the leak would keep
+// spreading. Import through a `?real=` cache-busted specifier instead: it is a
+// distinct module instance that no mock.module() registration can shadow.
+const nonce = `${Date.now()}-${Math.random()}`
+const realGrowthbook = {
+  ...await import(`../services/analytics/growthbook.js?real=${nonce}`),
+} as typeof import('../services/analytics/growthbook.js')
+const realTokenEstimation = {
+  ...await import(`../services/tokenEstimation.js?real=${nonce}`),
+} as typeof import('../services/tokenEstimation.js')
+const realImageResizer = {
+  ...await import(`./imageResizer.js?real=${nonce}`),
+} as typeof import('./imageResizer.js')
+const realLog = {
+  ...await import(`./log.js?real=${nonce}`),
+} as typeof import('./log.js')
 
 // 60_000-char inputs: real roughTokenCountEstimation returns 15_000, which exceeds
 // DEFAULT_MAX_MCP_OUTPUT_TOKENS * MCP_TOKEN_COUNT_THRESHOLD_FACTOR (25_000 * 0.5 = 12_500),

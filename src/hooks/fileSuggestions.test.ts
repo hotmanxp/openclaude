@@ -27,6 +27,16 @@ let actualCrossSpawnModule:
   | typeof import('cross-spawn')
   | undefined
 let actualRipgrepModule: typeof import('../utils/ripgrep.js') | undefined
+
+// The `cross-spawn` mock is installed via `mock.module`, which bun does NOT
+// undo on `mock.restore()` — it persists process-wide. To keep it from
+// hijacking real `git` spawns in later test files (which run sequentially),
+// the interception is gated on this module-level scenario, set only while one
+// of this suite's spawn-scenario tests is active and cleared in afterEach.
+let activeSpawnScenario: LoadModuleOptions['spawnScenario'] | undefined
+let actualFileIndexModule:
+  | typeof import('../native-ts/file-index/index.js')
+  | undefined
 let actualMarkdownConfigLoaderModule:
   | typeof import('../utils/markdownConfigLoader.js')
   | undefined
@@ -35,7 +45,11 @@ let defaultFileSuggestionsModule:
   | undefined
 
 afterEach(() => {
+  // Clear the spawn scenario so the persisted cross-spawn mock falls through
+  // to the real spawn for any later test file's git commands.
+  activeSpawnScenario = undefined
   mock.restore()
+  restoreFileSuggestionsDependencyMocks()
 })
 
 beforeAll(
@@ -96,6 +110,18 @@ function isGitCommand(command: string): boolean {
   return basename === 'git.exe' || basename === 'git'
 }
 
+function restoreFileSuggestionsDependencyMocks(): void {
+  if (actualCrossSpawnModule) {
+    mock.module('cross-spawn', () => actualCrossSpawnModule!)
+  }
+  if (actualRipgrepModule) {
+    mock.module('../utils/ripgrep.js', () => actualRipgrepModule!)
+  }
+  if (actualFileIndexModule) {
+    mock.module('../native-ts/file-index/index.js', () => actualFileIndexModule!)
+  }
+}
+
 function installFileSuggestionsDependencyMocks(options: LoadModuleOptions = {}): void {
   const realSpawn =
     actualCrossSpawnModule!.spawn ??
@@ -107,11 +133,11 @@ function installFileSuggestionsDependencyMocks(options: LoadModuleOptions = {}):
       args: string[],
       spawnOptions: { signal?: AbortSignal },
     ) => {
-      if (!options.spawnScenario || !isGitCommand(command)) {
+      if (!activeSpawnScenario || !isGitCommand(command)) {
         return realSpawn(command, args, spawnOptions)
       }
       const child = createFakeChildProcess()
-      options.spawnScenario?.(child, spawnOptions.signal)
+      activeSpawnScenario(child, spawnOptions.signal)
       return child
     },
     spawn: (
@@ -119,11 +145,11 @@ function installFileSuggestionsDependencyMocks(options: LoadModuleOptions = {}):
       args: string[],
       spawnOptions: { signal?: AbortSignal },
     ) => {
-      if (!options.spawnScenario || !isGitCommand(command)) {
+      if (!activeSpawnScenario || !isGitCommand(command)) {
         return realSpawn(command, args, spawnOptions)
       }
       const child = createFakeChildProcess()
-      options.spawnScenario?.(child, spawnOptions.signal)
+      activeSpawnScenario(child, spawnOptions.signal)
       return child
     },
   }))
@@ -151,15 +177,26 @@ function installFileSuggestionsDependencyMocks(options: LoadModuleOptions = {}):
 }
 
 async function loadFileSuggestionsModule(options: LoadModuleOptions = {}) {
-  actualCrossSpawnModule ??= await import('cross-spawn')
-  actualRipgrepModule ??= await import('../utils/ripgrep.js')
-  actualMarkdownConfigLoaderModule ??= await import(
-    '../utils/markdownConfigLoader.js'
-  )
-  installFileSuggestionsDependencyMocks(options)
+  activeSpawnScenario = options.spawnScenario
+  // Cache-busting specifiers: a plain `await import('cross-spawn')` resolves
+  // to whatever mock.module() registration another test file left behind, so
+  // the restore in afterEach would re-register a foreign mock.
   const nonce = `${Date.now()}-${Math.random()}`
+  actualCrossSpawnModule ??= {
+    ...await import(`${import.meta.resolve('cross-spawn')}?real=${nonce}`),
+  }
+  actualRipgrepModule ??= {
+    ...await import(`../utils/ripgrep.js?real=${nonce}`),
+  }
+  actualFileIndexModule ??= {
+    ...await import(`../native-ts/file-index/index.js?real=${nonce}`),
+  }
+  actualMarkdownConfigLoaderModule ??= {
+    ...await import(`../utils/markdownConfigLoader.js?real=${nonce}`),
+  }
+  installFileSuggestionsDependencyMocks(options)
   const module = await import(`./fileSuggestions.ts?ts=${nonce}`)
-  mock.restore()
+  // Restore in afterEach so live imports stay mocked while the test runs.
   return module
 }
 

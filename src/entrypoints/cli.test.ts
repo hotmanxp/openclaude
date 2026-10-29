@@ -4,7 +4,11 @@
  * Closes: hotmanxp/opencc#402 — JavaScript heap OOM during large tasks
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
+import { copyFile, mkdtemp, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 describe('cli.tsx — NODE_OPTIONS --max-old-space-size (issue #402)', () => {
   const originalNodeOptions = process.env.NODE_OPTIONS
@@ -70,103 +74,135 @@ describe('useMemoryUsage.ts — threshold constants (issue #402)', () => {
 })
 
 describe('Node 24 premature exit regression (issue #1678)', () => {
-  it('built CLI stays alive during initialization in interactive mode without premature exit', async () => {
-    const os = await import('node:os')
-    const path = await import('node:path')
-    const fs = await import('node:fs/promises')
-    const url = await import('node:url')
+  let buildDir: string
 
-    const scriptPath = path.join(os.tmpdir(), `test-cli-startup-${Date.now()}.mjs`)
-    const cliUrl = url.pathToFileURL(path.resolve(import.meta.dir, '../../dist/cli.mjs')).href
-
-    // SAFETY: the child process runs the REAL CLI, which performs startup
-    // config I/O. Without a sandboxed env it resolves its global config to the
-    // developer's actual ~/.claude.json (os.homedir() ignores runtime env
-    // changes only in-process; the child inherits whatever HOME we pass) and
-    // rewrites it plus ~/.claude/backups on every run. Redirect everything
-    // into a throwaway temp home.
-    const sandboxHome = await fs.mkdtemp(path.join(os.tmpdir(), 'opencc-cli-sandbox-'))
-    const sandboxEnv = {
-      ...process.env,
-      HOME: sandboxHome,
-      USERPROFILE: sandboxHome,
-      OPENCC_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
-      CLAUDE_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
-      OPENCLAUDE_CONFIG_DIR: path.join(sandboxHome, '.opencc'),
+  beforeAll(async () => {
+    const repoRoot = resolve(import.meta.dir, '../..')
+    buildDir = await mkdtemp(join(tmpdir(), 'opencc-startup-test-'))
+    // Build the current source privately, in a throwaway directory. Unit tests
+    // must not depend on a missing or stale repository dist bundle — the
+    // previous version of this test pointed at ../../dist/cli.mjs and failed
+    // outright whenever the repository had not been built.
+    for (const directory of ['src', 'scripts', 'node_modules']) {
+      await symlink(join(repoRoot, directory), join(buildDir, directory), 'junction')
     }
-    let proc
-    let reader
+    for (const file of ['package.json', 'tsconfig.json']) {
+      await copyFile(join(repoRoot, file), join(buildDir, file))
+    }
+    const build = Bun.spawn([process.execPath, 'run', 'scripts/build.ts'], {
+      cwd: buildDir,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 120_000,
+    })
+    const [exitCode, stdout, stderr] = await Promise.all([
+      build.exited,
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
+    ])
+    if (exitCode !== 0) {
+      throw new Error(`CLI build failed (${exitCode}):\n${stdout}\n${stderr}`)
+    }
+  }, 130_000) // Leave time beyond the build deadline for output and cleanup.
 
-    try {
-      await Bun.write(scriptPath, `
+  afterAll(async () => {
+    if (buildDir) await rm(buildDir, { recursive: true, force: true })
+  })
+
+  it('built CLI stays alive during initialization in interactive mode without premature exit', async () => {
+    const scriptPath = join(buildDir, 'startup.mjs')
+    const cliUrl = pathToFileURL(join(buildDir, 'dist/cli.mjs')).href
+    await Bun.write(scriptPath, `
         // Mock TTY so the CLI thinks it's interactive and starts the TUI
         process.stdout.isTTY = true;
         process.stdin.isTTY = true;
         process.stdin.setRawMode = () => {};
-        process.env.OPENCLAUDE_DISABLE_TELEMETRY = '1';
-        process.env.OPENGATEWAY_API_KEY = 'dummy';
-
-        // Ensure the CLI auto-runs even if the test runner disabled it globally
-        delete process.env.OPENCLAUDE_DISABLE_CLI_ENTRYPOINT_AUTO_RUN;
-
-        // Use absolute import to work from os.tmpdir()
+        process.stdin.ref = () => process.stdin;
+        process.stdin.unref = () => process.stdin;
         // If the entrypoint uses void main(), this promise resolves immediately.
         // If it correctly uses await main(), it stays pending while the CLI runs.
-        import('${cliUrl}').then(() => {
+        import(${JSON.stringify(cliUrl)}).then(() => {
           console.log('---PREMATURE_EVAL_END---');
           process.exit(0);
         });
       `)
 
-      proc = Bun.spawn(['node', scriptPath], {
-        stdout: 'pipe',
-        env: sandboxEnv,
-      })
-      const reader = proc.stdout.getReader()
-
-      let gotOutput = false
-      let evaluationEndedPrematurely = false
-
-      async function readStdout() {
+    // Deliberately supply only the environment needed by this interactive
+    // fixture. Parent provider settings, CI, and auto-run guards must not
+    // change startup, and no real user/project configuration should be read.
+    // HOME points at the throwaway build dir, so the CLI's global config
+    // (~/.claude.json and friends) is written inside it and removed with it.
+    const proc = Bun.spawn(['node', scriptPath], {
+      cwd: buildDir,
+      env: {
+        PATH: process.env.PATH,
+        TMPDIR: tmpdir(),
+        TEMP: tmpdir(),
+        TMP: tmpdir(),
+        HOME: buildDir,
+        USERPROFILE: buildDir,
+        OPENCC_CONFIG_DIR: join(buildDir, 'config'),
+        CLAUDE_CONFIG_DIR: join(buildDir, 'config'),
+        OPENCLAUDE_CONFIG_DIR: join(buildDir, 'config'),
+        XDG_CONFIG_HOME: join(buildDir, 'config'),
+        XDG_CACHE_HOME: join(buildDir, 'cache'),
+        NODE_COMPILE_CACHE: join(buildDir, 'cache'),
+        DISABLE_TELEMETRY: '1',
+        OPENGATEWAY_API_KEY: 'dummy',
+      },
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 8_000,
+    })
+    let stdout = ''
+    let stderr = ''
+    async function capture(stream: ReadableStream<Uint8Array>, append: (text: string) => void) {
+      const reader = stream.getReader()
+      const decoder = new TextDecoder()
+      try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          const text = new TextDecoder().decode(value)
-          if (text.includes('---PREMATURE_EVAL_END---')) {
-            evaluationEndedPrematurely = true
-          } else if (text.trim().length > 0) {
-            gotOutput = true
-          }
+          append(decoder.decode(value, { stream: true }))
         }
+        append(decoder.decode())
+      } finally {
+        reader.releaseLock()
       }
+    }
+    const output = Promise.all([
+      capture(proc.stdout, text => { stdout += text }),
+      capture(proc.stderr, text => { stderr += text }),
+    ])
 
-      // Start reading without awaiting it yet
-      const readPromise = readStdout()
-
-      // Wait until we get startup output or detect premature evaluation end
-      const start = Date.now()
-      while (!gotOutput && !evaluationEndedPrematurely && Date.now() - start < 5000) {
+    try {
+      // Wait for the real startup banner, a premature evaluation, or an exit.
+      const deadline = Date.now() + 7_000
+      while (!stdout.includes('Welcome') &&
+        !stdout.includes('---PREMATURE_EVAL_END---') &&
+        proc.exitCode === null && Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 10))
       }
-
-      expect(gotOutput).toBe(true)
+      if (!stdout.includes('Welcome')) {
+        throw new Error(`CLI did not reach startup (exit ${proc.exitCode}):\n${stdout}\n${stderr}`)
+      }
 
       // The critical regression window: wait 500ms *after* output.
       // With void main(), Node 24 will exit during the subsequent async imports because the event loop empties,
       // which allows the import() promise above to resolve and emit the signal.
       await new Promise(r => setTimeout(r, 500))
 
-      expect(evaluationEndedPrematurely).toBe(false)
-      expect(proc.exitCode).toBe(null)
+      expect(stdout).not.toContain('---PREMATURE_EVAL_END---')
+      expect(proc.exitCode, `CLI exited during initialization:\n${stderr}`).toBe(null)
       expect(proc.killed).toBe(false)
     } finally {
-      if (proc && proc.exitCode === null && !proc.killed) {
-        proc.kill()
-      }
-      await fs.unlink(scriptPath).catch(() => {})
-      await fs.rm(sandboxHome, { recursive: true, force: true }).catch(() => {})
+      if (proc.exitCode === null) proc.kill('SIGKILL')
+      await proc.exited
+      await output
     }
-  })
+  }, 10_000) // Leave time beyond the eight-second child deadline for cleanup.
 
   it('cli.tsx uses top-level await for main() to prevent premature exit', async () => {
     const src = await Bun.file(`${import.meta.dir}/cli.tsx`).text()

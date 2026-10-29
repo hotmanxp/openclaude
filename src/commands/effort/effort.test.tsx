@@ -3,15 +3,44 @@ import * as M from './effort.js';
 import { executeEffort, setEffortValue } from './effort.js';
 import { resetUltracodeReminderState } from '../../utils/ultracodeReminder.js';
 
+// bun's `mock.module()` registers globally for the entire test process; the
+// partial mocks below leak across test files and are not cleared by
+// `mock.restore()`.
+//
+// Capture each real module through a `?real=` cache-busted import — a
+// distinct module instance that no `mock.module()` registration can shadow —
+// and re-register them in `afterEach` so the pollution stops at this file.
+const nonce = `${Date.now()}-${Math.random()}`;
+const realEnvUtils = {
+  ...await import(`../../utils/envUtils.js?real=${nonce}`),
+};
+const realModel = {
+  ...await import(`../../utils/model/model.js?real=${nonce}`),
+};
+const realSettings = {
+  ...await import(`../../utils/settings/settings.js?real=${nonce}`),
+};
+const realAnalytics = {
+  ...await import(`../../services/analytics/index.js?real=${nonce}`),
+};
+const realUltracodeReminder = {
+  ...await import(`../../utils/ultracodeReminder.js?real=${nonce}`),
+};
+const realUltracode = {
+  ...await import(`../../utils/ultracode.js?real=${nonce}`),
+};
+
 // Complete mock of `settings.js` — must include EVERY export the production
 // code (directly or transitively) imports, otherwise a downstream test file
 // that loads `effort.tsx` (which imports `AppStateStore → settings.js`) will
 // fail with `Export named 'X' not found in module .../settings/settings.ts`.
 //
-// bun's `mock.module()` registers globally for the entire test process; the
-// partial mock leaks across test files and is not cleared by `mock.restore()`.
+// The real module is spread first so the hand-written entries below only
+// override the behaviour they actually exercise; any export added to
+// settings.ts later is inherited instead of going missing.
 function makeCompleteSettingsMock(overrides: Record<string, unknown> = {}) {
   return {
+    ...realSettings,
     getInitialSettings: () => ({}),
     getSettingsForSource: () => null,
     getSettingsWithErrors: () => ({ settings: {}, errors: [] }),
@@ -63,6 +92,14 @@ describe('effort /ultracode', () => {
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('executeEffort routes "ultracode" to setEffortValue and returns xhigh-flavored message', () => {
@@ -133,6 +170,14 @@ describe('effort option order + verbatim help text (plan11 B4 + C1)', () => {
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('executeEffort error message lists options in upstream order: low, medium, high, xhigh, max, ultracode, auto', async () => {
@@ -192,6 +237,14 @@ describe('effort /ultracode meta messages', () => {
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('setEffortValue("ultracode") first time returns FULL enter meta message', () => {
@@ -332,6 +385,14 @@ describe('effort xhigh warning on non-ultracode-capable model (plan11 D2)', () =
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('setEffortValue("ultracode") shows "Ultracode runs at xhigh effort" warning with valid options list when model is not opus-4-6', async () => {
@@ -373,6 +434,14 @@ describe('effort /ultracode validation', () => {
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('returns validation error when workflows are disabled', () => {
@@ -448,6 +517,14 @@ describe('EffortPickerWrapper.handleSelect (standalone)', () => {
 
   afterEach(() => {
     mock.restore();
+    // Put the REAL modules back: mock.restore() leaves the partial mocks
+    // registered process-wide.
+    mock.module('../../utils/envUtils.js', () => realEnvUtils);
+    mock.module('../../utils/model/model.js', () => realModel);
+    mock.module('../../utils/settings/settings.js', () => realSettings);
+    mock.module('../../services/analytics/index.js', () => realAnalytics);
+    mock.module('../../utils/ultracodeReminder.js', () => realUltracodeReminder);
+    mock.module('../../utils/ultracode.js', () => realUltracode);
   });
 
   test('handleSelect("medium") when ultracode is active emits EXIT reminder via onDone', () => {

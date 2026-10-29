@@ -5,8 +5,18 @@ import {
 } from '../../test/sharedMutationLock.js'
 import { parseForSecurityFromAst } from '../../utils/bash/ast.js'
 import { PARSE_ABORTED } from '../../utils/bash/parser.js'
-import * as realDebug from '../../utils/debug.js'
 import { analyzeBashCommand } from './bashCommandAnalysis.js'
+
+// A static `import * as realDebug` is a live namespace binding: once any other
+// test file registers a mock.module() for '../../utils/debug.js', this binding
+// can hand back the MOCKED module instead of the real one, so the afterEach
+// "restore" below would re-register the mock and the leak would keep
+// spreading. Import through a `?real=` cache-busted specifier instead: a
+// distinct module instance that no mock.module() registration can shadow.
+const nonce = `${Date.now()}-${Math.random()}`
+const realDebug = {
+  ...await import(`../../utils/debug.js?real=${nonce}`),
+}
 
 let importCounter = 0
 

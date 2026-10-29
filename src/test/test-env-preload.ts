@@ -8,11 +8,28 @@
  * ~/.claude/local. This preload redirects homedir() to a throwaway temp
  * directory for the whole test run, so unsandboxed tests cannot touch it.
  *
- * Mechanics (verified against bun 1.3):
+ * Mechanics (verified against bun 1.3/1.4):
  * - bun caches os.homedir() at process boot: setting process.env.HOME inside
  *   the preload does NOT affect in-process homedir(), but DOES propagate to
  *   spawned child processes (they read HOME at their own startup). So we set
  *   the env vars for the children and mock the `os` module for this process.
+ * - os.homedir is a readonly property of the module namespace (assigning to it
+ *   throws "Attempted to assign to readonly property"), so the module mock is
+ *   the ONLY in-process way to redirect homedir(). Env-var-only isolation
+ *   would sandbox child processes but leave the parent process pointing at the
+ *   developer's real home directory.
+ * - The mock is process-global and is never unregistered (bun's mock.restore()
+ *   does not undo mock.module()). That is deliberate: EVERY test in the run
+ *   must see the sandboxed homedir(), otherwise an unsandboxed test can touch
+ *   the real ~/.opencc.
+ * - A test that genuinely needs the real module can escape the mock with a
+ *   cache-busted BARE specifier: `await import('os?real=' + nonce)` returns
+ *   the genuine os module. The `node:os?real=` spelling does not work — bun
+ *   rejects query strings on the node: prefixed builtin ("No such built-in
+ *   module"). Note that the sandboxed homedir is usually the SAFE value to
+ *   keep: openclaudeInstallSurfaces relies on it as the fallback for its own
+ *   persisted `os` mock, which exists because a real ~/.claude/local was once
+ *   deleted by a cleanup test.
  * - Tests that mock `os` themselves (e.g. openclaudeInstallSurfaces) compose
  *   fine: their mock runs later and wins; their fallback lands on ours.
  * - Config-dir env vars are deliberately NOT preset: env-precedence tests and
