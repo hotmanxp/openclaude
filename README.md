@@ -302,7 +302,7 @@ Helpful commands:
 
 ## Testing And Coverage
 
-OpenClaude uses Bun's built-in test runner for unit tests.
+OpenCC uses Bun's built-in test runner for unit tests.
 
 Run the full unit suite:
 

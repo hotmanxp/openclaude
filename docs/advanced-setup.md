@@ -12,7 +12,7 @@ npm install -g @zn-ai/opencc
 
 ### Option B: From source with Bun
 
-Use Bun `1.3.11` or newer for source builds on Windows. Older Bun versions can fail during `bun run build`.
+Use Bun `1.4.4` or newer for source builds on Windows. Older Bun versions can fail during `bun run build`.
 
 ```bash
 git clone https://node.github.com/hotmanxp/opencc.git

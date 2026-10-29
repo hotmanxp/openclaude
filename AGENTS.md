@@ -8,7 +8,7 @@
 | Layer | Tech |
 |-------|------|
 | Language | TypeScript 5.9.3 (strict) |
-| **Build tool** | **Bun 1.3.14** — `bun run build` / `bun test` / `bun run dev` |
+| **Build tool** | **Bun 1.4.4** — `bun run build` / `bun test` / `bun run dev` |
 | **Runtime** | **Node ≥22** — the build output `dist/cli.mjs` is executed by `bin/opencc` (`#!/usr/bin/env node`); `package.json` sets `engines.node >= 22.0.0`; `scripts/build.ts` uses `target: 'node'` |
 | TUI | React 19.2.4 + Ink 7 |
 | Module | ESM only (`.js` import suffixes) |
@@ -114,7 +114,7 @@ Known polluters and victims (see the comments in `betas.test.ts`, `compact.test.
 - `providerFallback.test.ts`'s last test, `getActiveProviderProfile: () => a` → pollutes `model/providers.test.ts`
 - The leaked `providerProfiles[]` from `providerProfiles.test.ts` → pollutes the firstParty checks in `betas.test.ts` / `compact.test.ts`
 
-**Do not work around it with `--isolate` / `--parallel`** (both supported by bun 1.3.14, both empirically verified):
+**Do not work around it with `--isolate` / `--parallel`** (both supported by bun 1.4.x, both empirically verified):
 - `--isolate` does eliminate the pollution (the paired tests pass), but a full run **hangs** at `openclaudePaths.test.ts` and memory climbs to 4.6GB
 - `--parallel=N` likewise hangs at `tests/sdk/permissions.test.ts` and adds 11 new failures
 

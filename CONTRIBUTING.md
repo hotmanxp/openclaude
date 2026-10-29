@@ -14,6 +14,8 @@ OpenCC is a fast-moving open-source coding-agent CLI with support for multiple p
 
 ## Local Setup
 
+Requires Node.js `>=22.0.0` and Bun `1.4.4` (tracked in `.bun-version`).
+
 Install dependencies:
 
 ```bash
