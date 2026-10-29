@@ -511,6 +511,32 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('OpenCC Mods configuration (user JS extensions)'),
+      todoReminder: z
+        .object({
+          turnsSinceWrite: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .catch(undefined)
+            .describe(
+              'Assistant turns since last TodoWrite/TaskUpdate before showing reminder (default: 10)',
+            ),
+          turnsBetweenReminders: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .catch(undefined)
+            .describe(
+              'Assistant turns between reminders (default: 10)',
+            ),
+        })
+        .optional()
+        .catch(undefined)
+        .describe(
+          'Configuration for todo/task tool usage reminders',
+        ),
       worktree: z
         .object({
           symlinkDirectories: z

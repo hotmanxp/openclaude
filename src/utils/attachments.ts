@@ -70,6 +70,7 @@ import {
 } from 'src/types/textInputTypes.js'
 import { randomUUID, type UUID } from 'crypto'
 import { getSettings_DEPRECATED } from './settings/settings.js'
+import { getEnvNumber } from './envUtils.js'
 import { getSnippetForTwoFileDiff } from 'src/tools/FileEditTool/utils.js'
 import type {
   ContentBlockParam,
@@ -272,10 +273,25 @@ import { unassignTeammateTasks } from './tasks.js'
 import { getCompanionIntroAttachment } from '../buddy/prompt.js'
 import { isBuddyEnabled } from '../buddy/feature.js'
 
-export const TODO_REMINDER_CONFIG = {
-  TURNS_SINCE_WRITE: 10,
-  TURNS_BETWEEN_REMINDERS: 10,
-} as const
+export function getTodoReminderConfig(): {
+  turnsSinceWrite: number
+  turnsBetweenReminders: number
+} {
+  // Per-field precedence: merged-settings value when present, otherwise the
+  // matching environment variable, otherwise the default. Each threshold is
+  // resolved independently so a partial settings object still honors the
+  // field it configures.
+  const config = getSettings_DEPRECATED()?.todoReminder
+
+  return {
+    turnsSinceWrite:
+      config?.turnsSinceWrite ??
+      getEnvNumber('OPENCLAUDE_TODO_REMINDER_TURNS_SINCE_WRITE', 10),
+    turnsBetweenReminders:
+      config?.turnsBetweenReminders ??
+      getEnvNumber('OPENCLAUDE_TODO_REMINDER_TURNS_BETWEEN_REMINDERS', 10),
+  }
+}
 
 export const PLAN_MODE_ATTACHMENT_CONFIG = {
   TURNS_BETWEEN_ATTACHMENTS: 5,
@@ -3699,10 +3715,12 @@ async function getTodoReminderAttachments(
   const { turnsSinceLastTodoWrite, turnsSinceLastReminder } =
     getTodoReminderTurnCounts(messages)
 
+  const reminderConfig = getTodoReminderConfig()
+
   // Check if we should show a reminder
   if (
-    turnsSinceLastTodoWrite >= TODO_REMINDER_CONFIG.TURNS_SINCE_WRITE &&
-    turnsSinceLastReminder >= TODO_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
+    turnsSinceLastTodoWrite >= reminderConfig.turnsSinceWrite &&
+    turnsSinceLastReminder >= reminderConfig.turnsBetweenReminders
   ) {
     const todoKey = toolUseContext.agentId ?? getSessionId()
     const appState = toolUseContext.getAppState()
@@ -3816,10 +3834,12 @@ async function getTaskReminderAttachments(
   const { turnsSinceLastTaskManagement, turnsSinceLastReminder } =
     getTaskReminderTurnCounts(messages)
 
+  const reminderConfig = getTodoReminderConfig()
+
   // Check if we should show a reminder
   if (
-    turnsSinceLastTaskManagement >= TODO_REMINDER_CONFIG.TURNS_SINCE_WRITE &&
-    turnsSinceLastReminder >= TODO_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
+    turnsSinceLastTaskManagement >= reminderConfig.turnsSinceWrite &&
+    turnsSinceLastReminder >= reminderConfig.turnsBetweenReminders
   ) {
     const tasks = await listTasks(getTaskListId())
     return [
