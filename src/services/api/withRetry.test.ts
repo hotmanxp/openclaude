@@ -30,6 +30,7 @@ const envKeys = [
   'CLAUDE_CODE_USE_VERTEX',
   'CLAUDE_CODE_USE_FOUNDRY',
   'CLAUDE_CODE_UNATTENDED_RETRY',
+  'CLAUDE_CODE_REMOTE',
   'CLAUDE_CODE_MAX_RETRIES',
   'OPENCC_MAX_RETRIES',
   'OPENCC_RETRY_DELAY_MS',
@@ -365,6 +366,25 @@ describe('abort retry classification', () => {
 })
 
 describe('OpenAI-compatible retry classification', () => {
+  test.each([401, 403])('remote native auth %i still retries despite a no-retry header', async status => {
+    process.env.CLAUDE_CODE_REMOTE = '1'
+    process.env.OPENCLAUDE_RETRY_DELAY_MS = '1'
+    const { withRetry } = await importFreshWithRetryModule('firstParty')
+    let attempts = 0
+    const result = await drainAsyncGenerator(withRetry(
+      async () => ({} as Anthropic),
+      async () => {
+        if (++attempts === 1) {
+          throw APIError.generate(status, undefined, 'Infrastructure auth unavailable', new Headers({ 'x-should-retry': 'false' }))
+        }
+        return 'ok'
+      },
+      { maxRetries: 1, model: 'test-model', thinkingConfig: { type: 'disabled' } },
+    ))
+    expect(result).toBe('ok')
+    expect(attempts).toBe(2)
+  })
+
   test('does not retry marked non-retryable auth failures', async () => {
     process.env.OPENCC_RETRY_DELAY_MS = '1'
     const { CannotRetryError, withRetry } =
