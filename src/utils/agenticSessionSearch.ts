@@ -289,9 +289,12 @@ Find the sessions that are most relevant to this query.`
     const result: AgenticSearchResult = jsonParse(jsonMatch[0])
     const relevantIndices = result.relevant_indices || []
 
-    // Map indices back to logs (indices are relative to logsWithTranscripts)
-    const relevantLogs = relevantIndices
-      .filter(index => index >= 0 && index < logsWithTranscripts.length)
+    // Map indices back to logs (indices are relative to logsWithTranscripts).
+    // The model can repeat an index, which would surface the same log twice.
+    const uniqueIndices = new Set(relevantIndices
+      .filter((index): index is number => typeof index === 'number' &&
+        Number.isInteger(index) && index >= 0 && index < logsWithTranscripts.length))
+    const relevantLogs = Array.from(uniqueIndices)
       .map(index => logsWithTranscripts[index]!)
 
     logForDebugging(
