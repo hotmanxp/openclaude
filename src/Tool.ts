@@ -392,8 +392,15 @@ export type ToolCallProgress<P extends ToolProgressData = ToolProgressData> = (
   progress: ToolProgress<P>,
 ) => void
 
-// Type for any schema that outputs an object with string keys
-export type AnyObject = z.ZodType<{ [key: string]: unknown }>
+// Consumers only parse/convert schemas. Comparing the full fluent ZodType
+// interface recursively instantiates builders for every concrete tool schema.
+type ToolSchema<Output> = Pick<
+  z.ZodType<Output>,
+  '_zod' | '~standard' | 'parse' | 'safeParse'
+>
+
+// Type for any schema that outputs an object with string keys.
+export type AnyObject = ToolSchema<{ [key: string]: unknown }>
 
 /**
  * Checks if a tool matches the given name (primary name or alias).
@@ -450,13 +457,13 @@ export type Tool<
   readonly inputJSONSchema?: ToolInputJSONSchema
   // Optional because TungstenTool doesn't define this. TODO: Make it required.
   // When we do that, we can also go through and make this a bit more type-safe.
-  outputSchema?: z.ZodType<unknown>
+  outputSchema?: ToolSchema<unknown>
   // ── Upstream Claude Code 2.1.287 alignment (feat/sync-write-edit-2.1.287) ──
   // Schema variant used when serializing results across process boundaries
   // (gRPC / SDK / forked-agent). Allows adding internal-only fields
   // (memdirStamped, staleRecovered, stagedWording, syncedSkillNext,
   // contentNotInModelContext) without leaking them to the model's prompt.
-  outputSchemaAcrossProcesses?(): z.ZodType<unknown>
+  outputSchemaAcrossProcesses?(): ToolSchema<unknown>
   // Inverse of mapToolResultToToolResultBlockParam: rebuild a typed Output
   // from a payload produced by another process. OpenCC: declared for type
   // parity; only Write/Edit currently implement (no live remote consumer).
