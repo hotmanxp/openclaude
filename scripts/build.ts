@@ -1096,7 +1096,9 @@ if (result?.success) {
   // Entries are repo-relative paths from `src/` onward, without extension — the
   // same shape canonicalStub() produces, so the allowlist reads as the key.
   const ACCEPTABLE_RUNTIME_STUBS = new Set<string>([
-    'src/tools/VerifyPlanExecutionTool/constants',
+    // src/tools/VerifyPlanExecutionTool/constants was here until its real
+    // source module landed (the stub only exported the tool name). The
+    // classifier now imports a module that exists, so it is no longer stubbed.
     // src/components/tasks/MonitorMcpDetailDialog was here until its last
     // static import was removed (BackgroundTasksDialog.tsx). An allow-list
     // entry with no importer is dead weight and hides the next regression.
