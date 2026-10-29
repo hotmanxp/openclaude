@@ -1297,6 +1297,7 @@ cherry-pick。**
 | `8fd997c4` / `9c41a4fa` / `c699c41b` / `0dbfe067` / `9086822b` | `b2fbbbc5` | sharp 0.35.5、fflate 0.8.3、@grpc/grpc-js 1.14.6、axios 1.20.0、ws 8.22.0、shell-quote 1.12.0、undici 7.30.1、@modelcontextprotocol/sdk 1.32.1、ip-address override 10.7.4;顺带把 zod 显式声明为直接依赖(之前是幽灵依赖) |
 | `1f6f7473` / `0b8daaeb` / `714533a2` / `c5f53195` / `40297b49` | `215ac1c3` | PR 检查按改动面分流、单测 8 分片(上游的 `scripts/run-tests.ts`)、`persist-credentials: false`、Bun 包缓存、`.bun-version` = 1.4.4 |
 | `d7340b1e` | `58f97c62` | 开发脚本改用 Bun subprocess API 捕获命令输出 |
+| `c699c41b`(源码部分) | `91b8f1a0` | shell-quote 1.12 自带类型,`commands.ts` 的 `Set<ControlOperator>` 要按上游改成 `ControlOperator['op']`;顺带补 `@growthbook/growthbook` 的可选模块类型声明 |
 
 ### T2 — TA-001 测试隔离系列
 
