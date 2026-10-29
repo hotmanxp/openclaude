@@ -126,6 +126,7 @@ export const INTENTIONALLY_BUNDLED: string[] = [
   'cli-boxes',
   'cli-highlight',
   'commander',
+  'zod',
   'emoji-regex',
   'env-paths',
   'figures',
