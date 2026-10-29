@@ -7,6 +7,7 @@ import type { LookupOptions } from 'dns'
 import type { Agent } from 'http'
 import { HttpsProxyAgent, type HttpsProxyAgentOptions } from 'https-proxy-agent'
 import memoize from 'lodash-es/memoize.js'
+import type { ConnectionOptions } from 'tls'
 import type * as undici from 'undici'
 import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from './debug.js'
@@ -154,6 +155,31 @@ export function shouldBypassProxy(
 }
 
 /**
+ * Keep target TLS defaults separate from the proxy connection options.
+ * HttpsProxyAgent's constructor options configure only the socket to the proxy;
+ * the target TLS upgrade takes its options from connect().
+ */
+class TargetTLSHttpsProxyAgent extends HttpsProxyAgent<string> {
+  private readonly targetTLSOptions: Pick<
+    ConnectionOptions,
+    'ca' | 'cert' | 'key' | 'passphrase'
+  >
+
+  constructor(
+    proxyUrl: string,
+    options: HttpsProxyAgentOptions<string> & ConnectionOptions,
+  ) {
+    super(proxyUrl, options)
+    const { ca, cert, key, passphrase } = options
+    this.targetTLSOptions = { ca, cert, key, passphrase }
+  }
+
+  override connect(...[req, opts]: Parameters<HttpsProxyAgent<string>['connect']>) {
+    return super.connect(req, { ...this.targetTLSOptions, ...opts })
+  }
+}
+
+/**
  * Create an HttpsProxyAgent with optional mTLS configuration
  * Skips local DNS resolution to let the proxy handle it
  */
@@ -182,7 +208,7 @@ function createHttpsProxyAgent(
     }
   }
 
-  return new HttpsProxyAgent(proxyUrl, { ...agentOptions, ...extra })
+  return new TargetTLSHttpsProxyAgent(proxyUrl, { ...agentOptions, ...extra })
 }
 
 /**
@@ -214,6 +240,10 @@ export function createAxiosInstance(
     return config
   })
   return instance
+}
+
+function getProxyAgentCacheKey(uri: string): string {
+  return JSON.stringify([uri, getNoProxy()])
 }
 
 /**
@@ -258,8 +288,11 @@ export const getProxyAgent = memoize((uri: string): undici.Dispatcher => {
     proxyOptions.requestTls = tlsOpts
   }
 
+  // The cache key must include the effective NO_PROXY value: the agent pins
+  // the bypass list at construction time, so the same URI with a different
+  // NO_PROXY needs a different agent.
   return new undiciMod.EnvHttpProxyAgent(proxyOptions)
-})
+}, getProxyAgentCacheKey)
 
 /**
  * Get an HTTP agent configured for WebSocket proxy support
@@ -348,6 +381,11 @@ export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean }): {
  * This ensures all HTTP requests use the proxy and/or mTLS if configured
  */
 let proxyInterceptorId: number | undefined
+let installedDispatcher: undici.Dispatcher | undefined
+let installedProxyCacheKey: string | undefined
+let installedTLSDispatcher = false
+let installedTLSAgent: ReturnType<typeof getMTLSAgent>
+let ownsInstalledDispatcher = false
 
 export function configureGlobalAgents(): void {
   const proxyUrl = getProxyUrl()
@@ -391,25 +429,48 @@ export function configureGlobalAgents(): void {
       }
       return config
     })
-
-    // Set global dispatcher that now respects NO_PROXY via EnvHttpProxyAgent
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ;(require('undici') as typeof undici).setGlobalDispatcher(
-      getProxyAgent(proxyUrl),
-    )
-  } else if (mtlsAgent) {
-    // No proxy but mTLS is configured
+  } else {
     axios.defaults.httpsAgent = mtlsAgent
+  }
 
-    // Set undici global dispatcher with mTLS
-    const mtlsOptions = getTLSFetchOptions()
-    if (mtlsOptions.dispatcher) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      ;(require('undici') as typeof undici).setGlobalDispatcher(
-        mtlsOptions.dispatcher,
-      )
+  // Keep the ordinary direct path lazy. Only clear our proxy/TLS installation
+  // while it is still global; another caller may have installed a replacement.
+  if (!proxyUrl && !mtlsAgent && installedProxyCacheKey === undefined && !installedTLSDispatcher) return
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const undiciMod = require('undici') as typeof undici
+  if (!proxyUrl && !mtlsAgent && undiciMod.getGlobalDispatcher() !== installedDispatcher) return
+
+  // Reuse our TLS installation while its source configuration remains cached.
+  const cachedTLSDispatcher = !proxyUrl && mtlsAgent && installedTLSDispatcher &&
+    installedTLSAgent === mtlsAgent ? installedDispatcher : undefined
+  const tlsOptions = proxyUrl || cachedTLSDispatcher ? undefined : getTLSFetchOptions()
+  const dispatcher = proxyUrl ? getProxyAgent(proxyUrl) :
+    cachedTLSDispatcher ?? tlsOptions?.dispatcher ?? new undiciMod.Agent({ connect: tlsOptions?.tls })
+  undiciMod.setGlobalDispatcher(dispatcher)
+
+  if (installedDispatcher && installedDispatcher !== dispatcher) {
+    // Evict only the retired proxy, leaving the active dispatcher cached.
+    if (installedProxyCacheKey !== undefined &&
+        getProxyAgent.cache.get(installedProxyCacheKey) === installedDispatcher) {
+      getProxyAgent.cache.delete(installedProxyCacheKey)
+    }
+    // Proxy dispatchers are shared with callers that can retain fetch options.
+    // Eviction does not prove those references are gone, so leave them open.
+    if (ownsInstalledDispatcher || (installedTLSDispatcher && installedTLSAgent !== mtlsAgent)) {
+      try {
+        // Graceful close lets in-flight requests finish without blocking updates.
+        void installedDispatcher.close().catch(() => {})
+      } catch {
+        // Dispatcher cleanup is best effort.
+      }
     }
   }
+  installedDispatcher = dispatcher
+  installedProxyCacheKey = proxyUrl ? getProxyAgentCacheKey(proxyUrl) : undefined
+  installedTLSDispatcher = !proxyUrl && !!mtlsAgent
+  installedTLSAgent = mtlsAgent
+  // Only the plain direct dispatcher is private; proxy options are handed out.
+  ownsInstalledDispatcher = !proxyUrl && !mtlsAgent
 }
 
 /**
