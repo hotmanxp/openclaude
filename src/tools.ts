@@ -229,8 +229,7 @@ export function getAllBaseTools(): Tools {
       ? (() => { const tct = getTeamCreateTool(); const tdt = getTeamDeleteTool(); return [tct, tdt].filter(Boolean) })()
       : []),
     ...(VerifyPlanExecutionTool ? [VerifyPlanExecutionTool] : []),
-    ...(process.env.USER_TYPE === 'ant' && REPLTool ? [REPLTool] : []),
-    // Gate WorkflowTool at the LLM-tools-pool surface (sibling pattern: see
+// Gate WorkflowTool at the LLM-tools-pool surface (sibling pattern: see
     // isTodoV2Enabled / isWorktreeModeEnabled above). Without this gate the
     // tool stays in the prompt and the model keeps "seeing" it; the
     // WorkflowTool.call() execution gate (WorkflowTool.ts:555) only fires
