@@ -1266,3 +1266,93 @@ bundled 技能 —— 原来全是普通技能，`bundled_count` / `bundled_char
 - 隔离性复验：带一份"恶意"的 `settings.json`（含 `skillListingBudgetFraction: 0.005`、
   `skillListingMaxDescChars: 7`、以及一条 `skillUsage`）跑同一批测试 → 44 pass / 0 fail，
   修之前同样的输入下有 3 条失败
+
+---
+
+## 第十轮同步(2026-10-29,上游 `7ac848c8`)
+
+基线 `ea644676`,工作树 `opencc-worktrees/pick-upstream-2026-10-29`(分支
+`pick/upstream-2026-10-29`)。上游 884 个提交积压里,按"最近 10 天 + 安全/正确性
+优先"分诊,本轮落地 21 个提交,分四档(T0 安全/正确性 → T1 安全依赖 → T2 测试
+隔离 → T3 平台/功能)。**全部按文件 `git apply --3way` 逐个移植,没有用
+cherry-pick。**
+
+### T0 — 安全 / 正确性
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `cb4a72bf` (#2398) | `7e56d843` | command hook 拒绝 `args` 字段,避免静默剥离后退化成裸 sh |
+| `70fdbaf3` (#2462) | `3a6d495d` | OAuth 回调端口改用 `crypto.randomInt`,不再用可预测的 `Math.random` |
+| `977cb532` + `072a921d` | `68c0f5b6` | 转义 chat 渲染的链接目标与文件路径属性,堵住 HTML 注入 |
+| `8cab4d11` (#2416) | `e908a22d` | 显式限流的 OpenAI 兼容 403 按限流重试,不再误报认证失败 |
+| `e3c9a873` (#2188) | `bae12643` | `hasNodeOption` 建模 Node 的 NODE_OPTIONS 语法,不再按空白切分 |
+| `df184fba` + `6712d5a7` | `7678b7bd` | CONNECT 之后把 CA/mTLS 传给目标 TLS,清代理后恢复直连 |
+| `2dddbb37` (#2426) | `940d0d18` | 插件仓库的 sparse-checkout / checkout 抑制 git hooks |
+| `6c8d22a2` (#2408) | `4d9f82ef` | `findGitRoot` 遵守 `GIT_CEILING_DIRECTORIES`,与 git 子进程行为对齐 |
+
+### T1 — 安全依赖升级
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `8fd997c4` / `9c41a4fa` / `c699c41b` / `0dbfe067` / `9086822b` | `b2fbbbc5` | sharp 0.35.5、fflate 0.8.3、@grpc/grpc-js 1.14.6、axios 1.20.0、ws 8.22.0、shell-quote 1.12.0、undici 7.30.1、@modelcontextprotocol/sdk 1.32.1、ip-address override 10.7.4;顺带把 zod 显式声明为直接依赖(之前是幽灵依赖) |
+| `1f6f7473` / `0b8daaeb` / `714533a2` / `c5f53195` / `40297b49` | `215ac1c3` | PR 检查按改动面分流、单测 8 分片(上游的 `scripts/run-tests.ts`)、`persist-credentials: false`、Bun 包缓存、`.bun-version` = 1.4.4 |
+| `d7340b1e` | `58f97c62` | 开发脚本改用 Bun subprocess API 捕获命令输出 |
+
+### T2 — TA-001 测试隔离系列
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `0f8b4cbc` / `4eae36ab` / `0724ca87` / `c823efe5` / `ae7eb821` | `7fe2b058` | 66 个文件:`?real=<nonce>` 快照 + afterEach 重新注册真模块,消除跨文件 mock 泄漏;补 `src/test/` 隔离装置;`bgRegistry` 补代际归属校验;放开 `preflightChecks.test.ts` 的 `describe.skip` |
+
+### T3 — 平台 / 功能
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `d9371e80` + `fd596210` | `3083ab24` | 收窄工具 schema 类型(`Pick<z.ZodType, …>`),避免 zod 递归比较顶爆 typecheck 堆 |
+| `d4d1b2bf` | `a2593870` | 删除恒为假的条件分支与随之无用的 `classifierApprovalsHook` |
+| `a883d57f` | `9882070e` | SGR 参数解析不再越界读;ENV_VAR_PATTERN 去掉重复的字符类成员 |
+| `1c42a106` (#2321) | `494a9058` | abort 先于监听器挂载时也能杀掉子进程 |
+| `391c660d` (#2443) | `fadc37e7` | VSIX 下载的流错误向上传播(`pipeline`) |
+| `23115eb8` (#2214) | `af5ecba7` | TODO / 任务提醒阈值可配置(settings → env → 默认 10/10) |
+| — | `6f14bdc2` | 构建期 stub 白名单移除已落地条目 |
+
+### 本轮明确跳过的(附理由)
+
+- **TypeScript 6**(`0876fb2d` / `36b7ffd6`):仓库里 711 个文件带 `@ts-nocheck`,
+  根 typecheck 又没有 CI 门禁,升 TS6 的风险远大于收益,留到降低 nocheck 比例之后。
+- **zod 4**(`be3a7171`):23 个文件、411 处 `z.object` 的迁移,单独立项。本轮只把
+  zod 钉成显式直接依赖,版本仍是 3.25.76。
+- **undici 8**(`1d6337dd`):需要 dispatcher v2 桥接(`Dispatcher1Wrapper`),与本轮
+  的 7.x 安全升级不是一回事。
+- **Node 24**(`0b39dfec`):没有 API 依赖证据,抬 `engines` 会切断 Node 22 用户。
+- **eslint 10**(`b9ea599c` / `4e746935`):fork 既有决策(仓库明确不引 ESLint/Prettier)。
+- **`diff` 9.0.0**(`17cd64c5`):非安全类的 major,渲染相关,单独评估。
+- **需要源码适配或产品决策的一批**:commander 15(`-d2e` flag 移除)、chalk 6 +
+  execa 10、marked 18、chokidar 6、https-proxy-agent 9、sandbox-runtime 0.0.81、
+  Anthropic SDK 0.137、@sentry/node、AWS SDK、Astro。
+- **上游的"死代码清理"类提交**(如 `94ebcff6`):**不要照搬**。上游的公开快照把
+  Anthropic 内部能力在构建期 stub 成 `false` / `undefined`,所以它们那边的"未使用
+  代码"在 fork 侧是活的。例:上游 `src/utils/model/modelCapabilities.ts` 只有 16 行
+  返回 `undefined`,fork 侧是 55 行的真实能力表;照搬会把 MiniMax-M3 的 1M 上下文
+  悄悄降回 200k。本轮所有"删除恒假分支"的改动都逐条核过 fork 侧的 `false &&`
+  是 fork 自己 stub 出来的才动。
+
+### 本轮验证
+
+- `bun run build` → 成功,`dist/cli.mjs` + `dist/sdk.mjs`,外部清单校验 0 missing
+- `bun run typecheck` → 0 error
+- 全量单测(与基线同一套依赖、同一命令,基线 = 本轮改动前的源码):
+  - 基线 `ea644676`:6816 pass / 223 skip / **12 fail**
+  - 本轮:7153 pass / 220 skip / **11 fail**
+  - **新引入的失败:0**;修好的既有失败 1 条(`getAutoCompactThreshold > internal
+    context cap still wins over a session override`,由 T2 的隔离修复带出来)
+- 剩下 11 条全是既有失败(含 4 条 `getTrustedSettings` 与 5 条 `/diff` 对话框超时)，
+  与本轮改动无关
+
+### 遗留(不是本轮引入,但值得单独立项)
+
+`?real=<nonce>` 快照把模块替换成一个**普通对象**。若另一个测试文件用
+`spyOn(namespace, 'method')` 打桩,而被测函数在模块内部调用该方法,打桩就失效 ——
+表现为 `getTrustedSettings` 那 4 条既有失败(`getSettingsForSource` 返回 undefined)。
+修法是让恢复用的快照来自**原模块记录**(而不是 `?real` 出来的另一个实例),
+涉及约 20 个文件,应作为独立一轮做,不要夹在同步轮里。
