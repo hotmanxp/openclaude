@@ -51,6 +51,7 @@ bun run dev:profile
 - Avoid mixing unrelated cleanup into the same change.
 - Preserve existing repo patterns unless the change is intentionally refactoring them.
 - Add or update tests when the change affects behavior.
+- Git discovery honors `GIT_CEILING_DIRECTORIES` in both filesystem lookups and Git subprocesses. Use an explicit ceiling for temporary fixtures that must exclude enclosing repositories; a ceiling prevents ascent into that directory without excluding the starting working directory. Separate multiple absolute ceiling directories with the platform's path-list delimiter.
 - Update docs when setup, commands, or user-facing behavior changes.
 
 ## Validation

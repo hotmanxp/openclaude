@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test'
+import * as fs from 'fs'
 import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { getCwdState, setCwdState } from '../bootstrap/state.js'
 import { shouldIncludeGitInstructions } from './gitSettings.js'
 import { acquireSharedMutationLock, releaseSharedMutationLock } from '../test/sharedMutationLock.js'
@@ -21,6 +22,20 @@ beforeEach(async () => {
   originalEnv = process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
   delete process.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
   tempRoot = mkdtempSync(join(tmpdir(), 'gitsettings-test-'))
+  // Isolate filesystem lookups without changing the shared process's Git environment.
+  // Hide ancestor repositories when tmpdir() happens to be inside a checkout.
+  const ancestorGitPaths = new Set<string>()
+  for (let ancestor = dirname(tempRoot); ; ancestor = dirname(ancestor)) {
+    ancestorGitPaths.add(join(ancestor, '.git'))
+    if (dirname(ancestor) === ancestor) break
+  }
+  const statSync = fs.statSync
+  spyOn(fs, 'statSync').mockImplementation(((path, options) => {
+    if (ancestorGitPaths.has(String(path))) {
+      throw new Error('Outside the test fixture')
+    }
+    return statSync(path, options)
+  }) as typeof fs.statSync)
   settingsFixture = {}
   mock.module('./settings/settings.js', () => ({
     ...realSettings,
