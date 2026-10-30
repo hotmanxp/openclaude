@@ -1283,6 +1283,7 @@ cherry-pick。**
 |---|---|---|
 | `cb4a72bf` (#2398) | `7e56d843` | command hook 拒绝 `args` 字段,避免静默剥离后退化成裸 sh |
 | `70fdbaf3` (#2462) | `3a6d495d` | OAuth 回调端口改用 `crypto.randomInt`,不再用可预测的 `Math.random` |
+| `977cb532`(选摘) | `ba1639fa` | OAuth 回调端口严格校验 + 主动探测,自动端口索引去重 |
 | `977cb532` + `072a921d` | `68c0f5b6` | 转义 chat 渲染的链接目标与文件路径属性,堵住 HTML 注入 |
 | `8cab4d11` (#2416) | `e908a22d` | 显式限流的 OpenAI 兼容 403 按限流重试,不再误报认证失败 |
 | `e3c9a873` (#2188) | `bae12643` | `hasNodeOption` 建模 Node 的 NODE_OPTIONS 语法,不再按空白切分 |
@@ -1299,6 +1300,12 @@ cherry-pick。**
 | `d7340b1e` | `58f97c62` | 开发脚本改用 Bun subprocess API 捕获命令输出 |
 | `c699c41b`(源码部分) | `91b8f1a0` | shell-quote 1.12 自带类型,`commands.ts` 的 `Set<ControlOperator>` 要按上游改成 `ControlOperator['op']`;顺带补 `@growthbook/growthbook` 的可选模块类型声明 |
 | `8cfdb43d` | `75245da8` | 加 Bun 内置类型检查器作为附加门禁(`bun run typecheck:fast`);fork 侧还要补三样前置:tsconfig 去掉 `baseUrl` + 显式 `types: [bun, node]`、`relay.ts` 的 `Uint8Array<ArrayBuffer>`、`execFileNoThrowPortable.ts` 的 execa 同步版 stdio 类型 |
+
+> `8cfdb43d` 的前置是 **Bun ≥ 1.4.3 的内置 `bun check`**(上游同一天的 `40297b49`
+> 升到 1.4.4)。本机 Bun 是 1.4.2 时它跑不起来,所以这一条是本轮**最后**摘的。
+> 另注意 fork 的 `package.json` 里有 `"check"` 脚本(跑全量单测),会遮蔽同名内置
+> 子命令 —— 上游的 `scripts/typecheck-fast.ts` 是从**项目目录外** spawn
+> `bun check -p tsconfig.json` 来绕开这个遮蔽的。
 
 ### T2 — TA-001 测试隔离系列
 
@@ -1332,8 +1339,7 @@ cherry-pick。**
 - **需要源码适配或产品决策的一批**:commander 15(`-d2e` flag 移除)、chalk 6 +
   execa 10、marked 18、chokidar 6、https-proxy-agent 9、sandbox-runtime 0.0.81、
   Anthropic SDK 0.137、@sentry/node、AWS SDK、Astro。
-- - **`8cfdb43d`(`typecheck:fast`)**:本轮末尾在把 Bun 升到 1.4.4 之后摘掉了(见上表)。它的前置是 Bun ≥1.4.3 的内置 `bun check`;fork 侧还要先满足 tsconfig 的两条要求。
-**上游的"死代码清理"类提交**(如 `94ebcff6`):**不要照搬**。上游的公开快照把
+- **上游的"死代码清理"类提交**(如 `94ebcff6`):**不要照搬**。上游的公开快照把
   Anthropic 内部能力在构建期 stub 成 `false` / `undefined`,所以它们那边的"未使用
   代码"在 fork 侧是活的。例:上游 `src/utils/model/modelCapabilities.ts` 只有 16 行
   返回 `undefined`,fork 侧是 55 行的真实能力表;照搬会把 MiniMax-M3 的 1M 上下文
@@ -1344,6 +1350,9 @@ cherry-pick。**
 
 - `bun run build` → 成功,`dist/cli.mjs` + `dist/sdk.mjs`,外部清单校验 0 missing
 - `bun run typecheck` → 0 error
+- `bun run typecheck:fast` → `✓ No type errors in 3,300 files`(Bun 内置检查器,
+  毫秒级,作为 `tsc` 之外的附加信号)
+- `bun run typecheck:type-tests` → 通过
 - 全量单测(与基线同一套依赖、同一命令,基线 = 本轮改动前的源码):
   - 基线 `ea644676`:6816 pass / 223 skip / **12 fail**
   - 本轮:7153 pass / 220 skip / **11 fail**
