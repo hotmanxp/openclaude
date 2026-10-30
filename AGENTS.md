@@ -69,9 +69,17 @@
 |---------|---------|
 | `bun run build` | Build (required before run) |
 | `bun run dev` | Build + interactive run |
-| `bun run typecheck` | TypeScript type check |
+| `bun run typecheck` | TypeScript type check (tsc —— 权威门禁) |
+| `bun run typecheck:fast` | Bun 内置类型检查器(秒级,附加信号;CI 也跑) |
 | `bun run smoke` | Build + quick smoke |
 | `bun test <file>` | Run one test file — never the full suite (see Verification) |
+
+`bun run typecheck` 用 tsc,仍是权威门禁。`bun run typecheck:fast` 是 Bun 内置的
+类型检查器,本地与 CI 都额外跑一遍 —— 必须走这个包装脚本,因为仓库里的 `check`
+脚本名会遮蔽 `bun check` 子命令(脚本从项目目录外启动 `bun check` 才命中内置
+检查器)。Bun 内置检查器还要求 `tsconfig.json` 不带 `baseUrl`(新版 TS 已移除该
+选项)并显式声明 `"types": ["bun", "node"]`,否则 `bun:test` / `bun:bundle` / `Bun`
+全局会整片报 TS2307。
 
 ## Specs & Conventions
 | Category | Path |

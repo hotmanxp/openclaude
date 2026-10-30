@@ -1,4 +1,4 @@
-import { type Options as ExecaOptions, execaSync } from 'execa'
+import { type SyncOptions as ExecaSyncOptions, execaSync } from 'execa'
 import { getCwd } from '../utils/cwd.js'
 import { slowLogging } from './slowOperations.js'
 
@@ -9,7 +9,9 @@ type ExecSyncOptions = {
   abortSignal?: AbortSignal
   timeout?: number
   input?: string
-  stdio?: ExecaOptions['stdio']
+  // The sync API rejects the async-only "overlapped" stdio mode, so the option
+  // is typed from execa's SyncOptions rather than the async Options.
+  stdio?: ExecaSyncOptions['stdio']
 }
 
 /**
@@ -80,7 +82,10 @@ export function execSyncWithDefaults_DEPRECATED(
       reject: false, // Don't throw on non-zero exit codes
       input,
     })
-    if (!result.stdout) {
+    // stdio is typed from execa's SyncOptions, so stdout can still be an
+    // array when a caller pipes it to an fd. Only the piped-string case is
+    // meaningful here.
+    if (!result.stdout || typeof result.stdout !== 'string') {
       return null
     }
     return result.stdout.trim() || null

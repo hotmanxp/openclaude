@@ -139,6 +139,50 @@ jobs:
       - name: Unit test shard
         run: bun run scripts/run-tests.ts --shards=8 --shard-index=${{ matrix.shard }} --feature=UNATTENDED_RETRY --max-concurrency=1
 
+  typecheck:
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version-file: .bun-version
+
+      - name: Cache Bun packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-root-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-root-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # tsc stays authoritative; the Bun builtin checker is an additional,
+      # much faster signal (seconds instead of ~40s).
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Fast typecheck (Bun builtin)
+        run: bun run typecheck:fast
+
+      - name: Type tests
+        run: bun run typecheck:type-tests
+
   web:
     needs: changes
     if: ${{ github.event_name == 'push' || needs.changes.outputs.web == 'true' }}

@@ -67,6 +67,19 @@ bun run build
 bun run smoke
 ```
 
+Type checks:
+
+```bash
+bun run typecheck
+bun run typecheck:fast
+```
+
+`bun run typecheck` uses TypeScript's `tsc` and stays authoritative.
+`bun run typecheck:fast` runs Bun's builtin type checker against the same
+`tsconfig.json` as an additional local and CI check — it reports the same
+errors as `tsc` in seconds instead of ~40s. Use the wrapper because the
+package's `check` script shadows `bun check` inside the project.
+
 Focused tests:
 
 ```bash
