@@ -1298,6 +1298,7 @@ cherry-pick。**
 | `1f6f7473` / `0b8daaeb` / `714533a2` / `c5f53195` / `40297b49` | `215ac1c3` | PR 检查按改动面分流、单测 8 分片(上游的 `scripts/run-tests.ts`)、`persist-credentials: false`、Bun 包缓存、`.bun-version` = 1.4.4 |
 | `d7340b1e` | `58f97c62` | 开发脚本改用 Bun subprocess API 捕获命令输出 |
 | `c699c41b`(源码部分) | `91b8f1a0` | shell-quote 1.12 自带类型,`commands.ts` 的 `Set<ControlOperator>` 要按上游改成 `ControlOperator['op']`;顺带补 `@growthbook/growthbook` 的可选模块类型声明 |
+| `8cfdb43d` | `75245da8` | 加 Bun 内置类型检查器作为附加门禁(`bun run typecheck:fast`);fork 侧还要补三样前置:tsconfig 去掉 `baseUrl` + 显式 `types: [bun, node]`、`relay.ts` 的 `Uint8Array<ArrayBuffer>`、`execFileNoThrowPortable.ts` 的 execa 同步版 stdio 类型 |
 
 ### T2 — TA-001 测试隔离系列
 
@@ -1331,7 +1332,8 @@ cherry-pick。**
 - **需要源码适配或产品决策的一批**:commander 15(`-d2e` flag 移除)、chalk 6 +
   execa 10、marked 18、chokidar 6、https-proxy-agent 9、sandbox-runtime 0.0.81、
   Anthropic SDK 0.137、@sentry/node、AWS SDK、Astro。
-- **上游的"死代码清理"类提交**(如 `94ebcff6`):**不要照搬**。上游的公开快照把
+- - **`8cfdb43d`(`typecheck:fast`)**:本轮末尾在把 Bun 升到 1.4.4 之后摘掉了(见上表)。它的前置是 Bun ≥1.4.3 的内置 `bun check`;fork 侧还要先满足 tsconfig 的两条要求。
+**上游的"死代码清理"类提交**(如 `94ebcff6`):**不要照搬**。上游的公开快照把
   Anthropic 内部能力在构建期 stub 成 `false` / `undefined`,所以它们那边的"未使用
   代码"在 fork 侧是活的。例:上游 `src/utils/model/modelCapabilities.ts` 只有 16 行
   返回 `undefined`,fork 侧是 55 行的真实能力表;照搬会把 MiniMax-M3 的 1M 上下文
