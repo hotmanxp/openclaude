@@ -1368,3 +1368,79 @@ cherry-pick。**
 表现为 `getTrustedSettings` 那 4 条既有失败(`getSettingsForSource` 返回 undefined)。
 修法是让恢复用的快照来自**原模块记录**(而不是 `?real` 出来的另一个实例),
 涉及约 20 个文件,应作为独立一轮做,不要夹在同步轮里。
+
+---
+
+## 第十一轮同步(2026-10-31,上游 `beecf58f`)
+
+基线 `417cc693`,工作树 `opencc-worktrees/pick-upstream-2026-10-31`(分支
+`pick/upstream-2026-10-31`)。上游 tip 从 `7ac848c8` 前进到 `beecf58f`,5 天窗口
+(10-26 → 10-31)共 54 个提交,其中 11 个上轮已定过、**43 个为新增**。本轮**只摘
+2 项**,其余按下列理由跳过。
+
+### 已摘
+
+| 上游 | 本地 | 内容 |
+|---|---|---|
+| `e0d2bd9f` (a) | `091121a6` | `mcp remove` 带 scope 删除成功后 `return`,不再穿透到无 scope 查找分支 |
+| `e0d2bd9f` (c) | `091121a6` | `where.exe` 结果过滤改用 win32 `path.relative` 包含判断,盘符根 cwd 下不再漏掉子目录 |
+
+两项均**逐文件 `git apply --3way` 移植**,没有 cherry-pick。两处 fork 上下文与上游
+改前逐字一致,patch 干净落地。
+
+**回归护栏**:各配一个测试文件(`src/cli/handlers/mcp.test.ts` 35 行、
+`src/utils/windowsPaths.test.ts` 69 行),两个测试都验证过**改前红、改后绿**:
+
+- mcp 测试:上游原文件在 fork 直接可用(1 fail → 1 pass)
+- windowsPaths 测试:上游原文件在 fork **6 fail / 0 pass**,因为 fork 的
+  `findGitBashPath` 是自己的实现(错误文案是 `OpenCC was unable to find...`,
+  上游断言的是 `Claude Code was unable to find...`),整个文件无法照搬 ——
+  **已用基线证明这 6 条与本轮改动无关**(未改动的 fork 源码跑同一文件同样是
+  6 fail)。改为按 fork 实际行为重写,只覆盖 `findExecutable` 的过滤逻辑。
+
+### 跳过(附理由)
+
+**"清理未使用代码"那批 21 个提交全部跳过** —— 上游把 Anthropic 内部能力在构建期
+stub 成恒假之后 CodeQL 才能判死,fork 把其中一部分实现成了真代码。实测两处:
+
+- `9876d04b` 把 `isHidden` 改成 `false`,而 fork `src/components/permissions/rules/PermissionRuleList.tsx:1067` 那行是**活的**
+- `20a50493` 删掉 `src/components/LogSelector.tsx` 的 deep search 常量(95-98 行),而 fork 的 `src/utils/agenticSessionSearch.ts` 是 **310 行真实实现**
+
+其余按各自理由跳过:
+
+| 上游 | 跳过理由 |
+|---|---|
+| `972cb0b6` | fork 的 `getUserSpecifiedModelSetting()`(`src/utils/model/model.ts:76-78`)优先读 `getMainLoopModelOverride()`,profile 写的 `OPENAI_MODEL` 覆盖不了 `--model`;且 fork 连 `reapplyRemembered*` 机制都没有 |
+| `870ea131` | fork 用另一套 `src/query/toolFailureLoopGuard.ts`,tripped 时已 `return { reason: 'tool_failure_loop' }` 终止回合 |
+| `ec39d807` | fork 的 `src/services/api/smartModelRouting.ts` **零生产调用方**,`queryModelSelection` 机制不存在 |
+| `4d003ba0` | fork 的 `unstable_v2_createSession` 直接 `throw new Error('not implemented')`,SDK v2 未实现 |
+| `438d4ca6` | fork 的 `scripts/no-telemetry-plugin.ts` 没有 stub `utils/autoUpdater`,`acquireLock` 也已是原子的(`wx` + 复检) |
+| `77739e2c` | fork `web/` 是 Vite SPA,没有 `scripts/verify-dist.ts` 与 sitemap |
+| `3adc887e` / `4e746935` | 仓库明确 No ESLint/Prettier |
+| `42b108d1` / `649c224f` / `f235c835` | aimlapi 三件套,fork 无 `src/integrations/aimlapi/`、无 `/search` 命令目录 |
+| `7b83353d` / `3a8e12b8` / `e61e913b` | 新增 gateway / search provider,属功能扩张非缺陷修复 |
+
+### 待拍板(未做)
+
+- `354ce5fd` `/ctx` 显示上下文窗口来源 + 消息数阈值 —— **需改写**:fork 的
+  `src/utils/maxActiveMessages.ts` 已独立实现 `resolveMaxActiveMessagesLimit` /
+  `isAboveMaxActiveMessagesLimit`,语义与上游不同,套用上游 helper 会顺带恢复
+  "auto-compact 关闭 ⇒ 消息数压缩也停"这一 fork 已放弃的语义
+- `d0b464eb` `/ctx` 显示上次压缩原因 —— 需扩 `src/services/compact/autoCompact.ts:91`
+  的 `forceReason` 类型(现为 `'memory-pressure' | 'message-count'`,上游多一个
+  `'context-overflow'`);`compactMetadata` 在 `src/types/message.ts:169` 是
+  `unknown`,`:420` 才是结构体
+- `beecf58f` `/set-context-window --save` —— resolver **不可照抄**:fork 的
+  `getContextWindowForModel` 比上游多两级(`getOpenAIContextWindow` +
+  `getModelCapability`),照抄会把 MiniMax-M3 的 1M 上下文退回 200k
+
+### 本轮验证
+
+- `bun run build` → 成功(CLI + SDK bundle,外部清单 0 missing)
+- `bun run typecheck` → 0 error
+- `bun run typecheck:fast` → `✓ No type errors in 3,302 files`
+- `bun test ./src/utils/windowsPaths.test.ts ./src/cli/handlers/mcp.test.ts` → 3 pass / 0 fail
+- `bun test` 扩到 mcp 相关 4 文件 → 12 pass / 0 fail
+
+**本轮 43 个新增提交里没有依赖/安全更新** —— 上游的依赖批次集中在 10-19 之前,
+已在上轮摘完。
