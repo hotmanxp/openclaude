@@ -18,3 +18,4 @@ agent.log
 .claude/worktrees
 .claude/settings.local.json
 .codegraph/
+tmp-previews/
